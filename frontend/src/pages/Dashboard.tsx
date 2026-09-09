@@ -90,6 +90,8 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
 
         {!hasExtension ? (
           <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
+        ) : phone.secondary ? (
+          <p className="text-sm text-muted-foreground">Softphone başka bir sekmede açık. Çağrılar orada yönetiliyor.</p>
         ) : (
           <>
             {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
