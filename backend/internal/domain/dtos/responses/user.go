@@ -1,0 +1,53 @@
+// Package responses holds outbound response DTOs.
+package responses
+
+import (
+	"time"
+
+	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+)
+
+// User is the public view of a user.
+type User struct {
+	ID                 uint       `json:"id"`
+	Name               string     `json:"name"`
+	Email              string     `json:"email"`
+	Active             bool       `json:"active"`
+	Roles              []string   `json:"roles"`
+	Permissions        []string   `json:"permissions"`
+	MFAEnabled         bool       `json:"mfaEnabled"`
+	MustChangePassword bool       `json:"mustChangePassword"`
+	SIPExtension       string     `json:"sipExtension,omitempty"`
+	OnboardedAt        *time.Time `json:"onboardedAt,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+}
+
+// NewUser maps a user model to its response view.
+func NewUser(u *models.User) User {
+	roles := make([]string, 0, len(u.Roles))
+	for _, r := range u.Roles {
+		roles = append(roles, r.Name)
+	}
+	perms := u.Permissions()
+	permKeys := make([]string, 0, len(perms))
+	for _, p := range perms {
+		permKeys = append(permKeys, string(p))
+	}
+	var ext string
+	if u.SIPExtension != nil {
+		ext = *u.SIPExtension
+	}
+	return User{
+		ID:                 u.ID,
+		Name:               u.Name,
+		Email:              u.Email,
+		Active:             u.Active,
+		Roles:              roles,
+		Permissions:        permKeys,
+		MFAEnabled:         u.MFAEnabled,
+		MustChangePassword: u.MustChangePassword,
+		SIPExtension:       ext,
+		OnboardedAt:        u.OnboardedAt,
+		CreatedAt:          u.CreatedAt,
+	}
+}
