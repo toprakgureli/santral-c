@@ -18,6 +18,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
+	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/role"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
@@ -79,6 +80,8 @@ func run() error {
 	userHandler := user.NewHandler(userSvc)
 	roleSvc := role.NewService(role.NewRepository(db), userSvc)
 	roleHandler := role.NewHandler(roleSvc)
+	contactSvc := contact.NewService(contact.NewRepository(db), userSvc, auditSvc)
+	contactHandler := contact.NewHandler(contactSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
 	app := fiber.New(fiber.Config{
@@ -99,6 +102,7 @@ func run() error {
 	auth.NewRouter(authHandler, guard).Routes(api)
 	user.NewRouter(userHandler, guard).Routes(api)
 	role.NewRouter(roleHandler, guard).Routes(api)
+	contact.NewRouter(contactHandler, guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
