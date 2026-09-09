@@ -29,21 +29,21 @@ export function Contacts() {
           </div>
         }
       >
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-border/60">
           {contacts.map((c) => (
             <li
               key={c.id}
-              className="flex cursor-pointer items-center justify-between py-2.5 hover:bg-slate-50"
+              className="flex cursor-pointer items-center justify-between py-2.5 hover:bg-accent"
               onClick={() => { setSelected(c); setCreating(false); }}
             >
               <div>
-                <div className="font-medium text-slate-700">{c.name}</div>
-                <div className="text-xs text-slate-400">{c.company || c.phones[0]?.number || "—"}</div>
+                <div className="font-medium text-foreground">{c.name}</div>
+                <div className="text-xs text-muted-foreground">{c.company || c.phones[0]?.number || "—"}</div>
               </div>
               <Badge tone="slate">{c.phones.length} numara</Badge>
             </li>
           ))}
-          {contacts.length === 0 && <li className="py-6 text-center text-sm text-slate-400">Kişi yok.</li>}
+          {contacts.length === 0 && <li className="py-6 text-center text-sm text-muted-foreground">Kişi yok.</li>}
         </ul>
       </Card>
 
@@ -56,7 +56,7 @@ export function Contacts() {
         ) : selected ? (
           <ContactDetail contact={selected} manage={manage} onChanged={(c) => { setSelected(c); load(); }} onDeleted={() => { setSelected(null); load(); }} />
         ) : (
-          <Card title="Kişi detayı"><p className="text-sm text-slate-400">Bir kişi seçin.</p></Card>
+          <Card title="Kişi detayı"><p className="text-sm text-muted-foreground">Bir kişi seçin.</p></Card>
         )}
       </div>
     </div>
@@ -126,19 +126,19 @@ function ContactDetail({ contact, manage, onChanged, onDeleted }: {
       actions={manage ? <Button variant="danger" onClick={remove}>Sil</Button> : undefined}
     >
       <dl className="space-y-1 text-sm">
-        {contact.company && <div className="flex justify-between"><dt className="text-slate-400">Şirket</dt><dd>{contact.company}</dd></div>}
-        {contact.email && <div className="flex justify-between"><dt className="text-slate-400">E-posta</dt><dd>{contact.email}</dd></div>}
+        {contact.company && <div className="flex justify-between"><dt className="text-muted-foreground">Şirket</dt><dd>{contact.company}</dd></div>}
+        {contact.email && <div className="flex justify-between"><dt className="text-muted-foreground">E-posta</dt><dd>{contact.email}</dd></div>}
       </dl>
 
-      <h3 className="mb-2 mt-4 text-xs font-semibold uppercase text-slate-400">Telefonlar</h3>
+      <h3 className="mb-2 mt-4 text-xs font-semibold uppercase text-muted-foreground">Telefonlar</h3>
       <ul className="space-y-1">
         {contact.phones.map((p) => (
           <li key={p.id} className="flex items-center justify-between text-sm">
-            <span>{p.number} <span className="text-slate-400">({p.label})</span> {p.isPrimary && <Badge tone="blue">birincil</Badge>}</span>
+            <span>{p.number} <span className="text-muted-foreground">({p.label})</span> {p.isPrimary && <Badge tone="blue">birincil</Badge>}</span>
             {manage && <Button variant="ghost" onClick={() => removePhone(p.id)}>Kaldır</Button>}
           </li>
         ))}
-        {contact.phones.length === 0 && <li className="text-sm text-slate-400">Numara yok.</li>}
+        {contact.phones.length === 0 && <li className="text-sm text-muted-foreground">Numara yok.</li>}
       </ul>
 
       {manage && (

@@ -46,7 +46,7 @@ export function Dashboard() {
           <RecentCalls />
         ) : (
           <Card title="Hoş geldiniz">
-            <p className="text-sm text-slate-600">Sol taraftaki softphone ile çağrı yapabilirsiniz.</p>
+            <p className="text-sm text-muted-foreground">Sol taraftaki softphone ile çağrı yapabilirsiniz.</p>
           </Card>
         )}
       </div>
@@ -82,21 +82,21 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-400">Dahili</div>
+            <div className="text-xs text-muted-foreground">Dahili</div>
             <div className="text-lg font-semibold">{phone.extension ?? "—"}</div>
           </div>
           <Badge tone={statusTone[phone.status]}>{statusLabel[phone.status]}</Badge>
         </div>
 
         {!hasExtension ? (
-          <p className="text-sm text-slate-400">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
+          <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
         ) : (
           <>
-            {phone.error && <p className="text-sm text-red-400">{phone.error}</p>}
+            {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
 
             {idle && (
               <>
-                {phone.endReason && <p className="text-xs text-slate-400">Son çağrı: {phone.endReason}</p>}
+                {phone.endReason && <p className="text-xs text-muted-foreground">Son çağrı: {phone.endReason}</p>}
                 <div className="flex gap-2">
                   <Input
                     placeholder="Numara veya dahili"
@@ -112,15 +112,15 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
             )}
 
             {(outgoing || active) && (
-              <div className="rounded-lg bg-slate-800/60 px-3 py-2 text-sm text-slate-200">
+              <div className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-foreground">
                 {outgoing ? "Aranıyor: " : "Görüşme: "}
                 <span className="font-medium">{phone.peer}</span>
               </div>
             )}
 
             {phone.status === "incoming" && (
-              <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-                <span className="text-sm text-amber-300">Gelen çağrı: {phone.peer}</span>
+              <div className="flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
+                <span className="text-sm text-warning">Gelen çağrı: {phone.peer}</span>
                 <div className="flex gap-2">
                   <Button onClick={() => phone.answer().catch(() => undefined)}>Cevapla</Button>
                   <Button variant="danger" onClick={() => phone.hangup().catch(() => undefined)}>Reddet</Button>
@@ -144,7 +144,7 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
                   </div>
                 )}
 
-                <div className="space-y-2 border-t border-slate-800 pt-3">
+                <div className="space-y-2 border-t border-border pt-3">
                   <div className="flex gap-2">
                     <Input placeholder="Numaraya aktar" value={xfer} onChange={(e) => setXfer(e.target.value)} />
                     <Button variant="secondary" onClick={() => xfer && phone.transfer(xfer).catch(() => undefined)} disabled={!xfer}>
@@ -210,15 +210,15 @@ function RecentCalls() {
   return (
     <Card title="Son çağrılar">
       {loading ? (
-        <p className="text-sm text-slate-400">Yükleniyor...</p>
+        <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : error ? (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-destructive">{error}</p>
       ) : calls.length === 0 ? (
-        <p className="text-sm text-slate-400">Henüz çağrı kaydı yok.</p>
+        <p className="text-sm text-muted-foreground">Henüz çağrı kaydı yok.</p>
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-slate-400">
+            <tr className="text-left text-xs text-muted-foreground">
               <th className="pb-2">Yön</th>
               <th className="pb-2">Kimden</th>
               <th className="pb-2">Kime</th>
@@ -229,13 +229,13 @@ function RecentCalls() {
           </thead>
           <tbody>
             {calls.map((c) => (
-              <tr key={c.uuid} className="border-t border-slate-100">
+              <tr key={c.uuid} className="border-t border-border/60">
                 <td className="py-2"><Direction value={c.direction} /></td>
                 <td className="py-2">{c.fromNumber}</td>
                 <td className="py-2">{c.toNumber}</td>
                 <td className="py-2"><CallDisposition value={c.disposition} /></td>
                 <td className="py-2">{formatDuration(c.durationSeconds)}</td>
-                <td className="py-2 text-slate-400">{formatStamp(c.startedAt)}</td>
+                <td className="py-2 text-muted-foreground">{formatStamp(c.startedAt)}</td>
               </tr>
             ))}
           </tbody>

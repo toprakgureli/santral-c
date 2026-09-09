@@ -1,39 +1,43 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { cn } from "@/lib/utils";
+
+const buttonBase =
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl text-sm font-medium whitespace-nowrap h-10 px-4 " +
+  "transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out " +
+  "outline-none focus-visible:ring-4 focus-visible:ring-ring/25 active:scale-[0.985] " +
+  "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0";
+
+const buttonVariants: Record<string, string> = {
+  primary: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md",
+  secondary: "border border-border/70 bg-card text-foreground shadow-sm hover:border-border hover:bg-accent",
+  danger: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 focus-visible:ring-destructive/25",
+  ghost: "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+};
 
 export function Button({
   variant = "primary",
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }) {
-  const styles: Record<string, string> = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700",
-    secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
-    danger: "bg-red-600 text-white hover:bg-red-700",
-    ghost: "text-slate-600 hover:bg-slate-100",
-  };
-  return (
-    <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed ${styles[variant]} ${className}`}
-      {...props}
-    />
-  );
+  return <button className={cn(buttonBase, buttonVariants[variant], className)} {...props} />;
 }
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
-      {...props}
-    />
-  );
-}
+const fieldBase =
+  "flex h-10 w-full min-w-0 rounded-xl border border-border/70 bg-muted/40 px-3.5 text-sm text-foreground shadow-sm outline-none " +
+  "placeholder:text-muted-foreground/70 transition-[color,background-color,border-color,box-shadow] duration-200 ease-out " +
+  "hover:border-border hover:bg-muted/60 focus-visible:border-ring/60 focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-ring/20 " +
+  "disabled:pointer-events-none disabled:opacity-50";
+
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
+  { className = "", ...props },
+  ref,
+) {
+  return <input ref={ref} className={cn(fieldBase, className)} {...props} />;
+});
 
 export function Select({ className = "", children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className={`w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 ${className}`}
-      {...props}
-    >
+    <select className={cn(fieldBase, "bg-card", className)} {...props}>
       {children}
     </select>
   );
@@ -41,8 +45,8 @@ export function Select({ className = "", children, ...props }: SelectHTMLAttribu
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="block space-y-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -50,34 +54,35 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export function Card({ title, actions, children }: { title?: string; actions?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className="flex flex-col rounded-2xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60">
       {(title || actions) && (
-        <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          {title && <h2 className="text-sm font-semibold text-slate-700">{title}</h2>}
+        <header className="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-4">
+          {title && <h2 className="text-sm font-semibold tracking-tight">{title}</h2>}
           {actions}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </section>
   );
 }
 
+const badgeTones: Record<string, string> = {
+  slate: "bg-muted text-muted-foreground",
+  green: "bg-success/15 text-success",
+  red: "bg-destructive/15 text-destructive",
+  amber: "bg-warning/15 text-warning",
+  blue: "bg-accent text-accent-foreground",
+};
+
 export function Badge({ tone = "slate", children }: { tone?: "slate" | "green" | "red" | "amber" | "blue"; children: ReactNode }) {
-  const tones: Record<string, string> = {
-    slate: "bg-slate-100 text-slate-600",
-    green: "bg-green-100 text-green-700",
-    red: "bg-red-100 text-red-700",
-    amber: "bg-amber-100 text-amber-700",
-    blue: "bg-brand-100 text-brand-700",
-  };
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>;
+  return <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-medium", badgeTones[tone])}>{children}</span>;
 }
 
 export function Spinner() {
-  return <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-brand-500" />;
+  return <div className="size-5 animate-spin rounded-full border-2 border-muted border-t-primary" />;
 }
 
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
-  return <p className="text-sm text-red-600">{children}</p>;
+  return <p className="text-sm text-destructive">{children}</p>;
 }

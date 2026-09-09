@@ -32,7 +32,7 @@ export function Users() {
         {creating && <CreateUser roles={roles} onCreated={() => { setCreating(false); load(); }} />}
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-xs text-slate-400">
+            <tr className="text-left text-xs text-muted-foreground">
               <th className="pb-2">Ad</th>
               <th className="pb-2">E-posta</th>
               <th className="pb-2">Roller</th>
@@ -43,9 +43,9 @@ export function Users() {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-t border-slate-100">
+              <tr key={u.id} className="border-t border-border/60">
                 <td className="py-2 font-medium">{u.name}</td>
-                <td className="py-2 text-slate-500">{u.email}</td>
+                <td className="py-2 text-muted-foreground">{u.email}</td>
                 <td className="py-2">{u.roles.join(", ")}</td>
                 <td className="py-2">{u.sipExtension ?? "—"}</td>
                 <td className="py-2">{u.active ? <Badge tone="green">Aktif</Badge> : <Badge tone="red">Pasif</Badge>}</td>
@@ -95,7 +95,7 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
   }
 
   return (
-    <form className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-6" onSubmit={submit}>
+    <form className="mb-4 grid gap-3 rounded-lg bg-muted/40 p-4 md:grid-cols-6" onSubmit={submit}>
       <Field label="Ad"><Input value={name} onChange={(e) => setName(e.target.value)} required /></Field>
       <Field label="E-posta"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
       <Field label="Geçici parola"><Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></Field>

@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
-import { Layout } from "./components/Layout";
+import AppShell from "./components/layout/AppShell";
 import { Spinner } from "./components/ui";
 import { Calls } from "./pages/Calls";
 import { Contacts } from "./pages/Contacts";
@@ -13,7 +13,7 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="flex min-h-full items-center justify-center">
+      <div className="flex min-h-svh items-center justify-center">
         <Spinner />
       </div>
     );
@@ -30,7 +30,7 @@ export function App() {
 
   return (
     <Routes>
-      <Route element={<Layout />}>
+      <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/contacts" element={<Contacts />} />
