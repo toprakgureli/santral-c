@@ -54,7 +54,10 @@ export default function AppShell() {
       >
         <Topbar title={titleFor(pathname)} onMenuClick={() => setMenuOpen((v) => !v)} />
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
-          <Outlet />
+          {/* Keyed by path so the entrance animation replays on each navigation. */}
+          <div key={pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
