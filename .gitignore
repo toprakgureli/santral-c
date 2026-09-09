@@ -12,3 +12,6 @@ config.local.yml
 
 # test artifacts
 *.jar
+
+# editor/binary backups
+*~
