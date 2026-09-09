@@ -22,6 +22,14 @@ type User struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 }
 
+// UserList is a paginated page of users.
+type UserList struct {
+	Items   []User `json:"items"`
+	Total   int64  `json:"total"`
+	Page    int    `json:"page"`
+	PerPage int    `json:"perPage"`
+}
+
 // NewUser maps a user model to its response view.
 func NewUser(u *models.User) User {
 	roles := make([]string, 0, len(u.Roles))

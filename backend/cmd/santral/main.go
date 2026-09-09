@@ -16,8 +16,10 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/internal/role"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/internal/setup"
@@ -67,10 +69,16 @@ func run() error {
 	}
 
 	deny := denylist.New()
-	userSvc := user.NewService(user.NewRepository(db))
+	sessionRepo := auth.NewRepository(db)
+	auditSvc := audit.NewService(db)
+	userRepo := user.NewRepository(db)
+	userSvc := user.NewService(userRepo, auditSvc, sessionRepo)
 	secSvc := security.NewService(configs.Cnf.Security, security.NewRepository(db), lockout.New())
-	authSvc := auth.NewService(configs.Cnf.Auth, configs.Cnf.Security, auth.NewRepository(db), userSvc, secSvc, deny, setting.NewService(db))
+	authSvc := auth.NewService(configs.Cnf.Auth, configs.Cnf.Security, sessionRepo, userSvc, secSvc, deny, setting.NewService(db))
 	authHandler := auth.NewHandler(configs.Cnf.Auth, authSvc)
+	userHandler := user.NewHandler(userSvc)
+	roleSvc := role.NewService(role.NewRepository(db), userSvc)
+	roleHandler := role.NewHandler(roleSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
 	app := fiber.New(fiber.Config{
@@ -89,6 +97,8 @@ func run() error {
 
 	api := app.Group("/api/v1")
 	auth.NewRouter(authHandler, guard).Routes(api)
+	user.NewRouter(userHandler, guard).Routes(api)
+	role.NewRouter(roleHandler, guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
