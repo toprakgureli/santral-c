@@ -52,6 +52,33 @@
   let state = { status: "idle" };
   let showKeys = false;
   let showXfer = false;
+  let isPanel = false;
+
+  // Bridge to the santral-c panel running in this same tab: it pushes its SIP
+  // credentials and control commands, and receives live state, so the panel
+  // and this extension share one registration/session.
+  function postToPage(m) {
+    try {
+      window.postMessage({ santralc: "ext", ...m }, "*");
+    } catch {
+      /* ignore */
+    }
+  }
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (e.source !== window || !d || d.santralc !== "panel") return;
+    if (d.type === "hello") {
+      isPanel = true;
+      host.style.display = "none"; // the panel shows its own softphone UI
+      chrome.runtime.sendMessage({ to: "sw", type: "getState" }, (res) => {
+        postToPage({ type: "present", state: chrome.runtime.lastError ? state : res && res.state });
+      });
+    } else if (d.type === "config" && d.config) {
+      chrome.runtime.sendMessage({ to: "sw", type: "config", config: d.config }).catch(() => {});
+    } else if (d.type === "cmd") {
+      chrome.runtime.sendMessage({ to: "offscreen", cmd: d.cmd, arg: d.arg }).catch(() => {});
+    }
+  });
 
   function send(cmd, arg) {
     chrome.runtime.sendMessage({ to: "offscreen", cmd, arg }).catch(() => {});
@@ -62,6 +89,10 @@
   }
 
   function render() {
+    if (isPanel) {
+      host.style.display = "none";
+      return;
+    }
     const st = state.status;
     const active = st === "in-call" || st === "held";
     const outgoing = st === "calling" || st === "ringing";
@@ -162,6 +193,7 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.to === "content" && msg.type === "state") {
       state = msg.state || { status: "idle" };
+      if (isPanel) postToPage({ type: "state", state });
       render();
     }
   });

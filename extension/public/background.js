@@ -47,5 +47,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ state: lastState });
       return true;
     }
+    if (msg.type === "config" && msg.config) {
+      // Credentials pushed from the panel: store and (re)register.
+      chrome.storage.local.set({ sipConfig: msg.config }).then(() =>
+        ensureOffscreen().then(() =>
+          chrome.runtime.sendMessage({ to: "offscreen", cmd: "reconfigure", _fwd: true }).catch(() => undefined),
+        ),
+      );
+      return;
+    }
   }
 });

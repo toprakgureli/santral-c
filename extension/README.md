@@ -28,12 +28,14 @@ Sonra Chrome'da:
 
 1. `chrome://extensions` → sağ üstten **Developer mode** açık.
 2. **Load unpacked** → `extension/dist` klasörünü seç.
-3. Eklenti simgesine tıkla → **Ayarlar**: Dahili (ör. 1014), SIP parola,
-   WSS (`wss://api.bulutsantralim.com:7443`), domain
-   (`ersinhacioglu.bulutsantralim.com`), STUN (`stun:194.49.126.36:7443`) →
-   **Kaydet ve Bağlan** → **Mikrofon İznini Ver**.
+3. Eklenti simgesine tıkla → **Mikrofon İznini Ver** (bir kez).
 
-SIP parolasını panelden (`/api/v1/sip/credentials`) ya da OIM'den alabilirsin.
+**Manuel bilgi girmene gerek yok:** santral-c paneline giriş yaptığında panel,
+o kullanıcının kendi dahilisini/SIP bilgisini eklentiye otomatik gönderir ve
+eklenti onunla kaydolur. Panel ile eklenti **tek çağrı oturumunu paylaşır**:
+gelen çağrı, sustur, beklet, aktar — hepsi iki tarafta senkron. Panel açık
+sekmede widget gizlenir (panel kendi arayüzünü gösterir), diğer sekmelerde
+yüzen widget çıkar. Popup'taki alanlar yalnızca panelsiz kullanım için yedektir.
 
 ## Kullanım
 
