@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { Call } from "../api/types";
+import type { Call, PBXExtension, PBXQueue } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { canAny } from "../lib/permissions";
 import { useSoftphone } from "../softphone/useSoftphone";
 import { tones } from "../softphone/tones";
-import { Badge, Button, Card, Input } from "../components/ui";
+import { Badge, Button, Card, Input, Select } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
@@ -59,10 +59,23 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
   const [target, setTarget] = useState("");
   const [xfer, setXfer] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
+  const [exts, setExts] = useState<PBXExtension[]>([]);
+  const [queues, setQueues] = useState<PBXQueue[]>([]);
+  const [selExt, setSelExt] = useState("");
+  const [selQueue, setSelQueue] = useState("");
+  const dirLoaded = useRef(false);
 
   const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
   const outgoing = phone.status === "calling" || phone.status === "ringing";
   const active = phone.status === "in-call" || phone.status === "held";
+
+  useEffect(() => {
+    if (active && !dirLoaded.current) {
+      dirLoaded.current = true;
+      api.pbxExtensions().then(setExts).catch(() => undefined);
+      api.pbxQueues().then(setQueues).catch(() => undefined);
+    }
+  }, [active]);
 
   return (
     <Card title="Softphone">
@@ -131,11 +144,39 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                  <Input placeholder="Aktarılacak numara" value={xfer} onChange={(e) => setXfer(e.target.value)} />
-                  <Button variant="secondary" onClick={() => xfer && phone.transfer(xfer).catch(() => undefined)} disabled={!xfer}>
-                    Aktar
-                  </Button>
+                <div className="space-y-2 border-t border-slate-800 pt-3">
+                  <div className="flex gap-2">
+                    <Input placeholder="Numaraya aktar" value={xfer} onChange={(e) => setXfer(e.target.value)} />
+                    <Button variant="secondary" onClick={() => xfer && phone.transfer(xfer).catch(() => undefined)} disabled={!xfer}>
+                      Aktar
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={selExt} onChange={(e) => setSelExt(e.target.value)}>
+                      <option value="">Dahiliye aktar...</option>
+                      {exts.map((x) => (
+                        <option key={x.extension} value={x.extension}>
+                          {x.extension} ({x.status})
+                        </option>
+                      ))}
+                    </Select>
+                    <Button variant="secondary" disabled={!selExt} onClick={() => phone.transfer(selExt).catch(() => undefined)}>
+                      Aktar
+                    </Button>
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={selQueue} onChange={(e) => setSelQueue(e.target.value)}>
+                      <option value="">Kuyruğa aktar...</option>
+                      {queues.map((q) => (
+                        <option key={q.number} value={q.number}>
+                          {q.number} - {q.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button variant="secondary" disabled={!selQueue} onClick={() => phone.transfer(selQueue).catch(() => undefined)}>
+                      Aktar
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

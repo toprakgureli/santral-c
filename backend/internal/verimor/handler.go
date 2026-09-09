@@ -88,6 +88,32 @@ func (h *Handler) Calls(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// Extensions lists extensions with live status (for transfer shortcuts).
+func (h *Handler) Extensions(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Extensions(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": res})
+}
+
+// Queues lists call queues (for transfer shortcuts).
+func (h *Handler) Queues(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Queues(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": res})
+}
+
 // Originate starts a click-to-call from the actor's extension.
 func (h *Handler) Originate(c *fiber.Ctx) error {
 	id, err := actor(c)

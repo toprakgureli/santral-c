@@ -79,6 +79,16 @@ export interface Webphone {
   url: string;
 }
 
+export interface PBXExtension {
+  extension: string;
+  status: string;
+}
+
+export interface PBXQueue {
+  number: string;
+  name: string;
+}
+
 export interface SipCredentials {
   extension: string;
   password: string;

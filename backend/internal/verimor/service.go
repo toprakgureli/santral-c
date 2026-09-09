@@ -33,6 +33,12 @@ type Service struct {
 
 	mu    sync.Mutex
 	cache map[string]cdrCacheEntry
+
+	dirMu      sync.Mutex
+	extCache   []PBXExtension
+	extAt      time.Time
+	queueCache []PBXQueue
+	queueAt    time.Time
 }
 
 type cdrCacheEntry struct {
@@ -249,6 +255,103 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 		return "", errs.Internal(err)
 	}
 	return uuid, nil
+}
+
+// PBXExtension is an extension and its live status.
+type PBXExtension struct {
+	Extension string `json:"extension"`
+	Status    string `json:"status"`
+}
+
+// PBXQueue is a call queue.
+type PBXQueue struct {
+	Number string `json:"number"`
+	Name   string `json:"name"`
+}
+
+const (
+	extTTL   = 60 * time.Second
+	queueTTL = 300 * time.Second
+)
+
+// Extensions lists extensions with status, cached to respect the hosted API's
+// rate limit (2 requests/minute on this endpoint).
+func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension, error) {
+	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+		return nil, err
+	}
+	s.dirMu.Lock()
+	if s.extCache != nil && time.Since(s.extAt) < extTTL {
+		out := s.extCache
+		s.dirMu.Unlock()
+		return out, nil
+	}
+	s.dirMu.Unlock()
+
+	raw, err := s.client.UserStatuses(ctx)
+	if err != nil {
+		s.dirMu.Lock()
+		stale := s.extCache
+		s.dirMu.Unlock()
+		if stale != nil {
+			return stale, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "Dahili listesi alınamadı (santral yoğun).", err)
+	}
+	out := make([]PBXExtension, 0, len(raw))
+	for _, e := range raw {
+		out = append(out, PBXExtension{Extension: strconv.Itoa(e.User), Status: e.Status})
+	}
+	s.dirMu.Lock()
+	s.extCache = out
+	s.extAt = time.Now()
+	s.dirMu.Unlock()
+	return out, nil
+}
+
+// Queues lists call queues, cached to respect the rate limit.
+func (s *Service) Queues(ctx context.Context, actorID uint) ([]PBXQueue, error) {
+	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+		return nil, err
+	}
+	s.dirMu.Lock()
+	if s.queueCache != nil && time.Since(s.queueAt) < queueTTL {
+		out := s.queueCache
+		s.dirMu.Unlock()
+		return out, nil
+	}
+	s.dirMu.Unlock()
+
+	raw, err := s.client.Queues(ctx)
+	if err != nil {
+		s.dirMu.Lock()
+		stale := s.queueCache
+		s.dirMu.Unlock()
+		if stale != nil {
+			return stale, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "Kuyruk listesi alınamadı (santral yoğun).", err)
+	}
+	out := make([]PBXQueue, 0, len(raw))
+	for _, q := range raw {
+		out = append(out, PBXQueue{Number: strconv.Itoa(q.Number), Name: q.Name})
+	}
+	s.dirMu.Lock()
+	s.queueCache = out
+	s.queueAt = time.Now()
+	s.dirMu.Unlock()
+	return out, nil
+}
+
+func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.CallTransfer) {
+		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+	}
+	return nil
 }
 
 func canViewCalls(u *models.User) bool {

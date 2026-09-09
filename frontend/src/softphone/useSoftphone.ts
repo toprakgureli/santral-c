@@ -90,8 +90,10 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const watchSession = useCallback(
     (session: Session) => {
+      let wasEstablished = false;
       session.stateChange.addListener((state) => {
         if (state === SessionState.Established) {
+          wasEstablished = true;
           tones.stop();
           setMuted(false);
           setHeld(false);
@@ -99,8 +101,12 @@ export function useSoftphone(enabled: boolean): Phone {
           attachRemoteMedia(session);
         } else if (state === SessionState.Terminated) {
           tones.stop();
-          tones.endBeep();
-          setEndReason(localEndRef.current ? "Kapattınız" : "Karşı taraf kapattı");
+          // Only beep when an actual conversation ended, so a rejected or
+          // failed call does not collide with the PBX's own announcement.
+          if (wasEstablished) {
+            tones.endBeep();
+            setEndReason(localEndRef.current ? "Kapattınız" : "Karşı taraf kapattı");
+          }
           setPeer(null);
           setMuted(false);
           setHeld(false);
@@ -120,6 +126,12 @@ export function useSoftphone(enabled: boolean): Phone {
     let cancelled = false;
     let ua: UserAgent | null = null;
     let registerer: Registerer | null = null;
+
+    // Browsers block audio until a user gesture; unlock on the first one so the
+    // incoming ring can play even when no call control was clicked yet.
+    const unlock = () => tones.unlock();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
 
     (async () => {
       try {
@@ -173,6 +185,8 @@ export function useSoftphone(enabled: boolean): Phone {
     return () => {
       cancelled = true;
       tones.stop();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
       uaRef.current = null;
       sessionRef.current = null;
       if (registerer) registerer.unregister().catch(() => undefined);
@@ -274,24 +288,19 @@ export function useSoftphone(enabled: boolean): Phone {
   const toggleHold = useCallback(async () => {
     const s = sessionRef.current;
     if (!s || s.state !== SessionState.Established) return;
-    const pc = peerConnection(s);
-    if (!pc) return;
     const next = !held;
-    pc.getTransceivers().forEach((t) => {
-      try {
-        t.direction = next ? "sendonly" : "sendrecv";
-      } catch {
-        // ignore
-      }
-    });
+    // The SIP.js Web SDH implements hold via its `hold` option on a re-INVITE.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inviteOptions: any = { sessionDescriptionHandlerOptions: { hold: next } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (s as any).sessionDescriptionHandlerOptionsReInvite = { hold: next };
     try {
-      await s.invite(); // re-INVITE renegotiates the hold state
+      await s.invite(inviteOptions);
+      setHeld(next);
+      setStatus(next ? "held" : "in-call");
     } catch {
-      // ignore
+      // renegotiation failed; leave state unchanged
     }
-    if (audioRef.current) audioRef.current.muted = next;
-    setHeld(next);
-    setStatus(next ? "held" : "in-call");
   }, [held]);
 
   const transfer = useCallback(async (target: string) => {

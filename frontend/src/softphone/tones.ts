@@ -141,9 +141,15 @@ export const tones = {
     clear();
   },
 
-  // Three short beeps to mark the end of a call.
+  // Resume the audio context; must be called from a user gesture so later
+  // sounds (like the incoming ring) are allowed to play.
+  unlock() {
+    audio();
+  },
+
+  // Three quick beeps to mark the end of a call.
   endBeep() {
-    beepBurst(3, 480, 150, 120);
+    beepBurst(3, 480, 90, 55);
   },
 
   // Local DTMF feedback tone for a keypad press.

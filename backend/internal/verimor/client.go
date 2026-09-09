@@ -106,6 +106,62 @@ func (c *Client) CDRs(ctx context.Context, params url.Values) ([]CDR, Pagination
 	return list.CDRs, list.Pagination, nil
 }
 
+// Extension is one extension and its live status.
+type Extension struct {
+	User   int    `json:"user"`
+	Status string `json:"status"`
+}
+
+// Queue is one call queue.
+type Queue struct {
+	Number int    `json:"number"`
+	Name   string `json:"name"`
+}
+
+// UserStatuses lists extensions and their live status.
+func (c *Client) UserStatuses(ctx context.Context) ([]Extension, error) {
+	params := url.Values{}
+	params.Set("key", c.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/user_statuses?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	raw, status, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("user statuses failed (%d): %s", status, strings.TrimSpace(string(raw)))
+	}
+	var out []Extension
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("user statuses could not be parsed: %w", err)
+	}
+	return out, nil
+}
+
+// Queues lists the call queues.
+func (c *Client) Queues(ctx context.Context) ([]Queue, error) {
+	params := url.Values{}
+	params.Set("key", c.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/queues?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	raw, status, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("queues failed (%d): %s", status, strings.TrimSpace(string(raw)))
+	}
+	var out []Queue
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("queues could not be parsed: %w", err)
+	}
+	return out, nil
+}
+
 // Originate places a click-to-call from extension to destination and returns
 // the call UUID.
 func (c *Client) Originate(ctx context.Context, extension, destination string) (string, error) {

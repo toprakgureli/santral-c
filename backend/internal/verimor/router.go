@@ -22,4 +22,6 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Post("/users/:id/sip", r.guard, r.handler.SetCredentials)
 	g.Get("/calls", r.guard, r.handler.Calls)
 	g.Post("/calls/originate", r.guard, r.handler.Originate)
+	g.Get("/pbx/extensions", r.guard, r.handler.Extensions)
+	g.Get("/pbx/queues", r.guard, r.handler.Queues)
 }

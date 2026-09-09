@@ -3,6 +3,8 @@ import type {
   Contact,
   LoginResult,
   Paged,
+  PBXExtension,
+  PBXQueue,
   Role,
   SipCredentials,
   User,
@@ -98,6 +100,8 @@ export const api = {
 
   // Softphone (SIP over WSS to Bulutsantralim)
   sipCredentials: () => request<SipCredentials>("/sip/credentials"),
+  pbxExtensions: () => request<{ items: PBXExtension[] }>("/pbx/extensions").then((r) => r.items),
+  pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {
