@@ -78,3 +78,14 @@ export interface Webphone {
   extension: string;
   url: string;
 }
+
+export interface SipCredentials {
+  extension: string;
+  password: string;
+  domain: string;
+  webSocketUrl: string;
+  stunUrl?: string;
+  turnUrl?: string;
+  turnUser?: string;
+  turnPass?: string;
+}

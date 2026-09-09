@@ -1,6 +1,8 @@
 package verimor
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
@@ -30,6 +32,42 @@ func (h *Handler) Webphone(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(res)
+}
+
+// Credentials returns the logged-in agent's SIP registration data.
+func (h *Handler) Credentials(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Credentials(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// SetCredentials stores a user's SIP extension and password.
+func (h *Handler) SetCredentials(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	targetID, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return errs.Invalid("Geçersiz kullanıcı kimliği.", err)
+	}
+	var req requests.SIPCredentials
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	if err := h.service.SetCredentials(c.UserContext(), id, uint(targetID), req.Extension, req.Password); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 // Calls returns a page of call records.

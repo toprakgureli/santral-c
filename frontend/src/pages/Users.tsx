@@ -51,6 +51,7 @@ export function Users() {
                 <td className="py-2">{u.active ? <Badge tone="green">Aktif</Badge> : <Badge tone="red">Pasif</Badge>}</td>
                 <td className="py-2 text-right">
                   <div className="flex justify-end gap-2">
+                    {canReset && <SetSip id={u.id} ext={u.sipExtension} />}
                     {canReset && <ResetPassword id={u.id} />}
                     {canDeactivate && u.id !== user?.id && (
                       <Button
@@ -77,6 +78,7 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
   const [password, setPassword] = useState("");
   const [roleId, setRoleId] = useState<number | "">("");
   const [ext, setExt] = useState("");
+  const [sipPassword, setSipPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
@@ -84,7 +86,8 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
     setError(null);
     if (roleId === "") { setError("Rol seçin."); return; }
     try {
-      await api.createUser({ name, email, password, roleIds: [roleId], sipExtension: ext || undefined });
+      const created = await api.createUser({ name, email, password, roleIds: [roleId], sipExtension: ext || undefined });
+      if (ext && sipPassword) await api.setUserSip(created.id, ext, sipPassword);
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Oluşturulamadı.");
@@ -92,7 +95,7 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
   }
 
   return (
-    <form className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-5" onSubmit={submit}>
+    <form className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-6" onSubmit={submit}>
       <Field label="Ad"><Input value={name} onChange={(e) => setName(e.target.value)} required /></Field>
       <Field label="E-posta"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
       <Field label="Geçici parola"><Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></Field>
@@ -102,12 +105,33 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
           {roles.map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
         </Select>
       </Field>
-      <Field label="Dahili (ops.)"><Input value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1005" /></Field>
-      <div className="md:col-span-5 flex items-center gap-3">
+      <Field label="Dahili"><Input value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1005" /></Field>
+      <Field label="SIP parola"><Input value={sipPassword} onChange={(e) => setSipPassword(e.target.value)} placeholder="Verimor SIP" /></Field>
+      <div className="md:col-span-6 flex items-center gap-3">
         <Button type="submit">Oluştur</Button>
         <ErrorText>{error}</ErrorText>
       </div>
     </form>
+  );
+}
+
+function SetSip({ id, ext }: { id: number; ext?: string }) {
+  const [open, setOpen] = useState(false);
+  const [extension, setExtension] = useState(ext ?? "");
+  const [password, setPassword] = useState("");
+  const [done, setDone] = useState(false);
+  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>SIP</Button>;
+  return (
+    <span className="flex items-center gap-1">
+      <Input value={extension} onChange={(e) => setExtension(e.target.value)} className="w-20" placeholder="Dahili" />
+      <Input value={password} onChange={(e) => setPassword(e.target.value)} className="w-32" placeholder="SIP parola" />
+      <Button
+        onClick={async () => { await api.setUserSip(id, extension, password).catch(() => undefined); setDone(true); setOpen(false); setPassword(""); }}
+        disabled={!extension || !password}
+      >
+        {done ? "✓" : "Kaydet"}
+      </Button>
+    </span>
   );
 }
 

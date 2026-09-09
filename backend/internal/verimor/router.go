@@ -18,6 +18,8 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 // Routes registers the telephony routes onto g.
 func (r *Router) Routes(g fiber.Router) {
 	g.Get("/webphone", r.guard, r.handler.Webphone)
+	g.Get("/sip/credentials", r.guard, r.handler.Credentials)
+	g.Post("/users/:id/sip", r.guard, r.handler.SetCredentials)
 	g.Get("/calls", r.guard, r.handler.Calls)
 	g.Post("/calls/originate", r.guard, r.handler.Originate)
 }

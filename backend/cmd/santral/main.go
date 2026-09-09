@@ -108,7 +108,7 @@ func run() error {
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
-		verimorSvc := verimor.NewService(verimorClient, userSvc, configs.Cnf.Bulutsantralim.WebphoneBase)
+		verimorSvc := verimor.NewService(verimorClient, userSvc, verimor.NewRepository(db), configs.Cnf.Bulutsantralim)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}
 

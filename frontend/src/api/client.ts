@@ -4,8 +4,8 @@ import type {
   LoginResult,
   Paged,
   Role,
+  SipCredentials,
   User,
-  Webphone,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -72,6 +72,8 @@ export const api = {
     request<void>(`/users/${id}/active`, { method: "PATCH", body: JSON.stringify({ active }) }),
   resetUserPassword: (id: number, password: string) =>
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
+  setUserSip: (id: number, extension: string, password: string) =>
+    request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
 
   // Roles
   listRoles: () => request<{ items: Role[] }>("/roles").then((r) => r.items),
@@ -94,8 +96,8 @@ export const api = {
     request<CallPage>("/calls" + query(params)),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
 
-  // Softphone (embedded Bulutsantralim webphone)
-  webphone: () => request<Webphone>("/webphone"),
+  // Softphone (SIP over WSS to Bulutsantralim)
+  sipCredentials: () => request<SipCredentials>("/sip/credentials"),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {

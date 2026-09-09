@@ -8,7 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -24,9 +26,10 @@ type IActorResolver interface {
 
 // Service exposes the hosted PBX to the panel.
 type Service struct {
-	client       *Client
-	users        IActorResolver
-	webphoneBase string
+	client *Client
+	users  IActorResolver
+	repo   *Repository
+	cfg    configs.Bulutsantralim
 
 	mu    sync.Mutex
 	cache map[string]cdrCacheEntry
@@ -38,11 +41,70 @@ type cdrCacheEntry struct {
 }
 
 // NewService builds a Verimor service.
-func NewService(client *Client, users IActorResolver, webphoneBase string) *Service {
-	if webphoneBase == "" {
-		webphoneBase = "https://oim.verimor.com.tr/webphone"
+func NewService(client *Client, users IActorResolver, repo *Repository, cfg configs.Bulutsantralim) *Service {
+	if cfg.WebphoneBase == "" {
+		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, webphoneBase: webphoneBase, cache: make(map[string]cdrCacheEntry)}
+	return &Service{client: client, users: users, repo: repo, cfg: cfg, cache: make(map[string]cdrCacheEntry)}
+}
+
+// SIPCredentials is a softphone's WebRTC registration data.
+type SIPCredentials struct {
+	Extension    string `json:"extension"`
+	Password     string `json:"password"`
+	Domain       string `json:"domain"`
+	WebSocketURL string `json:"webSocketUrl"`
+	StunURL      string `json:"stunUrl,omitempty"`
+	TurnURL      string `json:"turnUrl,omitempty"`
+	TurnUser     string `json:"turnUser,omitempty"`
+	TurnPass     string `json:"turnPass,omitempty"`
+}
+
+// Credentials returns the logged-in agent's own SIP registration data.
+func (s *Service) Credentials(ctx context.Context, actorID uint) (*SIPCredentials, error) {
+	u, err := s.repo.GetUser(ctx, actorID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if u == nil {
+		return nil, errs.NotFound("Kullanıcı bulunamadı.")
+	}
+	if u.SIPExtension == nil || *u.SIPExtension == "" || u.SIPSecret == nil || *u.SIPSecret == "" {
+		return nil, errs.NotFound("Hesabınız için SIP bilgisi tanımlı değil.")
+	}
+	password, err := crypt.Decrypt(s.cfg.SIPKey, *u.SIPSecret)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	return &SIPCredentials{
+		Extension:    *u.SIPExtension,
+		Password:     password,
+		Domain:       s.cfg.SIPDomain,
+		WebSocketURL: s.cfg.SIPWssURL,
+		StunURL:      s.cfg.StunURL,
+		TurnURL:      s.cfg.TurnURL,
+		TurnUser:     s.cfg.TurnUser,
+		TurnPass:     s.cfg.TurnPass,
+	}, nil
+}
+
+// SetCredentials stores a user's SIP extension and password (encrypted).
+func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, extension, password string) error {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.UserUpdate) {
+		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+	}
+	enc, err := crypt.Encrypt(s.cfg.SIPKey, password)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if err := s.repo.SetSIP(ctx, targetID, extension, enc); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
 }
 
 // Webphone is the embedded softphone descriptor for one agent.
@@ -94,7 +156,7 @@ func (s *Service) WebphoneURL(ctx context.Context, actorID uint) (*Webphone, err
 	}
 	return &Webphone{
 		Extension: *actor.SIPExtension,
-		URL:       s.webphoneBase + "?token=" + url.QueryEscape(token),
+		URL:       s.cfg.WebphoneBase + "?token=" + url.QueryEscape(token),
 	}, nil
 }
 

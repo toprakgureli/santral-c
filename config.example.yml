@@ -52,3 +52,13 @@ bulutsantralim:
   apiKey: "your-bulutsantralim-api-key"
   apiBase: "https://api.bulutsantralim.com"
   webphoneBase: "https://oim.verimor.com.tr/webphone"
+  # WebRTC softphone (SIP over WSS): the domain is the X-Lite "Santral Adı",
+  # the WSS URL is Verimor's WebRTC signaling endpoint. TURN is recommended
+  # for agents behind NAT.
+  sipDomain: "your-pbx.bulutsantralim.com"
+  sipWssUrl: "wss://your-pbx-webrtc-endpoint/ws"
+  stunUrl: ""
+  turnUrl: ""
+  turnUser: ""
+  turnPass: ""
+  sipKey: "change-me-to-a-32-byte-sip-key"

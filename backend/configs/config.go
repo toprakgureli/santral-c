@@ -93,6 +93,15 @@ type Bulutsantralim struct {
 	APIKey       string `mapstructure:"apiKey"`
 	APIBase      string `mapstructure:"apiBase"`
 	WebphoneBase string `mapstructure:"webphoneBase"`
+
+	// WebRTC softphone (SIP over WSS) registration settings.
+	SIPDomain string `mapstructure:"sipDomain"` // registrar/realm, the X-Lite "Santral Adı"
+	SIPWssURL string `mapstructure:"sipWssUrl"` // wss:// signaling endpoint
+	StunURL   string `mapstructure:"stunUrl"`   // optional STUN server
+	TurnURL   string `mapstructure:"turnUrl"`   // optional TURN server
+	TurnUser  string `mapstructure:"turnUser"`
+	TurnPass  string `mapstructure:"turnPass"`
+	SIPKey    string `mapstructure:"sipKey"` // encrypts stored SIP passwords at rest
 }
 
 // Config is the aggregate configuration.
