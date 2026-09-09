@@ -13,3 +13,6 @@ type AuditLog struct {
 	Detail     string    `gorm:"type:jsonb;not null;default:'{}'"`
 	CreatedAt  time.Time `gorm:"index"`
 }
+
+// TableName pins the table name.
+func (AuditLog) TableName() string { return "audit_log" }
