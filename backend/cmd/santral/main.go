@@ -24,11 +24,9 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/internal/setup"
-	"github.com/toprakgureli/santral-c/backend/internal/sip"
-	"github.com/toprakgureli/santral-c/backend/internal/telephony"
 	"github.com/toprakgureli/santral-c/backend/internal/user"
+	"github.com/toprakgureli/santral-c/backend/internal/verimor"
 	"github.com/toprakgureli/santral-c/backend/migrations"
-	"github.com/toprakgureli/santral-c/backend/pkg/ami"
 	"github.com/toprakgureli/santral-c/backend/pkg/denylist"
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
@@ -77,24 +75,7 @@ func run() error {
 	auditSvc := audit.NewService(db)
 	userRepo := user.NewRepository(db)
 
-	// Asterisk integration is optional; without it the panel still runs.
-	var amiClient *ami.Client
-	var sipReloader sip.IReloader
-	if configs.Cnf.Asterisk.Enabled {
-		amiClient = ami.New(ami.Config{
-			Address:  configs.Cnf.Asterisk.AMIAddress,
-			Username: configs.Cnf.Asterisk.AMIUsername,
-			Secret:   configs.Cnf.Asterisk.AMISecret,
-		})
-		sipReloader = amiClient
-	}
-	sipSvc := sip.NewService(sip.NewRepository(db), configs.Cnf.Asterisk, sipReloader)
-
-	var provisioner user.IProvisioner
-	if configs.Cnf.Asterisk.Enabled {
-		provisioner = sipSvc
-	}
-	userSvc := user.NewService(userRepo, auditSvc, sessionRepo, provisioner)
+	userSvc := user.NewService(userRepo, auditSvc, sessionRepo, nil)
 	secSvc := security.NewService(configs.Cnf.Security, security.NewRepository(db), lockout.New())
 	authSvc := auth.NewService(configs.Cnf.Auth, configs.Cnf.Security, sessionRepo, userSvc, secSvc, deny, setting.NewService(db))
 	authHandler := auth.NewHandler(configs.Cnf.Auth, authSvc)
@@ -104,9 +85,6 @@ func run() error {
 	contactSvc := contact.NewService(contact.NewRepository(db), userSvc, auditSvc)
 	contactHandler := contact.NewHandler(contactSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
-
-	telRepo := telephony.NewRepository(db)
-	telIngester := telephony.NewIngester(telRepo)
 
 	app := fiber.New(fiber.Config{
 		AppName:      configs.Cnf.App.Name,
@@ -128,23 +106,14 @@ func run() error {
 	role.NewRouter(roleHandler, guard).Routes(api)
 	contact.NewRouter(contactHandler, guard).Routes(api)
 
-	if configs.Cnf.Asterisk.Enabled {
-		telSvc := telephony.NewService(telRepo, userSvc, amiClient, configs.Cnf.Asterisk.DialContext)
-		telephony.NewRouter(telephony.NewHandler(telSvc), guard).Routes(api)
-		sip.NewRouter(sip.NewHandler(sipSvc), guard).Routes(api)
+	if configs.Cnf.Bulutsantralim.Enabled {
+		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
+		verimorSvc := verimor.NewService(verimorClient, userSvc, configs.Cnf.Bulutsantralim.WebphoneBase)
+		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	if configs.Cnf.Asterisk.Enabled {
-		go amiClient.Run(ctx, func(ev ami.Event) { telIngester.Handle(ctx, ev) })
-		go func() {
-			if err := sipSvc.Sync(ctx); err != nil {
-				slog.Warn("initial pjsip sync failed", "error", err)
-			}
-		}()
-	}
 
 	go func() {
 		if err := app.Listen(":" + configs.Cnf.App.Port); err != nil {

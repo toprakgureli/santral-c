@@ -87,27 +87,23 @@ type Redis struct {
 	DB       int    `mapstructure:"db"`
 }
 
-// Asterisk holds the media-engine integration settings.
-type Asterisk struct {
-	Enabled         bool   `mapstructure:"enabled"`
-	AMIAddress      string `mapstructure:"amiAddress"`
-	AMIUsername     string `mapstructure:"amiUsername"`
-	AMISecret       string `mapstructure:"amiSecret"`
-	DialContext     string `mapstructure:"dialContext"`
-	UsersConfigPath string `mapstructure:"usersConfigPath"`
-	WebSocketURL    string `mapstructure:"webSocketUrl"`
-	SIPKey          string `mapstructure:"sipKey"`
+// Bulutsantralim holds the Verimor hosted-PBX integration settings.
+type Bulutsantralim struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	APIKey       string `mapstructure:"apiKey"`
+	APIBase      string `mapstructure:"apiBase"`
+	WebphoneBase string `mapstructure:"webphoneBase"`
 }
 
 // Config is the aggregate configuration.
 type Config struct {
-	App      App      `mapstructure:"app"`
-	Auth     Auth     `mapstructure:"auth"`
-	Security Security `mapstructure:"security"`
-	Owner    Owner    `mapstructure:"owner"`
-	Database Database `mapstructure:"database"`
-	Redis    Redis    `mapstructure:"redis"`
-	Asterisk Asterisk `mapstructure:"asterisk"`
+	App            App            `mapstructure:"app"`
+	Auth           Auth           `mapstructure:"auth"`
+	Security       Security       `mapstructure:"security"`
+	Owner          Owner          `mapstructure:"owner"`
+	Database       Database       `mapstructure:"database"`
+	Redis          Redis          `mapstructure:"redis"`
+	Bulutsantralim Bulutsantralim `mapstructure:"bulutsantralim"`
 }
 
 // Cnf is the loaded configuration.

@@ -41,7 +41,11 @@ export function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function formatTime(iso: string): string {
-  const d = new Date(iso);
+// formatStamp renders ISO or Bulutsantralim ("2017-08-03 12:30:32 +0300")
+// timestamps, falling back to the raw value when unparseable.
+export function formatStamp(value: string): string {
+  if (!value) return "—";
+  const d = new Date(value.replace(" ", "T"));
+  if (isNaN(d.getTime())) return value;
   return d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }

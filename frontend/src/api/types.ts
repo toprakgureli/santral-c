@@ -57,51 +57,24 @@ export interface Contact {
 }
 
 export interface Call {
-  id: number;
+  uuid: string;
   direction: string;
   disposition: string;
   fromNumber: string;
   toNumber: string;
-  fromUserId?: number;
-  toUserId?: number;
-  contactId?: number;
   startedAt: string;
-  answeredAt?: string;
-  endedAt?: string;
-  ringSeconds: number;
-  talkSeconds: number;
-  hangupCauseCode?: number;
-  hangupCauseText?: string;
-  hangupBy?: string;
+  durationSeconds: number;
+  recording: boolean;
 }
 
-export interface CallEvent {
-  id: number;
-  seq: number;
-  type: string;
-  channel?: string;
-  at: string;
-  detail: string;
+export interface CallPage {
+  items: Call[];
+  page: number;
+  total: number;
+  totalPages: number;
 }
 
-export interface CallQuality {
-  id: number;
-  leg: string;
-  codec?: string;
-  at: string;
-  jitterMs?: number;
-  rttMs?: number;
-  lossPct?: number;
-  mos?: number;
-}
-
-export interface CallDetail extends Call {
-  events: CallEvent[];
-  quality: CallQuality[];
-}
-
-export interface SipCredentials {
+export interface Webphone {
   extension: string;
-  secret: string;
-  webSocketUrl: string;
+  url: string;
 }

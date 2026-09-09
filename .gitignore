@@ -10,6 +10,5 @@ config.local.yml
 /frontend/node_modules/
 /frontend/dist/
 
-# test artifacts and runtime-generated SIP config
+# test artifacts
 *.jar
-/deploy/asterisk/etc/pjsip_users.conf

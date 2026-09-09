@@ -27,22 +27,5 @@ services:
       timeout: 3s
       retries: 10
 
-  asterisk:
-    image: andrius/asterisk:latest
-    ports:
-      - "8088:8088"                 # HTTP: ARI and the PJSIP WebSocket transport
-      - "5038:5038"                 # AMI: consumed by the Go control plane
-      - "5060:5060/udp"             # SIP over UDP (trunk and headless tests)
-      - "10000-10200:10000-10200/udp" # RTP media
-    volumes:
-      - ./deploy/asterisk/etc/logger.conf:/etc/asterisk/logger.conf:ro
-      - ./deploy/asterisk/etc/http.conf:/etc/asterisk/http.conf:ro
-      - ./deploy/asterisk/etc/ari.conf:/etc/asterisk/ari.conf:ro
-      - ./deploy/asterisk/etc/manager.conf:/etc/asterisk/manager.conf:ro
-      - ./deploy/asterisk/etc/rtp.conf:/etc/asterisk/rtp.conf:ro
-      - ./deploy/asterisk/etc/pjsip.conf:/etc/asterisk/pjsip.conf:ro
-      - ./deploy/asterisk/etc/extensions.conf:/etc/asterisk/extensions.conf:ro
-      - ./deploy/asterisk/etc/pjsip_users.conf:/etc/asterisk/pjsip_users.conf
-
 volumes:
   santral_pg:

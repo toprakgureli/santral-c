@@ -1,0 +1,79 @@
+package verimor
+
+import (
+	"github.com/gofiber/fiber/v2"
+
+	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
+	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/validator"
+)
+
+// Handler serves the telephony endpoints backed by Bulutsantralim.
+type Handler struct {
+	service *Service
+}
+
+// NewHandler builds a Verimor handler.
+func NewHandler(service *Service) *Handler {
+	return &Handler{service: service}
+}
+
+// Webphone returns the embedded softphone URL for the logged-in agent.
+func (h *Handler) Webphone(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.WebphoneURL(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// Calls returns a page of call records.
+func (h *Handler) Calls(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Calls(c.UserContext(), id, Filter{
+		Direction: c.Query("direction"),
+		Number:    c.Query("number"),
+		Page:      c.QueryInt("page", 1),
+		Limit:     c.QueryInt("perPage", 20),
+	})
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// Originate starts a click-to-call from the actor's extension.
+func (h *Handler) Originate(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.CallOriginate
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	uuid, err := h.service.Originate(c.UserContext(), id, req.To)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"callUuid": uuid})
+}
+
+func actor(c *fiber.Ctx) (uint, error) {
+	id, ok := c.Locals(middlewares.UserIDKey).(uint)
+	if !ok {
+		return 0, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+	}
+	return id, nil
+}

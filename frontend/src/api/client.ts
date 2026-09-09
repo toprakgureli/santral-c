@@ -1,12 +1,11 @@
 import type {
-  Call,
-  CallDetail,
+  CallPage,
   Contact,
   LoginResult,
   Paged,
   Role,
-  SipCredentials,
   User,
+  Webphone,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -90,14 +89,13 @@ export const api = {
     request<void>(`/contacts/${id}/phones/${phoneId}`, { method: "DELETE" }),
   lookupContact: (number: string) => request<Contact>("/contacts/lookup" + query({ number })),
 
-  // Calls
-  listCalls: (params: { direction?: string; disposition?: string; number?: string; page?: number; perPage?: number } = {}) =>
-    request<Paged<Call>>("/calls/" + query(params)),
-  getCall: (id: number) => request<CallDetail>(`/calls/${id}`),
-  originate: (to: string) => request<void>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
+  // Calls (Bulutsantralim CDR)
+  listCalls: (params: { direction?: string; number?: string; page?: number; perPage?: number } = {}) =>
+    request<CallPage>("/calls" + query(params)),
+  originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
 
-  // SIP
-  sipCredentials: () => request<SipCredentials>("/sip/credentials"),
+  // Softphone (embedded Bulutsantralim webphone)
+  webphone: () => request<Webphone>("/webphone"),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {
