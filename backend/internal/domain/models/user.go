@@ -21,6 +21,7 @@ type User struct {
 	MFAEnabled         bool    `gorm:"not null;default:false"`
 	MFAExempt          bool    `gorm:"not null;default:false"`
 	SIPExtension       *string `gorm:"column:sip_extension;size:32" json:"sipExtension,omitempty"`
+	SIPSecret          *string `gorm:"column:sip_secret;size:255" json:"-"`
 	SIPProvisioned     bool    `gorm:"column:sip_provisioned;not null;default:false"`
 	LastLoginAt        *time.Time
 	OnboardedAt        *time.Time

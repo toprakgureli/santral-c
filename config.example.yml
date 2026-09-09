@@ -45,3 +45,16 @@ redis:
   port: "6379"
   password: ""
   db: 0
+
+asterisk:
+  enabled: true
+  amiAddress: "127.0.0.1:5038"
+  amiUsername: santral
+  amiSecret: santral-ami-secret
+  dialContext: santral-internal
+  # Absolute path to the file mounted into the Asterisk container as
+  # /etc/asterisk/pjsip_users.conf; the control plane rewrites it on provision.
+  usersConfigPath: "./deploy/asterisk/etc/pjsip_users.conf"
+  # Softphone WebSocket signaling endpoint (ws for local dev, wss in production).
+  webSocketUrl: "ws://localhost:8088/ws"
+  sipKey: "change-me-to-a-32-byte-sip-key"

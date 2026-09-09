@@ -22,7 +22,7 @@ type Call struct {
 	TalkSeconds     int        `gorm:"column:talk_seconds;not null;default:0"`
 	HangupCauseCode *int       `gorm:"column:hangup_cause_code"`
 	HangupCauseText string     `gorm:"column:hangup_cause_text;size:80"`
-	HangupBy        string     `gorm:"column:hangup_by;size:10"`
+	HangupBy        *string    `gorm:"column:hangup_by;size:10"`
 	RecordingPath   string     `gorm:"column:recording_path;size:255"`
 	FromUser        *User      `gorm:"foreignKey:FromUserID"`
 	ToUser          *User      `gorm:"foreignKey:ToUserID"`

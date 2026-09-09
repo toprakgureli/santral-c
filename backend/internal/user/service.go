@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -21,14 +22,16 @@ type Meta struct {
 
 // Service is the user application service.
 type Service struct {
-	repo    *Repository
-	audit   IAudit
-	revoker ISessionRevoker
+	repo        *Repository
+	audit       IAudit
+	revoker     ISessionRevoker
+	provisioner IProvisioner
 }
 
-// NewService builds a user service.
-func NewService(repo *Repository, auditor IAudit, revoker ISessionRevoker) *Service {
-	return &Service{repo: repo, audit: auditor, revoker: revoker}
+// NewService builds a user service. provisioner may be nil when Asterisk
+// integration is disabled.
+func NewService(repo *Repository, auditor IAudit, revoker ISessionRevoker, provisioner IProvisioner) *Service {
+	return &Service{repo: repo, audit: auditor, revoker: revoker, provisioner: provisioner}
 }
 
 // GetByEmail loads a user by email, or nil when absent.
@@ -143,6 +146,12 @@ func (s *Service) CreateUser(ctx context.Context, actorID uint, req requests.Use
 		IP:         meta.IP,
 		Detail:     map[string]any{"email": u.Email, "roleIds": req.RoleIDs},
 	})
+
+	if req.SIPExtension != "" && s.provisioner != nil {
+		if err := s.provisioner.Provision(ctx, u.ID); err != nil {
+			slog.Warn("sip endpoint could not be provisioned", "user_id", u.ID, "error", err)
+		}
+	}
 
 	res := responses.NewUser(u)
 	return &res, nil

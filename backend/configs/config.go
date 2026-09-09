@@ -87,6 +87,18 @@ type Redis struct {
 	DB       int    `mapstructure:"db"`
 }
 
+// Asterisk holds the media-engine integration settings.
+type Asterisk struct {
+	Enabled         bool   `mapstructure:"enabled"`
+	AMIAddress      string `mapstructure:"amiAddress"`
+	AMIUsername     string `mapstructure:"amiUsername"`
+	AMISecret       string `mapstructure:"amiSecret"`
+	DialContext     string `mapstructure:"dialContext"`
+	UsersConfigPath string `mapstructure:"usersConfigPath"`
+	WebSocketURL    string `mapstructure:"webSocketUrl"`
+	SIPKey          string `mapstructure:"sipKey"`
+}
+
 // Config is the aggregate configuration.
 type Config struct {
 	App      App      `mapstructure:"app"`
@@ -95,6 +107,7 @@ type Config struct {
 	Owner    Owner    `mapstructure:"owner"`
 	Database Database `mapstructure:"database"`
 	Redis    Redis    `mapstructure:"redis"`
+	Asterisk Asterisk `mapstructure:"asterisk"`
 }
 
 // Cnf is the loaded configuration.
