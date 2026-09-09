@@ -1,0 +1,32 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - revive
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: error-naming
+        - name: error-strings
+        - name: indent-error-flow
+        - name: receiver-naming
+        - name: var-naming
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/toprakgureli/santral-c/backend

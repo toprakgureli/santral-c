@@ -1,0 +1,112 @@
+package enums
+
+import "strings"
+
+// Permission is a fine-grained capability key in module.action form.
+type Permission string
+
+// Module groups related permissions.
+type Module string
+
+// Permission modules.
+const (
+	ModuleCall    Module = "call"
+	ModuleCDR     Module = "cdr"
+	ModuleAgent   Module = "agent"
+	ModuleQueue   Module = "queue"
+	ModuleContact Module = "contact"
+	ModuleUser    Module = "user"
+	ModuleRole    Module = "role"
+	ModuleQuality Module = "quality"
+	ModuleSystem  Module = "system"
+)
+
+// Permission keys.
+const (
+	CallViewOwn      Permission = "call.view_own"
+	CallViewAll      Permission = "call.view_all"
+	CallOriginate    Permission = "call.originate"
+	CallTransfer     Permission = "call.transfer"
+	CallHangup       Permission = "call.hangup"
+	CallRecordAccess Permission = "call.record_access"
+
+	CDRViewOwn Permission = "cdr.view_own"
+	CDRViewAll Permission = "cdr.view_all"
+	CDRExport  Permission = "cdr.export"
+
+	AgentView            Permission = "agent.view"
+	AgentManage          Permission = "agent.manage"
+	AgentPresenceViewAll Permission = "agent.presence_view_all"
+
+	QueueView   Permission = "queue.view"
+	QueueManage Permission = "queue.manage"
+
+	ContactView   Permission = "contact.view"
+	ContactManage Permission = "contact.manage"
+
+	UserView       Permission = "user.view"
+	UserCreate     Permission = "user.create"
+	UserUpdate     Permission = "user.update"
+	UserDeactivate Permission = "user.deactivate"
+
+	RoleView   Permission = "role.view"
+	RoleManage Permission = "role.manage"
+	RoleAssign Permission = "role.assign"
+
+	QualityView Permission = "quality.view"
+
+	SystemSettings  Permission = "system.settings"
+	SystemLogs      Permission = "system.logs"
+	SystemAuditView Permission = "system.audit_view"
+)
+
+// PermissionInfo describes a permission for seeding.
+type PermissionInfo struct {
+	Key         Permission
+	Description string
+}
+
+var permissions = []PermissionInfo{
+	{CallViewOwn, "Kendi çağrılarını görüntüler"},
+	{CallViewAll, "Tüm çağrıları görüntüler"},
+	{CallOriginate, "Giden çağrı başlatır"},
+	{CallTransfer, "Çağrı aktarır"},
+	{CallHangup, "Çağrı sonlandırır"},
+	{CallRecordAccess, "Çağrı kayıtlarına erişir"},
+	{CDRViewOwn, "Kendi çağrı kayıtlarını (CDR) görür"},
+	{CDRViewAll, "Tüm CDR kayıtlarını görür"},
+	{CDRExport, "CDR dışa aktarır"},
+	{AgentView, "Temsilci listesini görür"},
+	{AgentManage, "Temsilcileri yönetir"},
+	{AgentPresenceViewAll, "Tüm temsilcilerin canlı durumunu görür"},
+	{QueueView, "Kuyrukları görür"},
+	{QueueManage, "Kuyrukları yönetir"},
+	{ContactView, "Kişileri görür"},
+	{ContactManage, "Kişileri yönetir"},
+	{UserView, "Kullanıcıları görür"},
+	{UserCreate, "Kullanıcı oluşturur"},
+	{UserUpdate, "Kullanıcı günceller"},
+	{UserDeactivate, "Kullanıcı pasifleştirir"},
+	{RoleView, "Rolleri görür"},
+	{RoleManage, "Rolleri yönetir"},
+	{RoleAssign, "Rol ve izin atar"},
+	{QualityView, "Çağrı kalite metriklerini görür"},
+	{SystemSettings, "Sistem ayarlarını değiştirir"},
+	{SystemLogs, "Sistem loglarını görür"},
+	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
+}
+
+// Permissions returns a copy of the full permission catalog.
+func Permissions() []PermissionInfo {
+	out := make([]PermissionInfo, len(permissions))
+	copy(out, permissions)
+	return out
+}
+
+// Module returns the module a permission belongs to.
+func (p Permission) Module() Module {
+	if i := strings.IndexByte(string(p), '.'); i > 0 {
+		return Module(string(p)[:i])
+	}
+	return ""
+}

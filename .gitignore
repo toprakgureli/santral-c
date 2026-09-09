@@ -1,0 +1,11 @@
+/backend/bin/
+*.exe
+*.test
+*.out
+coverage.*
+.env
+config.yml
+config.local.yml
+*.local.yaml
+/frontend/node_modules/
+/frontend/dist/
