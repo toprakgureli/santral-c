@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import CallBar from "./CallBar";
+import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -33,6 +35,7 @@ export default function AppShell() {
   }, []);
 
   return (
+    <SoftphoneProvider>
     <div className="min-h-svh bg-background">
       <Sidebar
         open={menuOpen}
@@ -60,6 +63,8 @@ export default function AppShell() {
           </div>
         </main>
       </div>
+      <CallBar />
     </div>
+    </SoftphoneProvider>
   );
 }

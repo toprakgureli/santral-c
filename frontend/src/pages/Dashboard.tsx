@@ -3,7 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { Call, PBXExtension, PBXQueue } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { canAny } from "../lib/permissions";
-import { useSoftphone } from "../softphone/useSoftphone";
+import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Input, Select } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
@@ -55,7 +55,7 @@ export function Dashboard() {
 }
 
 function Softphone({ hasExtension }: { hasExtension: boolean }) {
-  const phone = useSoftphone(hasExtension);
+  const phone = useSoftphoneContext();
   const [target, setTarget] = useState("");
   const [xfer, setXfer] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
@@ -188,7 +188,6 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
             )}
           </>
         )}
-        <audio ref={phone.audioRef} autoPlay />
       </div>
     </Card>
   );
