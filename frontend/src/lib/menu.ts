@@ -1,4 +1,4 @@
-import { LayoutDashboard, PhoneCall, Contact, Users, type LucideIcon } from "lucide-react";
+import { Headset, PhoneCall, Contact, Users, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -16,7 +16,7 @@ export const MENU: MenuGroup[] = [
   {
     title: "Genel",
     items: [
-      { label: "Panel", path: "/", icon: LayoutDashboard },
+      { label: "Çağrı Yöneticisi", path: "/", icon: Headset },
       {
         label: "Çağrılar",
         path: "/calls",
@@ -50,5 +50,5 @@ export function titleFor(pathname: string): string {
       if (item.path === pathname) return item.label;
     }
   }
-  return "Panel";
+  return "Çağrı Yöneticisi";
 }
