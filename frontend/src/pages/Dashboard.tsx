@@ -4,15 +4,18 @@ import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { canAny } from "../lib/permissions";
 import { useSoftphone } from "../softphone/useSoftphone";
+import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Input } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
-  idle: "Hazır değil",
   connecting: "Bağlanıyor...",
   registered: "Hazır",
+  calling: "Aranıyor...",
   ringing: "Çalıyor...",
+  incoming: "Gelen çağrı",
   "in-call": "Görüşmede",
+  held: "Beklemede",
   error: "Hata",
   disabled: "Softphone yok",
 };
@@ -20,12 +23,16 @@ const statusLabel: Record<string, string> = {
 const statusTone: Record<string, "slate" | "green" | "amber" | "red" | "blue"> = {
   registered: "green",
   "in-call": "blue",
+  held: "amber",
+  calling: "amber",
   ringing: "amber",
+  incoming: "amber",
   connecting: "amber",
   error: "red",
-  idle: "slate",
   disabled: "slate",
 };
+
+const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -50,43 +57,90 @@ export function Dashboard() {
 function Softphone({ hasExtension }: { hasExtension: boolean }) {
   const phone = useSoftphone(hasExtension);
   const [target, setTarget] = useState("");
+  const [xfer, setXfer] = useState("");
+  const [showKeypad, setShowKeypad] = useState(false);
+
+  const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
+  const outgoing = phone.status === "calling" || phone.status === "ringing";
+  const active = phone.status === "in-call" || phone.status === "held";
 
   return (
     <Card title="Softphone">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs text-slate-500">Dahili</div>
+            <div className="text-xs text-slate-400">Dahili</div>
             <div className="text-lg font-semibold">{phone.extension ?? "—"}</div>
           </div>
           <Badge tone={statusTone[phone.status]}>{statusLabel[phone.status]}</Badge>
         </div>
 
         {!hasExtension ? (
-          <p className="text-sm text-slate-500">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
+          <p className="text-sm text-slate-400">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
         ) : (
           <>
-            {phone.error && <p className="text-sm text-red-600">{phone.error}</p>}
-            <div className="flex gap-2">
-              <Input
-                placeholder="Numara veya dahili"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && target && phone.call(target).catch(() => undefined)}
-              />
-              <Button onClick={() => target && phone.call(target).catch(() => undefined)} disabled={phone.status !== "registered" || !target}>
-                Ara
-              </Button>
-            </div>
+            {phone.error && <p className="text-sm text-red-400">{phone.error}</p>}
 
-            {phone.incoming && (
-              <div className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2">
-                <span className="text-sm text-amber-700">Gelen çağrı</span>
-                <Button onClick={() => phone.answer().catch(() => undefined)}>Cevapla</Button>
+            {idle && (
+              <>
+                {phone.endReason && <p className="text-xs text-slate-400">Son çağrı: {phone.endReason}</p>}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Numara veya dahili"
+                    value={target}
+                    onChange={(e) => setTarget(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && target && phone.call(target).catch(() => undefined)}
+                  />
+                  <Button onClick={() => target && phone.call(target).catch(() => undefined)} disabled={phone.status !== "registered" || !target}>
+                    Ara
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {(outgoing || active) && (
+              <div className="rounded-lg bg-slate-800/60 px-3 py-2 text-sm text-slate-200">
+                {outgoing ? "Aranıyor: " : "Görüşme: "}
+                <span className="font-medium">{phone.peer}</span>
               </div>
             )}
 
-            {(phone.status === "in-call" || phone.status === "ringing") && (
+            {phone.status === "incoming" && (
+              <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
+                <span className="text-sm text-amber-300">Gelen çağrı: {phone.peer}</span>
+                <div className="flex gap-2">
+                  <Button onClick={() => phone.answer().catch(() => undefined)}>Cevapla</Button>
+                  <Button variant="danger" onClick={() => phone.hangup().catch(() => undefined)}>Reddet</Button>
+                </div>
+              </div>
+            )}
+
+            {active && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <Button variant="secondary" onClick={phone.toggleMute}>{phone.muted ? "Susturmayı aç" : "Sustur"}</Button>
+                  <Button variant="secondary" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? "Devam et" : "Beklet"}</Button>
+                  <Button variant="secondary" onClick={() => setShowKeypad((v) => !v)}>Tuşlar</Button>
+                </div>
+
+                {showKeypad && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {keypadKeys.map((k) => (
+                      <Button key={k} variant="secondary" onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }}>{k}</Button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Input placeholder="Aktarılacak numara" value={xfer} onChange={(e) => setXfer(e.target.value)} />
+                  <Button variant="secondary" onClick={() => xfer && phone.transfer(xfer).catch(() => undefined)} disabled={!xfer}>
+                    Aktar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {(outgoing || active || phone.status === "incoming") && (
               <Button variant="danger" className="w-full" onClick={() => phone.hangup().catch(() => undefined)}>
                 Kapat
               </Button>
