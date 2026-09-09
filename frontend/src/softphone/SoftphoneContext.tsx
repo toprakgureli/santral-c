@@ -49,17 +49,22 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
   const hasExtension = !!user?.sipExtension;
 
   const ext = useExtensionPhone();
-  const usingExtension = ext.active === true;
+  // Defer to the extension only when it is actually registered/handling a call,
+  // not merely installed. Otherwise the panel registers and dials itself, so a
+  // present-but-unregistered extension never blocks calling.
+  const extReady =
+    ext.active === true &&
+    ["registered", "calling", "ringing", "incoming", "in-call", "held"].includes(ext.phone.status);
+  const usingExtension = extReady;
 
-  // Register locally only when the browser extension is not handling telephony.
-  const localEnabled = ext.active === false && leader && hasExtension;
+  const localEnabled = !extReady && leader && hasExtension;
   const local = useSoftphone(localEnabled);
 
   // Feed the panel user's credentials to the extension so it registers as them.
   // Pushed twice to cover the race where the offscreen booted before the
   // credentials were stored.
   useEffect(() => {
-    if (!usingExtension || !hasExtension) return;
+    if (ext.active !== true || !hasExtension) return;
     let cancelled = false;
     const push = () =>
       api
@@ -76,7 +81,7 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [usingExtension, hasExtension]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ext.active, hasExtension]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: SoftphoneValue = usingExtension
     ? { ...ext.phone, extension: ext.phone.extension ?? user?.sipExtension ?? null, secondary: false }
