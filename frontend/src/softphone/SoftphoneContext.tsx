@@ -56,18 +56,30 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
   const local = useSoftphone(localEnabled);
 
   // Feed the panel user's credentials to the extension so it registers as them.
+  // Pushed twice to cover the race where the offscreen booted before the
+  // credentials were stored.
   useEffect(() => {
     if (!usingExtension || !hasExtension) return;
-    api
-      .sipCredentials()
-      .then((c) =>
-        ext.pushConfig({ ext: c.extension, password: c.password, wss: c.webSocketUrl, domain: c.domain, stun: c.stunUrl }),
-      )
-      .catch(() => undefined);
+    let cancelled = false;
+    const push = () =>
+      api
+        .sipCredentials()
+        .then((c) => {
+          if (!cancelled) {
+            ext.pushConfig({ ext: c.extension, password: c.password, wss: c.webSocketUrl, domain: c.domain, stun: c.stunUrl });
+          }
+        })
+        .catch(() => undefined);
+    push();
+    const timer = window.setTimeout(push, 1500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [usingExtension, hasExtension]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: SoftphoneValue = usingExtension
-    ? { ...ext.phone, secondary: false }
+    ? { ...ext.phone, extension: ext.phone.extension ?? user?.sipExtension ?? null, secondary: false }
     : { ...local, secondary: hasExtension && !leader };
 
   return (
