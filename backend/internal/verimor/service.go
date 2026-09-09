@@ -5,11 +5,17 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
+
+// cdrTTL is how long a CDR page is cached; the hosted API is rate limited, so
+// repeated panel loads must not each hit it.
+const cdrTTL = 30 * time.Second
 
 // IActorResolver loads the acting user for authorization.
 type IActorResolver interface {
@@ -21,6 +27,14 @@ type Service struct {
 	client       *Client
 	users        IActorResolver
 	webphoneBase string
+
+	mu    sync.Mutex
+	cache map[string]cdrCacheEntry
+}
+
+type cdrCacheEntry struct {
+	list *CallList
+	at   time.Time
 }
 
 // NewService builds a Verimor service.
@@ -28,7 +42,7 @@ func NewService(client *Client, users IActorResolver, webphoneBase string) *Serv
 	if webphoneBase == "" {
 		webphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, webphoneBase: webphoneBase}
+	return &Service{client: client, users: users, webphoneBase: webphoneBase, cache: make(map[string]cdrCacheEntry)}
 }
 
 // Webphone is the embedded softphone descriptor for one agent.
@@ -110,15 +124,50 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		params.Set("caller_id_number", filter.Number)
 	}
 
+	key := params.Encode()
+	if cached, ok := s.cachedCalls(key); ok {
+		return cached, nil
+	}
+
 	cdrs, pg, err := s.client.CDRs(ctx, params)
 	if err != nil {
-		return nil, errs.Internal(err)
+		// Serve a stale page rather than fail when the hosted API is
+		// throttled or slow.
+		if stale, ok := s.staleCalls(key); ok {
+			return stale, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", err)
 	}
 	items := make([]Call, 0, len(cdrs))
 	for i := range cdrs {
 		items = append(items, mapCDR(cdrs[i]))
 	}
-	return &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}, nil
+	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	s.storeCalls(key, list)
+	return list, nil
+}
+
+func (s *Service) cachedCalls(key string) (*CallList, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.cache[key]
+	if ok && time.Since(e.at) < cdrTTL {
+		return e.list, true
+	}
+	return nil, false
+}
+
+func (s *Service) staleCalls(key string) (*CallList, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.cache[key]
+	return e.list, ok
+}
+
+func (s *Service) storeCalls(key string, list *CallList) {
+	s.mu.Lock()
+	s.cache[key] = cdrCacheEntry{list: list, at: time.Now()}
+	s.mu.Unlock()
 }
 
 // Originate places a click-to-call from the actor's extension.
