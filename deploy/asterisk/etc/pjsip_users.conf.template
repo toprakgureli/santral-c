@@ -1,0 +1,2 @@
+; Provisioned per-user endpoints are written here by the santral-c control
+; plane and applied with a PJSIP reload. Do not edit by hand.
