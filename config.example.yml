@@ -1,0 +1,47 @@
+# Copy to config.yml and adjust. config.yml is gitignored.
+app:
+  name: santral-c
+  development: test
+  port: "8080"
+  trustedProxies: ""
+  corsOrigins: "http://localhost:5173"
+  publicUrl: "http://localhost:8080"
+
+auth:
+  secret: "change-me-to-a-long-random-secret"
+  accessTTL: 15m
+  refreshTTL: 720h
+  issuer: santral-c
+  cookieName: santral_access
+  refreshCookieName: santral_refresh
+  cookieSecure: false
+
+security:
+  ipFailureLimit: 10
+  ipBanDuration: 15m
+  accountLockDuration: 15m
+  distinctIPLimit: 5
+  attemptWindow: 15m
+  mfaKey: "change-me-to-a-32-byte-mfa-key"
+  trustedIPs: ""
+
+owner:
+  name: "Owner"
+  email: "owner@santral.local"
+  password: "change-me-on-first-login"
+
+database:
+  host: localhost
+  port: "5432"
+  name: santral
+  user: santral
+  password: santral
+  sslMode: disable
+  timeZone: Europe/Istanbul
+  debug: false
+
+redis:
+  host: localhost
+  port: "6379"
+  password: ""
+  db: 0

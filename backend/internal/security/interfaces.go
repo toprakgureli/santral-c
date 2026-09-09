@@ -28,11 +28,6 @@ type IRepository interface {
 	ResetFailures(ctx context.Context, email string) error
 }
 
-// IUserService resolves users for authorization checks.
-type IUserService interface {
-	GetByID(ctx context.Context, id uint) (*models.User, error)
-}
-
 // ILockout tracks account lock windows.
 type ILockout interface {
 	Remaining(ctx context.Context, key string) (time.Duration, error)
