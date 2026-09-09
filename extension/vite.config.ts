@@ -9,7 +9,6 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        offscreen: "offscreen.html",
         popup: "popup.html",
       },
       output: {

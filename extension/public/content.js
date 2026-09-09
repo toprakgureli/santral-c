@@ -1,10 +1,11 @@
-// Floating mini softphone injected into every page. It is a thin UI: it sends
-// commands to the offscreen SIP endpoint (via the service worker) and renders
-// the state it receives back. Styles are isolated in a shadow root and follow
-// the OS light/dark preference to stay in step with the panel theme.
+// Injected into every page. On the santral-c panel tab it is a silent bridge
+// (relays the panel's live call state to the worker, and worker commands back
+// to the panel). On every other tab it draws the floating mini softphone that
+// remote-controls the panel's session. Styles are isolated in a shadow root and
+// follow the OS light/dark preference.
 
 (() => {
-  if (window.top !== window) return; // top frame only
+  if (window.top !== window) return;
   if (document.getElementById("santralc-miniwidget-host")) return;
 
   const host = document.createElement("div");
@@ -14,10 +15,10 @@
   const root = host.attachShadow({ mode: "open" });
 
   const STYLE = `
-    :host{ --bg:rgba(255,255,255,0.92); --fg:#1b1e24; --muted:#6b7280; --border:rgba(0,0,0,0.10);
+    :host{ --bg:rgba(255,255,255,0.94); --fg:#1b1e24; --muted:#6b7280; --border:rgba(0,0,0,0.10);
            --input:#f1f3f5; --accent:#2f59c4; --success:#22a06b; --danger:#e5484d; --shadow:rgba(0,0,0,0.18); }
     @media (prefers-color-scheme: dark){
-      :host{ --bg:rgba(31,35,41,0.92); --fg:#f3f4f6; --muted:#9aa1ad; --border:rgba(255,255,255,0.14);
+      :host{ --bg:rgba(31,35,41,0.94); --fg:#f3f4f6; --muted:#9aa1ad; --border:rgba(255,255,255,0.14);
              --input:rgba(255,255,255,0.08); --accent:#5b8cff; --success:#2ecc71; --danger:#ff5e57; --shadow:rgba(0,0,0,0.5); }
     }
     *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -34,8 +35,7 @@
     .row{display:flex;align-items:center;gap:8px}
     .grow{flex:1}
     button{border:0;cursor:pointer;font-family:inherit}
-    .circle{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-            background:var(--input);color:var(--fg);font-size:16px}
+    .circle{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--input);color:var(--fg);font-size:16px}
     .call{background:var(--success);color:#fff}
     .hang{background:var(--danger);color:#fff}
     .pri{background:var(--accent);color:#fff;border-radius:10px;height:32px;padding:0 12px;font-size:12px;font-weight:600}
@@ -46,7 +46,6 @@
     .xfer{margin-top:8px;border-top:1px solid var(--border);padding-top:8px;display:grid;gap:6px}
     .xrow{display:flex;gap:6px}
     .num{flex:1;background:var(--input);border:1px solid var(--border);border-radius:8px;height:32px;color:var(--fg);padding:0 8px;font-size:12px;outline:none}
-    .hide{display:none}
   `;
 
   let state = { status: "idle" };
@@ -54,34 +53,24 @@
   let showXfer = false;
   let isPanel = false;
 
-  // Bridge to the santral-c panel running in this same tab: it pushes its SIP
-  // credentials and control commands, and receives live state, so the panel
-  // and this extension share one registration/session.
   function postToPage(m) {
-    try {
-      window.postMessage({ santralc: "ext", ...m }, "*");
-    } catch {
-      /* ignore */
-    }
+    try { window.postMessage({ santralc: "ext", ...m }, "*"); } catch { /* ignore */ }
   }
+
+  // Panel bridge: the panel pushes its live state and receives control commands.
   window.addEventListener("message", (e) => {
     const d = e.data;
     if (e.source !== window || !d || d.santralc !== "panel") return;
     if (d.type === "hello") {
       isPanel = true;
-      host.style.display = "none"; // the panel shows its own softphone UI
-      chrome.runtime.sendMessage({ to: "sw", type: "getState" }, (res) => {
-        postToPage({ type: "present", state: chrome.runtime.lastError ? state : res && res.state });
-      });
-    } else if (d.type === "config" && d.config) {
-      chrome.runtime.sendMessage({ to: "sw", type: "config", config: d.config }).catch(() => {});
-    } else if (d.type === "cmd") {
-      chrome.runtime.sendMessage({ to: "offscreen", cmd: d.cmd, arg: d.arg }).catch(() => {});
+      host.style.display = "none";
+    } else if (d.type === "state") {
+      chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
     }
   });
 
   function send(cmd, arg) {
-    chrome.runtime.sendMessage({ to: "offscreen", cmd, arg }).catch(() => {});
+    chrome.runtime.sendMessage({ to: "sw", type: "cmd", cmd, arg }).catch(() => {});
   }
 
   function esc(s) {
@@ -89,80 +78,45 @@
   }
 
   function render() {
-    if (isPanel) {
-      host.style.display = "none";
-      return;
-    }
+    if (isPanel) { host.style.display = "none"; return; }
     const st = state.status;
     const active = st === "in-call" || st === "held";
     const outgoing = st === "calling" || st === "ringing";
     let inner = "";
 
-    const header = `<div class="head" id="drag">
-        <span class="dot"></span>
-        <span class="title">SantralC</span>
-        <span class="muted" id="hstatus"></span>
-        <span class="grow"></span>
-        <button class="ghost" id="collapse" title="Gizle">—</button>
-      </div>`;
+    const header = `<div class="head" id="drag"><span class="dot"></span><span class="title">SantralC</span>
+      <span class="muted" id="hstatus"></span><span class="grow"></span><button class="ghost" id="collapse" title="Gizle">—</button></div>`;
 
-    if (st === "unconfigured") {
-      inner = `<div class="body"><div class="muted">Ayar gerekli. Eklenti simgesine tıklayıp SIP bilgilerini girin.</div></div>`;
-    } else if (st === "error") {
-      inner = `<div class="body"><div class="muted">Bağlantı hatası: ${esc(state.error)}</div></div>`;
-    } else if (st === "incoming") {
-      inner = `<div class="body">
-        <div class="peer">${esc(state.peer)}</div><div class="muted">Gelen çağrı</div>
-        <div class="row" style="margin-top:8px">
-          <button class="circle call" id="answer" title="Cevapla">✆</button>
-          <button class="circle hang" id="hangup" title="Reddet">⤫</button>
-        </div></div>`;
+    if (st === "incoming") {
+      inner = `<div class="body"><div class="peer">${esc(state.peer)}</div><div class="muted">Gelen çağrı</div>
+        <div class="row" style="margin-top:8px"><button class="circle call" id="answer">✆</button><button class="circle hang" id="hangup">⤫</button></div></div>`;
     } else if (outgoing || active) {
-      inner = `<div class="body">
-        <div class="peer">${esc(state.peer)}</div>
+      inner = `<div class="body"><div class="peer">${esc(state.peer)}</div>
         <div class="muted">${outgoing ? "Aranıyor..." : state.held ? "Beklemede" : "Görüşme"}</div>
         <div class="row" style="margin-top:8px">
-          ${active ? `<button class="circle" id="mute" title="Sustur">${state.muted ? "🔇" : "🎙"}</button>
-          <button class="circle" id="hold" title="Beklet">${state.held ? "▶" : "⏸"}</button>
-          <button class="circle" id="keys" title="Tuşlar">⌨</button>
-          <button class="circle" id="xfer" title="Aktar">⇄</button>` : ""}
-          <span class="grow"></span>
-          <button class="circle hang" id="hangup" title="Kapat">⤫</button>
-        </div>
+          ${active ? `<button class="circle" id="mute">${state.muted ? "🔇" : "🎙"}</button><button class="circle" id="hold">${state.held ? "▶" : "⏸"}</button><button class="circle" id="keys">⌨</button><button class="circle" id="xfer">⇄</button>` : ""}
+          <span class="grow"></span><button class="circle hang" id="hangup">⤫</button></div>
         ${active && showKeys ? `<div class="keys">${["1","2","3","4","5","6","7","8","9","*","0","#"].map((k)=>`<button class="key" data-k="${k}">${k}</button>`).join("")}</div>` : ""}
-        ${active && showXfer ? `<div class="xfer">
-          <div class="xrow"><input class="num" id="xnum" placeholder="Dahili / numara"><button class="pri" id="xdo">Aktar</button></div>
-        </div>` : ""}
+        ${active && showXfer ? `<div class="xfer"><div class="xrow"><input class="num" id="xnum" placeholder="Dahili / numara"><button class="pri" id="xdo">Aktar</button></div></div>` : ""}
       </div>`;
     } else {
-      // idle / registered
-      inner = `<div class="body">
-        <div class="pill">
-          <select class="sel" id="prefix"><option value="+90">+90</option><option value="">Dahili</option></select>
-          <input class="inp" id="dial" placeholder="Numara..." inputmode="tel">
-          <button class="circle call" id="dialbtn" title="Ara">✆</button>
-        </div>
-      </div>`;
+      inner = `<div class="body"><div class="pill">
+        <select class="sel" id="prefix"><option value="+90">+90</option><option value="">Dahili</option></select>
+        <input class="inp" id="dial" placeholder="Numara..." inputmode="tel">
+        <button class="circle call" id="dialbtn">✆</button></div></div>`;
     }
 
     root.innerHTML = `<style>${STYLE}</style><div class="card">${header}${inner}</div>`;
     const hs = root.getElementById("hstatus");
-    if (hs) hs.textContent = st === "registered" || st === "idle" ? "Hazır" : "";
-
+    if (hs) hs.textContent = st === "registered" || st === "idle" ? "Hazır" : st === "unconfigured" ? "Panel kapalı" : "";
     bind();
   }
 
   function bind() {
     const q = (id) => root.getElementById(id);
-    q("collapse")?.addEventListener("click", () => host.classList.toggle("hide") || (host.style.display = host.style.display === "none" ? "" : "none"));
-
-    q("dialbtn")?.addEventListener("click", () => {
-      const pre = q("prefix").value;
-      const n = q("dial").value.trim();
-      if (n) send("call", pre + n);
-    });
+    q("collapse")?.addEventListener("click", () => { host.style.display = host.style.display === "none" ? "" : "none"; });
+    q("dialbtn")?.addEventListener("click", () => { const n = q("dial").value.trim(); if (n) send("call", q("prefix").value + n); });
     q("dial")?.addEventListener("keydown", (e) => { if (e.key === "Enter") q("dialbtn").click(); });
-
     q("answer")?.addEventListener("click", () => send("answer"));
     q("hangup")?.addEventListener("click", () => send("hangup"));
     q("mute")?.addEventListener("click", () => send("mute"));
@@ -173,34 +127,26 @@
     root.querySelectorAll(".key").forEach((b) => b.addEventListener("click", () => send("dtmf", b.getAttribute("data-k"))));
 
     const drag = q("drag");
-    if (drag) {
-      drag.addEventListener("mousedown", (e) => {
-        const sx = e.clientX, sy = e.clientY;
-        const rect = host.getBoundingClientRect();
-        const move = (ev) => {
-          host.style.right = "auto";
-          host.style.bottom = "auto";
-          host.style.left = rect.left + (ev.clientX - sx) + "px";
-          host.style.top = rect.top + (ev.clientY - sy) + "px";
-        };
-        const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
-        document.addEventListener("mousemove", move);
-        document.addEventListener("mouseup", up);
-      });
-    }
+    if (drag) drag.addEventListener("mousedown", (e) => {
+      const sx = e.clientX, sy = e.clientY; const rect = host.getBoundingClientRect();
+      const move = (ev) => { host.style.right = "auto"; host.style.bottom = "auto"; host.style.left = rect.left + (ev.clientX - sx) + "px"; host.style.top = rect.top + (ev.clientY - sy) + "px"; };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); };
+      document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+    });
   }
 
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.to === "content" && msg.type === "state") {
+    if (!msg || msg.to !== "content") return;
+    if (msg.type === "state") {
       state = msg.state || { status: "idle" };
-      if (isPanel) postToPage({ type: "state", state });
-      render();
+      if (!isPanel) render();
+    } else if (msg.type === "panelcmd" && isPanel) {
+      postToPage({ type: "cmd", cmd: msg.cmd, arg: msg.arg });
     }
   });
 
   chrome.runtime.sendMessage({ to: "sw", type: "getState" }, (res) => {
-    if (chrome.runtime.lastError) return;
-    if (res && res.state) state = res.state;
+    if (!chrome.runtime.lastError && res && res.state) state = res.state;
     render();
   });
 

@@ -1,96 +1,74 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Phone, PhoneStatus } from "./useSoftphone";
-
-// Config pushed to the extension so it registers with the panel user's own
-// credentials (no manual entry).
-export type ExtConfig = { ext: string; password: string; wss: string; domain: string; stun?: string };
-
-type ExtState = {
-  status: string;
-  peer?: string;
-  muted?: boolean;
-  held?: boolean;
-  extension?: string;
-  endReason?: string;
-  error?: string;
-};
-
-function mapStatus(s: string): PhoneStatus {
-  switch (s) {
-    case "idle":
-    case "registered":
-      return "registered";
-    case "unconfigured":
-      return "connecting";
-    case "calling":
-    case "ringing":
-    case "incoming":
-    case "in-call":
-    case "held":
-    case "error":
-      return s;
-    default:
-      return "connecting";
-  }
-}
+import { useEffect, useRef } from "react";
+import type { Phone } from "./useSoftphone";
 
 function postPanel(type: string, extra?: Record<string, unknown>) {
   window.postMessage({ santralc: "panel", type, ...(extra ?? {}) }, "*");
 }
 
-// useExtensionPhone detects the SantralC extension (via the content-script
-// bridge in this tab) and, when present, exposes a Phone that controls the
-// extension's single shared session. active is null while detecting.
-export function useExtensionPhone(): { active: boolean | null; phone: Phone; pushConfig: (c: ExtConfig) => void } {
-  const [active, setActive] = useState<boolean | null>(null);
-  const [ext, setExt] = useState<ExtState>({ status: "registered" });
-  const audioRef = useRef<HTMLAudioElement>(null);
+// usePanelBridge connects the panel's live softphone to the SantralC extension
+// (via the content-script bridge in this tab). The panel owns the SIP session
+// and microphone; it publishes state to the per-tab widgets and runs the
+// commands they send back, so the mini widget mirrors and controls this panel.
+export function usePanelBridge(phone: Phone, active: boolean) {
+  const phoneRef = useRef(phone);
+  const activeRef = useRef(active);
+  phoneRef.current = phone;
+  activeRef.current = active;
 
+  // Announce that this tab is the panel so the extension hides its own widget
+  // here and routes widget commands to this page.
   useEffect(() => {
-    let resolved = false;
+    postPanel("hello");
+  }, []);
+
+  // Publish call state whenever it changes (only from the owning tab).
+  useEffect(() => {
+    if (!active) return;
+    postPanel("state", {
+      state: {
+        status: phone.status,
+        peer: phone.peer,
+        muted: phone.muted,
+        held: phone.held,
+        extension: phone.extension,
+        endReason: phone.endReason,
+      },
+    });
+  }, [active, phone.status, phone.peer, phone.muted, phone.held, phone.extension, phone.endReason]);
+
+  // Run commands coming from the widgets on the live session.
+  useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const d = e.data;
-      if (e.source !== window || !d || d.santralc !== "ext") return;
-      if (d.type === "present") {
-        resolved = true;
-        setActive(true);
-        if (d.state) setExt(d.state as ExtState);
-      } else if (d.type === "state") {
-        setActive(true);
-        setExt((d.state as ExtState) ?? { status: "registered" });
+      if (e.source !== window || !d || d.santralc !== "ext" || d.type !== "cmd") return;
+      if (!activeRef.current) return;
+      const p = phoneRef.current;
+      const arg = String(d.arg ?? "");
+      switch (d.cmd) {
+        case "call":
+          void p.call(arg).catch(() => undefined);
+          break;
+        case "answer":
+          void p.answer().catch(() => undefined);
+          break;
+        case "hangup":
+          void p.hangup().catch(() => undefined);
+          break;
+        case "mute":
+          p.toggleMute();
+          break;
+        case "hold":
+          void p.toggleHold().catch(() => undefined);
+          break;
+        case "transfer":
+          void p.transfer(arg).catch(() => undefined);
+          break;
+        case "dtmf":
+          p.sendDtmf(arg);
+          break;
       }
     };
     window.addEventListener("message", onMessage);
-    postPanel("hello");
-    const timer = window.setTimeout(() => {
-      if (!resolved) setActive(false);
-    }, 1200);
-    return () => {
-      window.removeEventListener("message", onMessage);
-      window.clearTimeout(timer);
-    };
+    return () => window.removeEventListener("message", onMessage);
   }, []);
-
-  const cmd = useCallback((c: string, arg?: string) => postPanel("cmd", { cmd: c, arg }), []);
-  const pushConfig = useCallback((c: ExtConfig) => postPanel("config", { config: c }), []);
-
-  const phone: Phone = {
-    status: mapStatus(ext.status),
-    extension: ext.extension ?? null,
-    error: ext.error ?? null,
-    muted: !!ext.muted,
-    held: !!ext.held,
-    peer: ext.peer ?? null,
-    endReason: ext.endReason ?? null,
-    audioRef,
-    call: async (t) => cmd("call", t),
-    answer: async () => cmd("answer"),
-    hangup: async () => cmd("hangup"),
-    toggleMute: () => cmd("mute"),
-    toggleHold: async () => cmd("hold"),
-    transfer: async (t) => cmd("transfer", t),
-    sendDtmf: (k) => cmd("dtmf", k),
-  };
-
-  return { active, phone, pushConfig };
 }

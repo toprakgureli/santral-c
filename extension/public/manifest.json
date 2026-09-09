@@ -5,7 +5,7 @@
   "description": "Her sekmede görünen mini softphone: ara, cevapla, sustur, beklet, aktar.",
   "action": { "default_popup": "popup.html", "default_title": "SantralC Mini" },
   "background": { "service_worker": "background.js" },
-  "permissions": ["offscreen", "storage", "tabs"],
+  "permissions": ["tabs"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {

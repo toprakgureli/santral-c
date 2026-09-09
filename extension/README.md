@@ -1,58 +1,45 @@
 # SantralC-MiniWidget
 
-Her sekmede görünen mini softphone (Chrome MV3 eklentisi). Tek bir SIP kaydı
-tarayıcı genelinde çalışır (offscreen belge), her sekmeye yüzen bir widget
-enjekte edilir. Ara / cevapla / sustur / beklet / aktar / tuş takımı.
+Her sekmede görünen mini softphone (Chrome MV3 eklentisi). Telefonun kendisi
+**santral-c panelinde** çalışır (mikrofon orada zaten çalışıyor); eklenti,
+panelin canlı çağrısını **her sekmeye** taşıyan bir röle + yüzen widget'tır.
+Widget'tan ara / cevapla / sustur / beklet / aktar / DTMF yapabilirsin ve panel
+ile **tek oturum, tam senkron**.
 
 ## Mimari
 
-- **offscreen belge** (`offscreen.html` + `offscreen.js`): SIP.js ile
-  Bulutsantralim'e WSS üzerinden kaydolur, WebRTC medyayı ve tek kaydı tutar.
-- **service worker** (`background.js`): offscreen belgeyi ayakta tutar,
-  widget'lar ile offscreen arasında mesaj taşır, durumu tüm sekmelere yayar.
-- **content script** (`content.js`): her sayfaya shadow-DOM içinde yüzen
-  widget'ı basar; komutları gönderir, durumu render eder. Tema OS'in
-  açık/koyu tercihini izler.
-- **popup** (`popup.html`): SIP bilgilerini (dahili, parola, WSS, domain,
-  STUN) saklar ve mikrofon iznini verir.
+- **content script** (`content.js`): her sayfaya shadow-DOM içinde widget basar.
+  Panel sekmesinde ise sessiz köprüdür (panelin durumunu worker'a taşır, widget
+  komutlarını panele iletir) ve orada widget'ı gizler.
+- **service worker** (`background.js`): saf röle. Panelin durumunu tüm sekme
+  widget'larına, widget komutlarını panele taşır.
+- Telefon (SIP.js kaydı, WebRTC, mikrofon) **panelde**dir — eklentide değil.
+  Böylece offscreen/mikrofon derdi yok.
 
 ## Kurulum
 
 ```bash
 cd extension
-npm install
 npm run build
 ```
 
-Sonra Chrome'da:
-
-1. `chrome://extensions` → sağ üstten **Developer mode** açık.
-2. **Load unpacked** → `extension/dist` klasörünü seç.
-3. Eklenti simgesine tıkla → **Mikrofon İznini Ver** (bir kez).
-
-**Manuel bilgi girmene gerek yok:** santral-c paneline giriş yaptığında panel,
-o kullanıcının kendi dahilisini/SIP bilgisini eklentiye otomatik gönderir ve
-eklenti onunla kaydolur. Panel ile eklenti **tek çağrı oturumunu paylaşır**:
-gelen çağrı, sustur, beklet, aktar — hepsi iki tarafta senkron. Panel açık
-sekmede widget gizlenir (panel kendi arayüzünü gösterir), diğer sekmelerde
-yüzen widget çıkar. Popup'taki alanlar yalnızca panelsiz kullanım için yedektir.
+1. `chrome://extensions` → **Developer mode** açık → **Load unpacked** →
+   `extension/dist` klasörünü seç.
+2. **santral-c paneline** (bir sekmede) giriş yap. Ayar girmene veya mikrofon
+   izni vermene **gerek yok** — panel hallediyor.
+3. Widget'ı görmek istediğin **normal web sitesi** sekmelerini **yenile**.
 
 ## Kullanım
 
-- Widget sağ altta, her sekmede. Boşta: prefix (+90 / Dahili) + numara + yeşil
-  Ara. Görüşmede: Sustur, Beklet, Tuşlar (DTMF), Aktar, Kapat. Gelen çağrıda:
-  Cevapla / Reddet. Başlıktan sürükle, "—" ile gizle.
+Widget sağ altta çıkar. Boşta: prefix (+90 / Dahili) + numara + yeşil Ara.
+Görüşmede: Sustur, Beklet, Tuşlar (DTMF), Aktar, Kapat. Gelen çağrı: Cevapla /
+Reddet. Başlıktan sürükle, "—" ile gizle. Panelde yaptığın her şey widget'a,
+widget'ta yaptığın her şey panele **anında** yansır.
 
-## Önemli notlar (ilk sürüm)
+## Notlar
 
-- **Tek kayıt:** Eklenti tek SIP kaydı tutar (tüm sekmeler için). Aynı anda
-  **web paneli de** aynı dahiliyle açıksa kayıt çakışır. Aynı dahili için
-  ikisinden **yalnızca birini** kullan.
-- **Mikrofon:** MV3 offscreen belgede mikrofon, önce popup'tan izinle
-  verilmeli. Seste sorun olursa "Mikrofon İznini Ver"i tekrar dene.
-- **Tema:** Widget OS açık/koyu tercihini izler (eklenti, panelin tema
-  ayarını cross-origin okuyamaz). İstenirse panelden senkron eklenebilir.
-- **Aktarma:** Bu sürümde numara yazarak (dahili/kuyruk). Açılır listeler
-  sonraki adımda (backend'den önbellekli çekilir).
-- **Güvenlik:** SIP bilgisi `chrome.storage.local`'da saklanır (yerel).
-- Bu ilk sürüm canlı ortamda test edilip ince ayar gerektirebilir.
+- Telefon panelde çalıştığı için **panelin bir sekmede açık olması** gerekir.
+  Panel kapalıysa widget "Panel kapalı" gösterir.
+- Widget `chrome://`, mağaza, yeni-sekme, PDF gibi sayfalarda çıkmaz; panel
+  sekmesinde gizlidir.
+- Tema OS'in açık/koyu tercihini izler.
