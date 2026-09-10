@@ -115,10 +115,13 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
-      {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
-      <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_2fr_1fr]">
         {canSeeCalls ? <CallHistory canCall={canCall} /> : <div className="hidden xl:block" />}
-        <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
+        {/* Softphone and escalation sit side by side, half and half. */}
+        <div className={cn("grid gap-4", canEscalate && "lg:grid-cols-2")}>
+          <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
+          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
+        </div>
         {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} /> : <div className="hidden xl:block" />}
       </div>
     </div>
@@ -401,7 +404,7 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
 
   return (
     <Card title="Eskalasyon">
-      <div className={cn("grid gap-6", canSearch && "lg:grid-cols-[1.6fr_1fr]")}>
+      <div className="space-y-5">
         {/* Entry */}
         <div className="space-y-4">
           {categories.length === 0 ? (
