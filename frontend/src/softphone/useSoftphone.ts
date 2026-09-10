@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Inviter, Invitation, Registerer, SessionState, UserAgent, type Session } from "sip.js";
 import { api } from "../api/client";
 import type { SipCredentials } from "../api/types";
+import { normalizeDial } from "./dial";
 import { tones } from "./tones";
 
 export type PhoneStatus =
@@ -195,9 +196,10 @@ export function useSoftphone(enabled: boolean): Phone {
   }, [enabled, watchSession]);
 
   const call = useCallback(
-    async (target: string) => {
+    async (raw: string) => {
       const ua = uaRef.current;
       if (!ua) throw new Error("Softphone hazır değil.");
+      const target = normalizeDial(raw);
       const uri = UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
       if (!uri) throw new Error("Geçersiz numara.");
 
@@ -303,10 +305,10 @@ export function useSoftphone(enabled: boolean): Phone {
     }
   }, [held]);
 
-  const transfer = useCallback(async (target: string) => {
+  const transfer = useCallback(async (raw: string) => {
     const s = sessionRef.current;
     if (!s || s.state !== SessionState.Established) return;
-    const uri = UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
+    const uri = UserAgent.makeURI(`sip:${normalizeDial(raw)}@${domainRef.current}`);
     if (!uri) return;
     await s.refer(uri).catch(() => undefined);
   }, []);

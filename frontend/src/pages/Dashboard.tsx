@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { ArrowLeftRight, Delete, Grid3x3, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Call, PBXExtension, PBXQueue } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
+import { normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
-import { Badge, Button, Card, Input } from "../components/ui";
+import { Badge, Button, Card } from "../components/ui";
+import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
@@ -113,95 +116,138 @@ function Stat({ dot, label, value }: { dot: string; label: string; value: number
   );
 }
 
+function Round({ onClick, tone = "muted", title, disabled, children }: { onClick?: () => void; tone?: "muted" | "on" | "call" | "hang"; title?: string; disabled?: boolean; children: React.ReactNode }) {
+  const tones: Record<string, string> = {
+    muted: "bg-muted text-foreground hover:bg-accent",
+    on: "bg-primary text-primary-foreground",
+    call: "bg-success text-white hover:opacity-90",
+    hang: "bg-destructive text-white hover:opacity-90",
+  };
+  return (
+    <button onClick={onClick} disabled={disabled} title={title} className={cn("flex size-12 items-center justify-center rounded-full transition active:scale-95 disabled:opacity-40 [&_svg]:size-5", tones[tone])}>
+      {children}
+    </button>
+  );
+}
+
 function Softphone({ hasExtension }: { hasExtension: boolean }) {
   const phone = useSoftphoneContext();
   const [target, setTarget] = useState("");
-  const [xfer, setXfer] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
+  const [dur, setDur] = useState(0);
 
   const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
   const outgoing = phone.status === "calling" || phone.status === "ringing";
   const active = phone.status === "in-call" || phone.status === "held";
 
+  useEffect(() => {
+    if (!active) { setDur(0); return; }
+    const t = window.setInterval(() => setDur((d) => d + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [active]);
+
+  function callNow() {
+    const n = normalizeDial(target);
+    if (n) phone.call(n).catch(() => undefined);
+  }
+
   return (
     <Card title="Softphone">
-      <div className="space-y-4">
-        {!hasExtension ? (
-          <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
-        ) : phone.secondary ? (
-          <p className="text-sm text-muted-foreground">Softphone başka bir sekmede açık. Çağrılar orada yönetiliyor.</p>
-        ) : (
-          <>
-            {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
+      {!hasExtension ? (
+        <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
+      ) : phone.secondary ? (
+        <p className="text-sm text-muted-foreground">Softphone başka bir sekmede açık. Çağrılar orada yönetiliyor.</p>
+      ) : (
+        <div className="space-y-4">
+          {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
 
-            {idle && (
-              <>
-                {phone.endReason && <p className="text-xs text-muted-foreground">Son çağrı: {phone.endReason}</p>}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Numara veya dahili"
-                    value={target}
-                    onChange={(e) => setTarget(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && target && phone.call(target).catch(() => undefined)}
-                  />
-                  <Button onClick={() => target && phone.call(target).catch(() => undefined)} disabled={phone.status !== "registered" || !target}>
-                    Ara
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {(outgoing || active) && (
-              <div className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-foreground">
-                {outgoing ? "Aranıyor: " : "Görüşme: "}
-                <span className="font-medium">{phone.peer}</span>
+          {/* Display */}
+          {idle ? (
+            <div className="space-y-1">
+              <input
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && callNow()}
+                placeholder="Numara veya dahili"
+                inputMode="tel"
+                className="w-full bg-transparent text-center text-2xl font-semibold tracking-wide text-foreground outline-none placeholder:text-muted-foreground/50"
+              />
+              <p className="h-4 text-center text-xs text-muted-foreground">{phone.endReason ? `Son çağrı: ${phone.endReason}` : ""}</p>
+            </div>
+          ) : (
+            <div className="py-1 text-center">
+              <div className="text-2xl font-semibold">{phone.peer || "—"}</div>
+              <div className="text-sm text-muted-foreground">
+                {phone.status === "incoming" ? "Gelen çağrı" : outgoing ? "Aranıyor..." : phone.held ? `Beklemede · ${formatDuration(dur)}` : `Görüşme · ${formatDuration(dur)}`}
               </div>
-            )}
+            </div>
+          )}
 
-            {phone.status === "incoming" && (
-              <div className="flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
-                <span className="text-sm text-warning">Gelen çağrı: {phone.peer}</span>
-                <div className="flex gap-2">
-                  <Button onClick={() => phone.answer().catch(() => undefined)}>Cevapla</Button>
-                  <Button variant="danger" onClick={() => phone.hangup().catch(() => undefined)}>Reddet</Button>
-                </div>
+          {/* Dialpad (idle) */}
+          {idle && (
+            <>
+              <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-2">
+                {keypadKeys.map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => { setTarget((t) => t + k); tones.dtmf(k); }}
+                    className="h-12 rounded-xl bg-muted text-lg font-semibold text-foreground transition active:scale-95 hover:bg-accent"
+                  >
+                    {k}
+                  </button>
+                ))}
               </div>
-            )}
-
-            {active && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-2">
-                  <Button variant="secondary" onClick={phone.toggleMute}>{phone.muted ? "Susturmayı aç" : "Sustur"}</Button>
-                  <Button variant="secondary" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? "Devam et" : "Beklet"}</Button>
-                  <Button variant="secondary" onClick={() => setShowKeypad((v) => !v)}>Tuşlar</Button>
-                </div>
-
-                {showKeypad && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {keypadKeys.map((k) => (
-                      <Button key={k} variant="secondary" onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }}>{k}</Button>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex gap-2 border-t border-border pt-3">
-                  <Input placeholder="Numaraya aktar" value={xfer} onChange={(e) => setXfer(e.target.value)} />
-                  <Button variant="secondary" onClick={() => xfer && phone.transfer(xfer).catch(() => undefined)} disabled={!xfer}>
-                    Aktar
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">Dahili/kuyruğa aktarmak için sağdaki listeye sağ tıkla.</p>
+              <div className="mx-auto flex max-w-[15rem] items-center justify-between">
+                <span className="size-12" />
+                <Round tone="call" title="Ara" onClick={callNow} disabled={phone.status !== "registered" || !target}>
+                  <Phone />
+                </Round>
+                <Round title="Sil" onClick={() => setTarget((t) => t.slice(0, -1))} disabled={!target}>
+                  <Delete />
+                </Round>
               </div>
-            )}
+            </>
+          )}
 
-            {(outgoing || active || phone.status === "incoming") && (
-              <Button variant="danger" className="w-full" onClick={() => phone.hangup().catch(() => undefined)}>
-                Kapat
-              </Button>
-            )}
-          </>
-        )}
-      </div>
+          {/* Incoming */}
+          {phone.status === "incoming" && (
+            <div className="flex items-center justify-center gap-10">
+              <Round tone="call" title="Cevapla" onClick={() => phone.answer().catch(() => undefined)}><Phone /></Round>
+              <Round tone="hang" title="Reddet" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+            </div>
+          )}
+
+          {/* In call controls */}
+          {active && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-3">
+                <Round tone={phone.muted ? "on" : "muted"} title="Sustur" onClick={phone.toggleMute}>{phone.muted ? <MicOff /> : <Mic />}</Round>
+                <Round tone={phone.held ? "on" : "muted"} title="Beklet" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? <Play /> : <Pause />}</Round>
+                <Round tone={showKeypad ? "on" : "muted"} title="Tuşlar" onClick={() => setShowKeypad((v) => !v)}><Grid3x3 /></Round>
+                <Round tone="hang" title="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+              </div>
+              {showKeypad && (
+                <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-2">
+                  {keypadKeys.map((k) => (
+                    <button key={k} onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }} className="h-11 rounded-xl bg-muted text-lg font-semibold transition active:scale-95 hover:bg-accent">
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <ArrowLeftRight className="size-3.5" /> Aktarmak için sağdaki listeye sağ tıkla
+              </p>
+            </div>
+          )}
+
+          {outgoing && (
+            <div className="flex justify-center">
+              <Round tone="hang" title="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -209,45 +255,51 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
 function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue[] }) {
   const phone = useSoftphoneContext();
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [confirmExt, setConfirmExt] = useState<string | null>(null);
   const inCall = phone.status === "in-call" || phone.status === "held";
   const canDial = phone.status === "registered";
 
   const sorted = [...exts].sort((a, b) => (a.status === "UNREGISTERED" ? 1 : 0) - (b.status === "UNREGISTERED" ? 1 : 0));
-  const online = exts.filter((e) => e.status !== "UNREGISTERED").length;
 
   function agentMenu(e: React.MouseEvent, ext: string) {
     e.preventDefault();
-    const items: MenuItem[] = [];
-    if (inCall) items.push({ label: `📞 ${ext} dahilisine aktar`, onClick: () => phone.transfer(ext).catch(() => undefined) });
-    if (canDial) items.push({ label: `📞 ${ext} numarasını ara`, onClick: () => phone.call(ext).catch(() => undefined) });
-    if (items.length === 0) items.push({ label: "Aktarmak için görüşmede olun", onClick: () => undefined, disabled: true });
-    setMenu({ x: e.clientX, y: e.clientY, items });
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: `Çağrıyı ${ext} dahilisine aktar`, onClick: () => phone.transfer(ext).catch(() => undefined), disabled: !inCall },
+        { label: "Çağrıyı dinle (yakında)", onClick: () => undefined, disabled: true },
+      ],
+    });
   }
   function queueMenu(e: React.MouseEvent, num: string) {
     e.preventDefault();
-    const items: MenuItem[] = inCall
-      ? [{ label: `📞 ${num} kuyruğuna aktar`, onClick: () => phone.transfer(num).catch(() => undefined) }]
-      : [{ label: "Aktarmak için görüşmede olun", onClick: () => undefined, disabled: true }];
-    setMenu({ x: e.clientX, y: e.clientY, items });
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [{ label: `Çağrıyı ${num} kuyruğuna aktar`, onClick: () => phone.transfer(num).catch(() => undefined), disabled: !inCall }],
+    });
   }
 
   return (
     <div className="space-y-4">
-      <Card title={`Hatta Olanlar (${online})`}>
+      <Card title="Temsilciler">
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
           {sorted.map((e) => {
             const s = agentStatus[e.status] ?? { label: e.status, tone: "slate" as const };
+            const online = e.status !== "UNREGISTERED";
             return (
               <li
                 key={e.extension}
                 onContextMenu={(ev) => agentMenu(ev, e.extension)}
-                onClick={() => canDial && phone.call(e.extension).catch(() => undefined)}
-                title="Sağ tık: aktar/ara"
+                onClick={() => canDial && !inCall && setConfirmExt(e.extension)}
+                title="Sol tık: ara · Sağ tık: aktar"
                 className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-accent"
               >
                 <span className="flex items-center gap-2 text-sm">
-                  <span className={`size-2 rounded-full ${s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50"}`} />
+                  <span className={cn("size-2 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
                   <span className="font-medium">{e.extension}</span>
+                  <span className="text-xs text-muted-foreground">({online ? "hatta" : "çıkmış"})</span>
                 </span>
                 <Badge tone={s.tone}>{s.label}</Badge>
               </li>
@@ -274,6 +326,18 @@ function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue
       </Card>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+
+      {confirmExt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmExt(null)}>
+          <div className="w-full max-w-xs rounded-2xl border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm">{confirmExt} dahilisini aramak ister misiniz?</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmExt(null)}>İptal</Button>
+              <Button onClick={() => { phone.call(confirmExt).catch(() => undefined); setConfirmExt(null); }}>Ara</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -284,16 +348,35 @@ function CallHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const canDial = phone.status === "registered";
-  const loaded = useRef(false);
 
   useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-    api
-      .listCalls({ perPage: 20 })
-      .then((r) => setCalls(r.items))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."))
-      .finally(() => setLoading(false));
+    let live = true;
+    let tries = 0;
+    const load = () => {
+      api
+        .listCalls({ perPage: 20 })
+        .then((r) => {
+          if (!live) return;
+          setCalls(r.items);
+          setError(null);
+          setLoading(false);
+        })
+        .catch((e) => {
+          if (!live) return;
+          tries += 1;
+          // The hosted CDR API is rate limited; back off and retry a few times.
+          if (tries < 4) {
+            window.setTimeout(load, 4000);
+          } else {
+            setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi.");
+            setLoading(false);
+          }
+        });
+    };
+    load();
+    return () => {
+      live = false;
+    };
   }, []);
 
   return (
