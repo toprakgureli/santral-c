@@ -34,6 +34,36 @@ export function CallDisposition({ value }: { value: string }) {
   return <Badge tone={dispositionTone[value] ?? "slate"}>{dispositionLabel[value] ?? value}</Badge>;
 }
 
+// REAL_CALL_SECONDS is the threshold above which an answered call counts as a
+// real conversation rather than a quick pickup/misdial.
+export const REAL_CALL_SECONDS = 5;
+
+export type QualityTone = "green" | "amber" | "slate" | "blue";
+
+export interface CallQuality {
+  tone: QualityTone;
+  label: string;
+  dot: string;
+  text: string;
+  border: string;
+}
+
+// callQuality classifies a call by disposition and length: answered calls of at
+// least five seconds are real (green), shorter answered calls are brief (amber),
+// and unanswered calls are grey.
+export function callQuality(disposition: string, durationSeconds: number): CallQuality {
+  if (disposition === "in_progress") {
+    return { tone: "blue", label: "Sürüyor", dot: "bg-primary", text: "text-primary", border: "border-primary/60" };
+  }
+  if (disposition === "answered") {
+    if (durationSeconds >= REAL_CALL_SECONDS) {
+      return { tone: "green", label: "Gerçek görüşme", dot: "bg-success", text: "text-success", border: "border-success/70" };
+    }
+    return { tone: "amber", label: "Kısa görüşme", dot: "bg-warning", text: "text-warning", border: "border-warning/70" };
+  }
+  return { tone: "slate", label: dispositionLabel[disposition] ?? "Cevapsız", dot: "bg-muted-foreground/50", text: "text-muted-foreground", border: "border-muted-foreground/30" };
+}
+
 export function formatDuration(seconds: number): string {
   if (!seconds) return "0:00";
   const m = Math.floor(seconds / 60);

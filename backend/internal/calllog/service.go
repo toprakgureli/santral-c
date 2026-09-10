@@ -37,9 +37,10 @@ type Entry struct {
 	DurationSeconds int    `json:"durationSeconds"`
 }
 
-// EntryList is a page of call logs.
+// EntryList is a page of call logs plus the total count for the user.
 type EntryList struct {
 	Items []Entry `json:"items"`
+	Total int64   `json:"total"`
 }
 
 // Record applies one phase (start, answer, end) of a softphone call, keyed by
@@ -118,7 +119,9 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 	return nil
 }
 
-// Recent returns the panel's recent call history from our own store.
+// Recent returns the actor's own recent call history from our store. The panel
+// history is always personal: every agent sees only their own calls, with the
+// total count, regardless of any view-all permission.
 func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
@@ -127,11 +130,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	if !canViewAll(actor) && !canViewOwn(actor) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
-	var owner *uint
-	if !canViewAll(actor) {
-		owner = &actorID
-	}
-	logs, err := s.repo.Recent(ctx, owner, recentLimit)
+	logs, total, err := s.repo.Recent(ctx, actorID, recentLimit)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -139,7 +138,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	for i := range logs {
 		items = append(items, toEntry(actor, &logs[i]))
 	}
-	return &EntryList{Items: items}, nil
+	return &EntryList{Items: items, Total: total}, nil
 }
 
 func toEntry(actor *models.User, log *models.CallLog) Entry {

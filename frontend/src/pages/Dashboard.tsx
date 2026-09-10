@@ -9,7 +9,9 @@ import {
   MicOff,
   Pause,
   Phone,
+  PhoneIncoming,
   PhoneOff,
+  PhoneOutgoing,
   Play,
   Search,
 } from "lucide-react";
@@ -24,7 +26,7 @@ import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SearchableSelect } from "../components/SearchableSelect";
-import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
+import { callQuality, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
   connecting: "Bağlanıyor...",
@@ -113,10 +115,12 @@ export function Dashboard() {
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
       <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
         {canSeeCalls ? <CallHistory /> : <div className="hidden xl:block" />}
-        <Softphone hasExtension={!!user?.sipExtension} />
+        <div className="space-y-4">
+          <Softphone hasExtension={!!user?.sipExtension} />
+          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} />}
+        </div>
         {canTransfer ? <AgentsQueues exts={exts} queues={queues} /> : <div className="hidden xl:block" />}
       </div>
-      {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} />}
     </div>
   );
 }
@@ -388,7 +392,7 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
 
   return (
     <Card title="Eskalasyon">
-      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+      <div className="space-y-5">
         {/* Entry */}
         <div className="space-y-4">
           {categories.length === 0 ? (
@@ -470,7 +474,7 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
           {history.length === 0 ? (
             <p className="text-sm text-muted-foreground">{number.trim() ? "Bu numara için kayıt yok." : "Numara girin veya çağrı başlatın."}</p>
           ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
+            <ul className="max-h-56 space-y-2 overflow-y-auto">
               {history.map((h) => (
                 <li key={h.id} className="rounded-lg bg-card px-3 py-2.5 text-sm ring-1 ring-border/50">
                   <div className="flex items-center justify-between gap-2">
@@ -584,6 +588,7 @@ function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue
 function CallHistory() {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -601,6 +606,7 @@ function CallHistory() {
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
+          setTotal(r.total ?? r.items.length);
           setError(null);
           setLoading(false);
         })
@@ -643,7 +649,7 @@ function CallHistory() {
   }
 
   return (
-    <Card title="Çağrı Geçmişi">
+    <Card title="Çağrı Geçmişi" actions={<Badge tone="slate">{total} çağrı</Badge>}>
       {loading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : error ? (
@@ -651,50 +657,66 @@ function CallHistory() {
       ) : calls.length === 0 ? (
         <p className="text-sm text-muted-foreground">Henüz çağrı kaydı yok.</p>
       ) : (
-        <ul className="max-h-[34rem] space-y-1 overflow-y-auto">
-          {calls.map((c) => {
-            const counterpart = c.direction === "outbound" ? c.toNumber : c.fromNumber;
-            const isOpen = open === c.uuid;
-            return (
-              <li key={c.uuid} className="rounded-lg ring-1 ring-transparent hover:ring-border/60">
-                <button
-                  onClick={() => setOpen(isOpen ? null : c.uuid)}
-                  onContextMenu={(e) => rowMenu(e, counterpart)}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left hover:bg-accent"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
+        <>
+          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <Legend dot="bg-success" label="Gerçek görüşme" />
+            <Legend dot="bg-warning" label="Kısa" />
+            <Legend dot="bg-muted-foreground/50" label="Cevapsız" />
+          </div>
+          <ul className="max-h-[32rem] space-y-1 overflow-y-auto">
+            {calls.map((c) => {
+              const counterpart = c.direction === "outbound" ? c.toNumber : c.fromNumber;
+              const isOpen = open === c.uuid;
+              const q = callQuality(c.disposition, c.durationSeconds);
+              const Arrow = c.direction === "inbound" ? PhoneIncoming : PhoneOutgoing;
+              return (
+                <li key={c.uuid} className="overflow-hidden rounded-xl ring-1 ring-transparent transition hover:ring-border/60">
+                  <button
+                    onClick={() => setOpen(isOpen ? null : c.uuid)}
+                    onContextMenu={(e) => rowMenu(e, counterpart)}
+                    className={cn("flex w-full items-center gap-3 border-l-2 py-2.5 pl-2.5 pr-2 text-left transition hover:bg-accent", q.border)}
+                  >
+                    <Arrow className={cn("size-4 shrink-0", q.text)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold tabular-nums">{displayNumber(counterpart) || "—"}</span>
+                      <span className={cn("text-xs", q.text)}>{q.label}{c.durationSeconds > 0 && <span className="text-muted-foreground"> · {formatDuration(c.durationSeconds)}</span>}</span>
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{formatStamp(c.startedAt)}</span>
                     <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
-                    <Direction value={c.direction} />
-                    <span className="truncate text-sm font-medium">{displayNumber(counterpart) || "—"}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <CallDisposition value={c.disposition} />
-                    <span className="hidden text-xs text-muted-foreground sm:inline">{formatStamp(c.startedAt)}</span>
-                  </span>
-                </button>
+                  </button>
 
-                {isOpen && (
-                  <div className="space-y-2 px-3 pb-3 pt-1 text-sm">
-                    <CopyRow label="Arayan" number={c.fromNumber} copied={copied} onCopy={copy} />
-                    <CopyRow label="Aranan" number={c.toNumber} copied={copied} onCopy={copy} />
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>Süre: {formatDuration(c.durationSeconds)}</span>
-                      <span>{formatStamp(c.startedAt)}</span>
+                  {isOpen && (
+                    <div className="space-y-2 bg-muted/20 px-3 pb-3 pt-2 text-sm">
+                      <CopyRow label="Arayan" number={c.fromNumber} copied={copied} onCopy={copy} />
+                      <CopyRow label="Aranan" number={c.toNumber} copied={copied} onCopy={copy} />
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>Süre: {formatDuration(c.durationSeconds)}</span>
+                        <span>{formatStamp(c.startedAt)}</span>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button variant="secondary" className="h-8 px-3" onClick={() => phone.call(normalizeDial(counterpart)).catch(() => undefined)} disabled={!canDial || !counterpart}>
+                          <Phone className="size-3.5" /> Ara
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 pt-1">
-                      <Button variant="secondary" className="h-8 px-3" onClick={() => phone.call(normalizeDial(counterpart)).catch(() => undefined)} disabled={!canDial || !counterpart}>
-                        <Phone className="size-3.5" /> Ara
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </Card>
+  );
+}
+
+function Legend({ dot, label }: { dot: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={cn("size-2 rounded-full", dot)} />
+      {label}
+    </span>
   );
 }
 

@@ -52,16 +52,19 @@ func (r *Repository) Update(ctx context.Context, id uint, fields map[string]any)
 	return nil
 }
 
-// Recent returns the most recent call logs. When ownerID is set, only that
-// user's calls are returned (own-scope).
-func (r *Repository) Recent(ctx context.Context, ownerID *uint, limit int) ([]models.CallLog, error) {
-	q := r.db.WithContext(ctx).Model(&models.CallLog{})
-	if ownerID != nil {
-		q = q.Where("user_id = ?", *ownerID)
+// Recent returns a user's most recent call logs and their total count.
+func (r *Repository) Recent(ctx context.Context, userID uint, limit int) ([]models.CallLog, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("call logs could not be counted: %w", err)
 	}
 	var logs []models.CallLog
-	if err := q.Order("started_at DESC").Limit(limit).Find(&logs).Error; err != nil {
-		return nil, fmt.Errorf("call logs could not be listed: %w", err)
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("started_at DESC").
+		Limit(limit).
+		Find(&logs).Error; err != nil {
+		return nil, 0, fmt.Errorf("call logs could not be listed: %w", err)
 	}
-	return logs, nil
+	return logs, total, nil
 }
