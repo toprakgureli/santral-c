@@ -24,6 +24,9 @@ security:
   attemptWindow: 15m
   mfaKey: "change-me-to-a-32-byte-mfa-key"
   trustedIPs: ""
+  # When true, every non-exempt user must set up TOTP MFA at first login.
+  # Only seeded on a fresh database (an admin's later change is preserved).
+  requireMFA: false
 
 owner:
   name: "Owner"

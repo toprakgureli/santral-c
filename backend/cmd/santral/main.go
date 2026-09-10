@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -92,10 +93,24 @@ func run() error {
 	callLogHandler := calllog.NewHandler(callLogSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
-	app := fiber.New(fiber.Config{
+	fiberCfg := fiber.Config{
 		AppName:      configs.Cnf.App.Name,
 		ErrorHandler: middlewares.ErrorHandler,
-	})
+	}
+	// Behind nginx/Cloudflare, trust the configured proxies and read the real
+	// client IP from X-Forwarded-For so audit trails and lockouts are accurate.
+	if tp := strings.TrimSpace(configs.Cnf.App.TrustedProxies); tp != "" {
+		proxies := make([]string, 0)
+		for _, p := range strings.Split(tp, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				proxies = append(proxies, p)
+			}
+		}
+		fiberCfg.EnableTrustedProxyCheck = true
+		fiberCfg.TrustedProxies = proxies
+		fiberCfg.ProxyHeader = fiber.HeaderXForwardedFor
+	}
+	app := fiber.New(fiberCfg)
 	app.Use(requestid.New())
 	app.Use(middlewares.Recover())
 	app.Use(cors.New(cors.Config{

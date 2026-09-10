@@ -1,0 +1,67 @@
+# Production config for cm.toprakgureli.com.
+# Copy to config.yml on the server and fill every "change-me" value.
+# NEVER commit the filled-in file: config.yml is gitignored.
+app:
+  name: santral-c
+  development: live
+  port: "8090"              # internal only; nginx proxies to it
+  # nginx runs on the same host, so trust the loopback proxy. This makes the
+  # backend read the real client IP from X-Forwarded-For (set by nginx from
+  # Cloudflare's CF-Connecting-IP) for audit trails and lockouts.
+  trustedProxies: "127.0.0.1"
+  corsOrigins: ""           # empty: frontend and API are same-origin
+  publicUrl: "https://cm.toprakgureli.com"
+
+auth:
+  secret: "change-me-to-a-long-random-secret"   # openssl rand -hex 32
+  accessTTL: 15m
+  refreshTTL: 720h
+  issuer: santral-c
+  cookieName: santral_access
+  refreshCookieName: santral_refresh
+  cookieSecure: true        # required: the site is served over HTTPS
+
+security:
+  ipFailureLimit: 10
+  ipBanDuration: 15m
+  accountLockDuration: 15m
+  distinctIPLimit: 5
+  attemptWindow: 15m
+  mfaKey: "change-me-to-a-32-byte-mfa-key"       # openssl rand -hex 16
+  trustedIPs: ""
+  requireMFA: true          # force TOTP MFA enrollment at first login
+
+owner:
+  name: "Toprak Gureli"
+  email: "owner@toprakgureli.com"
+  password: "change-me-on-first-login"           # simple; changed at first login
+
+database:
+  host: localhost
+  port: "5432"
+  name: santral
+  user: santral
+  password: "change-me-strong-db-password"
+  sslMode: disable
+  timeZone: Europe/Istanbul
+  debug: false
+
+redis:
+  host: localhost
+  port: "6379"
+  password: ""
+  db: 0
+
+bulutsantralim:
+  enabled: true
+  # Copy these four+ values verbatim from your working local config.yml.
+  apiKey: "change-me-bulutsantralim-api-key"
+  apiBase: "https://api.bulutsantralim.com"
+  webphoneBase: "https://oim.verimor.com.tr/webphone"
+  sipDomain: "change-me.bulutsantralim.com"
+  sipWssUrl: "wss://api.bulutsantralim.com:7443"
+  stunUrl: "stun:194.49.126.36:7443"
+  turnUrl: ""
+  turnUser: ""
+  turnPass: ""
+  sipKey: "change-me-to-a-32-byte-sip-key"        # openssl rand -hex 16

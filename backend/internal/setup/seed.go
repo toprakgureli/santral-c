@@ -14,7 +14,8 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/hash"
 )
 
-// Seed applies the permission, role and owner seed idempotently.
+// Seed applies the permission, role, owner and default-settings seed
+// idempotently.
 func Seed(db *gorm.DB) error {
 	if err := seedPermissions(db); err != nil {
 		return err
@@ -22,7 +23,32 @@ func Seed(db *gorm.DB) error {
 	if err := seedRoles(db); err != nil {
 		return err
 	}
+	if err := seedSettings(db); err != nil {
+		return err
+	}
 	return seedOwner(db)
+}
+
+// seedSettings writes default runtime flags when they are not yet present, so a
+// fresh deployment can force MFA enrollment out of the box (security.requireMFA)
+// without overriding a value an admin later changed.
+func seedSettings(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&models.SystemSetting{}).Where("key = ?", "mfa_required").Count(&count).Error; err != nil {
+		return fmt.Errorf("mfa_required setting could not be checked: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	value := "false"
+	if configs.Cnf.Security.RequireMFA {
+		value = "true"
+	}
+	if err := db.Create(&models.SystemSetting{Key: "mfa_required", Value: value}).Error; err != nil {
+		return fmt.Errorf("mfa_required setting could not be seeded: %w", err)
+	}
+	slog.Info("mfa_required setting seeded", "value", value)
+	return nil
 }
 
 func seedPermissions(db *gorm.DB) error {

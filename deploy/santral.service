@@ -1,0 +1,26 @@
+# systemd unit for the santral-c backend.
+# Install: copy to /etc/systemd/system/santral.service, then
+#   systemctl daemon-reload && systemctl enable --now santral
+[Unit]
+Description=santral-c call manager backend
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=santral
+Group=santral
+WorkingDirectory=/opt/santral-c
+# config.yml lives next to the binary in the working directory.
+Environment=SANTRAL_CONFIG=/opt/santral-c/config.yml
+ExecStart=/opt/santral-c/santral -config /opt/santral-c/config.yml
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

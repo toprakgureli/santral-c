@@ -58,6 +58,7 @@ type Security struct {
 	AttemptWindow       time.Duration `mapstructure:"attemptWindow"`
 	MFAKey              string        `mapstructure:"mfaKey"`
 	TrustedIPs          string        `mapstructure:"trustedIPs"`
+	RequireMFA          bool          `mapstructure:"requireMFA"`
 }
 
 // Owner holds the bootstrap invisible-admin credentials.
