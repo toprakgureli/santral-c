@@ -10,15 +10,16 @@ type Module string
 
 // Permission modules.
 const (
-	ModuleCall    Module = "call"
-	ModuleCDR     Module = "cdr"
-	ModuleAgent   Module = "agent"
-	ModuleQueue   Module = "queue"
-	ModuleContact Module = "contact"
-	ModuleUser    Module = "user"
-	ModuleRole    Module = "role"
-	ModuleQuality Module = "quality"
-	ModuleSystem  Module = "system"
+	ModuleCall       Module = "call"
+	ModuleCDR        Module = "cdr"
+	ModuleAgent      Module = "agent"
+	ModuleQueue      Module = "queue"
+	ModuleContact    Module = "contact"
+	ModuleEscalation Module = "escalation"
+	ModuleUser       Module = "user"
+	ModuleRole       Module = "role"
+	ModuleQuality    Module = "quality"
+	ModuleSystem     Module = "system"
 )
 
 // Permission keys.
@@ -43,6 +44,9 @@ const (
 
 	ContactView   Permission = "contact.view"
 	ContactManage Permission = "contact.manage"
+
+	EscalationView   Permission = "escalation.view"
+	EscalationManage Permission = "escalation.manage"
 
 	UserView       Permission = "user.view"
 	UserCreate     Permission = "user.create"
@@ -83,6 +87,8 @@ var permissions = []PermissionInfo{
 	{QueueManage, "Kuyrukları yönetir"},
 	{ContactView, "Kişileri görür"},
 	{ContactManage, "Kişileri yönetir"},
+	{EscalationView, "Eskalasyon kayıtlarını görür ve oluşturur"},
+	{EscalationManage, "Eskalasyon durum kataloğunu yönetir"},
 	{UserView, "Kullanıcıları görür"},
 	{UserCreate, "Kullanıcı oluşturur"},
 	{UserUpdate, "Kullanıcı günceller"},

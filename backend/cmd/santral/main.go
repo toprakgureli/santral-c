@@ -19,6 +19,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
+	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/role"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
@@ -84,6 +85,8 @@ func run() error {
 	roleHandler := role.NewHandler(roleSvc)
 	contactSvc := contact.NewService(contact.NewRepository(db), userSvc, auditSvc)
 	contactHandler := contact.NewHandler(contactSvc)
+	escalationSvc := escalation.NewService(escalation.NewRepository(db), userSvc)
+	escalationHandler := escalation.NewHandler(escalationSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
 	app := fiber.New(fiber.Config{
@@ -105,15 +108,17 @@ func run() error {
 	user.NewRouter(userHandler, guard).Routes(api)
 	role.NewRouter(roleHandler, guard).Routes(api)
 	contact.NewRouter(contactHandler, guard).Routes(api)
+	escalation.NewRouter(escalationHandler, guard).Routes(api)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
 		verimorSvc := verimor.NewService(verimorClient, userSvc, verimor.NewRepository(db), configs.Cnf.Bulutsantralim)
+		verimorSvc.Start(ctx)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		if err := app.Listen(":" + configs.Cnf.App.Port); err != nil {

@@ -34,13 +34,18 @@ type Service struct {
 	mu    sync.Mutex
 	cache map[string]cdrCacheEntry
 
-	dirMu      sync.Mutex
-	extCache   []PBXExtension
-	extAt      time.Time
-	queueCache []PBXQueue
-	queueAt    time.Time
-	statsCache *Stats
-	statsAt    time.Time
+	// snap holds the last good snapshot the background poller maintains, so the
+	// panel's hot paths never touch the rate-limited API directly.
+	snapMu sync.RWMutex
+	snap   snapshot
+}
+
+// snapshot is the last-good view the poller keeps warm.
+type snapshot struct {
+	calls  *CallList
+	exts   []PBXExtension
+	queues []PBXQueue
+	stats  *Stats
 }
 
 type cdrCacheEntry struct {
@@ -54,6 +59,153 @@ func NewService(client *Client, users IActorResolver, repo *Repository, cfg conf
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
 	return &Service{client: client, users: users, repo: repo, cfg: cfg, cache: make(map[string]cdrCacheEntry)}
+}
+
+// snapshotLimit is the page size the background poller keeps warm for the
+// panel's call history.
+const snapshotLimit = 20
+
+// Start launches the background poller that keeps a snapshot of call history,
+// extensions, queues and daily stats warm. The hosted API is rate limited
+// (roughly 10 requests/minute, and 2/minute on the status endpoint), so the
+// panel must read from this snapshot instead of hitting the API on every load.
+func (s *Service) Start(ctx context.Context) {
+	go s.poll(ctx)
+}
+
+func (s *Service) poll(ctx context.Context) {
+	// Prime the snapshot in sequence with gaps, so the startup burst stays well
+	// under the per-minute budget and does not throttle itself.
+	s.refreshCalls(ctx)
+	if !sleepCtx(ctx, 3*time.Second) {
+		return
+	}
+	s.refreshExtensions(ctx)
+	if !sleepCtx(ctx, 3*time.Second) {
+		return
+	}
+	s.refreshStats(ctx)
+	if !sleepCtx(ctx, 3*time.Second) {
+		return
+	}
+	s.refreshQueues(ctx)
+
+	callsT := time.NewTicker(30 * time.Second)
+	extT := time.NewTicker(40 * time.Second)
+	statsT := time.NewTicker(60 * time.Second)
+	queueT := time.NewTicker(5 * time.Minute)
+	defer callsT.Stop()
+	defer extT.Stop()
+	defer statsT.Stop()
+	defer queueT.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-callsT.C:
+			s.refreshCalls(ctx)
+		case <-extT.C:
+			s.refreshExtensions(ctx)
+		case <-statsT.C:
+			s.refreshStats(ctx)
+		case <-queueT.C:
+			s.refreshQueues(ctx)
+		}
+	}
+}
+
+// sleepCtx waits for d or until ctx is cancelled; it returns false if the
+// context ended (the caller should stop).
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+func (s *Service) refreshCalls(ctx context.Context) {
+	params := url.Values{}
+	params.Set("page", "1")
+	params.Set("limit", strconv.Itoa(snapshotLimit))
+	cdrs, pg, err := s.client.CDRs(ctx, params)
+	if err != nil {
+		return // keep the last good snapshot
+	}
+	items := make([]Call, 0, len(cdrs))
+	for i := range cdrs {
+		items = append(items, mapCDR(cdrs[i]))
+	}
+	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	s.snapMu.Lock()
+	s.snap.calls = list
+	s.snapMu.Unlock()
+}
+
+func (s *Service) refreshExtensions(ctx context.Context) {
+	raw, err := s.client.UserStatuses(ctx)
+	if err != nil {
+		return
+	}
+	out := make([]PBXExtension, 0, len(raw))
+	for _, e := range raw {
+		out = append(out, PBXExtension{Extension: strconv.Itoa(e.User), Status: e.Status})
+	}
+	s.snapMu.Lock()
+	s.snap.exts = out
+	s.snapMu.Unlock()
+}
+
+func (s *Service) refreshQueues(ctx context.Context) {
+	raw, err := s.client.Queues(ctx)
+	if err != nil {
+		return
+	}
+	out := make([]PBXQueue, 0, len(raw))
+	for _, q := range raw {
+		out = append(out, PBXQueue{Number: strconv.Itoa(q.Number), Name: q.Name})
+	}
+	s.snapMu.Lock()
+	s.snap.queues = out
+	s.snapMu.Unlock()
+}
+
+func (s *Service) refreshStats(ctx context.Context) {
+	out, err := s.computeStats(ctx)
+	if err != nil {
+		return
+	}
+	s.snapMu.Lock()
+	s.snap.stats = out
+	s.snapMu.Unlock()
+}
+
+func (s *Service) snapCalls() *CallList {
+	s.snapMu.RLock()
+	defer s.snapMu.RUnlock()
+	return s.snap.calls
+}
+
+func (s *Service) snapExtensions() []PBXExtension {
+	s.snapMu.RLock()
+	defer s.snapMu.RUnlock()
+	return s.snap.exts
+}
+
+func (s *Service) snapQueues() []PBXQueue {
+	s.snapMu.RLock()
+	defer s.snapMu.RUnlock()
+	return s.snap.queues
+}
+
+func (s *Service) snapStats() *Stats {
+	s.snapMu.RLock()
+	defer s.snapMu.RUnlock()
+	return s.snap.stats
 }
 
 // SIPCredentials is a softphone's WebRTC registration data.
@@ -178,6 +330,18 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
 
+	// The unfiltered first page is kept warm by the background poller; serve it
+	// straight from the snapshot so the panel never touches the rate-limited API
+	// on its hot path. While the snapshot is still warming, return an empty page
+	// (200) rather than generating upstream load that would only deepen the
+	// throttle; the poller fills it within one interval.
+	if filter.Number == "" && apiDirection(filter.Direction) == "" && filter.Page <= 1 {
+		if snap := s.snapCalls(); snap != nil {
+			return snap, nil
+		}
+		return &CallList{Items: []Call{}, Page: 1}, nil
+	}
+
 	params := url.Values{}
 	if filter.Page < 1 {
 		filter.Page = 1
@@ -271,78 +435,28 @@ type PBXQueue struct {
 	Name   string `json:"name"`
 }
 
-const (
-	extTTL   = 60 * time.Second
-	queueTTL = 300 * time.Second
-)
-
-// Extensions lists extensions with status, cached to respect the hosted API's
-// rate limit (2 requests/minute on this endpoint).
+// Extensions lists extensions with live status from the warm snapshot. All
+// upstream fetches are owned by the background poller, so this hot path never
+// touches the rate-limited API; it returns an empty list while warming.
 func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension, error) {
 	if err := s.authorizeTransfer(ctx, actorID); err != nil {
 		return nil, err
 	}
-	s.dirMu.Lock()
-	if s.extCache != nil && time.Since(s.extAt) < extTTL {
-		out := s.extCache
-		s.dirMu.Unlock()
-		return out, nil
+	if snap := s.snapExtensions(); snap != nil {
+		return snap, nil
 	}
-	s.dirMu.Unlock()
-
-	raw, err := s.client.UserStatuses(ctx)
-	if err != nil {
-		s.dirMu.Lock()
-		stale := s.extCache
-		s.dirMu.Unlock()
-		if stale != nil {
-			return stale, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "Dahili listesi alınamadı (santral yoğun).", err)
-	}
-	out := make([]PBXExtension, 0, len(raw))
-	for _, e := range raw {
-		out = append(out, PBXExtension{Extension: strconv.Itoa(e.User), Status: e.Status})
-	}
-	s.dirMu.Lock()
-	s.extCache = out
-	s.extAt = time.Now()
-	s.dirMu.Unlock()
-	return out, nil
+	return []PBXExtension{}, nil
 }
 
-// Queues lists call queues, cached to respect the rate limit.
+// Queues lists call queues from the warm snapshot (poller-owned, never blocks).
 func (s *Service) Queues(ctx context.Context, actorID uint) ([]PBXQueue, error) {
 	if err := s.authorizeTransfer(ctx, actorID); err != nil {
 		return nil, err
 	}
-	s.dirMu.Lock()
-	if s.queueCache != nil && time.Since(s.queueAt) < queueTTL {
-		out := s.queueCache
-		s.dirMu.Unlock()
-		return out, nil
+	if snap := s.snapQueues(); snap != nil {
+		return snap, nil
 	}
-	s.dirMu.Unlock()
-
-	raw, err := s.client.Queues(ctx)
-	if err != nil {
-		s.dirMu.Lock()
-		stale := s.queueCache
-		s.dirMu.Unlock()
-		if stale != nil {
-			return stale, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "Kuyruk listesi alınamadı (santral yoğun).", err)
-	}
-	out := make([]PBXQueue, 0, len(raw))
-	for _, q := range raw {
-		out = append(out, PBXQueue{Number: strconv.Itoa(q.Number), Name: q.Name})
-	}
-	s.dirMu.Lock()
-	s.queueCache = out
-	s.queueAt = time.Now()
-	s.dirMu.Unlock()
-	return out, nil
+	return []PBXQueue{}, nil
 }
 
 // Stats is a small daily call summary.
@@ -366,19 +480,20 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, dnd bool) error {
 	return nil
 }
 
-// Stats returns today's tenant call totals, cached to respect the rate limit.
+// Stats returns today's tenant call totals from the warm snapshot (poller-owned,
+// never blocks). Zero totals are returned while the snapshot is warming.
 func (s *Service) Stats(ctx context.Context, actorID uint) (*Stats, error) {
 	if _, err := s.users.GetByID(ctx, actorID); err != nil {
 		return nil, err
 	}
-	s.dirMu.Lock()
-	if s.statsCache != nil && time.Since(s.statsAt) < 60*time.Second {
-		out := s.statsCache
-		s.dirMu.Unlock()
-		return out, nil
+	if snap := s.snapStats(); snap != nil {
+		return snap, nil
 	}
-	s.dirMu.Unlock()
+	return &Stats{}, nil
+}
 
+// computeStats reads today's total and missed call counts from the hosted API.
+func (s *Service) computeStats(ctx context.Context) (*Stats, error) {
 	from := time.Now().UTC().Format("2006-01-02") + " 00:00:00 UTC"
 	base := func(missed bool) url.Values {
 		v := url.Values{}
@@ -390,24 +505,13 @@ func (s *Service) Stats(ctx context.Context, actorID uint) (*Stats, error) {
 	}
 	total, err := s.client.CDRCount(ctx, base(false))
 	if err != nil {
-		s.dirMu.Lock()
-		stale := s.statsCache
-		s.dirMu.Unlock()
-		if stale != nil {
-			return stale, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "İstatistik alınamadı (santral yoğun).", err)
+		return nil, err
 	}
 	missed, err := s.client.CDRCount(ctx, base(true))
 	if err != nil {
 		missed = 0
 	}
-	out := &Stats{Total: total, Missed: missed}
-	s.dirMu.Lock()
-	s.statsCache = out
-	s.statsAt = time.Now()
-	s.dirMu.Unlock()
-	return out, nil
+	return &Stats{Total: total, Missed: missed}, nil
 }
 
 func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
