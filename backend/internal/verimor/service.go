@@ -355,7 +355,9 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		params.Set("direction", d)
 	}
 	if filter.Number != "" {
-		params.Set("caller_id_number", filter.Number)
+		// `number` matches either party and does partial matching, unlike
+		// `caller_id_number` which is an exact caller-only match.
+		params.Set("number", filter.Number)
 	}
 
 	key := params.Encode()
