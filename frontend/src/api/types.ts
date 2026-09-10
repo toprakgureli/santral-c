@@ -4,6 +4,7 @@ export interface User {
   email: string;
   active: boolean;
   roles: string[];
+  roleIds: number[];
   permissions: string[];
   mfaEnabled: boolean;
   mustChangePassword: boolean;
@@ -29,7 +30,24 @@ export interface Role {
   name: string;
   displayName: string;
   description: string;
+  system: boolean;
+  userCount: number;
+  permissionIds: number[];
 }
+
+export interface PermissionItem {
+  id: number;
+  key: string;
+  description: string;
+}
+
+export interface PermissionGroup {
+  module: string;
+  label: string;
+  items: PermissionItem[];
+}
+
+export type AgentPresenceState = "available" | "break" | "backoffice" | "dnd";
 
 export interface Paged<T> {
   items: T[];

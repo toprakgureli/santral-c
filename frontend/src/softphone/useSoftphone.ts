@@ -46,6 +46,14 @@ function peerConnection(session: Session): RTCPeerConnection | undefined {
   return sdh?.peerConnection;
 }
 
+function newCallId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `c-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
 function rejectReason(code: number | undefined): string {
   switch (code) {
     case 486:
@@ -80,6 +88,13 @@ export function useSoftphone(enabled: boolean): Phone {
   const localEndRef = useRef(false);
   const domainRef = useRef("");
 
+  // Call-log correlation: one id per call, its direction/peer, and when it was
+  // answered, so we can record the call to our own store as it progresses.
+  const callIdRef = useRef<string>("");
+  const callDirRef = useRef<"inbound" | "outbound">("outbound");
+  const callPeerRef = useRef<string>("");
+  const establishedAtRef = useRef<number>(0);
+
   const attachRemoteMedia = useCallback((session: Session) => {
     const pc = peerConnection(session);
     if (!pc || !audioRef.current) return;
@@ -89,17 +104,32 @@ export function useSoftphone(enabled: boolean): Phone {
     void audioRef.current.play().catch(() => undefined);
   }, []);
 
+  const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
+    if (!callIdRef.current) return;
+    api
+      .logCall({
+        callId: callIdRef.current,
+        phase,
+        direction: callDirRef.current,
+        peer: callPeerRef.current,
+        ...extra,
+      })
+      .catch(() => undefined);
+  }, []);
+
   const watchSession = useCallback(
     (session: Session) => {
       let wasEstablished = false;
       session.stateChange.addListener((state) => {
         if (state === SessionState.Established) {
           wasEstablished = true;
+          establishedAtRef.current = Date.now();
           tones.stop();
           setMuted(false);
           setHeld(false);
           setStatus("in-call");
           attachRemoteMedia(session);
+          logCall("answer");
         } else if (state === SessionState.Terminated) {
           tones.stop();
           // Only beep when an actual conversation ended, so a rejected or
@@ -108,6 +138,16 @@ export function useSoftphone(enabled: boolean): Phone {
             tones.endBeep();
             setEndReason(localEndRef.current ? "Kapattınız" : "Karşı taraf kapattı");
           }
+          const duration = wasEstablished ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0;
+          const disposition = wasEstablished
+            ? "answered"
+            : localEndRef.current
+              ? "canceled"
+              : callDirRef.current === "inbound"
+                ? "missed"
+                : "no_answer";
+          logCall("end", { disposition, durationSeconds: duration });
+          callIdRef.current = "";
           setPeer(null);
           setMuted(false);
           setHeld(false);
@@ -116,7 +156,7 @@ export function useSoftphone(enabled: boolean): Phone {
         }
       });
     },
-    [attachRemoteMedia],
+    [attachRemoteMedia, logCall],
   );
 
   useEffect(() => {
@@ -163,7 +203,12 @@ export function useSoftphone(enabled: boolean): Phone {
               sessionRef.current = invitation;
               localEndRef.current = false;
               setEndReason(null);
-              setPeer(invitation.remoteIdentity.uri.user ?? "");
+              const from = invitation.remoteIdentity.uri.user ?? "";
+              setPeer(from);
+              callIdRef.current = newCallId();
+              callDirRef.current = "inbound";
+              callPeerRef.current = from;
+              logCall("start");
               setStatus("incoming");
               tones.incoming();
               watchSession(invitation);
@@ -193,7 +238,7 @@ export function useSoftphone(enabled: boolean): Phone {
       if (registerer) registerer.unregister().catch(() => undefined);
       if (ua) ua.stop().catch(() => undefined);
     };
-  }, [enabled, watchSession]);
+  }, [enabled, watchSession, logCall]);
 
   const call = useCallback(
     async (raw: string) => {
@@ -211,6 +256,10 @@ export function useSoftphone(enabled: boolean): Phone {
       localEndRef.current = false;
       setEndReason(null);
       setPeer(target);
+      callIdRef.current = newCallId();
+      callDirRef.current = "outbound";
+      callPeerRef.current = target;
+      logCall("start");
       setStatus("calling");
       watchSession(inviter);
 
@@ -234,6 +283,8 @@ export function useSoftphone(enabled: boolean): Phone {
               if (reason === "Meşgul") tones.busy();
               else tones.congestion();
               window.setTimeout(() => tones.stop(), 2500);
+              logCall("end", { disposition: reason === "Meşgul" ? "busy" : "no_answer", durationSeconds: 0 });
+              callIdRef.current = "";
               setPeer(null);
               setStatus("registered");
               sessionRef.current = null;
@@ -247,7 +298,7 @@ export function useSoftphone(enabled: boolean): Phone {
         throw e;
       }
     },
-    [attachRemoteMedia, watchSession],
+    [attachRemoteMedia, watchSession, logCall],
   );
 
   const answer = useCallback(async () => {

@@ -1,5 +1,6 @@
 import type {
   CallPage,
+  AgentPresenceState,
   Contact,
   EscalationCategory,
   EscalationReason,
@@ -9,6 +10,7 @@ import type {
   PBXExtension,
   PBXQueue,
   PBXStats,
+  PermissionGroup,
   Role,
   SipCredentials,
   User,
@@ -85,8 +87,16 @@ export const api = {
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
 
-  // Roles
+  // Roles & permissions
   listRoles: () => request<{ items: Role[] }>("/roles").then((r) => r.items),
+  rolePermissions: () => request<{ items: PermissionGroup[] }>("/roles/permissions").then((r) => r.items),
+  createRole: (body: { name: string; displayName: string; description: string; permissionIds: number[] }) =>
+    request<Role>("/roles/", { method: "POST", body: JSON.stringify(body) }),
+  updateRole: (id: number, body: { displayName: string; description: string; permissionIds: number[] }) =>
+    request<Role>(`/roles/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteRole: (id: number) => request<void>(`/roles/${id}`, { method: "DELETE" }),
+  setUserRoles: (id: number, roleIds: number[]) =>
+    request<User>(`/users/${id}/roles`, { method: "PATCH", body: JSON.stringify({ roleIds }) }),
 
   // Contacts
   listContacts: (params: { query?: string; page?: number; perPage?: number } = {}) =>
@@ -101,17 +111,23 @@ export const api = {
     request<void>(`/contacts/${id}/phones/${phoneId}`, { method: "DELETE" }),
   lookupContact: (number: string) => request<Contact>("/contacts/lookup" + query({ number })),
 
-  // Calls (Bulutsantralim CDR)
+  // Calls (Bulutsantralim CDR — full santral view)
   listCalls: (params: { direction?: string; number?: string; page?: number; perPage?: number } = {}) =>
     request<CallPage>("/calls" + query(params)),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
+
+  // Call log (our own store, used for the panel history)
+  recentCalls: () => request<CallPage>("/calls/log/"),
+  logCall: (body: { callId: string; phase: "start" | "answer" | "end"; direction?: string; peer?: string; disposition?: string; durationSeconds?: number }) =>
+    request<void>("/calls/log/", { method: "POST", body: JSON.stringify(body) }),
 
   // Softphone (SIP over WSS to Bulutsantralim)
   sipCredentials: () => request<SipCredentials>("/sip/credentials"),
   pbxExtensions: () => request<{ items: PBXExtension[] }>("/pbx/extensions").then((r) => r.items),
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
   pbxStats: () => request<PBXStats>("/pbx/stats"),
-  setAgentStatus: (dnd: boolean) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ dnd }) }),
+  getAgentStatus: () => request<{ state: AgentPresenceState }>("/pbx/status").then((r) => r.state),
+  setAgentStatus: (state: AgentPresenceState) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ state }) }),
 
   // Escalations
   escalationCategories: () => request<{ items: EscalationCategory[] }>("/escalations/categories").then((r) => r.items),

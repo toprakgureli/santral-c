@@ -5,8 +5,10 @@ import { Spinner } from "./components/ui";
 import { Calls } from "./pages/Calls";
 import { Contacts } from "./pages/Contacts";
 import { Dashboard } from "./pages/Dashboard";
+import { EscalationSearch } from "./pages/EscalationSearch";
 import { Escalations } from "./pages/Escalations";
 import { Login } from "./pages/Login";
+import { Roles } from "./pages/Roles";
 import { Users } from "./pages/Users";
 
 export function App() {
@@ -35,7 +37,9 @@ export function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/contacts" element={<Contacts />} />
+        <Route path="/escalation-search" element={<EscalationSearch />} />
         <Route path="/escalations" element={<Escalations />} />
+        <Route path="/roles" element={<Roles />} />
         <Route path="/users" element={<Users />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

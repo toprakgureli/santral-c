@@ -1,4 +1,4 @@
-import { Headset, PhoneCall, Contact, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { Headset, PhoneCall, Contact, SearchCheck, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -24,13 +24,15 @@ export const MENU: MenuGroup[] = [
         permission: ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"],
       },
       { label: "Kişiler", path: "/contacts", icon: Contact, permission: "contact.view" },
+      { label: "Eskalasyon Ara", path: "/escalation-search", icon: SearchCheck, permission: "escalation.search" },
     ],
   },
   {
     title: "Yönetim",
     items: [
-      { label: "Eskalasyon", path: "/escalations", icon: TriangleAlert, permission: "escalation.manage" },
+      { label: "Eskalasyon Durumları", path: "/escalations", icon: TriangleAlert, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: Users, permission: "user.view" },
+      { label: "Roller", path: "/roles", icon: ShieldCheck, permission: "role.view" },
     ],
   },
 ];

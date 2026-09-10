@@ -3,24 +3,27 @@ import { api, ApiError } from "../api/client";
 import type { Role, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
-import { Badge, Button, Card, ErrorText, Field, Input, Select } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select } from "../components/ui";
+import { cn } from "../lib/utils";
 
 export function Users() {
   const { user } = useAuth();
   const canCreate = can(user, "user.create");
   const canDeactivate = can(user, "user.deactivate");
   const canReset = can(user, "user.update");
+  const canAssignRoles = can(user, "role.assign");
 
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [creating, setCreating] = useState(false);
+  const [editingRoles, setEditingRoles] = useState<User | null>(null);
 
   function load() {
     api.listUsers({ perPage: 100 }).then((r) => setUsers(r.items)).catch(() => setUsers([]));
   }
   useEffect(() => {
     load();
-    if (canCreate) api.listRoles().then(setRoles).catch(() => setRoles([]));
+    if (canCreate || canAssignRoles) api.listRoles().then(setRoles).catch(() => setRoles([]));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -51,6 +54,7 @@ export function Users() {
                 <td className="py-2">{u.active ? <Badge tone="green">Aktif</Badge> : <Badge tone="red">Pasif</Badge>}</td>
                 <td className="py-2 text-right">
                   <div className="flex justify-end gap-2">
+                    {canAssignRoles && <Button variant="ghost" onClick={() => setEditingRoles(u)}>Roller</Button>}
                     {canReset && <SetSip id={u.id} ext={u.sipExtension} />}
                     {canReset && <ResetPassword id={u.id} />}
                     {canDeactivate && u.id !== user?.id && (
@@ -68,7 +72,77 @@ export function Users() {
           </tbody>
         </table>
       </Card>
+
+      {editingRoles && (
+        <EditRoles
+          user={editingRoles}
+          roles={roles}
+          onClose={() => setEditingRoles(null)}
+          onSaved={() => { setEditingRoles(null); load(); }}
+        />
+      )}
     </div>
+  );
+}
+
+function EditRoles({ user, roles, onClose, onSaved }: { user: User; roles: Role[]; onClose: () => void; onSaved: () => void }) {
+  const [selected, setSelected] = useState<number[]>(user.roleIds ?? []);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function toggle(id: number) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function save() {
+    setError(null);
+    if (selected.length === 0) { setError("En az bir rol seçin."); return; }
+    setSaving(true);
+    try {
+      await api.setUserRoles(user.id, selected);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${user.name} · Roller`}
+      description="Kullanıcının rollerini düzenleyin"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {roles.map((r) => {
+            const on = selected.includes(r.id);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => toggle(r.id)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  on ? "border-primary bg-primary text-primary-foreground" : "border-border/70 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                {r.displayName}
+              </button>
+            );
+          })}
+        </div>
+        <ErrorText>{error}</ErrorText>
+      </div>
+    </Modal>
   );
 }
 

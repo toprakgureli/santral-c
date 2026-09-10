@@ -14,7 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { Call, EscalationCategory, EscalationRecord, PBXExtension, PBXQueue, PBXStats } from "../api/types";
+import type { AgentPresenceState, Call, EscalationCategory, EscalationRecord, PBXExtension, PBXQueue, PBXStats } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
@@ -23,6 +23,7 @@ import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
+import { SearchableSelect } from "../components/SearchableSelect";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
@@ -55,6 +56,8 @@ const agentStatus: Record<string, { label: string; tone: "green" | "amber" | "sl
   AVAILABLE: { label: "Boşta", tone: "green" },
   TALKING: { label: "Görüşmede", tone: "amber" },
   UNREGISTERED: { label: "Kayıtsız", tone: "slate" },
+  BREAK: { label: "Molada", tone: "amber" },
+  BACKOFFICE: { label: "Backoffice", tone: "amber" },
   SS_DND: { label: "Rahatsız etmeyin", tone: "red" },
 };
 
@@ -110,18 +113,15 @@ export function Dashboard() {
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
       <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
         {canSeeCalls ? <CallHistory /> : <div className="hidden xl:block" />}
-        <div className="space-y-4">
-          <Softphone hasExtension={!!user?.sipExtension} />
-          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} />}
-        </div>
+        <Softphone hasExtension={!!user?.sipExtension} />
         {canTransfer ? <AgentsQueues exts={exts} queues={queues} /> : <div className="hidden xl:block" />}
       </div>
+      {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} />}
     </div>
   );
 }
 
-const AGENT_STATE_KEY = "santral.agentStatus";
-const agentStates: Record<string, { label: string; tone: "green" | "amber" | "red" }> = {
+const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "amber" | "red" }> = {
   available: { label: "Müsait", tone: "green" },
   break: { label: "Molada", tone: "amber" },
   backoffice: { label: "Backoffice", tone: "amber" },
@@ -130,24 +130,20 @@ const agentStates: Record<string, { label: string; tone: "green" | "amber" | "re
 
 function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
   const phone = useSoftphoneContext();
-  const [agentState, setAgentState] = useState<string>(() => {
-    try {
-      return localStorage.getItem(AGENT_STATE_KEY) ?? "available";
-    } catch {
-      return "available";
-    }
-  });
+  const [agentState, setAgentState] = useState<AgentPresenceState>("available");
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
   const state = agentStates[agentState] ?? agentStates.available;
 
-  function changeState(v: string) {
+  // Presence is stored server-side, so it survives reloads and shows in the
+  // agent list; load the current value on mount.
+  useEffect(() => {
+    if (!hasExtension) return;
+    api.getAgentStatus().then((s) => setAgentState(s)).catch(() => undefined);
+  }, [hasExtension]);
+
+  function changeState(v: AgentPresenceState) {
     setAgentState(v);
-    try {
-      localStorage.setItem(AGENT_STATE_KEY, v);
-    } catch {
-      // ignore
-    }
-    api.setAgentStatus(v !== "available").catch(() => undefined);
+    api.setAgentStatus(v).catch(() => undefined);
   }
 
   // While in a call the live call status wins; otherwise the presence badge
@@ -168,7 +164,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
         </div>
         <Badge tone={badgeTone}>{badgeLabel}</Badge>
         {hasExtension && (
-          <Select value={agentState} onChange={(e) => changeState(e.target.value)} className="h-9 w-40">
+          <Select value={agentState} onChange={(e) => changeState(e.target.value as AgentPresenceState)} className="h-9 w-40">
             {Object.entries(agentStates).map(([v, s]) => (
               <option key={v} value={v}>
                 {s.label}
@@ -346,11 +342,11 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
 
 function Escalation({ categories, activePeer }: { categories: EscalationCategory[]; activePeer?: string }) {
   const [number, setNumber] = useState("");
-  const [catId, setCatId] = useState<number | "">("");
-  const [reasonId, setReasonId] = useState<number | "">("");
+  const [catId, setCatId] = useState<number | null>(null);
+  const [reasonId, setReasonId] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [history, setHistory] = useState<EscalationRecord[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
   // When a call is live, follow its number so the agent logs against the right
@@ -371,83 +367,125 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
   }, [number, loadHistory]);
 
   const reasons = useMemo(() => categories.find((c) => c.id === catId)?.reasons ?? [], [categories, catId]);
+  const catOptions = useMemo(() => categories.map((c) => ({ id: c.id, label: c.name })), [categories]);
+  const reasonOptions = useMemo(() => reasons.map((r) => ({ id: r.id, label: r.name })), [reasons]);
 
   async function save() {
-    if (!number.trim() || reasonId === "") { setStatus("Numara ve durum seçin."); return; }
+    if (!number.trim() || reasonId === null) { setStatus({ kind: "err", text: "Numara ve durum seçin." }); return; }
     setSaving(true);
     setStatus(null);
     try {
-      await api.logEscalation({ number: number.trim(), reasonId: Number(reasonId), note: note.trim() || undefined });
+      await api.logEscalation({ number: number.trim(), reasonId, note: note.trim() || undefined });
       setNote("");
-      setStatus("Eskalasyon kaydedildi.");
+      setStatus({ kind: "ok", text: "Eskalasyon kaydedildi." });
       loadHistory(number);
     } catch (e) {
-      setStatus(e instanceof ApiError ? e.message : "Kaydedilemedi.");
+      setStatus({ kind: "err", text: e instanceof ApiError ? e.message : "Kaydedilemedi." });
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card title="Eskalasyon / Müşteri Ara">
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            placeholder="Müşteri numarası"
-            inputMode="tel"
-            className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 pl-9 pr-3 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-          />
+    <Card title="Eskalasyon">
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        {/* Entry */}
+        <div className="space-y-4">
+          {categories.length === 0 ? (
+            <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
+              Henüz eskalasyon durumu tanımlı değil. Yönetici, <span className="font-medium">Eskalasyon</span> menüsünden kategori ve durum ekleyebilir.
+            </p>
+          ) : (
+            <>
+              <label className="block space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Müşteri Numarası</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={number}
+                    onChange={(e) => setNumber(e.target.value)}
+                    placeholder="0530 000 00 00"
+                    inputMode="tel"
+                    className="h-12 w-full rounded-xl border border-border/70 bg-muted/40 pl-10 pr-3 text-base outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+                  />
+                </div>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Kategori</span>
+                  <SearchableSelect
+                    size="lg"
+                    value={catId}
+                    onChange={(id) => { setCatId(id); setReasonId(null); }}
+                    options={catOptions}
+                    placeholder="Kategori seçin"
+                    searchPlaceholder="Kategori ara..."
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Durum</span>
+                  <SearchableSelect
+                    size="lg"
+                    value={reasonId}
+                    onChange={setReasonId}
+                    options={reasonOptions}
+                    placeholder={catId === null ? "Önce kategori" : "Durum seçin"}
+                    searchPlaceholder="Durum ara..."
+                    disabled={catId === null}
+                  />
+                </label>
+              </div>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Not</span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Görüşme notu (opsiyonel)"
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+                />
+              </label>
+
+              <div className="flex items-center justify-between gap-3">
+                {status ? (
+                  <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span>
+                ) : (
+                  <span />
+                )}
+                <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null || !number.trim()}>
+                  {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
-        {categories.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Select value={catId} onChange={(e) => { setCatId(e.target.value ? Number(e.target.value) : ""); setReasonId(""); }} className="h-9">
-              <option value="">Kategori</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select value={reasonId} onChange={(e) => setReasonId(e.target.value ? Number(e.target.value) : "")} className="h-9" disabled={catId === ""}>
-              <option value="">Durum</option>
-              {reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </Select>
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">Henüz eskalasyon durumu tanımlı değil. Yönetici, Eskalasyon menüsünden ekleyebilir.</p>
-        )}
-
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Not (opsiyonel)"
-          rows={2}
-          className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3 py-2 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-        />
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">{status}</span>
-          <Button onClick={save} disabled={saving || reasonId === "" || !number.trim()}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-        </div>
-
-        {history.length > 0 && (
-          <div className="space-y-1.5 border-t border-border/60 pt-3">
-            <p className="text-xs font-medium text-muted-foreground">Geçmiş eskalasyonlar</p>
-            <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+        {/* This customer's history */}
+        <div className="rounded-xl bg-muted/30 p-4">
+          <p className="mb-3 text-sm font-semibold">
+            Bu müşterinin geçmişi{number.trim() && <span className="text-muted-foreground"> · {displayNumber(number)}</span>}
+          </p>
+          {history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{number.trim() ? "Bu numara için kayıt yok." : "Numara girin veya çağrı başlatın."}</p>
+          ) : (
+            <ul className="max-h-72 space-y-2 overflow-y-auto">
               {history.map((h) => (
-                <li key={h.id} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
+                <li key={h.id} className="rounded-lg bg-card px-3 py-2.5 text-sm ring-1 ring-border/50">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-foreground">{h.agentName} görüştü</span>
-                    <span className="text-muted-foreground">{h.createdAt}</span>
+                    <span className="font-medium">{h.agentName} görüştü</span>
+                    <span className="text-xs text-muted-foreground">{h.createdAt}</span>
                   </div>
-                  <div className="mt-0.5 text-muted-foreground">
-                    {h.categoryName} · {h.reasonName}
+                  <div className="mt-1">
+                    <Badge tone="amber">{h.categoryName}</Badge> <span className="text-muted-foreground">{h.reasonName}</span>
                   </div>
-                  {h.note && <div className="mt-0.5 text-foreground/80">Not: {h.note}</div>}
+                  {h.note && <p className="mt-1 text-foreground/80">{h.note}</p>}
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </Card>
   );
@@ -557,21 +595,13 @@ function CallHistory() {
 
   useEffect(() => {
     let live = true;
-    let warmTries = 0;
     const load = () => {
       api
-        .listCalls({ perPage: 20 })
+        .recentCalls()
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
           setError(null);
-          // The backend serves an empty page (200) while its snapshot warms up;
-          // retry a few times before settling on the empty state.
-          if (r.items.length === 0 && warmTries < 5) {
-            warmTries += 1;
-            window.setTimeout(load, 4000);
-            return;
-          }
           setLoading(false);
         })
         .catch((e) => {
@@ -581,7 +611,9 @@ function CallHistory() {
         });
     };
     load();
-    const timer = window.setInterval(() => { warmTries = 5; load(); }, 30000);
+    // Our own store is authoritative and cheap; refresh often so a just-ended
+    // call appears right away.
+    const timer = window.setInterval(load, 10000);
     return () => {
       live = false;
       window.clearInterval(timer);
