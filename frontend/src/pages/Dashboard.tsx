@@ -68,6 +68,8 @@ export function Dashboard() {
   const canSeeCalls = canAny(user, ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"]);
   const canTransfer = can(user, "call.transfer");
   const canEscalate = can(user, "escalation.view");
+  const canCall = can(user, "call.originate");
+  const canSearchEsc = can(user, "escalation.search");
   const phone = useSoftphoneContext();
 
   const [exts, setExts] = useState<PBXExtension[]>([]);
@@ -113,13 +115,11 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
+      {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
       <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
-        {canSeeCalls ? <CallHistory /> : <div className="hidden xl:block" />}
-        <div className="space-y-4">
-          <Softphone hasExtension={!!user?.sipExtension} />
-          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} />}
-        </div>
-        {canTransfer ? <AgentsQueues exts={exts} queues={queues} /> : <div className="hidden xl:block" />}
+        {canSeeCalls ? <CallHistory canCall={canCall} /> : <div className="hidden xl:block" />}
+        <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
+        {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} /> : <div className="hidden xl:block" />}
       </div>
     </div>
   );
@@ -221,7 +221,7 @@ function Round({ onClick, tone = "muted", title, disabled, size = "md", children
   );
 }
 
-function Softphone({ hasExtension }: { hasExtension: boolean }) {
+function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
@@ -238,6 +238,7 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
   }, [active]);
 
   function callNow() {
+    if (!canCall) return;
     const n = normalizeDial(target);
     if (n) phone.call(n).catch(() => undefined);
   }
@@ -252,8 +253,14 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
         <div className="space-y-4">
           {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
 
-          {/* Idle: number entry + dialpad */}
-          {idle && (
+          {/* Idle: number entry + dialpad (only for agents allowed to place calls) */}
+          {idle && !canCall && (
+            <div className="py-8 text-center">
+              <p className="text-sm text-muted-foreground">Giden çağrı yetkiniz yok.</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">Gelen çağrıları cevaplayabilirsiniz.</p>
+            </div>
+          )}
+          {idle && canCall && (
             <>
               <div className="space-y-1">
                 <input
@@ -344,7 +351,7 @@ function Softphone({ hasExtension }: { hasExtension: boolean }) {
   );
 }
 
-function Escalation({ categories, activePeer }: { categories: EscalationCategory[]; activePeer?: string }) {
+function Escalation({ categories, activePeer, canSearch }: { categories: EscalationCategory[]; activePeer?: string; canSearch: boolean }) {
   const [number, setNumber] = useState("");
   const [catId, setCatId] = useState<number | null>(null);
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -360,15 +367,17 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
   }, [activePeer]);
 
   const loadHistory = useCallback((n: string) => {
+    if (!canSearch) return; // looking a customer up requires the search permission
     const key = n.trim();
     if (!key) { setHistory([]); return; }
     api.escalationHistory(key).then(setHistory).catch(() => setHistory([]));
-  }, []);
+  }, [canSearch]);
 
   useEffect(() => {
+    if (!canSearch) return;
     const t = window.setTimeout(() => loadHistory(number), 400);
     return () => window.clearTimeout(t);
-  }, [number, loadHistory]);
+  }, [number, loadHistory, canSearch]);
 
   const reasons = useMemo(() => categories.find((c) => c.id === catId)?.reasons ?? [], [categories, catId]);
   const catOptions = useMemo(() => categories.map((c) => ({ id: c.id, label: c.name })), [categories]);
@@ -392,7 +401,7 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
 
   return (
     <Card title="Eskalasyon">
-      <div className="space-y-5">
+      <div className={cn("grid gap-6", canSearch && "lg:grid-cols-[1.6fr_1fr]")}>
         {/* Entry */}
         <div className="space-y-4">
           {categories.length === 0 ? (
@@ -466,7 +475,8 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
           )}
         </div>
 
-        {/* This customer's history */}
+        {/* This customer's history (requires the search permission) */}
+        {canSearch && (
         <div className="rounded-xl bg-muted/30 p-4">
           <p className="mb-3 text-sm font-semibold">
             Bu müşterinin geçmişi{number.trim() && <span className="text-muted-foreground"> · {displayNumber(number)}</span>}
@@ -490,17 +500,18 @@ function Escalation({ categories, activePeer }: { categories: EscalationCategory
             </ul>
           )}
         </div>
+        )}
       </div>
     </Card>
   );
 }
 
-function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue[] }) {
+function AgentsQueues({ exts, queues, canCall }: { exts: PBXExtension[]; queues: PBXQueue[]; canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [confirmExt, setConfirmExt] = useState<string | null>(null);
   const inCall = phone.status === "in-call" || phone.status === "held";
-  const canDial = phone.status === "registered";
+  const canDial = phone.status === "registered" && canCall;
 
   const sorted = [...exts].sort((a, b) => (a.status === "UNREGISTERED" ? 1 : 0) - (b.status === "UNREGISTERED" ? 1 : 0));
 
@@ -510,6 +521,7 @@ function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue
       x: e.clientX,
       y: e.clientY,
       items: [
+        { label: `${ext} dahilisini ara`, onClick: () => phone.call(ext).catch(() => undefined), disabled: !canDial || inCall },
         { label: `Çağrıyı ${ext} dahilisine aktar`, onClick: () => phone.transfer(ext).catch(() => undefined), disabled: !inCall },
         { label: "Çağrıyı dinle (yakında)", onClick: () => undefined, disabled: true },
       ],
@@ -585,7 +597,7 @@ function AgentsQueues({ exts, queues }: { exts: PBXExtension[]; queues: PBXQueue
   );
 }
 
-function CallHistory() {
+function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
   const [total, setTotal] = useState(0);
@@ -594,7 +606,7 @@ function CallHistory() {
   const [open, setOpen] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
-  const canDial = phone.status === "registered";
+  const canDial = phone.status === "registered" && canCall;
   const inCall = phone.status === "in-call" || phone.status === "held";
   const copyTimer = useRef<number | null>(null);
 

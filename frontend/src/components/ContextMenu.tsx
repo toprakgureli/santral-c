@@ -5,12 +5,17 @@ export type MenuItem = { label: string; onClick: () => void; disabled?: boolean;
 export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
   useEffect(() => {
     const close = () => onClose();
-    window.addEventListener("click", close);
-    window.addEventListener("contextmenu", close);
-    window.addEventListener("scroll", close, true);
     const onEsc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onEsc);
+    // Attach on the next tick so the same right-click that opened the menu does
+    // not immediately close it.
+    const timer = window.setTimeout(() => {
+      window.addEventListener("click", close);
+      window.addEventListener("contextmenu", close);
+      window.addEventListener("scroll", close, true);
+      window.addEventListener("keydown", onEsc);
+    }, 0);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener("click", close);
       window.removeEventListener("contextmenu", close);
       window.removeEventListener("scroll", close, true);

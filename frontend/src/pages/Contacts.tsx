@@ -12,9 +12,13 @@ export function Contacts() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Contact | null>(null);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function load() {
-    api.listContacts({ query: q || undefined, perPage: 50 }).then((r) => setContacts(r.items)).catch(() => setContacts([]));
+    api
+      .listContacts({ query: q || undefined, perPage: 50 })
+      .then((r) => { setContacts(r.items); setError(null); })
+      .catch((e) => { setContacts([]); setError(e instanceof ApiError ? e.message : "Kişiler yüklenemedi."); });
   }
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -29,6 +33,7 @@ export function Contacts() {
           </div>
         }
       >
+        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <ul className="divide-y divide-border/60">
           {contacts.map((c) => (
             <li
