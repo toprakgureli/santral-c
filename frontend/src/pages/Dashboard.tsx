@@ -115,10 +115,10 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
-      <div className="grid gap-4 xl:grid-cols-[1fr_2fr_1fr]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
         {canSeeCalls ? <CallHistory canCall={canCall} /> : <div className="hidden xl:block" />}
-        {/* Softphone and escalation sit side by side, half and half. */}
-        <div className={cn("grid gap-4", canEscalate && "lg:grid-cols-2")}>
+        {/* Softphone with the escalation panel directly below it. */}
+        <div className="space-y-4">
           <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
           {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
         </div>
