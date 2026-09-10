@@ -94,6 +94,27 @@ export interface PBXStats {
   missed: number;
 }
 
+export interface EscalationReason {
+  id: number;
+  name: string;
+}
+
+export interface EscalationCategory {
+  id: number;
+  name: string;
+  reasons: EscalationReason[];
+}
+
+export interface EscalationRecord {
+  id: number;
+  number: string;
+  categoryName: string;
+  reasonName: string;
+  note: string;
+  agentName: string;
+  createdAt: string;
+}
+
 export interface SipCredentials {
   extension: string;
   password: string;

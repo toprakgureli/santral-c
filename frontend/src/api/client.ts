@@ -1,6 +1,9 @@
 import type {
   CallPage,
   Contact,
+  EscalationCategory,
+  EscalationReason,
+  EscalationRecord,
   LoginResult,
   Paged,
   PBXExtension,
@@ -24,9 +27,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // FormData bodies must keep the browser-set multipart Content-Type (with its
+  // boundary); only default to JSON for the rest.
+  const isForm = options.body instanceof FormData;
+  const baseHeaders: Record<string, string> = isForm ? {} : { "Content-Type": "application/json" };
   const res = await fetch(BASE + path, {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+    headers: { ...baseHeaders, ...(options.headers ?? {}) },
     ...options,
   });
   if (res.status === 204) {
@@ -105,6 +112,24 @@ export const api = {
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
   pbxStats: () => request<PBXStats>("/pbx/stats"),
   setAgentStatus: (dnd: boolean) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ dnd }) }),
+
+  // Escalations
+  escalationCategories: () => request<{ items: EscalationCategory[] }>("/escalations/categories").then((r) => r.items),
+  createEscalationCategory: (name: string) =>
+    request<EscalationCategory>("/escalations/categories", { method: "POST", body: JSON.stringify({ name }) }),
+  deleteEscalationCategory: (id: number) => request<void>(`/escalations/categories/${id}`, { method: "DELETE" }),
+  createEscalationReason: (categoryId: number, name: string) =>
+    request<EscalationReason>(`/escalations/categories/${categoryId}/reasons`, { method: "POST", body: JSON.stringify({ name }) }),
+  deleteEscalationReason: (id: number) => request<void>(`/escalations/reasons/${id}`, { method: "DELETE" }),
+  importEscalationCatalog: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ addedCategories: number; addedReasons: number }>("/escalations/categories/import", { method: "POST", body: form });
+  },
+  escalationHistory: (number: string) =>
+    request<{ items: EscalationRecord[] }>("/escalations/" + query({ number })).then((r) => r.items),
+  logEscalation: (body: { number: string; reasonId: number; note?: string; callUuid?: string }) =>
+    request<EscalationRecord>("/escalations/", { method: "POST", body: JSON.stringify(body) }),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {

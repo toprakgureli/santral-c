@@ -13,3 +13,13 @@ export function normalizeDial(raw: string): string {
   else if (d.length === 10) d = "0" + d;
   return d;
 }
+
+// displayNumber strips a number down to its bare significant digits for copying
+// and display: "05304230113", "905304230113" and "+905304230113" all become
+// "5304230113". Short internal numbers are returned unchanged.
+export function displayNumber(raw: string): string {
+  const d = (raw || "").replace(/[^\d]/g, "");
+  if (!d) return raw || "";
+  if (d.length >= 10) return d.slice(-10);
+  return d;
+}

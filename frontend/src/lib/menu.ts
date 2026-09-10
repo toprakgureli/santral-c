@@ -1,4 +1,4 @@
-import { Headset, PhoneCall, Contact, Users, type LucideIcon } from "lucide-react";
+import { Headset, PhoneCall, Contact, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -28,7 +28,10 @@ export const MENU: MenuGroup[] = [
   },
   {
     title: "Yönetim",
-    items: [{ label: "Kullanıcılar", path: "/users", icon: Users, permission: "user.view" }],
+    items: [
+      { label: "Eskalasyon", path: "/escalations", icon: TriangleAlert, permission: "escalation.manage" },
+      { label: "Kullanıcılar", path: "/users", icon: Users, permission: "user.view" },
+    ],
   },
 ];
 
