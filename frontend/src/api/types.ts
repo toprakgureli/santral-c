@@ -89,6 +89,11 @@ export interface PBXQueue {
   name: string;
 }
 
+export interface PBXStats {
+  total: number;
+  missed: number;
+}
+
 export interface SipCredentials {
   extension: string;
   password: string;

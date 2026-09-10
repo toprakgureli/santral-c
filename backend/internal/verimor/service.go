@@ -39,6 +39,8 @@ type Service struct {
 	extAt      time.Time
 	queueCache []PBXQueue
 	queueAt    time.Time
+	statsCache *Stats
+	statsAt    time.Time
 }
 
 type cdrCacheEntry struct {
@@ -339,6 +341,71 @@ func (s *Service) Queues(ctx context.Context, actorID uint) ([]PBXQueue, error) 
 	s.dirMu.Lock()
 	s.queueCache = out
 	s.queueAt = time.Now()
+	s.dirMu.Unlock()
+	return out, nil
+}
+
+// Stats is a small daily call summary.
+type Stats struct {
+	Total  int `json:"total"`
+	Missed int `json:"missed"`
+}
+
+// SetStatus sets the actor's do-not-disturb state (true = no incoming calls).
+func (s *Service) SetStatus(ctx context.Context, actorID uint, dnd bool) error {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
+		return errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
+	}
+	if err := s.client.SetDND(ctx, *actor.SIPExtension, dnd); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// Stats returns today's tenant call totals, cached to respect the rate limit.
+func (s *Service) Stats(ctx context.Context, actorID uint) (*Stats, error) {
+	if _, err := s.users.GetByID(ctx, actorID); err != nil {
+		return nil, err
+	}
+	s.dirMu.Lock()
+	if s.statsCache != nil && time.Since(s.statsAt) < 60*time.Second {
+		out := s.statsCache
+		s.dirMu.Unlock()
+		return out, nil
+	}
+	s.dirMu.Unlock()
+
+	from := time.Now().UTC().Format("2006-01-02") + " 00:00:00 UTC"
+	base := func(missed bool) url.Values {
+		v := url.Values{}
+		v.Set("start_stamp_from", from)
+		if missed {
+			v.Set("missed", "true")
+		}
+		return v
+	}
+	total, err := s.client.CDRCount(ctx, base(false))
+	if err != nil {
+		s.dirMu.Lock()
+		stale := s.statsCache
+		s.dirMu.Unlock()
+		if stale != nil {
+			return stale, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "İstatistik alınamadı (santral yoğun).", err)
+	}
+	missed, err := s.client.CDRCount(ctx, base(true))
+	if err != nil {
+		missed = 0
+	}
+	out := &Stats{Total: total, Missed: missed}
+	s.dirMu.Lock()
+	s.statsCache = out
+	s.statsAt = time.Now()
 	s.dirMu.Unlock()
 	return out, nil
 }

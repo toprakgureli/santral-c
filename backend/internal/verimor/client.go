@@ -162,6 +162,39 @@ func (c *Client) Queues(ctx context.Context) ([]Queue, error) {
 	return out, nil
 }
 
+// SetDND turns do-not-disturb on or off for an extension (on = no calls).
+func (c *Client) SetDND(ctx context.Context, extension string, on bool) error {
+	state := "off"
+	if on {
+		state = "on"
+	}
+	params := url.Values{}
+	params.Set("key", c.apiKey)
+	params.Set("state", state)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/dnd/"+url.PathEscape(extension)+"?"+params.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	raw, status, err := c.do(req)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("dnd change failed (%d): %s", status, strings.TrimSpace(string(raw)))
+	}
+	return nil
+}
+
+// CDRCount returns the total number of call records matching params.
+func (c *Client) CDRCount(ctx context.Context, params url.Values) (int, error) {
+	params.Set("limit", "10")
+	_, pg, err := c.CDRs(ctx, params)
+	if err != nil {
+		return 0, err
+	}
+	return pg.TotalCount, nil
+}
+
 // Originate places a click-to-call from extension to destination and returns
 // the call UUID.
 func (c *Client) Originate(ctx context.Context, extension, destination string) (string, error) {

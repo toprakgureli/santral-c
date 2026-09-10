@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Delete, Grid3x3, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { Call, PBXExtension, PBXQueue } from "../api/types";
+import type { Call, PBXExtension, PBXQueue, PBXStats } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
-import { Badge, Button, Card } from "../components/ui";
+import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
@@ -52,6 +52,7 @@ export function Dashboard() {
 
   const [exts, setExts] = useState<PBXExtension[]>([]);
   const [queues, setQueues] = useState<PBXQueue[]>([]);
+  const [stats, setStats] = useState<PBXStats | null>(null);
 
   useEffect(() => {
     if (!canTransfer) return;
@@ -66,6 +67,17 @@ export function Dashboard() {
     };
   }, [canTransfer]);
 
+  useEffect(() => {
+    let live = true;
+    const load = () => api.pbxStats().then((d) => live && setStats(d)).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 60000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   const totals = {
     available: exts.filter((e) => e.status === "AVAILABLE").length,
     talking: exts.filter((e) => e.status === "TALKING").length,
@@ -74,7 +86,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} />
+      <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
       <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
         {canSeeCalls ? <CallHistory /> : <div className="hidden xl:block" />}
         <Softphone hasExtension={!!user?.sipExtension} />
@@ -84,8 +96,34 @@ export function Dashboard() {
   );
 }
 
-function StatusBar({ totals, showTotals, extension }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string }) {
+const AGENT_STATE_KEY = "santral.agentStatus";
+const agentStates: Record<string, string> = {
+  available: "Müsait",
+  break: "Molada",
+  backoffice: "Backoffice",
+  dnd: "Rahatsız Etmeyin",
+};
+
+function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
   const phone = useSoftphoneContext();
+  const [agentState, setAgentState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(AGENT_STATE_KEY) ?? "available";
+    } catch {
+      return "available";
+    }
+  });
+
+  function changeState(v: string) {
+    setAgentState(v);
+    try {
+      localStorage.setItem(AGENT_STATE_KEY, v);
+    } catch {
+      // ignore
+    }
+    api.setAgentStatus(v !== "available").catch(() => undefined);
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
       <div className="flex items-center gap-4">
@@ -94,14 +132,31 @@ function StatusBar({ totals, showTotals, extension }: { totals: { available: num
           <div className="text-lg font-semibold">{phone.extension ?? extension ?? "—"}</div>
         </div>
         <Badge tone={statusTone[phone.status]}>{statusLabel[phone.status]}</Badge>
+        {hasExtension && (
+          <Select value={agentState} onChange={(e) => changeState(e.target.value)} className="h-9 w-40">
+            {Object.entries(agentStates).map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        )}
       </div>
-      {showTotals && (
-        <div className="flex items-center gap-5 text-sm">
-          <Stat dot="bg-success" label="Boşta" value={totals.available} />
-          <Stat dot="bg-warning" label="Görüşmede" value={totals.talking} />
-          <Stat dot="bg-muted-foreground/60" label="Çevrimdışı" value={totals.offline} />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-5 text-sm">
+        {stats && (
+          <>
+            <Stat dot="bg-primary" label="Bugün" value={stats.total} />
+            <Stat dot="bg-destructive" label="Cevapsız" value={stats.missed} />
+          </>
+        )}
+        {showTotals && (
+          <>
+            <Stat dot="bg-success" label="Boşta" value={totals.available} />
+            <Stat dot="bg-warning" label="Görüşmede" value={totals.talking} />
+            <Stat dot="bg-muted-foreground/60" label="Çevrimdışı" value={totals.offline} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

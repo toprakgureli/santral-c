@@ -114,6 +114,35 @@ func (h *Handler) Queues(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"items": res})
 }
 
+// Status sets the actor's do-not-disturb state.
+func (h *Handler) Status(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.AgentStatus
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.SetStatus(c.UserContext(), id, req.DND); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Stats returns today's call totals.
+func (h *Handler) Stats(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Stats(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // Originate starts a click-to-call from the actor's extension.
 func (h *Handler) Originate(c *fiber.Ctx) error {
 	id, err := actor(c)

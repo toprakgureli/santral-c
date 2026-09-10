@@ -13,6 +13,11 @@ type SIPCredentials struct {
 	Password  string `json:"password" validate:"required,min=1,max=128"`
 }
 
+// AgentStatus toggles the agent's do-not-disturb state.
+type AgentStatus struct {
+	DND bool `json:"dnd"`
+}
+
 // CallFilter filters the call log.
 type CallFilter struct {
 	Direction   string

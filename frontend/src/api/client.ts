@@ -5,6 +5,7 @@ import type {
   Paged,
   PBXExtension,
   PBXQueue,
+  PBXStats,
   Role,
   SipCredentials,
   User,
@@ -102,6 +103,8 @@ export const api = {
   sipCredentials: () => request<SipCredentials>("/sip/credentials"),
   pbxExtensions: () => request<{ items: PBXExtension[] }>("/pbx/extensions").then((r) => r.items),
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
+  pbxStats: () => request<PBXStats>("/pbx/stats"),
+  setAgentStatus: (dnd: boolean) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ dnd }) }),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {
