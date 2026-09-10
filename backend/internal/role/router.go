@@ -17,5 +17,10 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 
 // Routes registers the role routes onto g.
 func (r *Router) Routes(g fiber.Router) {
-	g.Get("/roles", r.guard, r.handler.List)
+	group := g.Group("/roles", r.guard)
+	group.Get("/permissions", r.handler.Permissions) // before /:id so it is not shadowed
+	group.Get("/", r.handler.List)
+	group.Post("/", r.handler.Create)
+	group.Put("/:id", r.handler.Update)
+	group.Delete("/:id", r.handler.Delete)
 }

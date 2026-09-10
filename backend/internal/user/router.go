@@ -22,5 +22,6 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Get("/", r.handler.List)
 	group.Post("/", r.handler.Create)
 	group.Patch("/:id/active", r.handler.SetActive)
+	group.Patch("/:id/roles", r.handler.SetRoles)
 	group.Post("/:id/password", r.handler.ResetPassword)
 }

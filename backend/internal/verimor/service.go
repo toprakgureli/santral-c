@@ -435,17 +435,51 @@ type PBXQueue struct {
 	Name   string `json:"name"`
 }
 
-// Extensions lists extensions with live status from the warm snapshot. All
-// upstream fetches are owned by the background poller, so this hot path never
-// touches the rate-limited API; it returns an empty list while warming.
+// Extensions lists extensions with live status from the warm snapshot, overlaid
+// with our own persisted presence so a paused agent shows as paused rather than
+// idle. All upstream fetches are owned by the background poller, so this hot
+// path never touches the rate-limited API; it returns an empty list while
+// warming.
 func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension, error) {
 	if err := s.authorizeTransfer(ctx, actorID); err != nil {
 		return nil, err
 	}
-	if snap := s.snapExtensions(); snap != nil {
+	snap := s.snapExtensions()
+	if snap == nil {
+		return []PBXExtension{}, nil
+	}
+	presence, err := s.repo.PresenceByExtension(ctx)
+	if err != nil || len(presence) == 0 {
 		return snap, nil
 	}
-	return []PBXExtension{}, nil
+	// Copy so the shared snapshot is never mutated; overlay presence only over
+	// an idle (AVAILABLE) extension, so a live call (TALKING) still wins.
+	out := make([]PBXExtension, len(snap))
+	copy(out, snap)
+	for i := range out {
+		if out[i].Status != "AVAILABLE" {
+			continue
+		}
+		if state, ok := presence[out[i].Extension]; ok {
+			out[i].Status = presenceStatus(state)
+		}
+	}
+	return out, nil
+}
+
+// presenceStatus maps a stored presence state to the status code the agent list
+// renders.
+func presenceStatus(state string) string {
+	switch state {
+	case "break":
+		return "BREAK"
+	case "backoffice":
+		return "BACKOFFICE"
+	case "dnd":
+		return "SS_DND"
+	default:
+		return "AVAILABLE"
+	}
 }
 
 // Queues lists call queues from the warm snapshot (poller-owned, never blocks).
@@ -465,8 +499,11 @@ type Stats struct {
 	Missed int `json:"missed"`
 }
 
-// SetStatus sets the actor's do-not-disturb state (true = no incoming calls).
-func (s *Service) SetStatus(ctx context.Context, actorID uint, dnd bool) error {
+// SetStatus records the actor's presence state and engages do-not-disturb on
+// the hosted PBX for any non-available state (so a paused agent stops receiving
+// calls). Presence is persisted so it survives reloads and shows in the agent
+// list.
+func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) error {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return err
@@ -474,10 +511,28 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, dnd bool) error {
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
 		return errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
 	}
-	if err := s.client.SetDND(ctx, *actor.SIPExtension, dnd); err != nil {
+	if state == "" {
+		state = "available"
+	}
+	if err := s.repo.SetPresence(ctx, actorID, state); err != nil {
+		return errs.Internal(err)
+	}
+	if err := s.client.SetDND(ctx, *actor.SIPExtension, state != "available"); err != nil {
 		return errs.Internal(err)
 	}
 	return nil
+}
+
+// Status returns the actor's persisted presence state.
+func (s *Service) Status(ctx context.Context, actorID uint) (string, error) {
+	if _, err := s.users.GetByID(ctx, actorID); err != nil {
+		return "", err
+	}
+	state, err := s.repo.GetPresence(ctx, actorID)
+	if err != nil {
+		return "available", nil
+	}
+	return state, nil
 }
 
 // Stats returns today's tenant call totals from the warm snapshot (poller-owned,

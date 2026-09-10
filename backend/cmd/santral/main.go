@@ -18,6 +18,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
+	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
@@ -87,6 +88,8 @@ func run() error {
 	contactHandler := contact.NewHandler(contactSvc)
 	escalationSvc := escalation.NewService(escalation.NewRepository(db), userSvc)
 	escalationHandler := escalation.NewHandler(escalationSvc)
+	callLogSvc := calllog.NewService(calllog.NewRepository(db), userSvc)
+	callLogHandler := calllog.NewHandler(callLogSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
 	app := fiber.New(fiber.Config{
@@ -109,6 +112,7 @@ func run() error {
 	role.NewRouter(roleHandler, guard).Routes(api)
 	contact.NewRouter(contactHandler, guard).Routes(api)
 	escalation.NewRouter(escalationHandler, guard).Routes(api)
+	calllog.NewRouter(callLogHandler, guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

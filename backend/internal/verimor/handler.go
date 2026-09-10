@@ -114,8 +114,8 @@ func (h *Handler) Queues(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"items": res})
 }
 
-// Status sets the actor's do-not-disturb state.
-func (h *Handler) Status(c *fiber.Ctx) error {
+// SetStatus records the actor's presence state.
+func (h *Handler) SetStatus(c *fiber.Ctx) error {
 	id, err := actor(c)
 	if err != nil {
 		return err
@@ -124,10 +124,35 @@ func (h *Handler) Status(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	if err := h.service.SetStatus(c.UserContext(), id, req.DND); err != nil {
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	state := req.State
+	if state == "" {
+		// Backward compatibility with the earlier boolean payload.
+		if req.DND {
+			state = "dnd"
+		} else {
+			state = "available"
+		}
+	}
+	if err := h.service.SetStatus(c.UserContext(), id, state); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Status returns the actor's current presence state.
+func (h *Handler) Status(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	state, err := h.service.Status(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"state": state})
 }
 
 // Stats returns today's call totals.

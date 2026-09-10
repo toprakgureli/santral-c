@@ -12,6 +12,23 @@ var ErrInvalid = errors.New("number could not be normalized to E.164")
 
 const defaultCountry = "90" // Turkey
 
+// Key reduces any dialed form of a number to a stable lookup key: the last ten
+// digits (so 0530..., 90530..., +90530... and 530... all match), or the full
+// digit string for short internal numbers. It never errors.
+func Key(raw string) string {
+	var b strings.Builder
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	digits := b.String()
+	if len(digits) > 10 {
+		return digits[len(digits)-10:]
+	}
+	return digits
+}
+
 // Normalize converts a raw number to E.164 (a leading + and 8-15 digits).
 // Turkish local forms (0XXXXXXXXXX and bare 10-digit) assume the +90 country
 // code; already-international forms are preserved.

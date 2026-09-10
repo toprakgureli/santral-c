@@ -46,6 +46,7 @@ const (
 	ContactManage Permission = "contact.manage"
 
 	EscalationView   Permission = "escalation.view"
+	EscalationSearch Permission = "escalation.search"
 	EscalationManage Permission = "escalation.manage"
 
 	UserView       Permission = "user.view"
@@ -88,6 +89,7 @@ var permissions = []PermissionInfo{
 	{ContactView, "Kişileri görür"},
 	{ContactManage, "Kişileri yönetir"},
 	{EscalationView, "Eskalasyon kayıtlarını görür ve oluşturur"},
+	{EscalationSearch, "Müşteriye göre eskalasyon geçmişini arar"},
 	{EscalationManage, "Eskalasyon durum kataloğunu yönetir"},
 	{UserView, "Kullanıcıları görür"},
 	{UserCreate, "Kullanıcı oluşturur"},
@@ -107,6 +109,28 @@ func Permissions() []PermissionInfo {
 	out := make([]PermissionInfo, len(permissions))
 	copy(out, permissions)
 	return out
+}
+
+// moduleLabels are the human-facing group titles for the role editor.
+var moduleLabels = map[Module]string{
+	ModuleCall:       "Çağrı",
+	ModuleCDR:        "Çağrı Kayıtları",
+	ModuleAgent:      "Temsilci",
+	ModuleQueue:      "Kuyruk",
+	ModuleContact:    "Kişiler",
+	ModuleEscalation: "Eskalasyon",
+	ModuleUser:       "Kullanıcı",
+	ModuleRole:       "Rol",
+	ModuleQuality:    "Kalite",
+	ModuleSystem:     "Sistem",
+}
+
+// ModuleLabel returns the human-facing title for a module.
+func ModuleLabel(m Module) string {
+	if label, ok := moduleLabels[m]; ok {
+		return label
+	}
+	return string(m)
 }
 
 // Module returns the module a permission belongs to.

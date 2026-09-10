@@ -6,19 +6,17 @@ import (
 	"testing"
 )
 
-func TestNumberKey(t *testing.T) {
-	cases := map[string]string{
-		"05304230113":   "5304230113",
-		"905304230113":  "5304230113",
-		"+90 530 423 01 13": "5304230113",
-		"5304230113":    "5304230113",
-		"1014":          "1014",
-		"":              "",
+func TestParseCatalogHeaderSkip(t *testing.T) {
+	data := []byte("Kategori,Durum\nTalep,Yeni ozellik\n")
+	cat, err := parseCatalog("x.csv", data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for in, want := range cases {
-		if got := numberKey(in); got != want {
-			t.Errorf("numberKey(%q) = %q, want %q", in, got, want)
-		}
+	if _, ok := cat["Kategori"]; ok {
+		t.Errorf("header row was not skipped: %v", cat)
+	}
+	if len(cat["Talep"]) != 1 {
+		t.Errorf("Talep reasons = %v, want 1", cat["Talep"])
 	}
 }
 

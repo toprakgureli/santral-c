@@ -14,6 +14,7 @@ type User struct {
 	Email              string     `json:"email"`
 	Active             bool       `json:"active"`
 	Roles              []string   `json:"roles"`
+	RoleIDs            []uint     `json:"roleIds"`
 	Permissions        []string   `json:"permissions"`
 	MFAEnabled         bool       `json:"mfaEnabled"`
 	MustChangePassword bool       `json:"mustChangePassword"`
@@ -33,8 +34,10 @@ type UserList struct {
 // NewUser maps a user model to its response view.
 func NewUser(u *models.User) User {
 	roles := make([]string, 0, len(u.Roles))
+	roleIDs := make([]uint, 0, len(u.Roles))
 	for _, r := range u.Roles {
 		roles = append(roles, r.Name)
+		roleIDs = append(roleIDs, r.ID)
 	}
 	perms := u.Permissions()
 	permKeys := make([]string, 0, len(perms))
@@ -51,6 +54,7 @@ func NewUser(u *models.User) User {
 		Email:              u.Email,
 		Active:             u.Active,
 		Roles:              roles,
+		RoleIDs:            roleIDs,
 		Permissions:        permKeys,
 		MFAEnabled:         u.MFAEnabled,
 		MustChangePassword: u.MustChangePassword,

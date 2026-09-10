@@ -8,6 +8,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 )
 
 // historyLimit caps how many past escalations are returned for one number.
@@ -151,7 +152,7 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	if reason == nil || cat == nil {
 		return nil, errs.NotFound("Seçilen durum bulunamadı.")
 	}
-	key := numberKey(req.Number)
+	key := phone.Key(req.Number)
 	if key == "" {
 		return nil, errs.Invalid("Geçersiz numara.", nil)
 	}
@@ -182,7 +183,7 @@ func (s *Service) History(ctx context.Context, actorID uint, number string) ([]R
 	if _, err := s.authorize(ctx, actorID, enums.EscalationView); err != nil {
 		return nil, err
 	}
-	key := numberKey(number)
+	key := phone.Key(number)
 	if key == "" {
 		return []Record{}, nil
 	}
@@ -226,21 +227,4 @@ func toRecord(e *models.CallEscalation) Record {
 		AgentName:    e.AgentName,
 		CreatedAt:    e.CreatedAt.Format("2006-01-02 15:04"),
 	}
-}
-
-// numberKey reduces any dialed form of a number to a stable lookup key: the
-// last ten digits (so 0530..., 90530..., +90530... and 530... all match), or
-// the full digit string for short internal numbers.
-func numberKey(raw string) string {
-	var b strings.Builder
-	for _, r := range raw {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	digits := b.String()
-	if len(digits) > 10 {
-		return digits[len(digits)-10:]
-	}
-	return digits
 }

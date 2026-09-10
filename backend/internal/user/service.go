@@ -224,6 +224,45 @@ func (s *Service) SetActive(ctx context.Context, actorID, targetID uint, active 
 	return nil
 }
 
+// SetRoles replaces a user's role assignment.
+func (s *Service) SetRoles(ctx context.Context, actorID, targetID uint, roleIDs []uint, meta Meta) (*responses.User, error) {
+	actor, err := s.authorize(ctx, actorID, enums.RoleAssign)
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.visibleTarget(ctx, actor, targetID)
+	if err != nil {
+		return nil, err
+	}
+	// An actor may not strip the invisible-admin role from an invisible admin,
+	// nor grant it; resolveRoles blocks granting, and this blocks demotion of a
+	// hidden owner by a non-owner.
+	if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
+		return nil, errs.Forbidden("Bu kullanıcının rollerini değiştiremezsiniz.")
+	}
+	roles, err := s.resolveRoles(ctx, actor, roleIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.ReplaceRoles(ctx, target, roles); err != nil {
+		return nil, errs.Internal(err)
+	}
+	s.audit.Record(ctx, audit.Entry{
+		ActorID:    &actorID,
+		Action:     enums.AuditUserRolesUpdated,
+		TargetType: "user",
+		TargetID:   strconv.FormatUint(uint64(target.ID), 10),
+		IP:         meta.IP,
+		Detail:     map[string]any{"roleIds": roleIDs},
+	})
+	updated, err := s.repo.GetByID(ctx, target.ID)
+	if err != nil || updated == nil {
+		return nil, errs.Internal(err)
+	}
+	res := responses.NewUser(updated)
+	return &res, nil
+}
+
 // ResetPassword sets a new password for a user, forces a change at next login
 // and revokes the target's sessions.
 func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, password string, meta Meta) error {

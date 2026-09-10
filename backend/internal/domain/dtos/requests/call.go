@@ -13,9 +13,22 @@ type SIPCredentials struct {
 	Password  string `json:"password" validate:"required,min=1,max=128"`
 }
 
-// AgentStatus toggles the agent's do-not-disturb state.
+// AgentStatus sets the agent's presence. State is one of available, break,
+// backoffice or dnd; any non-available state also engages do-not-disturb.
 type AgentStatus struct {
-	DND bool `json:"dnd"`
+	State string `json:"state" validate:"omitempty,oneof=available break backoffice dnd"`
+	DND   bool   `json:"dnd"`
+}
+
+// CallLogEvent records a phase of a softphone call. Phase is start, answer or
+// end; the panel generates callId and correlates the phases.
+type CallLogEvent struct {
+	CallID          string `json:"callId" validate:"required,max=80"`
+	Phase           string `json:"phase" validate:"required,oneof=start answer end"`
+	Direction       string `json:"direction" validate:"omitempty,oneof=inbound outbound internal"`
+	Peer            string `json:"peer" validate:"max=40"`
+	Disposition     string `json:"disposition" validate:"omitempty,oneof=answered no_answer missed busy failed canceled"`
+	DurationSeconds int    `json:"durationSeconds" validate:"min=0"`
 }
 
 // CallFilter filters the call log.

@@ -113,6 +113,30 @@ func (h *Handler) ResetPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// SetRoles replaces a user's role assignment.
+func (h *Handler) SetRoles(c *fiber.Ctx) error {
+	actorID, err := actor(c)
+	if err != nil {
+		return err
+	}
+	targetID, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req requests.UserRoles
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	res, err := h.service.SetRoles(c.UserContext(), actorID, targetID, req.RoleIDs, meta(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {

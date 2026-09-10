@@ -24,6 +24,7 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Post("/calls/originate", r.guard, r.handler.Originate)
 	g.Get("/pbx/extensions", r.guard, r.handler.Extensions)
 	g.Get("/pbx/queues", r.guard, r.handler.Queues)
-	g.Post("/pbx/status", r.guard, r.handler.Status)
+	g.Get("/pbx/status", r.guard, r.handler.Status)
+	g.Post("/pbx/status", r.guard, r.handler.SetStatus)
 	g.Get("/pbx/stats", r.guard, r.handler.Stats)
 }

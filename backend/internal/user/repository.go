@@ -146,6 +146,14 @@ func (r *Repository) Create(ctx context.Context, u *models.User, roles []models.
 	return nil
 }
 
+// ReplaceRoles sets a user's role assignment.
+func (r *Repository) ReplaceRoles(ctx context.Context, u *models.User, roles []models.Role) error {
+	if err := r.db.WithContext(ctx).Model(u).Omit("Roles.*").Association("Roles").Replace(roles); err != nil {
+		return fmt.Errorf("user roles could not be replaced: %w", err)
+	}
+	return nil
+}
+
 // List returns a filtered, paginated page of users and the total count.
 func (r *Repository) List(ctx context.Context, f requests.UserFilter) ([]models.User, int64, error) {
 	q := r.db.WithContext(ctx).Model(&models.User{})
