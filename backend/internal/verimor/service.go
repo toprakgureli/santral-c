@@ -598,12 +598,12 @@ func mapCDR(c CDR) Call {
 	return Call{
 		UUID:            c.CallUUID,
 		Direction:       normalizeDirection(c.Direction),
-		Disposition:     normalizeResult(c.Result, c.Missed),
+		Disposition:     normalizeResult(c.Result, bool(c.Missed)),
 		FromNumber:      c.CallerIDNumber,
 		ToNumber:        c.DestinationNumber,
 		StartedAt:       c.StartStamp,
 		DurationSeconds: parseDuration(c.Duration),
-		Recording:       c.RecordingPresent,
+		Recording:       bool(c.RecordingPresent),
 	}
 }
 

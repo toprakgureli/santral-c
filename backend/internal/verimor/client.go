@@ -35,15 +35,27 @@ func NewClient(apiKey, base string) *Client {
 
 // CDR is one call record as returned by the API.
 type CDR struct {
-	CallUUID          string `json:"call_uuid"`
-	StartStamp        string `json:"start_stamp"`
-	Direction         string `json:"direction"`
-	CallerIDNumber    string `json:"caller_id_number"`
-	DestinationNumber string `json:"destination_number"`
-	Duration          string `json:"duration"`
-	Result            string `json:"result"`
-	Missed            bool   `json:"missed"`
-	RecordingPresent  bool   `json:"recording_present"`
+	CallUUID          string   `json:"call_uuid"`
+	StartStamp        string   `json:"start_stamp"`
+	Direction         string   `json:"direction"`
+	CallerIDNumber    string   `json:"caller_id_number"`
+	DestinationNumber string   `json:"destination_number"`
+	Duration          string   `json:"duration"`
+	Result            string   `json:"result"`
+	Missed            flexBool `json:"missed"`
+	RecordingPresent  flexBool `json:"recording_present"`
+}
+
+// flexBool decodes a boolean that the hosted API may send either as a real JSON
+// bool (true) or as a quoted string ("true"/"false"). A single string-typed
+// field would otherwise fail the whole CDR list decode.
+type flexBool bool
+
+// UnmarshalJSON accepts true/false, "true"/"false", 1/0 and null.
+func (b *flexBool) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	*b = s == "true" || s == "1"
+	return nil
 }
 
 // Pagination is the paging envelope the CDR list returns.
