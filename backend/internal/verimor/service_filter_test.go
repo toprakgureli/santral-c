@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 func sampleScan() []CDR {
@@ -38,7 +37,7 @@ func TestExtIsParty(t *testing.T) {
 }
 
 func TestExtScopedCallsFiltersToExtension(t *testing.T) {
-	s := &Service{scan: sampleScan(), scanAt: time.Now()}
+	s := &Service{scan: sampleScan()}
 	res, err := s.extScopedCalls(context.Background(), "1014", "", Filter{Page: 1, Limit: 20})
 	if err != nil {
 		t.Fatalf("extScopedCalls: %v", err)
@@ -54,7 +53,7 @@ func TestExtScopedCallsFiltersToExtension(t *testing.T) {
 }
 
 func TestExtScopedCallsDirectionFilter(t *testing.T) {
-	s := &Service{scan: sampleScan(), scanAt: time.Now()}
+	s := &Service{scan: sampleScan()}
 	// outbound only -> a, e (not f which is internal, not c which is inbound)
 	res, err := s.extScopedCalls(context.Background(), "1014", "", Filter{Page: 1, Limit: 20, Direction: "outbound"})
 	if err != nil {
@@ -76,7 +75,7 @@ func TestExtScopedCallsPaging(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		scan = append(scan, CDR{Direction: "outbound", CallerIDNumber: "1014 (902129510292)", DestinationNumber: "0530000000", AnswerStamp: "x"})
 	}
-	s := &Service{scan: scan, scanAt: time.Now()}
+	s := &Service{scan: scan}
 	res, err := s.extScopedCalls(context.Background(), "1014", "", Filter{Page: 2, Limit: 20})
 	if err != nil {
 		t.Fatalf("extScopedCalls: %v", err)

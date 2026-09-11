@@ -38,8 +38,7 @@ type Service struct {
 	mu      sync.Mutex
 	cache   map[string]cdrCacheEntry
 	cdrCool time.Time // until when on-demand CDR calls back off after a 429/timeout
-	scan    []CDR     // recent CDR window for in-process extension filtering
-	scanAt  time.Time
+	scan    []CDR     // recent CDR window the poller keeps warm for extension filtering
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -72,9 +71,12 @@ func NewService(client *Client, users IActorResolver, repo *Repository, cfg conf
 	return &Service{client: client, users: users, repo: repo, cfg: cfg, cache: make(map[string]cdrCacheEntry)}
 }
 
-// snapshotLimit is the page size the background poller keeps warm for the
-// panel's call history.
+// snapshotLimit is the page size for the "all" call-history view's first page.
 const snapshotLimit = 20
+
+// scanWindow is how many recent CDRs the poller keeps warm for in-process
+// extension filtering ("own" / "belirli dahili"), so those never hit the API.
+const scanWindow = 200
 
 // Start launches the background poller that keeps a snapshot of call history,
 // extensions, queues and daily stats warm. The hosted API is rate limited
@@ -155,18 +157,42 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 }
 
 func (s *Service) refreshCalls(ctx context.Context) {
-	params := url.Values{}
-	params.Set("page", "1")
-	params.Set("limit", strconv.Itoa(snapshotLimit))
-	cdrs, pg, err := s.client.CDRs(ctx, params)
-	if err != nil {
-		return // keep the last good snapshot
+	// Fetch a recent window in one pass: the first rows feed the "all" view's
+	// page-1 snapshot, and the whole window is kept warm so extension-scoped
+	// views ("own" / "belirli dahili") filter it in-process without touching the
+	// rate-limited API.
+	const pageSize = 100
+	window := make([]CDR, 0, scanWindow)
+	total := 0
+	for page := 1; len(window) < scanWindow; page++ {
+		params := url.Values{}
+		params.Set("page", strconv.Itoa(page))
+		params.Set("limit", strconv.Itoa(pageSize))
+		cdrs, pg, err := s.client.CDRs(ctx, params)
+		if err != nil {
+			if len(window) == 0 {
+				return // keep the last good snapshot/scan
+			}
+			break // use what we have
+		}
+		window = append(window, cdrs...)
+		total = pg.TotalCount
+		if len(cdrs) < pageSize || pg.Page >= pg.TotalPages {
+			break
+		}
 	}
-	items := make([]Call, 0, len(cdrs))
-	for i := range cdrs {
-		items = append(items, mapCDR(cdrs[i]))
+	s.storeScan(window)
+
+	// Page-1 snapshot for the "all" view (perPage = snapshotLimit).
+	n := len(window)
+	if n > snapshotLimit {
+		n = snapshotLimit
 	}
-	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	items := make([]Call, 0, n)
+	for i := 0; i < n; i++ {
+		items = append(items, mapCDR(window[i]))
+	}
+	list := &CallList{Items: items, Page: 1, Total: total}
 	fillPaging(list, 1, snapshotLimit, len(items))
 	s.snapMu.Lock()
 	s.snap.calls = list
@@ -541,10 +567,6 @@ var extRe = regexp.MustCompile(`^\d{3,4}$`)
 
 func isExtension(s string) bool { return extRe.MatchString(strings.TrimSpace(s)) }
 
-// extScopeScan is how many recent CDRs are scanned when filtering to one
-// extension in-process (Verimor cannot filter CDRs by a short extension).
-const extScopeScan = 200
-
 // extScopedCalls returns a page of calls where `ext` is an internal party (its
 // outbound and internal calls), optionally narrowed by a phone substring. It
 // scans a recent window and paginates in-process.
@@ -556,10 +578,9 @@ func (s *Service) extScopedCalls(ctx context.Context, ext, phone string, filter 
 	if limit < 10 || limit > 100 {
 		limit = 20
 	}
-	scan, err := s.recentScan(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// Read the warm window the poller maintains; never hit the API on this hot
+	// path (so it can't hang or throttle). Empty while the poller is warming.
+	scan, _ := s.currentScan()
 	dir := apiDirection(filter.Direction)
 	phone = strings.TrimSpace(phone)
 	matched := make([]Call, 0, 32)
@@ -604,55 +625,9 @@ func partyIsExt(field, ext string) bool {
 	return field == ext || strings.HasPrefix(field, ext+" ") || strings.HasPrefix(field, ext+"(")
 }
 
-// recentScan returns a cached window of the most recent CDRs (santral-wide) for
-// in-process extension filtering. It fetches a few pages, caps the API calls, and
-// honours the throttle cooldown.
-func (s *Service) recentScan(ctx context.Context) ([]CDR, error) {
-	if c, ok := s.cachedScan(); ok {
-		return c, nil
-	}
-	if s.cdrCooling() {
-		if c, ok := s.staleScan(); ok {
-			return c, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", nil)
-	}
-	const pageSize = 50
-	out := make([]CDR, 0, extScopeScan)
-	for page := 1; len(out) < extScopeScan && page <= 4; page++ {
-		params := url.Values{}
-		params.Set("page", strconv.Itoa(page))
-		params.Set("limit", strconv.Itoa(pageSize))
-		cdrs, pg, err := s.client.CDRs(ctx, params)
-		if err != nil {
-			s.startCDRCooldown()
-			if len(out) > 0 {
-				break // use what we already have
-			}
-			if stale, ok := s.staleScan(); ok {
-				return stale, nil
-			}
-			return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", err)
-		}
-		out = append(out, cdrs...)
-		if len(cdrs) < pageSize || pg.Page >= pg.TotalPages {
-			break
-		}
-	}
-	s.storeScan(out)
-	return out, nil
-}
-
-func (s *Service) cachedScan() ([]CDR, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.scan != nil && time.Since(s.scanAt) < cdrTTL {
-		return s.scan, true
-	}
-	return nil, false
-}
-
-func (s *Service) staleScan() ([]CDR, bool) {
+// currentScan returns the warm recent-CDR window maintained by the poller (empty
+// while warming). Callers filter it in-process; they never hit the API.
+func (s *Service) currentScan() ([]CDR, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.scan, s.scan != nil
@@ -661,7 +636,6 @@ func (s *Service) staleScan() ([]CDR, bool) {
 func (s *Service) storeScan(c []CDR) {
 	s.mu.Lock()
 	s.scan = c
-	s.scanAt = time.Now()
 	s.mu.Unlock()
 }
 
