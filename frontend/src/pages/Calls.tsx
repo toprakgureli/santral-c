@@ -5,7 +5,7 @@ import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
-import { Button, Card, Input, Select } from "../components/ui";
+import { Button, Card, Input, Select, TableSkeleton } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 export function Calls() {
@@ -23,6 +23,7 @@ export function Calls() {
   const [scope, setScope] = useState<"own" | "all" | "ext">(canAll ? "all" : "own");
   const [ext, setExt] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<{ uuid: string; label: string } | null>(null);
   const perPage = 20;
 
@@ -33,7 +34,8 @@ export function Calls() {
 
   function load() {
     const q = extMode ? ext.trim() : number.trim();
-    if (extMode && !q) { setCalls([]); setTotal(0); setTotalPages(1); setError(null); return; }
+    if (extMode && !q) { setCalls([]); setTotal(0); setTotalPages(1); setError(null); setLoading(false); return; }
+    setLoading(true);
     api
       .listCalls({
         direction: direction || undefined,
@@ -48,7 +50,8 @@ export function Calls() {
         setTotalPages(r.totalPages);
         setError(null);
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."));
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."))
+      .finally(() => setLoading(false));
   }
 
   useEffect(load, [page, direction, scope]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -114,6 +117,7 @@ export function Calls() {
               </tr>
             </thead>
             <tbody>
+              {loading && calls.length === 0 && <TableSkeleton rows={8} cols={7} />}
               {calls.map((c) => {
                 const label = `${displayNumber(c.fromNumber) || c.fromNumber} → ${displayNumber(c.toNumber) || c.toNumber}`;
                 const isPlaying = playing?.uuid === c.uuid;
@@ -142,7 +146,7 @@ export function Calls() {
                   </tr>
                 );
               })}
-              {calls.length === 0 && !error && (
+              {calls.length === 0 && !error && !loading && (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">Kayıt yok.</td>
                 </tr>

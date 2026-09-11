@@ -3,7 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { Role, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
-import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select } from "../components/ui";
+import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select, TableSkeleton } from "../components/ui";
 import { cn } from "../lib/utils";
 
 export function Users() {
@@ -17,9 +17,10 @@ export function Users() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [creating, setCreating] = useState(false);
   const [editingRoles, setEditingRoles] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   function load() {
-    api.listUsers({ perPage: 100 }).then((r) => setUsers(r.items)).catch(() => setUsers([]));
+    api.listUsers({ perPage: 100 }).then((r) => setUsers(r.items)).catch(() => setUsers([])).finally(() => setLoading(false));
   }
   useEffect(() => {
     load();
@@ -50,6 +51,7 @@ export function Users() {
             </tr>
           </thead>
           <tbody>
+            {loading && users.length === 0 && <TableSkeleton rows={5} cols={6} />}
             {users.map((u) => (
               <tr key={u.id} className="border-t border-border/60">
                 <td className="py-2 font-medium">{u.name}</td>

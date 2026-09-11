@@ -74,6 +74,7 @@ export function Dashboard() {
   const phone = useSoftphoneContext();
 
   const [exts, setExts] = useState<PBXExtension[]>([]);
+  const [extsLoaded, setExtsLoaded] = useState(false);
   const [queues, setQueues] = useState<PBXQueue[]>([]);
   const [stats, setStats] = useState<PBXStats | null>(null);
   const [categories, setCategories] = useState<EscalationCategory[]>([]);
@@ -81,7 +82,8 @@ export function Dashboard() {
   useEffect(() => {
     if (!canTransfer) return;
     let live = true;
-    const loadExts = () => api.pbxExtensions().then((d) => live && setExts(d)).catch(() => undefined);
+    const loadExts = () =>
+      api.pbxExtensions().then((d) => live && setExts(d)).catch(() => undefined).finally(() => live && setExtsLoaded(true));
     loadExts();
     api.pbxQueues().then((d) => live && setQueues(d)).catch(() => undefined);
 
@@ -96,7 +98,7 @@ export function Dashboard() {
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
-          if (msg?.type === "extensions" && Array.isArray(msg.items) && live) setExts(msg.items);
+          if (msg?.type === "extensions" && Array.isArray(msg.items) && live) { setExts(msg.items); setExtsLoaded(true); }
         } catch {
           // ignore malformed frames
         }
@@ -143,7 +145,7 @@ export function Dashboard() {
           <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
           {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
         </div>
-        {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} /> : <div className="hidden xl:block" />}
+        {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} loading={!extsLoaded} /> : <div className="hidden xl:block" />}
       </div>
     </div>
   );
@@ -633,7 +635,7 @@ function EscalationFrame({ active, children }: { active?: boolean; children: Rea
   );
 }
 
-function AgentsQueues({ exts, queues, canCall }: { exts: PBXExtension[]; queues: PBXQueue[]; canCall: boolean }) {
+function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]; queues: PBXQueue[]; canCall: boolean; loading?: boolean }) {
   const phone = useSoftphoneContext();
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [confirmExt, setConfirmExt] = useState<string | null>(null);
@@ -667,6 +669,16 @@ function AgentsQueues({ exts, queues, canCall }: { exts: PBXExtension[]; queues:
     <div className="space-y-4">
       <Card title="Temsilciler">
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
+          {loading && exts.length === 0 &&
+            Array.from({ length: 5 }).map((_, i) => (
+              <li key={`sk-${i}`} className="flex items-center justify-between rounded-lg px-2 py-1.5">
+                <span className="flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-muted animate-pulse" />
+                  <span className="h-3.5 w-12 rounded bg-muted/70 animate-pulse" />
+                </span>
+                <span className="h-4 w-16 rounded bg-muted/70 animate-pulse" />
+              </li>
+            ))}
           {sorted.map((e) => {
             const s = agentStatus[e.status] ?? { label: e.status, tone: "slate" as const };
             const online = e.status !== "UNREGISTERED";
@@ -687,7 +699,7 @@ function AgentsQueues({ exts, queues, canCall }: { exts: PBXExtension[]; queues:
               </li>
             );
           })}
-          {exts.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Liste alınamadı.</li>}
+          {!loading && exts.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Liste alınamadı.</li>}
         </ul>
       </Card>
 
