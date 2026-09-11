@@ -228,8 +228,10 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   // Tick the current state's total (and talk time during a call) live between
   // 20s refreshes, so the "Bugün toplam" strip keeps moving.
   const liveDelta = Math.max(0, (nowTick - fetchedAt) / 1000);
-  const totalFor = (key: AgentPresenceState) => Math.round((presenceTotals[key] ?? 0) + (agentState === key ? liveDelta : 0));
-  const talkLive = Math.round((talk ?? 0) + (onCall && callStartRef.current ? (nowTick - callStartRef.current) / 1000 : 0));
+  // While on a call, the presence state pauses and call time grows instead, so
+  // a call is not counted as idle/available time.
+  const totalFor = (key: AgentPresenceState) => Math.round((presenceTotals[key] ?? 0) + (agentState === key && !busy ? liveDelta : 0));
+  const talkLive = Math.round((talk ?? 0) + (busy ? liveDelta : 0));
 
   return (
     <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">

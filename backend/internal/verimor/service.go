@@ -636,9 +636,15 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	if err != nil {
 		totals = map[string]int64{}
 	}
-	talk, _ := s.repo.TalkSecondsToday(ctx, actorID, from)
+	call, _ := s.repo.CallSecondsToday(ctx, actorID, from)
+	// Time on a call is not idle time, so exclude it from "available".
+	if avail := totals["available"] - call; avail > 0 {
+		totals["available"] = avail
+	} else {
+		delete(totals, "available")
+	}
 
-	out := &Presence{State: state, Totals: totals, Talk: talk}
+	out := &Presence{State: state, Totals: totals, Talk: call}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
 	}

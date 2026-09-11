@@ -118,16 +118,21 @@ func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.
 	return out, nil
 }
 
-// TalkSecondsToday sums the agent's call durations since `from`.
-func (r *Repository) TalkSecondsToday(ctx context.Context, userID uint, from time.Time) (int64, error) {
+// CallSecondsToday sums the time the agent spent on calls since `from` (from the
+// attempt to hangup, including a call still in progress). This is subtracted
+// from available time so a call does not also count as idle/available.
+func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from time.Time) (int64, error) {
 	var total int64
 	err := r.db.WithContext(ctx).
 		Table("call_logs").
 		Where("user_id = ? AND started_at >= ?", userID, from).
-		Select("COALESCE(SUM(duration_seconds), 0)").
+		Select("COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - GREATEST(started_at, ?)))), 0)::bigint", from).
 		Row().Scan(&total)
 	if err != nil {
-		return 0, fmt.Errorf("talk seconds could not be summed: %w", err)
+		return 0, fmt.Errorf("call seconds could not be summed: %w", err)
+	}
+	if total < 0 {
+		total = 0
 	}
 	return total, nil
 }
