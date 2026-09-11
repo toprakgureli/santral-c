@@ -599,6 +599,8 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 	if err := s.repo.SetPresence(ctx, actorID, state); err != nil {
 		return errs.Internal(err)
 	}
+	// Log the transition so per-state durations accumulate (best effort).
+	_ = s.repo.RecordTransition(ctx, actorID, state)
 	// Reflect the change on every open agent list instantly.
 	s.broadcastExtensions(ctx)
 	if err := s.client.SetDND(ctx, *actor.SIPExtension, state != "available"); err != nil {
@@ -607,22 +609,36 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 	return nil
 }
 
-// Presence is the actor's current presence and since when it has held.
+// Presence is the actor's current presence plus today's per-state totals and
+// talk time (seconds), so the panel can show how long the agent held each state.
 type Presence struct {
-	State string `json:"state"`
-	Since string `json:"since,omitempty"`
+	State  string           `json:"state"`
+	Since  string           `json:"since,omitempty"`
+	Totals map[string]int64 `json:"totals"`
+	Talk   int64            `json:"talk"`
 }
 
-// Status returns the actor's persisted presence state and since-timestamp.
+// Status returns the actor's presence, when the current state started, and
+// today's accumulated durations per state plus total talk time.
 func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	if _, err := s.users.GetByID(ctx, actorID); err != nil {
 		return nil, err
 	}
 	state, since, err := s.repo.GetPresence(ctx, actorID)
 	if err != nil {
-		return &Presence{State: "available"}, nil
+		return &Presence{State: "available", Totals: map[string]int64{}}, nil
 	}
-	out := &Presence{State: state}
+	// Start the clock the first time the agent appears, so totals accumulate.
+	_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
+
+	from := todayStart()
+	totals, err := s.repo.PresenceTotals(ctx, actorID, from)
+	if err != nil {
+		totals = map[string]int64{}
+	}
+	talk, _ := s.repo.TalkSecondsToday(ctx, actorID, from)
+
+	out := &Presence{State: state, Totals: totals, Talk: talk}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
 	}

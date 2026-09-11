@@ -17,6 +17,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "state") {
     lastState = msg.state || { status: "idle" };
     broadcast({ to: "content", type: "state", state: lastState });
+    broadcast({ to: "content", type: "panelPing" });
+    return;
+  }
+  if (msg.type === "panelAlive") {
+    // The panel tab is open; tell every tab so the widget stays visible.
+    broadcast({ to: "content", type: "panelPing" });
     return;
   }
   if (msg.type === "cmd") {

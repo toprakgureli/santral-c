@@ -14,6 +14,7 @@ import {
   PhoneOutgoing,
   Play,
   Search,
+  TriangleAlert,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { AgentPresenceState, Call, EscalationCategory, EscalationRecord, PBXExtension, PBXQueue, PBXStats } from "../api/types";
@@ -164,19 +165,28 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const [agentState, setAgentState] = useState<AgentPresenceState>("available");
   const [since, setSince] = useState<number>(() => Date.now());
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const [presenceTotals, setPresenceTotals] = useState<Record<string, number>>({});
+  const [talk, setTalk] = useState(0);
   const callStartRef = useRef<number>(0);
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
   const onCall = phone.status === "in-call" || phone.status === "held";
   const state = agentStates[agentState] ?? agentStates.available;
 
   // Presence is stored server-side, so it survives reloads and shows in the
-  // agent list; load the current value (and when it started) on mount.
+  // agent list; load the current value, when it started, and today's totals.
   useEffect(() => {
     if (!hasExtension) return;
-    api.getAgentStatus().then((s) => {
+    let live = true;
+    const load = () => api.getAgentStatus().then((s) => {
+      if (!live) return;
       setAgentState(s.state);
       setSince(s.since ? Date.parse(s.since) : Date.now());
+      setPresenceTotals(s.totals ?? {});
+      setTalk(s.talk ?? 0);
     }).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 20000);
+    return () => { live = false; window.clearInterval(timer); };
   }, [hasExtension]);
 
   // A live clock so the "how long in this state / on this call" timer ticks.
@@ -206,7 +216,8 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     : Math.max(0, Math.floor((nowTick - since) / 1000));
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
+    <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
+      <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2.5">
           <span className={cn("size-2.5 rounded-full", dotColor, !busy && state.tone === "green" && "animate-pulse")} />
@@ -244,6 +255,18 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
           </>
         )}
       </div>
+      </div>
+
+      {hasExtension && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2.5 text-xs">
+          <span className="font-semibold text-muted-foreground">Bugün toplam:</span>
+          <Dur label="Müsait" seconds={presenceTotals.available ?? 0} dot="bg-success" />
+          <Dur label="Mola" seconds={presenceTotals.break ?? 0} dot="bg-warning" />
+          <Dur label="Backoffice" seconds={presenceTotals.backoffice ?? 0} dot="bg-warning" />
+          {(presenceTotals.dnd ?? 0) > 0 && <Dur label="Rahatsız Etmeyin" seconds={presenceTotals.dnd} dot="bg-destructive" />}
+          <Dur label="Görüşme" seconds={talk} dot="bg-primary" />
+        </div>
+      )}
     </div>
   );
 }
@@ -254,6 +277,16 @@ function Stat({ dot, label, value }: { dot: string; label: string; value: number
       <span className={`size-2 rounded-full ${dot}`} />
       <span className="text-muted-foreground">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+function Dur({ dot, label, seconds }: { dot: string; label: string; seconds: number }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`size-2 rounded-full ${dot}`} />
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono font-semibold tabular-nums">{formatClock(Math.max(0, Math.round(seconds)))}</span>
     </span>
   );
 }
@@ -452,26 +485,26 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
 
   if (categories.length === 0) {
     return (
-      <Card title="Eskalasyon">
+      <EscalationFrame>
         <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
           Henüz eskalasyon durumu tanımlı değil. Yönetici, <span className="font-medium">Eskalasyon</span> menüsünden kategori ve durum ekleyebilir.
         </p>
-      </Card>
+      </EscalationFrame>
     );
   }
 
   if (!customer.trim()) {
     return (
-      <Card title="Eskalasyon">
+      <EscalationFrame>
         <p className="rounded-xl bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
           Bir çağrı başladığında müşteri bilgisi burada belirir ve eskalasyon girebilirsiniz.
         </p>
-      </Card>
+      </EscalationFrame>
     );
   }
 
   return (
-    <Card title="Eskalasyon">
+    <EscalationFrame active={onActiveCall}>
       <div className="space-y-4">
         {/* Prominent customer header — highlighted during a live call */}
         <div className={cn("rounded-2xl px-4 py-3 transition", onActiveCall ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/40")}>
@@ -554,7 +587,27 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
           </Button>
         </div>
       </div>
-    </Card>
+    </EscalationFrame>
+  );
+}
+
+// EscalationFrame is a deliberately prominent card: a coloured header with an
+// icon and a strong ring so the escalation area stands out during a call.
+function EscalationFrame({ active, children }: { active?: boolean; children: React.ReactNode }) {
+  return (
+    <section className={cn("overflow-hidden rounded-2xl bg-card shadow-md ring-2 transition", active ? "ring-primary/50" : "ring-primary/20")}>
+      <header className="flex items-center gap-3 border-b border-primary/15 bg-gradient-to-r from-primary/10 to-transparent px-5 py-3.5">
+        <span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary [&_svg]:size-5">
+          <TriangleAlert />
+        </span>
+        <div>
+          <h2 className="text-base font-bold leading-tight tracking-tight">Eskalasyon</h2>
+          <p className="text-xs text-muted-foreground">Görüşme sonucunu kaydet</p>
+        </div>
+        {active && <span className="ml-auto flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-medium text-primary"><span className="size-1.5 animate-pulse rounded-full bg-primary" /> Canlı çağrı</span>}
+      </header>
+      <div className="p-5">{children}</div>
+    </section>
   );
 }
 

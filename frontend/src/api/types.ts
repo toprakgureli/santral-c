@@ -52,6 +52,8 @@ export type AgentPresenceState = "available" | "break" | "backoffice" | "dnd";
 export interface AgentPresence {
   state: AgentPresenceState;
   since?: string;
+  totals?: Record<string, number>;
+  talk?: number;
 }
 
 export interface TodayCalls {

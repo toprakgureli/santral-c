@@ -66,21 +66,35 @@
   let showKeys = false;
   let showXfer = false;
   let isPanel = false;
+  let panelOpen = false; // is the SantralC panel open somewhere?
+  let lastPing = 0;
 
   function postToPage(m) { try { window.postMessage({ santralc: "ext", ...m }, "*"); } catch { /* ignore */ } }
 
   window.addEventListener("message", (e) => {
     const d = e.data;
     if (e.source !== window || !d || d.santralc !== "panel") return;
-    if (d.type === "hello") { isPanel = true; host.style.display = "none"; }
-    else if (d.type === "state") chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
+    // Any message from the page means this IS the panel tab: hide the widget
+    // here and relay a heartbeat so other tabs know the panel is open.
+    isPanel = true;
+    host.style.display = "none";
+    chrome.runtime.sendMessage({ to: "sw", type: "panelAlive" }).catch(() => {});
+    if (d.type === "state") chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
   });
+
+  // Hide the widget if the panel's heartbeat stops (panel closed).
+  setInterval(() => {
+    if (isPanel) return;
+    if (panelOpen && Date.now() - lastPing > 12000) { panelOpen = false; render(); }
+  }, 3000);
 
   function send(cmd, arg) { chrome.runtime.sendMessage({ to: "sw", type: "cmd", cmd, arg }).catch(() => {}); }
   function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 
   function render() {
-    if (isPanel) { host.style.display = "none"; return; }
+    // Only show on other tabs while the SantralC panel is actually open.
+    if (isPanel || !panelOpen) { host.style.display = "none"; return; }
+    host.style.display = "";
     const st = state.status;
     const active = st === "in-call" || st === "held";
     const outgoing = st === "calling" || st === "ringing";
@@ -140,7 +154,12 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || msg.to !== "content") return;
-    if (msg.type === "state") {
+    if (msg.type === "panelPing") {
+      lastPing = Date.now();
+      if (!panelOpen) { panelOpen = true; if (!isPanel) render(); }
+    } else if (msg.type === "state") {
+      lastPing = Date.now();
+      panelOpen = true;
       const prev = state.status;
       state = msg.state || { status: "idle" };
       if (prev !== state.status) { showKeys = false; showXfer = false; }

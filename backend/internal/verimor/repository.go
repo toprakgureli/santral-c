@@ -62,6 +62,76 @@ func (r *Repository) GetPresence(ctx context.Context, userID uint) (string, time
 	return presence.State, presence.UpdatedAt, nil
 }
 
+// RecordTransition closes the agent's open presence stretch and opens a new one.
+func (r *Repository) RecordTransition(ctx context.Context, userID uint, state string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		if err := tx.Model(&models.PresenceEvent{}).
+			Where("user_id = ? AND ended_at IS NULL", userID).
+			Update("ended_at", now).Error; err != nil {
+			return fmt.Errorf("open presence event could not be closed: %w", err)
+		}
+		if err := tx.Create(&models.PresenceEvent{UserID: userID, State: state, StartedAt: now}).Error; err != nil {
+			return fmt.Errorf("presence event could not be opened: %w", err)
+		}
+		return nil
+	})
+}
+
+// EnsureOpenEvent opens a stretch for the agent's current state if none is open,
+// so the timers start counting from when the agent first appears.
+func (r *Repository) EnsureOpenEvent(ctx context.Context, userID uint, state string) error {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&models.PresenceEvent{}).
+		Where("user_id = ? AND ended_at IS NULL", userID).Count(&count).Error; err != nil {
+		return fmt.Errorf("open presence event could not be checked: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(&models.PresenceEvent{UserID: userID, State: state, StartedAt: time.Now()}).Error
+}
+
+// PresenceTotals sums the seconds the agent spent in each state since `from`,
+// clamping each stretch to the window and counting open stretches up to now.
+func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.Time) (map[string]int64, error) {
+	type row struct {
+		State   string
+		Seconds int64
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&models.PresenceEvent{}).
+		Select("state, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - GREATEST(started_at, ?)))), 0)::bigint AS seconds", from).
+		Where("user_id = ? AND COALESCE(ended_at, now()) >= ?", userID, from).
+		Group("state").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("presence totals could not be computed: %w", err)
+	}
+	out := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		if r.Seconds > 0 {
+			out[r.State] = r.Seconds
+		}
+	}
+	return out, nil
+}
+
+// TalkSecondsToday sums the agent's call durations since `from`.
+func (r *Repository) TalkSecondsToday(ctx context.Context, userID uint, from time.Time) (int64, error) {
+	var total int64
+	err := r.db.WithContext(ctx).
+		Table("call_logs").
+		Where("user_id = ? AND started_at >= ?", userID, from).
+		Select("COALESCE(SUM(duration_seconds), 0)").
+		Row().Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("talk seconds could not be summed: %w", err)
+	}
+	return total, nil
+}
+
 // PresenceByExtension maps each extension to its stored non-available presence
 // state, so the live agent list can reflect who is on a break or in backoffice.
 func (r *Repository) PresenceByExtension(ctx context.Context) (map[string]string, error) {

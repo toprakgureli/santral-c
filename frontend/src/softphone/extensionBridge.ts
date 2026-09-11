@@ -15,10 +15,13 @@ export function usePanelBridge(phone: Phone, active: boolean) {
   phoneRef.current = phone;
   activeRef.current = active;
 
-  // Announce that this tab is the panel so the extension hides its own widget
-  // here and routes widget commands to this page.
+  // Announce that this tab is the panel (so the extension hides its own widget
+  // here and routes commands to this page), and heartbeat while the panel stays
+  // open so the widget only appears on other tabs while SantralC is running.
   useEffect(() => {
     postPanel("hello");
+    const t = window.setInterval(() => postPanel("alive"), 4000);
+    return () => window.clearInterval(t);
   }, []);
 
   // Publish call state whenever it changes (only from the owning tab).

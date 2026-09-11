@@ -32,3 +32,15 @@ type AgentPresence struct {
 
 // TableName pins the table name.
 func (AgentPresence) TableName() string { return "agent_presence" }
+
+// PresenceEvent is one stretch an agent spent in a presence state.
+type PresenceEvent struct {
+	ID        uint       `gorm:"column:id;primarykey"`
+	UserID    uint       `gorm:"column:user_id;not null;index"`
+	State     string     `gorm:"column:state;size:16;not null"`
+	StartedAt time.Time  `gorm:"column:started_at"`
+	EndedAt   *time.Time `gorm:"column:ended_at"`
+}
+
+// TableName pins the table name.
+func (PresenceEvent) TableName() string { return "presence_events" }

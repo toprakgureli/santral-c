@@ -3,7 +3,11 @@
 // to the 0XXXXXXXXXX form the switch expects, so "5304230113", "+905304230113"
 // and "905304230113" all become "05304230113".
 export function normalizeDial(raw: string): string {
-  const plus = raw.trim().startsWith("+");
+  const trimmed = raw.trim();
+  // Feature/service codes (e.g. *60 echo test, *43, #-codes) pass through with
+  // their * and # intact.
+  if (/[*#]/.test(trimmed)) return trimmed.replace(/[^\d*#]/g, "");
+  const plus = trimmed.startsWith("+");
   let d = raw.replace(/[^\d]/g, "");
   if (!d) return "";
   if (d.length <= 5) return d; // internal extension or short code
