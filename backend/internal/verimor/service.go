@@ -367,6 +367,7 @@ type CallList struct {
 type Filter struct {
 	Direction string
 	Number    string
+	Scope     string // "own" (default) or "all"
 	Page      int
 	Limit     int
 }
@@ -398,6 +399,21 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 	}
 	if !canViewCalls(actor) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
+	}
+
+	// Default to the agent's own calls; only view-all holders may see everyone's
+	// (scope=all). Own scope filters by the actor's extension. An explicit number
+	// search always takes precedence.
+	canAll := actor.Can(enums.CDRViewAll) || actor.Can(enums.CallViewAll)
+	if filter.Number == "" && (filter.Scope != "all" || !canAll) {
+		ext := ""
+		if actor.SIPExtension != nil {
+			ext = *actor.SIPExtension
+		}
+		if ext == "" {
+			return &CallList{Items: []Call{}, Page: 1}, nil // no extension -> no own calls
+		}
+		filter.Number = ext
 	}
 
 	// The unfiltered first page is kept warm by the background poller; serve it

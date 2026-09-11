@@ -429,9 +429,9 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     <Round tone="hang" size="lg" title="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
                   </div>
                   {showKeypad && (
-                    <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-2">
+                    <div className="grid w-full max-w-[15rem] grid-cols-3 gap-2">
                       {keypadKeys.map((k) => (
-                        <button key={k} onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }} className="h-11 rounded-xl bg-muted text-lg font-semibold transition active:scale-95 hover:bg-accent">
+                        <button key={k} onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }} className="h-12 rounded-xl bg-muted text-lg font-semibold text-foreground transition active:scale-95 hover:bg-accent">
                           {k}
                         </button>
                       ))}

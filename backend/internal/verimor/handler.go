@@ -121,6 +121,7 @@ func (h *Handler) Calls(c *fiber.Ctx) error {
 	res, err := h.service.Calls(c.UserContext(), id, Filter{
 		Direction: c.Query("direction"),
 		Number:    c.Query("number"),
+		Scope:     c.Query("scope"),
 		Page:      c.QueryInt("page", 1),
 		Limit:     c.QueryInt("perPage", 20),
 	})
