@@ -249,7 +249,8 @@ function SyncSipButton({ onDone }: { onDone: () => void }) {
     setMsg(null);
     try {
       const r = await api.syncAllSip();
-      setMsg(`${r.synced} çekildi${r.failed ? ` · ${r.failed} başarısız` : ""}`);
+      const fails = r.failedExtensions?.length ? ` (dahili ${r.failedExtensions.join(", ")} — Verimor'da personel yok)` : "";
+      setMsg(`${r.synced} çekildi${r.failed ? ` · ${r.failed} başarısız${fails}` : ""}`);
       onDone();
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Hata");

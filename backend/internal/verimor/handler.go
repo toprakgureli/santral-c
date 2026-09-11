@@ -105,11 +105,11 @@ func (h *Handler) SyncAllCredentials(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	ok, fail, err := h.service.SyncAllSIP(c.UserContext(), id)
+	ok, failed, err := h.service.SyncAllSIP(c.UserContext(), id)
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"synced": ok, "failed": fail})
+	return c.JSON(fiber.Map{"synced": ok, "failed": len(failed), "failedExtensions": failed})
 }
 
 // Calls returns a page of call records.

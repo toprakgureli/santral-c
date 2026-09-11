@@ -290,7 +290,7 @@ func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, exte
 	}
 	pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, extension)
 	if err != nil {
-		return errs.New(errs.CodeConflict, 502, "Verimor'dan SIP şifresi alınamadı. Dahili doğru mu?", err)
+		return errs.New(errs.CodeConflict, 502, "SIP şifresi alınamadı. Bu dahiliye Verimor'da bir personel tanımlı olmalı (webphone).", err)
 	}
 	enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
 	if err != nil {
@@ -303,38 +303,40 @@ func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, exte
 }
 
 // SyncAllSIP pulls the SIP password from Verimor for every user that has an
-// extension and stores it, returning how many succeeded and failed.
-func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, int, error) {
+// extension and stores it, returning how many succeeded and which extensions
+// failed (usually because they have no Verimor employee/webphone).
+func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []string, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
-		return 0, 0, err
+		return 0, nil, err
 	}
 	if !actor.Can(enums.UserUpdate) {
-		return 0, 0, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return 0, nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	users, err := s.repo.UsersWithExtension(ctx)
 	if err != nil {
-		return 0, 0, errs.Internal(err)
+		return 0, nil, errs.Internal(err)
 	}
-	ok, fail := 0, 0
+	ok := 0
+	failed := make([]string, 0)
 	for _, u := range users {
 		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
 		if err != nil {
-			fail++
+			failed = append(failed, u.Extension)
 			continue
 		}
 		enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
 		if err != nil {
-			fail++
+			failed = append(failed, u.Extension)
 			continue
 		}
 		if err := s.repo.SetSIP(ctx, u.ID, u.Extension, enc); err != nil {
-			fail++
+			failed = append(failed, u.Extension)
 			continue
 		}
 		ok++
 	}
-	return ok, fail, nil
+	return ok, failed, nil
 }
 
 // Webphone is the embedded softphone descriptor for one agent.
