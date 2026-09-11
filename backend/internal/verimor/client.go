@@ -105,8 +105,21 @@ func (c *Client) WebphoneToken(ctx context.Context, extension string) (string, e
 }
 
 // sipPasswordRe extracts the SIP password from the webphone page's
-// switch_user_info block: `password: "..."`.
-var sipPasswordRe = regexp.MustCompile(`password\s*:\s*"([^"]*)"`)
+// switch_user_info block. It tolerates format variants: `password: "..."`,
+// `"password":"..."`, single quotes, and extra spacing.
+var sipPasswordRe = regexp.MustCompile(`(?:"password"|password)\s*:\s*["']([^"']*)["']`)
+
+// pageTitleRe pulls the <title> so a failed sync can report what page the host
+// actually served (e.g. a login/challenge page instead of the webphone).
+var pageTitleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+
+func pageTitle(raw []byte) string {
+	m := pageTitleRe.FindSubmatch(raw)
+	if m == nil {
+		return "?"
+	}
+	return strings.TrimSpace(string(m[1]))
+}
 
 // WebphoneSIP mints a webphone token for an extension, loads the webphone page
 // and reads the extension's SIP password out of its embedded config, so SIP
@@ -121,10 +134,13 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 	if err != nil {
 		return "", err
 	}
-	// Present as a normal browser: the webphone host may serve a different page
-	// (or a bot-check) to a bare HTTP client, which would omit the SIP config.
+	// Present as a normal Turkish browser: the webphone host may serve a
+	// different page (a bot-check or a login/locale variant) to a bare or
+	// non-TR client, which would omit the SIP config.
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "tr-TR,tr;q=0.9,en;q=0.8")
+	req.Header.Set("Referer", strings.TrimRight(webphoneBase, "/"))
 	raw, status, err := c.do(req)
 	if err != nil {
 		return "", err
@@ -134,7 +150,7 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 	}
 	m := sipPasswordRe.FindSubmatch(raw)
 	if m == nil || len(m[1]) == 0 {
-		return "", fmt.Errorf("sip password not found on webphone page for extension %s (page %d bytes)", extension, len(raw))
+		return "", fmt.Errorf("sip password not found for extension %s (page %d bytes, title %q)", extension, len(raw), pageTitle(raw))
 	}
 	return string(m[1]), nil
 }
