@@ -41,6 +41,8 @@ type CDR struct {
 	CallerIDNumber    string   `json:"caller_id_number"`
 	DestinationNumber string   `json:"destination_number"`
 	Duration          string   `json:"duration"`
+	TalkDuration      string   `json:"talk_duration"`
+	AnswerStamp       string   `json:"answer_stamp"`
 	Result            string   `json:"result"`
 	Missed            flexBool `json:"missed"`
 	RecordingPresent  flexBool `json:"recording_present"`

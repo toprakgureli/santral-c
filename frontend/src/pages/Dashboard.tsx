@@ -167,27 +167,30 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   const [presenceTotals, setPresenceTotals] = useState<Record<string, number>>({});
   const [talk, setTalk] = useState(0);
+  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const callStartRef = useRef<number>(0);
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
   const onCall = phone.status === "in-call" || phone.status === "held";
   const state = agentStates[agentState] ?? agentStates.available;
 
-  // Presence is stored server-side, so it survives reloads and shows in the
-  // agent list; load the current value, when it started, and today's totals.
-  useEffect(() => {
-    if (!hasExtension) return;
-    let live = true;
-    const load = () => api.getAgentStatus().then((s) => {
-      if (!live) return;
+  // Presence is stored server-side; load the current value, when it started, and
+  // today's totals. fetchedAt lets us tick the current state's total live.
+  const refresh = useCallback(() => {
+    api.getAgentStatus().then((s) => {
       setAgentState(s.state);
       setSince(s.since ? Date.parse(s.since) : Date.now());
       setPresenceTotals(s.totals ?? {});
       setTalk(s.talk ?? 0);
+      setFetchedAt(Date.now());
     }).catch(() => undefined);
-    load();
-    const timer = window.setInterval(load, 20000);
-    return () => { live = false; window.clearInterval(timer); };
-  }, [hasExtension]);
+  }, []);
+
+  useEffect(() => {
+    if (!hasExtension) return;
+    refresh();
+    const timer = window.setInterval(refresh, 20000);
+    return () => window.clearInterval(timer);
+  }, [hasExtension, refresh]);
 
   // A live clock so the "how long in this state / on this call" timer ticks.
   useEffect(() => {
@@ -195,15 +198,22 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     return () => window.clearInterval(t);
   }, []);
 
+  // The header timer follows the call while one is active (from the attempt, so
+  // it resets to 0 when dialing starts) and the presence stretch otherwise. When
+  // a call ends, restart the presence stretch so it does not keep the old count.
   useEffect(() => {
-    if (onCall && !callStartRef.current) callStartRef.current = Date.now();
-    if (!onCall) callStartRef.current = 0;
-  }, [onCall]);
+    if (busy && !callStartRef.current) callStartRef.current = Date.now();
+    if (!busy) {
+      if (callStartRef.current) setSince(Date.now());
+      callStartRef.current = 0;
+    }
+  }, [busy]);
 
   function changeState(v: AgentPresenceState) {
     setAgentState(v);
     setSince(Date.now());
-    api.setAgentStatus(v).catch(() => undefined);
+    setFetchedAt(Date.now());
+    api.setAgentStatus(v).then(refresh).catch(() => undefined);
   }
 
   // While in a call the live call status wins; otherwise the presence badge
@@ -211,9 +221,15 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const badgeTone = busy ? statusTone[phone.status] : state.tone;
   const badgeLabel = busy ? statusLabel[phone.status] : hasExtension ? state.label : statusLabel[phone.status];
   const dotColor = badgeTone === "green" ? "bg-success" : badgeTone === "red" ? "bg-destructive" : badgeTone === "blue" ? "bg-primary" : badgeTone === "amber" ? "bg-warning" : "bg-muted-foreground/50";
-  const timerSeconds = onCall
+  const timerSeconds = busy
     ? Math.max(0, Math.floor((nowTick - (callStartRef.current || nowTick)) / 1000))
     : Math.max(0, Math.floor((nowTick - since) / 1000));
+
+  // Tick the current state's total (and talk time during a call) live between
+  // 20s refreshes, so the "Bugün toplam" strip keeps moving.
+  const liveDelta = Math.max(0, (nowTick - fetchedAt) / 1000);
+  const totalFor = (key: AgentPresenceState) => Math.round((presenceTotals[key] ?? 0) + (agentState === key ? liveDelta : 0));
+  const talkLive = Math.round((talk ?? 0) + (onCall && callStartRef.current ? (nowTick - callStartRef.current) / 1000 : 0));
 
   return (
     <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
@@ -260,11 +276,11 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
       {hasExtension && (
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2.5 text-xs">
           <span className="font-semibold text-muted-foreground">Bugün toplam:</span>
-          <Dur label="Müsait" seconds={presenceTotals.available ?? 0} dot="bg-success" />
-          <Dur label="Mola" seconds={presenceTotals.break ?? 0} dot="bg-warning" />
-          <Dur label="Backoffice" seconds={presenceTotals.backoffice ?? 0} dot="bg-warning" />
-          {(presenceTotals.dnd ?? 0) > 0 && <Dur label="Rahatsız Etmeyin" seconds={presenceTotals.dnd} dot="bg-destructive" />}
-          <Dur label="Görüşme" seconds={talk} dot="bg-primary" />
+          <Dur label="Müsait" seconds={totalFor("available")} dot="bg-success" />
+          <Dur label="Mola" seconds={totalFor("break")} dot="bg-warning" />
+          <Dur label="Backoffice" seconds={totalFor("backoffice")} dot="bg-warning" />
+          {totalFor("dnd") > 0 && <Dur label="Rahatsız Etmeyin" seconds={totalFor("dnd")} dot="bg-destructive" />}
+          <Dur label="Görüşme" seconds={talkLive} dot="bg-primary" />
         </div>
       )}
     </div>

@@ -719,13 +719,29 @@ func mapCDR(c CDR) Call {
 	return Call{
 		UUID:            c.CallUUID,
 		Direction:       normalizeDirection(c.Direction),
-		Disposition:     normalizeResult(c.Result, bool(c.Missed)),
+		Disposition:     cdrDisposition(c),
 		FromNumber:      c.CallerIDNumber,
 		ToNumber:        c.DestinationNumber,
 		StartedAt:       c.StartStamp,
 		DurationSeconds: parseDuration(c.Duration),
 		Recording:       bool(c.RecordingPresent),
 	}
+}
+
+// cdrDisposition trusts answer_stamp: a call is answered only if it has one.
+// The hosted API's `result` label alone is unreliable ("Vazgeçildi" abandoned
+// calls have no answer_stamp yet were mislabeled as answered).
+func cdrDisposition(c CDR) string {
+	if strings.TrimSpace(c.AnswerStamp) != "" {
+		return "answered"
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Result)) {
+	case "meşgul", "mesgul", "busy":
+		return "busy"
+	case "vazgeçildi", "vazgecildi", "iptal", "canceled", "cancelled":
+		return "canceled"
+	}
+	return "no_answer"
 }
 
 func normalizeDirection(v string) string {
@@ -739,21 +755,6 @@ func normalizeDirection(v string) string {
 	default:
 		return v
 	}
-}
-
-func normalizeResult(result string, missed bool) string {
-	switch strings.ToLower(result) {
-	case "cevaplandı", "cevaplandi", "answered":
-		return "answered"
-	case "meşgul", "mesgul", "busy":
-		return "busy"
-	case "cevapsız", "cevapsiz", "cevaplanmadı", "no answer", "noanswer":
-		return "no_answer"
-	}
-	if missed {
-		return "no_answer"
-	}
-	return "answered"
 }
 
 // parseDuration turns "hh:mm:ss" or "mm:ss" into seconds.
