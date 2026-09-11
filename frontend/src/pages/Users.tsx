@@ -30,7 +30,12 @@ export function Users() {
     <div className="space-y-6">
       <Card
         title="Kullanıcılar"
-        actions={canCreate ? <Button onClick={() => setCreating((v) => !v)}>{creating ? "Kapat" : "Yeni kullanıcı"}</Button> : undefined}
+        actions={
+          <div className="flex items-center gap-2">
+            {canReset && <SyncSipButton onDone={load} />}
+            {canCreate && <Button onClick={() => setCreating((v) => !v)}>{creating ? "Kapat" : "Yeni kullanıcı"}</Button>}
+          </div>
+        }
       >
         {creating && <CreateUser roles={roles} onCreated={() => { setCreating(false); load(); }} />}
         <table className="w-full text-sm">
@@ -55,7 +60,7 @@ export function Users() {
                 <td className="py-2 text-right">
                   <div className="flex justify-end gap-2">
                     {canAssignRoles && <Button variant="ghost" onClick={() => setEditingRoles(u)}>Roller</Button>}
-                    {canReset && <SetSip id={u.id} ext={u.sipExtension} />}
+                    {canReset && <SetSip id={u.id} ext={u.sipExtension} onDone={load} />}
                     {canReset && <ResetPassword id={u.id} />}
                     {canDeactivate && u.id !== user?.id && (
                       <Button
@@ -189,22 +194,73 @@ function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void
   );
 }
 
-function SetSip({ id, ext }: { id: number; ext?: string }) {
+function SetSip({ id, ext, onDone }: { id: number; ext?: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [extension, setExtension] = useState(ext ?? "");
   const [password, setPassword] = useState("");
-  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>SIP</Button>;
+
+  async function pull() {
+    if (!extension) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.syncUserSip(id, extension);
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Çekilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function manual() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.setUserSip(id, extension, password);
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Kaydedilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <span className="flex items-center gap-1">
       <Input value={extension} onChange={(e) => setExtension(e.target.value)} className="w-20" placeholder="Dahili" />
-      <Input value={password} onChange={(e) => setPassword(e.target.value)} className="w-32" placeholder="SIP parola" />
-      <Button
-        onClick={async () => { await api.setUserSip(id, extension, password).catch(() => undefined); setDone(true); setOpen(false); setPassword(""); }}
-        disabled={!extension || !password}
-      >
-        {done ? "✓" : "Kaydet"}
-      </Button>
+      <Button onClick={pull} disabled={!extension || busy}>{busy ? "..." : "Verimor'dan çek"}</Button>
+      <Input value={password} onChange={(e) => setPassword(e.target.value)} className="w-28" placeholder="veya elle parola" />
+      <Button variant="secondary" onClick={manual} disabled={!extension || !password || busy}>Kaydet</Button>
+      {msg && <span className="text-xs text-destructive">{msg}</span>}
+    </span>
+  );
+}
+
+function SyncSipButton({ onDone }: { onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function run() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api.syncAllSip();
+      setMsg(`${r.synced} çekildi${r.failed ? ` · ${r.failed} başarısız` : ""}`);
+      onDone();
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Hata");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span className="flex items-center gap-2">
+      {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      <Button variant="secondary" onClick={run} disabled={busy}>{busy ? "Senkronize..." : "SIP Senkronize (Verimor)"}</Button>
     </span>
   );
 }

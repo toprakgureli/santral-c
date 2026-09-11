@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -99,6 +100,37 @@ func (c *Client) WebphoneToken(ctx context.Context, extension string) (string, e
 		return parsed.Token, nil
 	}
 	return strings.TrimSpace(string(raw)), nil
+}
+
+// sipPasswordRe extracts the SIP password from the webphone page's
+// switch_user_info block: `password: "..."`.
+var sipPasswordRe = regexp.MustCompile(`password\s*:\s*"([^"]*)"`)
+
+// WebphoneSIP mints a webphone token for an extension, loads the webphone page
+// and reads the extension's SIP password out of its embedded config, so SIP
+// credentials can be provisioned from Verimor instead of typed by hand.
+func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string) (string, error) {
+	token, err := c.WebphoneToken(ctx, extension)
+	if err != nil {
+		return "", err
+	}
+	page := strings.TrimRight(webphoneBase, "/") + "?token=" + url.QueryEscape(token)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, page, nil)
+	if err != nil {
+		return "", err
+	}
+	raw, status, err := c.do(req)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("webphone page failed (%d)", status)
+	}
+	m := sipPasswordRe.FindSubmatch(raw)
+	if m == nil || len(m[1]) == 0 {
+		return "", fmt.Errorf("sip password not found for extension %s", extension)
+	}
+	return string(m[1]), nil
 }
 
 // CDRs lists call records filtered by params (key is added automatically).

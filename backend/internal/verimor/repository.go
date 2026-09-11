@@ -161,6 +161,26 @@ func (r *Repository) PresenceByExtension(ctx context.Context) (map[string]string
 	return out, nil
 }
 
+// UserExtension pairs a user id with their SIP extension.
+type UserExtension struct {
+	ID        uint
+	Extension string
+}
+
+// UsersWithExtension returns every user that has a SIP extension assigned.
+func (r *Repository) UsersWithExtension(ctx context.Context) ([]UserExtension, error) {
+	var rows []UserExtension
+	err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Select("id, sip_extension AS extension").
+		Where("sip_extension IS NOT NULL AND sip_extension <> ''").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("users with extension could not be listed: %w", err)
+	}
+	return rows, nil
+}
+
 // SetSIP stores a user's SIP extension and encrypted SIP password.
 func (r *Repository) SetSIP(ctx context.Context, id uint, extension, encPassword string) error {
 	if err := r.db.WithContext(ctx).

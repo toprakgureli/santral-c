@@ -20,6 +20,8 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Get("/webphone", r.guard, r.handler.Webphone)
 	g.Get("/sip/credentials", r.guard, r.handler.Credentials)
 	g.Post("/users/:id/sip", r.guard, r.handler.SetCredentials)
+	g.Post("/users/:id/sip/sync", r.guard, r.handler.SyncCredentials)
+	g.Post("/pbx/sip/sync-all", r.guard, r.handler.SyncAllCredentials)
 	g.Get("/calls", r.guard, r.handler.Calls)
 	g.Get("/calls/:uuid/recording", r.guard, r.handler.Recording)
 	g.Post("/calls/originate", r.guard, r.handler.Originate)

@@ -275,6 +275,68 @@ func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, ex
 	return nil
 }
 
+// ProvisionSIP pulls a single extension's SIP password from Verimor and stores
+// it (encrypted) for the target user, so the admin only enters the extension.
+func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, extension string) error {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.UserUpdate) {
+		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+	}
+	if extension == "" {
+		return errs.Invalid("Dahili numarası zorunlu.", nil)
+	}
+	pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, extension)
+	if err != nil {
+		return errs.New(errs.CodeConflict, 502, "Verimor'dan SIP şifresi alınamadı. Dahili doğru mu?", err)
+	}
+	enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if err := s.repo.SetSIP(ctx, targetID, extension, enc); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// SyncAllSIP pulls the SIP password from Verimor for every user that has an
+// extension and stores it, returning how many succeeded and failed.
+func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, int, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if !actor.Can(enums.UserUpdate) {
+		return 0, 0, errs.Forbidden("Bu işlem için yetkiniz yok.")
+	}
+	users, err := s.repo.UsersWithExtension(ctx)
+	if err != nil {
+		return 0, 0, errs.Internal(err)
+	}
+	ok, fail := 0, 0
+	for _, u := range users {
+		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
+		if err != nil {
+			fail++
+			continue
+		}
+		enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
+		if err != nil {
+			fail++
+			continue
+		}
+		if err := s.repo.SetSIP(ctx, u.ID, u.Extension, enc); err != nil {
+			fail++
+			continue
+		}
+		ok++
+	}
+	return ok, fail, nil
+}
+
 // Webphone is the embedded softphone descriptor for one agent.
 type Webphone struct {
 	Extension string `json:"extension"`

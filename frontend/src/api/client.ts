@@ -88,6 +88,9 @@ export const api = {
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
+  syncUserSip: (id: number, extension: string) =>
+    request<void>(`/users/${id}/sip/sync`, { method: "POST", body: JSON.stringify({ extension }) }),
+  syncAllSip: () => request<{ synced: number; failed: number }>("/pbx/sip/sync-all", { method: "POST" }),
 
   // Roles & permissions
   listRoles: () => request<{ items: Role[] }>("/roles").then((r) => r.items),

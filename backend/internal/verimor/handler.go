@@ -3,7 +3,9 @@ package verimor
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -71,6 +73,43 @@ func (h *Handler) SetCredentials(c *fiber.Ctx) error {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// SyncCredentials pulls the SIP password for a user's extension from Verimor and
+// stores it, so the admin only supplies the extension.
+func (h *Handler) SyncCredentials(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	targetID, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return errs.Invalid("Geçersiz kullanıcı kimliği.", err)
+	}
+	var req struct {
+		Extension string `json:"extension"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.ProvisionSIP(c.UserContext(), id, uint(targetID), strings.TrimSpace(req.Extension)); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// SyncAllCredentials pulls SIP passwords from Verimor for every user that has an
+// extension assigned.
+func (h *Handler) SyncAllCredentials(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	ok, fail, err := h.service.SyncAllSIP(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"synced": ok, "failed": fail})
 }
 
 // Calls returns a page of call records.
@@ -186,18 +225,26 @@ func (h *Handler) Recording(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	defer func() { _ = res.Body.Close() }()
+
+	// Buffer the whole recording (they are small) and send it with a
+	// Content-Length so the browser's audio element can seek freely.
+	const maxRecording = 64 << 20
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxRecording))
+	if err != nil {
+		return errs.New(errs.CodeConflict, 502, "Çağrı kaydı okunamadı.", err)
+	}
 	contentType := res.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "audio/mpeg"
 	}
 	c.Set("Content-Type", contentType)
+	c.Set("Accept-Ranges", "bytes")
 	c.Set("Cache-Control", "private, max-age=3600")
 	if c.Query("download") != "" {
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, uuid))
 	}
-	// fasthttp streams the reader and closes it (it is an io.ReadCloser).
-	c.Context().SetBodyStream(res.Body, -1)
-	return nil
+	return c.Send(data)
 }
 
 // Stream pushes live agent-list updates to the panel over Server-Sent Events,
