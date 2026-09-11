@@ -3,6 +3,7 @@ package verimor
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -710,6 +711,32 @@ func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
 func canViewCalls(u *models.User) bool {
 	return u.Can(enums.CDRViewAll) || u.Can(enums.CallViewAll) ||
 		u.Can(enums.CDRViewOwn) || u.Can(enums.CallViewOwn)
+}
+
+func canAccessRecording(u *models.User) bool {
+	return u.Can(enums.CallRecordAccess) || u.Can(enums.CDRViewAll) || u.Can(enums.CallViewAll)
+}
+
+// Recording mints a one-time URL for a call's recording and returns the live
+// download response so the handler can stream it. The caller must close the
+// response body.
+func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string) (*http.Response, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !canAccessRecording(actor) {
+		return nil, errs.Forbidden("Çağrı kaydına erişim yetkiniz yok.")
+	}
+	mintedURL, err := s.client.RecordingURL(ctx, callUUID)
+	if err != nil {
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı bulunamadı veya alınamadı.", err)
+	}
+	res, err := s.client.OpenRecording(ctx, mintedURL)
+	if err != nil {
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı indirilemedi.", err)
+	}
+	return res, nil
 }
 
 func apiDirection(v string) string {

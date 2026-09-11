@@ -16,9 +16,10 @@ import (
 
 // Client talks to the Bulutsantralim REST API.
 type Client struct {
-	apiKey string
-	base   string
-	http   *http.Client
+	apiKey   string
+	base     string
+	http     *http.Client
+	download *http.Client // longer timeout for streaming recordings
 }
 
 // NewClient builds a Bulutsantralim API client.
@@ -27,9 +28,10 @@ func NewClient(apiKey, base string) *Client {
 		base = "https://api.bulutsantralim.com"
 	}
 	return &Client{
-		apiKey: apiKey,
-		base:   strings.TrimRight(base, "/"),
-		http:   &http.Client{Timeout: 15 * time.Second},
+		apiKey:   apiKey,
+		base:     strings.TrimRight(base, "/"),
+		http:     &http.Client{Timeout: 15 * time.Second},
+		download: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -207,6 +209,49 @@ func (c *Client) CDRCount(ctx context.Context, params url.Values) (int, error) {
 		return 0, err
 	}
 	return pg.TotalCount, nil
+}
+
+// RecordingURL mints a one-time download URL for a call's recording via
+// POST /recording_url/ (key + call_uuid, form-encoded).
+func (c *Client) RecordingURL(ctx context.Context, callUUID string) (string, error) {
+	form := url.Values{}
+	form.Set("key", c.apiKey)
+	form.Set("call_uuid", callUUID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/recording_url/", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	raw, status, err := c.do(req)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("recording url failed (%d): %s", status, strings.TrimSpace(string(raw)))
+	}
+	u := strings.TrimSpace(strings.Trim(strings.TrimSpace(string(raw)), `"`))
+	if u == "" {
+		return "", fmt.Errorf("recording url empty")
+	}
+	return u, nil
+}
+
+// OpenRecording GETs a minted recording URL and returns the live response so the
+// caller can stream it. The caller must close the body.
+func (c *Client) OpenRecording(ctx context.Context, rawURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.download.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("recording could not be fetched: %w", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		_ = res.Body.Close()
+		return nil, fmt.Errorf("recording download failed (%d)", res.StatusCode)
+	}
+	return res, nil
 }
 
 // Originate places a click-to-call from extension to destination and returns

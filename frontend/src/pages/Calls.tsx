@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
+import { Download, Play } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Call } from "../api/types";
-import { Badge, Button, Card, Input, Select } from "../components/ui";
+import { useAuth } from "../auth/AuthContext";
+import { can } from "../lib/permissions";
+import { Button, Card, Input, Select } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 export function Calls() {
+  const { user } = useAuth();
+  const canRec = can(user, "call.record_access") || can(user, "cdr.view_all");
   const [calls, setCalls] = useState<Call[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -70,7 +75,7 @@ export function Calls() {
               <td className="py-2">{c.toNumber}</td>
               <td className="py-2"><CallDisposition value={c.disposition} /></td>
               <td className="py-2">{formatDuration(c.durationSeconds)}</td>
-              <td className="py-2">{c.recording ? <Badge tone="blue">var</Badge> : <span className="text-muted-foreground">—</span>}</td>
+              <td className="py-2">{c.recording && canRec ? <RecordingCell uuid={c.uuid} /> : <span className="text-muted-foreground">—</span>}</td>
               <td className="py-2 text-muted-foreground">{formatStamp(c.startedAt)}</td>
             </tr>
           ))}
@@ -87,5 +92,26 @@ export function Calls() {
         <Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Sonraki</Button>
       </div>
     </Card>
+  );
+}
+
+// RecordingCell lazily loads the recording audio (streamed through our backend)
+// only when the agent chooses to listen; a download link is always available.
+function RecordingCell({ uuid }: { uuid: string }) {
+  const [open, setOpen] = useState(false);
+  const src = `/api/v1/calls/${encodeURIComponent(uuid)}/recording`;
+  return (
+    <div className="flex items-center gap-2">
+      {open ? (
+        <audio controls autoPlay src={src} className="h-8 w-48" />
+      ) : (
+        <Button variant="ghost" className="h-8 gap-1.5 px-2" onClick={() => setOpen(true)}>
+          <Play className="size-3.5" /> Dinle
+        </Button>
+      )}
+      <a href={`${src}?download=1`} title="İndir" className="text-muted-foreground transition hover:text-foreground">
+        <Download className="size-4" />
+      </a>
+    </div>
   );
 }

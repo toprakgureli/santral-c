@@ -2,6 +2,7 @@ package verimor
 
 import (
 	"bufio"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -168,6 +169,35 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(res)
+}
+
+// Recording streams a call's recording (audio) through the backend so the panel
+// can play or download it same-origin. Add ?download=1 to force a download.
+func (h *Handler) Recording(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	uuid := c.Params("uuid")
+	if uuid == "" {
+		return errs.Invalid("Çağrı kimliği zorunlu.", nil)
+	}
+	res, err := h.service.Recording(c.UserContext(), id, uuid)
+	if err != nil {
+		return err
+	}
+	contentType := res.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "audio/mpeg"
+	}
+	c.Set("Content-Type", contentType)
+	c.Set("Cache-Control", "private, max-age=3600")
+	if c.Query("download") != "" {
+		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, uuid))
+	}
+	// fasthttp streams the reader and closes it (it is an io.ReadCloser).
+	c.Context().SetBodyStream(res.Body, -1)
+	return nil
 }
 
 // Stream pushes live agent-list updates to the panel over Server-Sent Events,
