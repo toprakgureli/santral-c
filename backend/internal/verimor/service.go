@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,10 +36,11 @@ type Service struct {
 	repo   *Repository
 	cfg    configs.Bulutsantralim
 
-	mu      sync.Mutex
-	cache   map[string]cdrCacheEntry
-	cdrCool time.Time // until when on-demand CDR calls back off after a 429/timeout
-	scan    []CDR     // recent CDR window the poller keeps warm for extension filtering
+	mu        sync.Mutex
+	cache     map[string]cdrCacheEntry
+	cdrCool   time.Time // until when on-demand CDR calls back off after a 429/timeout
+	scan      []CDR     // rolling CDR window the poller accumulates for extension filtering
+	scanTotal int       // santral-wide total_count from the latest head fetch
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -74,9 +76,14 @@ func NewService(client *Client, users IActorResolver, repo *Repository, cfg conf
 // snapshotLimit is the page size for the "all" call-history view's first page.
 const snapshotLimit = 20
 
-// scanWindow is how many recent CDRs the poller keeps warm for in-process
-// extension filtering ("own" / "belirli dahili"), so those never hit the API.
-const scanWindow = 200
+// The poller keeps a rolling window of recent CDRs warm for in-process extension
+// filtering ("own" / "belirli dahili"). The hosted API only serves the newest
+// page quickly (deep pages time out), so the poller repeatedly fetches page 1 and
+// MERGES it, accumulating every call seen since it started, up to scanMax.
+const (
+	scanPageSize = 100  // CDRs per page fetched (newest page)
+	scanMax      = 2000 // hard cap on the warm accumulated window
+)
 
 // Start launches the background poller that keeps a snapshot of call history,
 // extensions, queues and daily stats warm. The hosted API is rate limited
@@ -94,7 +101,7 @@ func (s *Service) poll(ctx context.Context) {
 	if !sleepCtx(ctx, 3*time.Second) {
 		return
 	}
-	s.refreshCalls(ctx)
+	s.refreshHead(ctx)
 	if !sleepCtx(ctx, 3*time.Second) {
 		return
 	}
@@ -121,7 +128,7 @@ func (s *Service) poll(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-callsT.C:
-			s.refreshCalls(ctx)
+			s.refreshHead(ctx)
 		case <-extT.C:
 			s.refreshExtensions(ctx)
 		case <-statsT.C:
@@ -156,41 +163,70 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func (s *Service) refreshCalls(ctx context.Context) {
-	// Fetch a recent window in one pass: the first rows feed the "all" view's
-	// page-1 snapshot, and the whole window is kept warm so extension-scoped
-	// views ("own" / "belirli dahili") filter it in-process without touching the
-	// rate-limited API.
-	const pageSize = 100
-	window := make([]CDR, 0, scanWindow)
-	total := 0
-	for page := 1; len(window) < scanWindow; page++ {
-		params := url.Values{}
-		params.Set("page", strconv.Itoa(page))
-		params.Set("limit", strconv.Itoa(pageSize))
-		cdrs, pg, err := s.client.CDRs(ctx, params)
-		if err != nil {
-			if len(window) == 0 {
-				return // keep the last good snapshot/scan
-			}
-			break // use what we have
-		}
-		window = append(window, cdrs...)
-		total = pg.TotalCount
-		if len(cdrs) < pageSize || pg.Page >= pg.TotalPages {
-			break
-		}
+// refreshHead fetches the newest page, merges it into the rolling window, and
+// rebuilds the "all" view's page-1 snapshot. It is cheap (one API call) and runs
+// often so new calls appear quickly.
+func (s *Service) refreshHead(ctx context.Context) {
+	params := url.Values{}
+	params.Set("page", "1")
+	params.Set("limit", strconv.Itoa(scanPageSize))
+	cdrs, pg, err := s.client.CDRs(ctx, params)
+	if err != nil {
+		return // keep the last good window/snapshot
 	}
-	s.storeScan(window)
+	s.mergeScan(cdrs, pg.TotalCount)
+	s.rebuildSnapshot()
+}
 
-	// Page-1 snapshot for the "all" view (perPage = snapshotLimit).
-	n := len(window)
+// mergeScan merges fresh CDRs into the warm window: dedup by call uuid, newest
+// first (by start_stamp), capped at scanMax.
+func (s *Service) mergeScan(fresh []CDR, total int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if total > 0 {
+		s.scanTotal = total
+	}
+	seen := make(map[string]struct{}, len(s.scan)+len(fresh))
+	merged := make([]CDR, 0, len(s.scan)+len(fresh))
+	add := func(c CDR) {
+		if c.CallUUID == "" {
+			return
+		}
+		if _, ok := seen[c.CallUUID]; ok {
+			return
+		}
+		seen[c.CallUUID] = struct{}{}
+		merged = append(merged, c)
+	}
+	for i := range fresh {
+		add(fresh[i]) // fresh copies win over stale
+	}
+	for i := range s.scan {
+		add(s.scan[i])
+	}
+	sort.SliceStable(merged, func(i, j int) bool { return merged[i].StartStamp > merged[j].StartStamp })
+	if len(merged) > scanMax {
+		merged = merged[:scanMax]
+	}
+	s.scan = merged
+}
+
+// rebuildSnapshot rebuilds the "all" view's page-1 snapshot from the top of the
+// warm window.
+func (s *Service) rebuildSnapshot() {
+	s.mu.Lock()
+	total := s.scanTotal
+	n := len(s.scan)
 	if n > snapshotLimit {
 		n = snapshotLimit
 	}
-	items := make([]Call, 0, n)
-	for i := 0; i < n; i++ {
-		items = append(items, mapCDR(window[i]))
+	top := make([]CDR, n)
+	copy(top, s.scan[:n])
+	s.mu.Unlock()
+
+	items := make([]Call, 0, len(top))
+	for i := range top {
+		items = append(items, mapCDR(top[i]))
 	}
 	list := &CallList{Items: items, Page: 1, Total: total}
 	fillPaging(list, 1, snapshotLimit, len(items))
@@ -631,12 +667,6 @@ func (s *Service) currentScan() ([]CDR, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.scan, s.scan != nil
-}
-
-func (s *Service) storeScan(c []CDR) {
-	s.mu.Lock()
-	s.scan = c
-	s.mu.Unlock()
 }
 
 // fillPaging backfills the page envelope when the hosted API omits or zeroes the
