@@ -162,6 +162,7 @@ func (s *Service) refreshCalls(ctx context.Context) {
 		items = append(items, mapCDR(cdrs[i]))
 	}
 	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	fillPaging(list, 1, snapshotLimit, len(items))
 	s.snapMu.Lock()
 	s.snap.calls = list
 	s.snapMu.Unlock()
@@ -482,8 +483,36 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		items = append(items, mapCDR(cdrs[i]))
 	}
 	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	fillPaging(list, filter.Page, filter.Limit, len(items))
 	s.storeCalls(key, list)
 	return list, nil
+}
+
+// fillPaging backfills the page envelope when the hosted API omits or zeroes the
+// total count/pages, so the panel's Next/Previous controls still work. It derives
+// pages from the total when known, otherwise assumes a full page means there is at
+// least one more.
+func fillPaging(list *CallList, page, limit, got int) {
+	if list.Page < 1 {
+		if page < 1 {
+			page = 1
+		}
+		list.Page = page
+	}
+	if limit < 1 {
+		limit = snapshotLimit
+	}
+	if list.TotalPages >= 1 {
+		return
+	}
+	switch {
+	case list.Total > 0:
+		list.TotalPages = (list.Total + limit - 1) / limit
+	case got >= limit:
+		list.TotalPages = list.Page + 1 // a full page likely has more
+	default:
+		list.TotalPages = list.Page
+	}
 }
 
 func (s *Service) cachedCalls(key string) (*CallList, bool) {

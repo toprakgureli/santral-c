@@ -19,14 +19,29 @@ export function Calls() {
   const [direction, setDirection] = useState("");
   const [number, setNumber] = useState("");
   // Owners/managers default to everyone's calls; agents only ever see their own.
-  const [scope, setScope] = useState<"own" | "all">(canAll ? "all" : "own");
+  // "ext" narrows to a single extension's calls (managers only).
+  const [scope, setScope] = useState<"own" | "all" | "ext">(canAll ? "all" : "own");
+  const [ext, setExt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [playing, setPlaying] = useState<{ uuid: string; label: string } | null>(null);
   const perPage = 20;
 
+  // In extension mode the chosen extension is the filter; otherwise the free
+  // number search applies. An extension's calls are looked up across everyone,
+  // so it rides the "all" scope with the extension as the number match.
+  const extMode = scope === "ext";
+
   function load() {
+    const q = extMode ? ext.trim() : number.trim();
+    if (extMode && !q) { setCalls([]); setTotal(0); setTotalPages(1); setError(null); return; }
     api
-      .listCalls({ direction: direction || undefined, number: number || undefined, scope, page, perPage })
+      .listCalls({
+        direction: direction || undefined,
+        number: q || undefined,
+        scope: extMode ? "all" : scope,
+        page,
+        perPage,
+      })
       .then((r) => {
         setCalls(r.items);
         setTotal(r.total);
@@ -38,6 +53,13 @@ export function Calls() {
 
   useEffect(load, [page, direction, scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Debounce the extension filter so typing a dahili searches without Enter.
+  useEffect(() => {
+    if (!extMode) return;
+    const t = window.setTimeout(() => { setPage(1); load(); }, 350);
+    return () => window.clearTimeout(t);
+  }, [ext, extMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <>
       <Card
@@ -45,18 +67,29 @@ export function Calls() {
         actions={
           <div className="flex flex-wrap gap-2">
             {canAll && (
-              <Select value={scope} onChange={(e) => { setScope(e.target.value as "own" | "all"); setPage(1); }} className="w-40">
+              <Select value={scope} onChange={(e) => { setScope(e.target.value as "own" | "all" | "ext"); setPage(1); }} className="w-44">
                 <option value="all">Tüm çağrılar</option>
                 <option value="own">Kendi çağrılarım</option>
+                <option value="ext">Belirli dahili</option>
               </Select>
             )}
-            <Input
-              placeholder="Numara ara"
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (setPage(1), load())}
-              className="w-40"
-            />
+            {extMode ? (
+              <Input
+                placeholder="Dahili (örn. 1014)"
+                value={ext}
+                onChange={(e) => setExt(e.target.value)}
+                inputMode="numeric"
+                className="w-40"
+              />
+            ) : (
+              <Input
+                placeholder="Numara / dahili ara"
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (setPage(1), load())}
+                className="w-44"
+              />
+            )}
             <Select value={direction} onChange={(e) => { setDirection(e.target.value); setPage(1); }} className="w-32">
               <option value="">Tüm yönler</option>
               <option value="inbound">Gelen</option>
@@ -118,9 +151,18 @@ export function Calls() {
           </table>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Önceki</Button>
-          <span>Sayfa {page} / {Math.max(totalPages, 1)}</span>
-          <Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Sonraki</Button>
+          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Önceki</Button>
+          <span className="tabular-nums">
+            Sayfa {page} / {Math.max(totalPages, 1)}
+            {total > 0 && <span className="ml-2 text-muted-foreground/70">· {total} kayıt</span>}
+          </span>
+          <Button
+            variant="secondary"
+            disabled={page >= totalPages && calls.length < perPage}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Sonraki
+          </Button>
         </div>
       </Card>
 

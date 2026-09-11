@@ -1,4 +1,5 @@
-import { Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { GripVertical, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 
 const statusLabel: Record<string, string> = {
@@ -9,20 +10,87 @@ const statusLabel: Record<string, string> = {
   held: "Beklemede",
 };
 
+const POS_KEY = "callbar-pos";
+const WIDTH = 288; // w-72
+const MARGIN = 12;
+
+type Pos = { x: number; y: number };
+
+function clampPos(p: Pos, height = 140): Pos {
+  const maxX = Math.max(MARGIN, window.innerWidth - WIDTH - MARGIN);
+  const maxY = Math.max(MARGIN, window.innerHeight - height - MARGIN);
+  return { x: Math.min(Math.max(MARGIN, p.x), maxX), y: Math.min(Math.max(MARGIN, p.y), maxY) };
+}
+
 // A floating call bar shown on every page while a call is active, so incoming
 // calls can be answered and ongoing calls controlled regardless of the route.
+// It can be dragged by its header and remembers where it was left.
 export default function CallBar() {
   const phone = useSoftphoneContext();
+  const [pos, setPos] = useState<Pos | null>(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      return raw ? (JSON.parse(raw) as Pos) : null;
+    } catch {
+      return null;
+    }
+  });
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+
+  const onPointerMove = useCallback((e: PointerEvent) => {
+    if (!drag.current) return;
+    setPos(clampPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }, ref.current?.offsetHeight));
+  }, []);
+
+  const endDrag = useCallback(() => {
+    drag.current = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    setPos((p) => {
+      if (p) {
+        try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+      }
+      return p;
+    });
+  }, [onPointerMove]);
+
+  useEffect(() => {
+    const onResize = () => setPos((p) => (p ? clampPos(p, ref.current?.offsetHeight) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => () => window.removeEventListener("pointermove", onPointerMove), [onPointerMove]);
+
+  function startDrag(e: React.PointerEvent) {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    drag.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    // Switch from the default bottom-right anchor to explicit coordinates.
+    setPos(clampPos({ x: rect.left, y: rect.top }, rect.height));
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", endDrag, { once: true });
+  }
+
   const active = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
   if (!active) return null;
 
   const inCall = phone.status === "in-call" || phone.status === "held";
+  const style = pos ? { left: pos.x, top: pos.y, right: "auto" as const, bottom: "auto" as const } : undefined;
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-2 fixed right-5 bottom-5 z-50 w-72 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl duration-200">
+    <div
+      ref={ref}
+      style={style}
+      className="animate-in fade-in slide-in-from-bottom-2 fixed right-5 bottom-5 z-50 w-72 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl duration-200"
+    >
       <div className="mb-3 flex items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-          <Phone className="size-4" />
+        <span
+          onPointerDown={startDrag}
+          title="Taşı"
+          className="flex size-9 shrink-0 cursor-move touch-none items-center justify-center rounded-full bg-primary/15 text-primary"
+        >
+          <GripVertical className="size-4" />
         </span>
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">{phone.peer ?? "—"}</div>
