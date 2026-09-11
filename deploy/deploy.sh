@@ -12,6 +12,17 @@ WEB_ROOT=/var/www/santral-c
 BRANCH=${BRANCH:-main}
 GO=${GO:-/usr/local/go/bin/go}
 
+# This script must run as a sudo-capable user (e.g. ubuntu); it switches to the
+# 'santral' service user for builds and uses sudo for system steps. Running it
+# AS santral (which is not in sudoers) fails at the first sudo and silently skips
+# the rebuild/restart, so guard against it with a clear message.
+if ! sudo -n true 2>/dev/null; then
+  echo "ERROR: deploy.sh needs passwordless sudo. Run it as a sudo-capable user" >&2
+  echo "       (e.g. ubuntu): 'BRANCH=main $APP_DIR/deploy/deploy.sh'." >&2
+  echo "       Do NOT run it as the 'santral' user or with 'sudo -u santral'." >&2
+  exit 1
+fi
+
 # Run a command as the service user with its HOME set (so the Go and npm caches
 # land in a writable place).
 run_as_app() { sudo -u santral env HOME="$APP_DIR" "$@"; }

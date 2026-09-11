@@ -134,14 +134,20 @@ from **Roller**. Each user sets their own password and MFA at their first login.
 
 ## 9. Updates
 
-After pushing new commits to `main`:
+After pushing new commits to `main`, run the deploy script **as a sudo-capable
+user (e.g. `ubuntu`), not as `santral`**. The script itself switches to the
+`santral` user for the build steps and uses `sudo` for the system steps, so
+`santral` (which is not in sudoers) cannot run it:
 
 ```bash
-sudo -u santral BRANCH=main /opt/santral-c/deploy/deploy.sh
+BRANCH=main /opt/santral-c/deploy/deploy.sh
 ```
 
-It pulls, rebuilds backend + frontend, republishes the static files, restarts
-the service and reloads nginx.
+It pulls (`git reset --hard origin/main`), rebuilds backend + frontend,
+republishes the static files, restarts the service and reloads nginx, then hits
+`/healthz`. Do NOT prefix it with `sudo -u santral` — that makes every internal
+`sudo` fail with "santral is not in the sudoers file" and nothing gets rebuilt
+or restarted.
 
 ## Notes
 
