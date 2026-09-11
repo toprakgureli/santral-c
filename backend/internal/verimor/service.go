@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,8 @@ type Service struct {
 	mu      sync.Mutex
 	cache   map[string]cdrCacheEntry
 	cdrCool time.Time // until when on-demand CDR calls back off after a 429/timeout
+	scan    []CDR     // recent CDR window for in-process extension filtering
+	scanAt  time.Time
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -435,20 +438,36 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
 
-	// Default to the agent's own calls; only view-all holders may see everyone's
-	// (scope=all). Own scope filters by the actor's extension. An explicit number
-	// search always takes precedence.
+	// Scope resolution. Verimor's `number` filter does NOT work for short internal
+	// extensions (it returns nearly the whole santral), so scoping to one extension
+	// is done in-process over a recent window. A real phone-number search still uses
+	// Verimor's own filter.
 	canAll := actor.Can(enums.CDRViewAll) || actor.Can(enums.CallViewAll)
-	if filter.Number == "" && (filter.Scope != "all" || !canAll) {
-		ext := ""
-		if actor.SIPExtension != nil {
-			ext = *actor.SIPExtension
-		}
+	ext := ""
+	if actor.SIPExtension != nil {
+		ext = *actor.SIPExtension
+	}
+	extFilter, phoneSearch := "", ""
+	switch {
+	case filter.Scope != "all" || !canAll:
+		// Own scope (or an agent limited to their own calls).
 		if ext == "" {
 			return &CallList{Items: []Call{}, Page: 1}, nil // no extension -> no own calls
 		}
-		filter.Number = ext
+		extFilter = ext
+		if !isExtension(filter.Number) {
+			phoneSearch = strings.TrimSpace(filter.Number) // narrow own calls by a number
+		}
+	case isExtension(filter.Number):
+		extFilter = strings.TrimSpace(filter.Number) // "belirli dahili" mode
+	default:
+		phoneSearch = strings.TrimSpace(filter.Number) // real phone-number search (or none)
 	}
+
+	if extFilter != "" {
+		return s.extScopedCalls(ctx, extFilter, phoneSearch, filter)
+	}
+	filter.Number = phoneSearch
 
 	// The unfiltered first page is kept warm by the background poller; serve it
 	// straight from the snapshot so the panel never touches the rate-limited API
@@ -514,6 +533,136 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 	fillPaging(list, filter.Page, filter.Limit, len(items))
 	s.storeCalls(key, list)
 	return list, nil
+}
+
+// extRe matches a short internal extension (3-4 digits) as opposed to a full
+// external phone number.
+var extRe = regexp.MustCompile(`^\d{3,4}$`)
+
+func isExtension(s string) bool { return extRe.MatchString(strings.TrimSpace(s)) }
+
+// extScopeScan is how many recent CDRs are scanned when filtering to one
+// extension in-process (Verimor cannot filter CDRs by a short extension).
+const extScopeScan = 200
+
+// extScopedCalls returns a page of calls where `ext` is an internal party (its
+// outbound and internal calls), optionally narrowed by a phone substring. It
+// scans a recent window and paginates in-process.
+func (s *Service) extScopedCalls(ctx context.Context, ext, phone string, filter Filter) (*CallList, error) {
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	limit := filter.Limit
+	if limit < 10 || limit > 100 {
+		limit = 20
+	}
+	scan, err := s.recentScan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dir := apiDirection(filter.Direction)
+	phone = strings.TrimSpace(phone)
+	matched := make([]Call, 0, 32)
+	for i := range scan {
+		if !extIsParty(scan[i], ext) {
+			continue
+		}
+		call := mapCDR(scan[i])
+		if dir != "" && call.Direction != dir {
+			continue
+		}
+		if phone != "" && !strings.Contains(call.FromNumber, phone) && !strings.Contains(call.ToNumber, phone) {
+			continue
+		}
+		matched = append(matched, call)
+	}
+	total := len(matched)
+	pages := (total + limit - 1) / limit
+	if pages < 1 {
+		pages = 1
+	}
+	start := (filter.Page - 1) * limit
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	return &CallList{Items: matched[start:end], Page: filter.Page, Total: total, TotalPages: pages}, nil
+}
+
+// extIsParty reports whether the extension is a party on the call (as caller or
+// callee). An extension shows as "1014 (902...)" in the caller id, or as the bare
+// number in an internal call.
+func extIsParty(c CDR, ext string) bool {
+	return partyIsExt(c.CallerIDNumber, ext) || partyIsExt(c.DestinationNumber, ext)
+}
+
+func partyIsExt(field, ext string) bool {
+	field = strings.TrimSpace(field)
+	return field == ext || strings.HasPrefix(field, ext+" ") || strings.HasPrefix(field, ext+"(")
+}
+
+// recentScan returns a cached window of the most recent CDRs (santral-wide) for
+// in-process extension filtering. It fetches a few pages, caps the API calls, and
+// honours the throttle cooldown.
+func (s *Service) recentScan(ctx context.Context) ([]CDR, error) {
+	if c, ok := s.cachedScan(); ok {
+		return c, nil
+	}
+	if s.cdrCooling() {
+		if c, ok := s.staleScan(); ok {
+			return c, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", nil)
+	}
+	const pageSize = 50
+	out := make([]CDR, 0, extScopeScan)
+	for page := 1; len(out) < extScopeScan && page <= 4; page++ {
+		params := url.Values{}
+		params.Set("page", strconv.Itoa(page))
+		params.Set("limit", strconv.Itoa(pageSize))
+		cdrs, pg, err := s.client.CDRs(ctx, params)
+		if err != nil {
+			s.startCDRCooldown()
+			if len(out) > 0 {
+				break // use what we already have
+			}
+			if stale, ok := s.staleScan(); ok {
+				return stale, nil
+			}
+			return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", err)
+		}
+		out = append(out, cdrs...)
+		if len(cdrs) < pageSize || pg.Page >= pg.TotalPages {
+			break
+		}
+	}
+	s.storeScan(out)
+	return out, nil
+}
+
+func (s *Service) cachedScan() ([]CDR, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.scan != nil && time.Since(s.scanAt) < cdrTTL {
+		return s.scan, true
+	}
+	return nil, false
+}
+
+func (s *Service) staleScan() ([]CDR, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scan, s.scan != nil
+}
+
+func (s *Service) storeScan(c []CDR) {
+	s.mu.Lock()
+	s.scan = c
+	s.scanAt = time.Now()
+	s.mu.Unlock()
 }
 
 // fillPaging backfills the page envelope when the hosted API omits or zeroes the

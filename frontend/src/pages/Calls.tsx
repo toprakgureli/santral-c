@@ -5,7 +5,7 @@ import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
-import { Button, Card, Input, Select, TableSkeleton } from "../components/ui";
+import { Button, Card, Input, Select, Spinner, TableSkeleton } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 export function Calls() {
@@ -103,7 +103,7 @@ export function Calls() {
         }
       >
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
-        <div className="overflow-x-auto">
+        <div className={`overflow-x-auto transition-opacity ${loading && calls.length > 0 ? "pointer-events-none opacity-50" : ""}`}>
           <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr className="text-left text-xs text-muted-foreground">
@@ -155,14 +155,20 @@ export function Calls() {
           </table>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Önceki</Button>
+          <Button variant="secondary" disabled={loading || page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Önceki</Button>
           <span className="tabular-nums">
-            Sayfa {page} / {Math.max(totalPages, 1)}
-            {total > 0 && <span className="ml-2 text-muted-foreground/70">· {total} kayıt</span>}
+            {loading ? (
+              <span className="inline-flex items-center gap-2"><Spinner /> Yükleniyor…</span>
+            ) : (
+              <>
+                Sayfa {page} / {Math.max(totalPages, 1)}
+                {total > 0 && <span className="ml-2 text-muted-foreground/70">· {total} kayıt</span>}
+              </>
+            )}
           </span>
           <Button
             variant="secondary"
-            disabled={page >= totalPages && calls.length < perPage}
+            disabled={loading || (page >= totalPages && calls.length < perPage)}
             onClick={() => setPage((p) => p + 1)}
           >
             Sonraki
