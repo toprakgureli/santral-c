@@ -199,7 +199,12 @@ export function useSoftphone(enabled: boolean): Phone {
           authorizationPassword: creds.password,
           displayName: creds.extension,
           sessionDescriptionHandlerFactoryOptions: {
-            iceGatheringTimeout: 5000,
+            // SIP.js holds the INVITE until ICE gathering completes or this
+            // timeout elapses, so a large value delays ringing by that long when
+            // a STUN/TURN candidate is slow. Host candidates are ready almost
+            // immediately and are enough for the hosted PBX, so cap the wait low
+            // to make calls ring right away.
+            iceGatheringTimeout: 500,
             peerConnectionConfiguration: { iceServers: iceServers(creds) },
           },
           delegate: {
