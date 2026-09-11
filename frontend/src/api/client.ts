@@ -30,7 +30,21 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// A single in-flight refresh is shared by all concurrent 401s so the session
+// survives silently (the access token is short-lived; the refresh token is not).
+let refreshing: Promise<boolean> | null = null;
+
+function tryRefresh(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = fetch(BASE + "/auth/refresh", { method: "POST", credentials: "include" })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, allowRetry = true): Promise<T> {
   // FormData bodies must keep the browser-set multipart Content-Type (with its
   // boundary); only default to JSON for the rest.
   const isForm = options.body instanceof FormData;
@@ -40,6 +54,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers: { ...baseHeaders, ...(options.headers ?? {}) },
     ...options,
   });
+  // Access token expired: refresh once (using the long-lived refresh cookie) and
+  // retry, so the user is not logged out mid-session.
+  if (res.status === 401 && allowRetry && !path.startsWith("/auth/")) {
+    if (await tryRefresh()) {
+      return request<T>(path, options, false);
+    }
+  }
   if (res.status === 204) {
     return undefined as T;
   }

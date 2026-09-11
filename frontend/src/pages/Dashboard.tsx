@@ -168,7 +168,6 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const [presenceTotals, setPresenceTotals] = useState<Record<string, number>>({});
   const [talk, setTalk] = useState(0);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
-  const callStartRef = useRef<number>(0);
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
   const onCall = phone.status === "in-call" || phone.status === "held";
   const state = agentStates[agentState] ?? agentStates.available;
@@ -198,17 +197,6 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     return () => window.clearInterval(t);
   }, []);
 
-  // The header timer follows the call while one is active (from the attempt, so
-  // it resets to 0 when dialing starts) and the presence stretch otherwise. When
-  // a call ends, restart the presence stretch so it does not keep the old count.
-  useEffect(() => {
-    if (busy && !callStartRef.current) callStartRef.current = Date.now();
-    if (!busy) {
-      if (callStartRef.current) setSince(Date.now());
-      callStartRef.current = 0;
-    }
-  }, [busy]);
-
   function changeState(v: AgentPresenceState) {
     setAgentState(v);
     setSince(Date.now());
@@ -221,8 +209,11 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const badgeTone = busy ? statusTone[phone.status] : state.tone;
   const badgeLabel = busy ? statusLabel[phone.status] : hasExtension ? state.label : statusLabel[phone.status];
   const dotColor = badgeTone === "green" ? "bg-success" : badgeTone === "red" ? "bg-destructive" : badgeTone === "blue" ? "bg-primary" : badgeTone === "amber" ? "bg-warning" : "bg-muted-foreground/50";
+  // Call start/answer live in the global softphone, so these timers survive
+  // navigating between menus instead of restarting.
+  const callSince = phone.callStartedAt ?? nowTick;
   const timerSeconds = busy
-    ? Math.max(0, Math.floor((nowTick - (callStartRef.current || nowTick)) / 1000))
+    ? Math.max(0, Math.floor((nowTick - callSince) / 1000))
     : Math.max(0, Math.floor((nowTick - since) / 1000));
 
   // Tick the current state's total (and talk time during a call) live between
@@ -328,17 +319,19 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
   const phone = useSoftphoneContext();
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
-  const [dur, setDur] = useState(0);
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
   const outgoing = phone.status === "calling" || phone.status === "ringing";
   const active = phone.status === "in-call" || phone.status === "held";
+  // Answer time lives in the global softphone, so the duration survives menu
+  // switches instead of restarting from zero.
+  const dur = phone.answeredAt ? Math.max(0, Math.floor((nowTick - phone.answeredAt) / 1000)) : 0;
 
   useEffect(() => {
-    if (!active) { setDur(0); return; }
-    const t = window.setInterval(() => setDur((d) => d + 1), 1000);
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(t);
-  }, [active]);
+  }, []);
 
   function callNow() {
     if (!canCall) return;

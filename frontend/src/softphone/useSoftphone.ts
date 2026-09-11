@@ -24,6 +24,9 @@ export interface Phone {
   held: boolean;
   peer: string | null;
   endReason: string | null;
+  // Epoch ms, kept in the global softphone so timers survive page navigation.
+  callStartedAt: number | null; // when the current call attempt/incoming began
+  answeredAt: number | null; // when the current call was answered
   audioRef: React.RefObject<HTMLAudioElement>;
   call: (target: string) => Promise<void>;
   answer: () => Promise<void>;
@@ -81,6 +84,8 @@ export function useSoftphone(enabled: boolean): Phone {
   const [held, setHeld] = useState(false);
   const [peer, setPeer] = useState<string | null>(null);
   const [endReason, setEndReason] = useState<string | null>(null);
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const uaRef = useRef<UserAgent | null>(null);
@@ -124,6 +129,7 @@ export function useSoftphone(enabled: boolean): Phone {
         if (state === SessionState.Established) {
           wasEstablished = true;
           establishedAtRef.current = Date.now();
+          setAnsweredAt(Date.now());
           tones.stop();
           setMuted(false);
           setHeld(false);
@@ -151,6 +157,8 @@ export function useSoftphone(enabled: boolean): Phone {
           setPeer(null);
           setMuted(false);
           setHeld(false);
+          setCallStartedAt(null);
+          setAnsweredAt(null);
           setStatus("registered");
           sessionRef.current = null;
         }
@@ -208,6 +216,7 @@ export function useSoftphone(enabled: boolean): Phone {
               callIdRef.current = newCallId();
               callDirRef.current = "inbound";
               callPeerRef.current = from;
+              setCallStartedAt(Date.now());
               logCall("start");
               setStatus("incoming");
               tones.incoming();
@@ -259,6 +268,7 @@ export function useSoftphone(enabled: boolean): Phone {
       callIdRef.current = newCallId();
       callDirRef.current = "outbound";
       callPeerRef.current = target;
+      setCallStartedAt(Date.now());
       logCall("start");
       setStatus("calling");
       watchSession(inviter);
@@ -286,6 +296,8 @@ export function useSoftphone(enabled: boolean): Phone {
               logCall("end", { disposition: reason === "Meşgul" ? "busy" : "no_answer", durationSeconds: 0 });
               callIdRef.current = "";
               setPeer(null);
+              setCallStartedAt(null);
+              setAnsweredAt(null);
               setStatus("registered");
               sessionRef.current = null;
             },
@@ -379,6 +391,8 @@ export function useSoftphone(enabled: boolean): Phone {
     held,
     peer,
     endReason,
+    callStartedAt,
+    answeredAt,
     audioRef,
     call,
     answer,

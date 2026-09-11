@@ -709,6 +709,11 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	}
 	// Start the clock the first time the agent appears, so totals accumulate.
 	_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
+	// Prefer the open stretch's start as "since" so the timer is stable across
+	// page navigation (agent_presence.updated_at is absent until a manual change).
+	if started, ok, _ := s.repo.OpenEventStartedAt(ctx, actorID); ok {
+		since = started
+	}
 
 	from := todayStart()
 	totals, err := s.repo.PresenceTotals(ctx, actorID, from)

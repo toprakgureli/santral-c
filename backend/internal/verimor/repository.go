@@ -92,6 +92,22 @@ func (r *Repository) EnsureOpenEvent(ctx context.Context, userID uint, state str
 	return r.db.WithContext(ctx).Create(&models.PresenceEvent{UserID: userID, State: state, StartedAt: time.Now()}).Error
 }
 
+// OpenEventStartedAt returns when the agent's current (open) presence stretch
+// began, so the panel's "since" timer is stable across page navigation.
+func (r *Repository) OpenEventStartedAt(ctx context.Context, userID uint) (time.Time, bool, error) {
+	var e models.PresenceEvent
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND ended_at IS NULL", userID).
+		First(&e).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("open presence event could not be read: %w", err)
+	}
+	return e.StartedAt, true, nil
+}
+
 // PresenceTotals sums the seconds the agent spent in each state since `from`,
 // clamping each stretch to the window and counting open stretches up to now.
 func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.Time) (map[string]int64, error) {
