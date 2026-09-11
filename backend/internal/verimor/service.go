@@ -82,12 +82,13 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) poll(ctx context.Context) {
 	// Prime the snapshot in sequence with gaps, so the startup burst stays well
-	// under the per-minute budget and does not throttle itself.
-	s.refreshCalls(ctx)
+	// under the per-minute budget and does not throttle itself. Extensions come
+	// first (and are slow, ~20s) so the agent list populates as early as possible.
+	s.refreshExtensions(ctx)
 	if !sleepCtx(ctx, 3*time.Second) {
 		return
 	}
-	s.refreshExtensions(ctx)
+	s.refreshCalls(ctx)
 	if !sleepCtx(ctx, 3*time.Second) {
 		return
 	}

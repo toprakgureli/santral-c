@@ -20,6 +20,7 @@ type Client struct {
 	apiKey   string
 	base     string
 	http     *http.Client
+	slow     *http.Client // longer timeout for slow endpoints (user_statuses)
 	download *http.Client // longer timeout for streaming recordings
 }
 
@@ -32,6 +33,7 @@ func NewClient(apiKey, base string) *Client {
 		apiKey:   apiKey,
 		base:     strings.TrimRight(base, "/"),
 		http:     &http.Client{Timeout: 15 * time.Second},
+		slow:     &http.Client{Timeout: 45 * time.Second},
 		download: &http.Client{Timeout: 60 * time.Second},
 	}
 }
@@ -174,7 +176,10 @@ func (c *Client) UserStatuses(ctx context.Context) ([]Extension, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, status, err := c.do(req)
+	// This endpoint is slow (it polls every extension's live status, ~20s), so
+	// give it a longer timeout than the default client; otherwise it times out
+	// and the agent list never populates.
+	raw, status, err := c.doWith(c.slow, req)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +313,13 @@ func (c *Client) Originate(ctx context.Context, extension, destination string) (
 }
 
 func (c *Client) do(req *http.Request) ([]byte, int, error) {
-	res, err := c.http.Do(req)
+	return c.doWith(c.http, req)
+}
+
+// doWith runs a request on a specific client, so slow endpoints can use a longer
+// timeout than the default.
+func (c *Client) doWith(client *http.Client, req *http.Request) ([]byte, int, error) {
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("bulutsantralim request failed: %w", err)
 	}
