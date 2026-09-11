@@ -34,8 +34,9 @@ type Service struct {
 	repo   *Repository
 	cfg    configs.Bulutsantralim
 
-	mu    sync.Mutex
-	cache map[string]cdrCacheEntry
+	mu      sync.Mutex
+	cache   map[string]cdrCacheEntry
+	cdrCool time.Time // until when on-demand CDR calls back off after a 429/timeout
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -336,7 +337,14 @@ func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []string, 
 	}
 	ok := 0
 	failed := make([]string, 0)
-	for _, u := range users {
+	for i, u := range users {
+		// Each extension costs two API calls (token + page); space them out so a
+		// bulk sync does not trip the hosted rate limit and fail every extension.
+		if i > 0 {
+			if !sleepCtx(ctx, 1500*time.Millisecond) {
+				break
+			}
+		}
 		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
 		if err != nil {
 			failed = append(failed, u.Extension)
@@ -470,8 +478,20 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		return cached, nil
 	}
 
+	// After a throttle (429) or timeout, stop hammering the hosted API for a
+	// short cooldown: rapid filtered/paged CDR queries would otherwise keep
+	// tripping the shared rate limit and starve user_statuses and SIP sync. Serve
+	// a stale page if we have one, else an empty page (200) so the UI stays calm.
+	if s.cdrCooling() {
+		if stale, ok := s.staleCalls(key); ok {
+			return stale, nil
+		}
+		return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
+	}
+
 	cdrs, pg, err := s.client.CDRs(ctx, params)
 	if err != nil {
+		s.startCDRCooldown()
 		// Serve a stale page rather than fail when the hosted API is
 		// throttled or slow.
 		if stale, ok := s.staleCalls(key); ok {
@@ -514,6 +534,22 @@ func fillPaging(list *CallList, page, limit, got int) {
 	default:
 		list.TotalPages = list.Page
 	}
+}
+
+// cdrCooldown is how long on-demand CDR calls back off after the hosted API
+// throttles or times out, to keep a burst from starving the shared rate limit.
+const cdrCooldown = 20 * time.Second
+
+func (s *Service) cdrCooling() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return time.Now().Before(s.cdrCool)
+}
+
+func (s *Service) startCDRCooldown() {
+	s.mu.Lock()
+	s.cdrCool = time.Now().Add(cdrCooldown)
+	s.mu.Unlock()
 }
 
 func (s *Service) cachedCalls(key string) (*CallList, bool) {
