@@ -140,21 +140,22 @@ func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.
 // call can never inflate the total indefinitely.
 const openCallCap = 30 * time.Minute
 
-// CallSecondsToday sums the time the agent spent on calls since `from` (from the
-// attempt to hangup, including a call still in progress). This is subtracted
-// from available time so a call does not also count as idle/available. A call
-// still in progress is clamped to openCallCap so an unclosed row (its end phase
-// never arrived) cannot count up to now() forever.
+// CallSecondsToday sums the agent's actual talk time since `from`: from when a
+// call was answered to when it ended. Only answered calls count, so ring time
+// and unanswered calls are excluded (talk time can never exceed online time).
+// A call still in progress is clamped to openCallCap so an unclosed row (its end
+// phase never arrived) cannot count up to now() forever. This is also subtracted
+// from available time so a call does not double as idle/available.
 func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from time.Time) (int64, error) {
 	var total int64
 	err := r.db.WithContext(ctx).
 		Table("call_logs").
-		Where("user_id = ? AND started_at >= ?", userID, from).
+		Where("user_id = ? AND answered_at IS NOT NULL AND answered_at >= ?", userID, from).
 		Select(
 			"COALESCE(SUM(EXTRACT(EPOCH FROM ("+
-				"CASE WHEN ended_at IS NULL THEN LEAST(now(), started_at + ?::interval) ELSE ended_at END"+
-				" - GREATEST(started_at, ?)))), 0)::bigint",
-			fmt.Sprintf("%d seconds", int64(openCallCap.Seconds())), from).
+				"CASE WHEN ended_at IS NULL THEN LEAST(now(), answered_at + ?::interval) ELSE ended_at END"+
+				" - answered_at))), 0)::bigint",
+			fmt.Sprintf("%d seconds", int64(openCallCap.Seconds()))).
 		Row().Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("call seconds could not be summed: %w", err)
@@ -174,7 +175,8 @@ func (r *Repository) FinalizeStaleCalls(ctx context.Context) (int64, error) {
 	res := r.db.WithContext(ctx).Exec(
 		"UPDATE call_logs SET "+
 			"ended_at = LEAST(now(), started_at + ?::interval), "+
-			"duration_seconds = GREATEST(0, EXTRACT(EPOCH FROM (LEAST(now(), started_at + ?::interval) - COALESCE(answered_at, started_at)))::int), "+
+			"duration_seconds = CASE WHEN answered_at IS NULL THEN 0 "+
+			"ELSE GREATEST(0, EXTRACT(EPOCH FROM (LEAST(now(), answered_at + ?::interval) - answered_at))::int) END, "+
 			"disposition = CASE WHEN answered_at IS NULL THEN 'no_answer' ELSE 'answered' END "+
 			"WHERE ended_at IS NULL AND started_at < now() - ?::interval",
 		bound, bound, bound)
