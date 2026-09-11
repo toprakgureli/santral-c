@@ -3,6 +3,7 @@ package verimor
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -95,15 +96,18 @@ func (s *Service) poll(ctx context.Context) {
 		return
 	}
 	s.refreshQueues(ctx)
+	s.finalizeStaleCalls(ctx)
 
 	callsT := time.NewTicker(30 * time.Second)
 	extT := time.NewTicker(40 * time.Second)
 	statsT := time.NewTicker(60 * time.Second)
 	queueT := time.NewTicker(5 * time.Minute)
+	staleT := time.NewTicker(2 * time.Minute)
 	defer callsT.Stop()
 	defer extT.Stop()
 	defer statsT.Stop()
 	defer queueT.Stop()
+	defer staleT.Stop()
 
 	for {
 		select {
@@ -117,7 +121,18 @@ func (s *Service) poll(ctx context.Context) {
 			s.refreshStats(ctx)
 		case <-queueT.C:
 			s.refreshQueues(ctx)
+		case <-staleT.C:
+			s.finalizeStaleCalls(ctx)
 		}
+	}
+}
+
+// finalizeStaleCalls closes call logs left open past the cap, so an unclosed row
+// (its hangup was never recorded) stops reading as in-progress and stops
+// inflating call time.
+func (s *Service) finalizeStaleCalls(ctx context.Context) {
+	if _, err := s.repo.FinalizeStaleCalls(ctx); err != nil {
+		slog.WarnContext(ctx, "stale call finalize failed", "error", err)
 	}
 }
 

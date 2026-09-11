@@ -134,15 +134,27 @@ func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.
 	return out, nil
 }
 
+// openCallCap bounds how long a still-open call log (one whose hangup was never
+// recorded, e.g. the tab closed mid-call) may contribute to today's call time.
+// A closed call always uses its real end; only an open row is clamped, so a lost
+// call can never inflate the total indefinitely.
+const openCallCap = 30 * time.Minute
+
 // CallSecondsToday sums the time the agent spent on calls since `from` (from the
 // attempt to hangup, including a call still in progress). This is subtracted
-// from available time so a call does not also count as idle/available.
+// from available time so a call does not also count as idle/available. A call
+// still in progress is clamped to openCallCap so an unclosed row (its end phase
+// never arrived) cannot count up to now() forever.
 func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from time.Time) (int64, error) {
 	var total int64
 	err := r.db.WithContext(ctx).
 		Table("call_logs").
 		Where("user_id = ? AND started_at >= ?", userID, from).
-		Select("COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, now()) - GREATEST(started_at, ?)))), 0)::bigint", from).
+		Select(
+			"COALESCE(SUM(EXTRACT(EPOCH FROM ("+
+				"CASE WHEN ended_at IS NULL THEN LEAST(now(), started_at + ?::interval) ELSE ended_at END"+
+				" - GREATEST(started_at, ?)))), 0)::bigint",
+			fmt.Sprintf("%d seconds", int64(openCallCap.Seconds())), from).
 		Row().Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("call seconds could not be summed: %w", err)
@@ -151,6 +163,25 @@ func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from tim
 		total = 0
 	}
 	return total, nil
+}
+
+// FinalizeStaleCalls closes call logs that are still open past openCallCap (their
+// hangup was never recorded), so they stop reading as "in progress" and stop
+// contributing unbounded time. A genuine late end phase still overwrites the row
+// by call id, so finalizing early is safe. Returns how many rows were closed.
+func (r *Repository) FinalizeStaleCalls(ctx context.Context) (int64, error) {
+	bound := fmt.Sprintf("%d seconds", int64(openCallCap.Seconds()))
+	res := r.db.WithContext(ctx).Exec(
+		"UPDATE call_logs SET "+
+			"ended_at = LEAST(now(), started_at + ?::interval), "+
+			"duration_seconds = GREATEST(0, EXTRACT(EPOCH FROM (LEAST(now(), started_at + ?::interval) - COALESCE(answered_at, started_at)))::int), "+
+			"disposition = CASE WHEN answered_at IS NULL THEN 'no_answer' ELSE 'answered' END "+
+			"WHERE ended_at IS NULL AND started_at < now() - ?::interval",
+		bound, bound, bound)
+	if res.Error != nil {
+		return 0, fmt.Errorf("stale calls could not be finalized: %w", res.Error)
+	}
+	return res.RowsAffected, nil
 }
 
 // PresenceByExtension maps each extension to its stored non-available presence

@@ -85,14 +85,11 @@ export function Dashboard() {
     loadExts();
     api.pbxQueues().then((d) => live && setQueues(d)).catch(() => undefined);
 
-    // Live agent statuses over SSE: presence changes appear instantly and the
-    // hosted-PBX refreshes are pushed as soon as they arrive. A slow poll backs
-    // it up if the stream cannot connect (e.g. a proxy that buffers it).
-    let backup = 0;
-    const startBackup = () => {
-      if (backup) return;
-      backup = window.setInterval(loadExts, 30000);
-    };
+    // Live agent statuses over SSE make presence changes appear instantly. But a
+    // proxy (e.g. Cloudflare) can hold an SSE response open and buffer it, so no
+    // frames arrive and no error fires either. So always run a slow poll as the
+    // source of truth; SSE only accelerates it when frames do come through.
+    const poll = window.setInterval(loadExts, 20000);
     let es: EventSource | null = null;
     try {
       es = new EventSource("/api/v1/pbx/stream", { withCredentials: true });
@@ -104,14 +101,13 @@ export function Dashboard() {
           // ignore malformed frames
         }
       };
-      es.onerror = () => startBackup();
     } catch {
-      startBackup();
+      // the poll above already covers this
     }
     return () => {
       live = false;
       es?.close();
-      if (backup) window.clearInterval(backup);
+      window.clearInterval(poll);
     };
   }, [canTransfer]);
 
