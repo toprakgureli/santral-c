@@ -54,6 +54,7 @@ export interface AgentPresence {
   since?: string;
   totals?: Record<string, number>;
   talk?: number;
+  online?: number;
 }
 
 export interface TodayCalls {

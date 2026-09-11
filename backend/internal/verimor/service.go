@@ -712,6 +712,10 @@ type Presence struct {
 	Since  string           `json:"since,omitempty"`
 	Totals map[string]int64 `json:"totals"`
 	Talk   int64            `json:"talk"`
+	// Online is today's total time the agent has been present (seconds). The
+	// per-state totals plus talk partition it: idle + talk + break + backoffice
+	// + dnd == online.
+	Online int64 `json:"online"`
 }
 
 // Status returns the actor's presence, when the current state started, and
@@ -737,15 +741,29 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	if err != nil {
 		totals = map[string]int64{}
 	}
+	// Online time is the sum of every presence stretch (talk time lives inside
+	// the "available" stretches, so this already includes it).
+	var online int64
+	for _, v := range totals {
+		online += v
+	}
 	call, _ := s.repo.CallSecondsToday(ctx, actorID, from)
-	// Time on a call is not idle time, so exclude it from "available".
+	// Time on a call is talk, not idle, so carve it out of "available".
 	if avail := totals["available"] - call; avail > 0 {
 		totals["available"] = avail
 	} else {
 		delete(totals, "available")
 	}
+	// While available, the header timer should show the current idle streak (the
+	// time since the last call ended), not the whole available stretch which
+	// spans past calls. Other states time from when they were entered.
+	if state == "available" {
+		if last, ok, _ := s.repo.LastCallEndedAt(ctx, actorID, from); ok && last.After(since) {
+			since = last
+		}
+	}
 
-	out := &Presence{State: state, Totals: totals, Talk: call}
+	out := &Presence{State: state, Totals: totals, Talk: call, Online: online}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
 	}

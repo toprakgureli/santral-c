@@ -163,6 +163,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   const [presenceTotals, setPresenceTotals] = useState<Record<string, number>>({});
   const [talk, setTalk] = useState(0);
+  const [online, setOnline] = useState(0);
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
   const onCall = phone.status === "in-call" || phone.status === "held";
@@ -176,6 +177,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
       setSince(s.since ? Date.parse(s.since) : Date.now());
       setPresenceTotals(s.totals ?? {});
       setTalk(s.talk ?? 0);
+      setOnline(s.online ?? 0);
       setFetchedAt(Date.now());
     }).catch(() => undefined);
   }, []);
@@ -192,6 +194,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     const t = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
+
+  // When a call ends, refresh shortly after so the idle-streak timer restarts
+  // from the just-recorded hangup instead of waiting for the next 20s poll.
+  useEffect(() => {
+    if (busy || !hasExtension) return;
+    const t = window.setTimeout(refresh, 1500);
+    return () => window.clearTimeout(t);
+  }, [busy, hasExtension, refresh]);
 
   function changeState(v: AgentPresenceState) {
     setAgentState(v);
@@ -219,6 +229,9 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   // a call is not counted as idle/available time.
   const totalFor = (key: AgentPresenceState) => Math.round((presenceTotals[key] ?? 0) + (agentState === key && !busy ? liveDelta : 0));
   const talkLive = Math.round((talk ?? 0) + (busy ? liveDelta : 0));
+  // Online time grows every second the panel is up; the buckets above partition
+  // it (talk + idle + break + backoffice + dnd == online).
+  const onlineLive = Math.round(online + liveDelta);
 
   return (
     <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
@@ -264,12 +277,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
 
       {hasExtension && (
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2.5 text-xs">
-          <span className="font-semibold text-muted-foreground">Bugün toplam:</span>
+          <span className="font-semibold text-muted-foreground">Bugün · Çevrimiçi</span>
+          <span className="font-mono font-semibold tabular-nums">{formatClock(onlineLive)}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <Dur label="Görüşme" seconds={talkLive} dot="bg-primary" />
           <Dur label="Müsait" seconds={totalFor("available")} dot="bg-success" />
           <Dur label="Mola" seconds={totalFor("break")} dot="bg-warning" />
           <Dur label="Backoffice" seconds={totalFor("backoffice")} dot="bg-warning" />
           {totalFor("dnd") > 0 && <Dur label="Rahatsız Etmeyin" seconds={totalFor("dnd")} dot="bg-destructive" />}
-          <Dur label="Görüşme" seconds={talkLive} dot="bg-primary" />
         </div>
       )}
     </div>

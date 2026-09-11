@@ -2,6 +2,7 @@ package verimor
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -184,6 +185,25 @@ func (r *Repository) FinalizeStaleCalls(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("stale calls could not be finalized: %w", res.Error)
 	}
 	return res.RowsAffected, nil
+}
+
+// LastCallEndedAt returns when the agent's most recent answered call ended
+// today, so the "current idle" timer counts only the stretch since the last
+// call rather than the whole available presence stretch (which spans calls).
+func (r *Repository) LastCallEndedAt(ctx context.Context, userID uint, from time.Time) (time.Time, bool, error) {
+	var last sql.NullTime
+	err := r.db.WithContext(ctx).
+		Table("call_logs").
+		Where("user_id = ? AND answered_at IS NOT NULL AND ended_at IS NOT NULL AND ended_at >= ?", userID, from).
+		Select("MAX(ended_at)").
+		Row().Scan(&last)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("last call end could not be read: %w", err)
+	}
+	if !last.Valid {
+		return time.Time{}, false, nil
+	}
+	return last.Time, true, nil
 }
 
 // PresenceByExtension maps each extension to its stored non-available presence
