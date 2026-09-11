@@ -50,7 +50,7 @@ export function Calls() {
         setTotalPages(r.totalPages);
         setError(null);
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."))
+      .catch((e) => { setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."); setCalls([]); setTotal(0); setTotalPages(1); })
       .finally(() => setLoading(false));
   }
 
@@ -103,7 +103,15 @@ export function Calls() {
         }
       >
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
-        <div className={`overflow-x-auto transition-opacity ${loading && calls.length > 0 ? "pointer-events-none opacity-50" : ""}`}>
+        <div className="relative">
+          {loading && calls.length > 0 && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center">
+              <span className="flex items-center gap-2 rounded-full bg-card/95 px-4 py-2 text-sm text-muted-foreground shadow-md ring-1 ring-border/60">
+                <Spinner /> Yükleniyor…
+              </span>
+            </div>
+          )}
+          <div className={`overflow-x-auto transition-opacity ${loading && calls.length > 0 ? "pointer-events-none opacity-40" : ""}`}>
           <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr className="text-left text-xs text-muted-foreground">
@@ -153,18 +161,13 @@ export function Calls() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
           <Button variant="secondary" disabled={loading || page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Önceki</Button>
           <span className="tabular-nums">
-            {loading ? (
-              <span className="inline-flex items-center gap-2"><Spinner /> Yükleniyor…</span>
-            ) : (
-              <>
-                Sayfa {page} / {Math.max(totalPages, 1)}
-                {total > 0 && <span className="ml-2 text-muted-foreground/70">· {total} kayıt</span>}
-              </>
-            )}
+            Sayfa {page} / {Math.max(totalPages, 1)}
+            {total > 0 && <span className="ml-2 text-muted-foreground/70">· {total} kayıt</span>}
           </span>
           <Button
             variant="secondary"
