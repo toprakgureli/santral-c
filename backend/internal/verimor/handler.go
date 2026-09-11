@@ -244,7 +244,62 @@ func (h *Handler) Recording(c *fiber.Ctx) error {
 	if c.Query("download") != "" {
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, uuid))
 	}
+	// Honour a Range request so the audio element can seek (it expects 206).
+	if start, end, ok := parseRange(c.Get("Range"), len(data)); ok {
+		c.Status(fiber.StatusPartialContent)
+		c.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
+		return c.Send(data[start : end+1])
+	}
 	return c.Send(data)
+}
+
+// parseRange handles a single "bytes=start-end" range against a body of `size`.
+func parseRange(header string, size int) (int, int, bool) {
+	if size == 0 || !strings.HasPrefix(header, "bytes=") {
+		return 0, 0, false
+	}
+	spec := strings.TrimPrefix(header, "bytes=")
+	if strings.Contains(spec, ",") {
+		return 0, 0, false // multi-range not supported
+	}
+	dash := strings.IndexByte(spec, '-')
+	if dash < 0 {
+		return 0, 0, false
+	}
+	startStr, endStr := spec[:dash], spec[dash+1:]
+	var start, end int
+	switch {
+	case startStr == "" && endStr != "": // suffix: last N bytes
+		n, err := strconv.Atoi(endStr)
+		if err != nil || n <= 0 {
+			return 0, 0, false
+		}
+		if n > size {
+			n = size
+		}
+		start, end = size-n, size-1
+	case startStr != "":
+		s, err := strconv.Atoi(startStr)
+		if err != nil || s < 0 || s >= size {
+			return 0, 0, false
+		}
+		start = s
+		if endStr == "" {
+			end = size - 1
+		} else {
+			e, err := strconv.Atoi(endStr)
+			if err != nil || e < start {
+				return 0, 0, false
+			}
+			end = e
+			if end >= size {
+				end = size - 1
+			}
+		}
+	default:
+		return 0, 0, false
+	}
+	return start, end, true
 }
 
 // Stream pushes live agent-list updates to the panel over Server-Sent Events,

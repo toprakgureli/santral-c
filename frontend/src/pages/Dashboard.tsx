@@ -613,8 +613,8 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
 // icon and a strong ring so the escalation area stands out during a call.
 function EscalationFrame({ active, children }: { active?: boolean; children: React.ReactNode }) {
   return (
-    <section className={cn("overflow-hidden rounded-2xl bg-card shadow-md ring-2 transition", active ? "ring-primary/50" : "ring-primary/20")}>
-      <header className="flex items-center gap-3 border-b border-primary/15 bg-gradient-to-r from-primary/10 to-transparent px-5 py-3.5">
+    <section className={cn("rounded-2xl bg-card shadow-md ring-2 transition", active ? "ring-primary/50" : "ring-primary/20")}>
+      <header className="flex items-center gap-3 rounded-t-2xl border-b border-primary/15 bg-gradient-to-r from-primary/10 to-transparent px-5 py-3.5">
         <span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary [&_svg]:size-5">
           <TriangleAlert />
         </span>
