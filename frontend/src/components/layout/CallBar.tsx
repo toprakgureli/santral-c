@@ -36,22 +36,33 @@ export default function CallBar() {
     }
   });
   const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const drag = useRef<{ dx: number; dy: number; x: number; y: number } | null>(null);
 
+  // During a drag we write the position straight to the DOM and only commit to
+  // React state (and storage) on release, so there is no per-frame re-render and
+  // the widget follows the cursor smoothly.
   const onPointerMove = useCallback((e: PointerEvent) => {
-    if (!drag.current) return;
-    setPos(clampPos({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }, ref.current?.offsetHeight));
+    const d = drag.current;
+    const el = ref.current;
+    if (!d || !el) return;
+    const p = clampPos({ x: e.clientX - d.dx, y: e.clientY - d.dy }, el.offsetHeight);
+    d.x = p.x;
+    d.y = p.y;
+    el.style.left = `${p.x}px`;
+    el.style.top = `${p.y}px`;
+    el.style.right = "auto";
+    el.style.bottom = "auto";
   }, []);
 
   const endDrag = useCallback(() => {
-    drag.current = null;
     window.removeEventListener("pointermove", onPointerMove);
-    setPos((p) => {
-      if (p) {
-        try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
-      }
-      return p;
-    });
+    const d = drag.current;
+    drag.current = null;
+    if (d) {
+      const p = { x: d.x, y: d.y };
+      setPos(p);
+      try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+    }
   }, [onPointerMove]);
 
   useEffect(() => {
@@ -63,13 +74,15 @@ export default function CallBar() {
   useEffect(() => () => window.removeEventListener("pointermove", onPointerMove), [onPointerMove]);
 
   function startDrag(e: React.PointerEvent) {
-    const rect = ref.current?.getBoundingClientRect();
-    if (!rect) return;
-    drag.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
-    // Switch from the default bottom-right anchor to explicit coordinates.
-    setPos(clampPos({ x: rect.left, y: rect.top }, rect.height));
+    const el = ref.current;
+    const rect = el?.getBoundingClientRect();
+    if (!el || !rect) return;
+    el.style.transition = "none"; // no easing lag while following the cursor
+    drag.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top, x: rect.left, y: rect.top };
+    el.setPointerCapture?.(e.pointerId);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", endDrag, { once: true });
+    e.preventDefault();
   }
 
   const active = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
