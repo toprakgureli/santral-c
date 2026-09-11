@@ -1,7 +1,9 @@
 import type {
-  CallPage,
+  AgentPresence,
   AgentPresenceState,
+  CallPage,
   Contact,
+  TodayCalls,
   EscalationCategory,
   EscalationReason,
   EscalationRecord,
@@ -69,7 +71,7 @@ export const api = {
   mfaVerify: (token: string, code: string) =>
     parseLogin(request<Record<string, unknown>>("/auth/mfa/verify", { method: "POST", body: JSON.stringify({ token, code }) })),
   mfaEnroll: (token: string) =>
-    request<{ secret: string; otpauthUrl?: string; uri?: string }>("/auth/mfa/enroll", { method: "POST", body: JSON.stringify({ token }) }),
+    request<{ secret: string; url: string; qr: string }>("/auth/mfa/enroll", { method: "POST", body: JSON.stringify({ token }) }),
   mfaEnrollVerify: (token: string, code: string) =>
     parseLogin(request<Record<string, unknown>>("/auth/mfa/enroll/verify", { method: "POST", body: JSON.stringify({ token, code }) })),
   me: () => request<User>("/auth/me"),
@@ -116,8 +118,8 @@ export const api = {
     request<CallPage>("/calls" + query(params)),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
 
-  // Call log (our own store, used for the panel history)
-  recentCalls: () => request<CallPage>("/calls/log/"),
+  // Call log (our own store, used for the panel history — today, per agent)
+  recentCalls: () => request<TodayCalls>("/calls/log/"),
   logCall: (body: { callId: string; phase: "start" | "answer" | "end"; direction?: string; peer?: string; disposition?: string; durationSeconds?: number }) =>
     request<void>("/calls/log/", { method: "POST", body: JSON.stringify(body) }),
 
@@ -126,7 +128,7 @@ export const api = {
   pbxExtensions: () => request<{ items: PBXExtension[] }>("/pbx/extensions").then((r) => r.items),
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
   pbxStats: () => request<PBXStats>("/pbx/stats"),
-  getAgentStatus: () => request<{ state: AgentPresenceState }>("/pbx/status").then((r) => r.state),
+  getAgentStatus: () => request<AgentPresence>("/pbx/status"),
   setAgentStatus: (state: AgentPresenceState) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ state }) }),
 
   // Escalations

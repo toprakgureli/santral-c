@@ -12,8 +12,14 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 )
 
-// recentLimit caps how many recent calls the panel history shows.
-const recentLimit = 30
+// todayLimit caps how many of today's calls the panel history lists.
+const todayLimit = 200
+
+// shortLongSeconds is the boundary between a short and a long conversation.
+const shortLongSeconds = 30
+
+// istanbul is the tenant timezone (UTC+3, no DST); today resets at local 00:00.
+var istanbul = time.FixedZone("+03", 3*3600)
 
 // Service is the call-log application service.
 type Service struct {
@@ -37,10 +43,13 @@ type Entry struct {
 	DurationSeconds int    `json:"durationSeconds"`
 }
 
-// EntryList is a page of call logs plus the total count for the user.
+// EntryList is today's call logs plus their breakdown for the user.
 type EntryList struct {
-	Items []Entry `json:"items"`
-	Total int64   `json:"total"`
+	Items      []Entry `json:"items"`
+	Short      int64   `json:"short"`
+	Long       int64   `json:"long"`
+	Unanswered int64   `json:"unanswered"`
+	// Real (short+long) and Total (all) are derived on the client.
 }
 
 // Record applies one phase (start, answer, end) of a softphone call, keyed by
@@ -119,9 +128,9 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 	return nil
 }
 
-// Recent returns the actor's own recent call history from our store. The panel
-// history is always personal: every agent sees only their own calls, with the
-// total count, regardless of any view-all permission.
+// Recent returns the actor's own call history for today (since local midnight)
+// with a short/long/unanswered breakdown. The panel history is always personal:
+// every agent sees only their own calls and it resets at 00:00 local.
 func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
@@ -130,7 +139,9 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	if !canViewAll(actor) && !canViewOwn(actor) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
-	logs, total, err := s.repo.Recent(ctx, actorID, recentLimit)
+	now := time.Now().In(istanbul)
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istanbul)
+	logs, counts, err := s.repo.Today(ctx, actorID, from, shortLongSeconds, todayLimit)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -138,7 +149,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	for i := range logs {
 		items = append(items, toEntry(actor, &logs[i]))
 	}
-	return &EntryList{Items: items, Total: total}, nil
+	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered}, nil
 }
 
 func toEntry(actor *models.User, log *models.CallLog) Entry {

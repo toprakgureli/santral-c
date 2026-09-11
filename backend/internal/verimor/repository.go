@@ -48,17 +48,18 @@ func (r *Repository) SetPresence(ctx context.Context, userID uint, state string)
 	return nil
 }
 
-// GetPresence returns the actor's presence state, defaulting to "available".
-func (r *Repository) GetPresence(ctx context.Context, userID uint) (string, error) {
+// GetPresence returns the actor's presence state and since when it has held,
+// defaulting to "available" with a zero time when no row exists yet.
+func (r *Repository) GetPresence(ctx context.Context, userID uint) (string, time.Time, error) {
 	var presence models.AgentPresence
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&presence).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "available", nil
+		return "available", time.Time{}, nil
 	}
 	if err != nil {
-		return "available", fmt.Errorf("presence could not be fetched: %w", err)
+		return "available", time.Time{}, fmt.Errorf("presence could not be fetched: %w", err)
 	}
-	return presence.State, nil
+	return presence.State, presence.UpdatedAt, nil
 }
 
 // PresenceByExtension maps each extension to its stored non-available presence

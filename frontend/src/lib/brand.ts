@@ -1,3 +1,3 @@
-export const APP_NAME = "santral-c";
-export const APP_FULL_NAME = "santral-c";
-export const COMPANY = "Ersin Hacıoğlu";
+export const APP_NAME = "SantralC";
+export const APP_FULL_NAME = "SantralC";
+export const COMPANY = "SantralC";

@@ -1,7 +1,9 @@
 package verimor
 
 import (
+	"bufio"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -148,11 +150,11 @@ func (h *Handler) Status(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	state, err := h.service.Status(c.UserContext(), id)
+	res, err := h.service.Status(c.UserContext(), id)
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"state": state})
+	return c.JSON(res)
 }
 
 // Stats returns today's call totals.
@@ -166,6 +168,60 @@ func (h *Handler) Stats(c *fiber.Ctx) error {
 		return err
 	}
 	return c.JSON(res)
+}
+
+// Stream pushes live agent-list updates to the panel over Server-Sent Events,
+// so presence changes appear without polling.
+func (h *Handler) Stream(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	initial, ch, err := h.service.StreamStart(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no") // disable nginx buffering for this response
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer h.service.StreamStop(ch)
+		writeSSE(w, initial)
+		if w.Flush() != nil {
+			return
+		}
+		heartbeat := time.NewTicker(20 * time.Second)
+		defer heartbeat.Stop()
+		for {
+			select {
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				writeSSE(w, msg)
+				if w.Flush() != nil {
+					return
+				}
+			case <-heartbeat.C:
+				if _, err := w.WriteString(": ping\n\n"); err != nil {
+					return
+				}
+				if w.Flush() != nil {
+					return
+				}
+			}
+		}
+	})
+	return nil
+}
+
+func writeSSE(w *bufio.Writer, data []byte) {
+	_, _ = w.WriteString("data: ")
+	_, _ = w.Write(data)
+	_, _ = w.WriteString("\n\n")
 }
 
 // Originate starts a click-to-call from the actor's extension.

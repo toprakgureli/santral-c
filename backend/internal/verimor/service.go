@@ -2,6 +2,7 @@ package verimor
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
@@ -38,6 +39,10 @@ type Service struct {
 	// panel's hot paths never touch the rate-limited API directly.
 	snapMu sync.RWMutex
 	snap   snapshot
+
+	// hub fans real-time agent-list updates out to SSE subscribers.
+	hubMu sync.Mutex
+	subs  map[chan []byte]struct{}
 }
 
 // snapshot is the last-good view the poller keeps warm.
@@ -158,6 +163,8 @@ func (s *Service) refreshExtensions(ctx context.Context) {
 	s.snapMu.Lock()
 	s.snap.exts = out
 	s.snapMu.Unlock()
+	// Push the fresh agent list to any live SSE subscribers immediately.
+	s.broadcastExtensions(ctx)
 }
 
 func (s *Service) refreshQueues(ctx context.Context) {
@@ -446,13 +453,19 @@ func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension,
 	if err := s.authorizeTransfer(ctx, actorID); err != nil {
 		return nil, err
 	}
+	return s.overlaidExtensions(ctx), nil
+}
+
+// overlaidExtensions builds the agent list from the warm snapshot with our
+// persisted presence laid over it (a paused agent shows paused, not idle).
+func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 	snap := s.snapExtensions()
 	if snap == nil {
-		return []PBXExtension{}, nil
+		return []PBXExtension{}
 	}
 	presence, err := s.repo.PresenceByExtension(ctx)
 	if err != nil || len(presence) == 0 {
-		return snap, nil
+		return snap
 	}
 	// Copy so the shared snapshot is never mutated; overlay presence only over
 	// an idle (AVAILABLE) extension, so a live call (TALKING) still wins.
@@ -466,7 +479,74 @@ func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension,
 			out[i].Status = presenceStatus(state)
 		}
 	}
-	return out, nil
+	return out
+}
+
+// extensionsEvent is the SSE payload for a live agent-list update.
+type extensionsEvent struct {
+	Type  string         `json:"type"`
+	Items []PBXExtension `json:"items"`
+}
+
+// extensionsJSON returns the current overlaid agent list as an SSE data payload.
+func (s *Service) extensionsJSON(ctx context.Context) []byte {
+	data, err := json.Marshal(extensionsEvent{Type: "extensions", Items: s.overlaidExtensions(ctx)})
+	if err != nil {
+		return []byte(`{"type":"extensions","items":[]}`)
+	}
+	return data
+}
+
+// broadcastExtensions pushes the current agent list to all SSE subscribers.
+func (s *Service) broadcastExtensions(ctx context.Context) {
+	s.broadcast(s.extensionsJSON(ctx))
+}
+
+// Subscribe registers an SSE subscriber and returns its channel. Authorization
+// is the caller's responsibility (see StreamStart).
+func (s *Service) subscribe() chan []byte {
+	ch := make(chan []byte, 8)
+	s.hubMu.Lock()
+	if s.subs == nil {
+		s.subs = make(map[chan []byte]struct{})
+	}
+	s.subs[ch] = struct{}{}
+	s.hubMu.Unlock()
+	return ch
+}
+
+func (s *Service) unsubscribe(ch chan []byte) {
+	s.hubMu.Lock()
+	if _, ok := s.subs[ch]; ok {
+		delete(s.subs, ch)
+		close(ch)
+	}
+	s.hubMu.Unlock()
+}
+
+func (s *Service) broadcast(msg []byte) {
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+	for ch := range s.subs {
+		select {
+		case ch <- msg:
+		default: // drop for a slow consumer rather than block the poller
+		}
+	}
+}
+
+// StreamStart authorizes an SSE client and returns the initial agent-list
+// payload plus a channel of subsequent updates. Call StreamStop to release it.
+func (s *Service) StreamStart(ctx context.Context, actorID uint) ([]byte, chan []byte, error) {
+	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+		return nil, nil, err
+	}
+	return s.extensionsJSON(ctx), s.subscribe(), nil
+}
+
+// StreamStop releases an SSE subscriber channel.
+func (s *Service) StreamStop(ch chan []byte) {
+	s.unsubscribe(ch)
 }
 
 // presenceStatus maps a stored presence state to the status code the agent list
@@ -519,22 +599,34 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 	if err := s.repo.SetPresence(ctx, actorID, state); err != nil {
 		return errs.Internal(err)
 	}
+	// Reflect the change on every open agent list instantly.
+	s.broadcastExtensions(ctx)
 	if err := s.client.SetDND(ctx, *actor.SIPExtension, state != "available"); err != nil {
 		return errs.Internal(err)
 	}
 	return nil
 }
 
-// Status returns the actor's persisted presence state.
-func (s *Service) Status(ctx context.Context, actorID uint) (string, error) {
+// Presence is the actor's current presence and since when it has held.
+type Presence struct {
+	State string `json:"state"`
+	Since string `json:"since,omitempty"`
+}
+
+// Status returns the actor's persisted presence state and since-timestamp.
+func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	if _, err := s.users.GetByID(ctx, actorID); err != nil {
-		return "", err
+		return nil, err
 	}
-	state, err := s.repo.GetPresence(ctx, actorID)
+	state, since, err := s.repo.GetPresence(ctx, actorID)
 	if err != nil {
-		return "available", nil
+		return &Presence{State: "available"}, nil
 	}
-	return state, nil
+	out := &Presence{State: state}
+	if !since.IsZero() {
+		out.Since = since.UTC().Format(time.RFC3339)
+	}
+	return out, nil
 }
 
 // Stats returns today's tenant call totals from the warm snapshot (poller-owned,
@@ -549,9 +641,20 @@ func (s *Service) Stats(ctx context.Context, actorID uint) (*Stats, error) {
 	return &Stats{}, nil
 }
 
+// istanbul is the tenant's timezone (UTC+3, no DST). Using a fixed zone avoids
+// depending on the OS tzdata being present.
+var istanbul = time.FixedZone("+03", 3*3600)
+
+// todayStart returns the UTC instant of local (Istanbul) midnight today, so
+// "today" resets at 00:00 local rather than at 00:00 UTC.
+func todayStart() time.Time {
+	now := time.Now().In(istanbul)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istanbul)
+}
+
 // computeStats reads today's total and missed call counts from the hosted API.
 func (s *Service) computeStats(ctx context.Context) (*Stats, error) {
-	from := time.Now().UTC().Format("2006-01-02") + " 00:00:00 UTC"
+	from := todayStart().UTC().Format("2006-01-02 15:04:05") + " UTC"
 	base := func(missed bool) url.Values {
 		v := url.Values{}
 		v.Set("start_stamp_from", from)

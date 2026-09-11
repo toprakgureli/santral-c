@@ -49,6 +49,18 @@ export interface PermissionGroup {
 
 export type AgentPresenceState = "available" | "break" | "backoffice" | "dnd";
 
+export interface AgentPresence {
+  state: AgentPresenceState;
+  since?: string;
+}
+
+export interface TodayCalls {
+  items: Call[];
+  short: number;
+  long: number;
+  unanswered: number;
+}
+
 export interface Paged<T> {
   items: T[];
   total: number;

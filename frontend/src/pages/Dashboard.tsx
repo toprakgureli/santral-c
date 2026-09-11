@@ -26,7 +26,7 @@ import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { SearchableSelect } from "../components/SearchableSelect";
-import { callQuality, formatDuration, formatStamp } from "./callFormat";
+import { callQuality, formatClock, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
   connecting: "Bağlanıyor...",
@@ -83,10 +83,34 @@ export function Dashboard() {
     const loadExts = () => api.pbxExtensions().then((d) => live && setExts(d)).catch(() => undefined);
     loadExts();
     api.pbxQueues().then((d) => live && setQueues(d)).catch(() => undefined);
-    const timer = window.setInterval(loadExts, 30000);
+
+    // Live agent statuses over SSE: presence changes appear instantly and the
+    // hosted-PBX refreshes are pushed as soon as they arrive. A slow poll backs
+    // it up if the stream cannot connect (e.g. a proxy that buffers it).
+    let backup = 0;
+    const startBackup = () => {
+      if (backup) return;
+      backup = window.setInterval(loadExts, 30000);
+    };
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource("/api/v1/pbx/stream", { withCredentials: true });
+      es.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg?.type === "extensions" && Array.isArray(msg.items) && live) setExts(msg.items);
+        } catch {
+          // ignore malformed frames
+        }
+      };
+      es.onerror = () => startBackup();
+    } catch {
+      startBackup();
+    }
     return () => {
       live = false;
-      window.clearInterval(timer);
+      es?.close();
+      if (backup) window.clearInterval(backup);
     };
   }, [canTransfer]);
 
@@ -138,18 +162,37 @@ const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "
 function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
   const phone = useSoftphoneContext();
   const [agentState, setAgentState] = useState<AgentPresenceState>("available");
+  const [since, setSince] = useState<number>(() => Date.now());
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const callStartRef = useRef<number>(0);
   const busy = phone.status === "in-call" || phone.status === "held" || phone.status === "ringing" || phone.status === "calling" || phone.status === "incoming";
+  const onCall = phone.status === "in-call" || phone.status === "held";
   const state = agentStates[agentState] ?? agentStates.available;
 
   // Presence is stored server-side, so it survives reloads and shows in the
-  // agent list; load the current value on mount.
+  // agent list; load the current value (and when it started) on mount.
   useEffect(() => {
     if (!hasExtension) return;
-    api.getAgentStatus().then((s) => setAgentState(s)).catch(() => undefined);
+    api.getAgentStatus().then((s) => {
+      setAgentState(s.state);
+      setSince(s.since ? Date.parse(s.since) : Date.now());
+    }).catch(() => undefined);
   }, [hasExtension]);
+
+  // A live clock so the "how long in this state / on this call" timer ticks.
+  useEffect(() => {
+    const t = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (onCall && !callStartRef.current) callStartRef.current = Date.now();
+    if (!onCall) callStartRef.current = 0;
+  }, [onCall]);
 
   function changeState(v: AgentPresenceState) {
     setAgentState(v);
+    setSince(Date.now());
     api.setAgentStatus(v).catch(() => undefined);
   }
 
@@ -158,6 +201,9 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const badgeTone = busy ? statusTone[phone.status] : state.tone;
   const badgeLabel = busy ? statusLabel[phone.status] : hasExtension ? state.label : statusLabel[phone.status];
   const dotColor = badgeTone === "green" ? "bg-success" : badgeTone === "red" ? "bg-destructive" : badgeTone === "blue" ? "bg-primary" : badgeTone === "amber" ? "bg-warning" : "bg-muted-foreground/50";
+  const timerSeconds = onCall
+    ? Math.max(0, Math.floor((nowTick - (callStartRef.current || nowTick)) / 1000))
+    : Math.max(0, Math.floor((nowTick - since) / 1000));
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
@@ -169,7 +215,10 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
             <div className="text-lg font-semibold leading-tight">{phone.extension ?? extension ?? "—"}</div>
           </div>
         </div>
-        <Badge tone={badgeTone}>{badgeLabel}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone={badgeTone}>{badgeLabel}</Badge>
+          {hasExtension && <span className="font-mono text-sm tabular-nums text-muted-foreground" title={onCall ? "Görüşme süresi" : "Bu durumdaki süre"}>{formatClock(timerSeconds)}</span>}
+        </div>
         {hasExtension && (
           <Select value={agentState} onChange={(e) => changeState(e.target.value as AgentPresenceState)} className="h-9 w-40">
             {Object.entries(agentStates).map(([v, s]) => (
@@ -355,46 +404,45 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 }
 
 function Escalation({ categories, activePeer, canSearch }: { categories: EscalationCategory[]; activePeer?: string; canSearch: boolean }) {
-  const [number, setNumber] = useState("");
+  const [customer, setCustomer] = useState("");
   const [catId, setCatId] = useState<number | null>(null);
   const [reasonId, setReasonId] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [history, setHistory] = useState<EscalationRecord[]>([]);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const onActiveCall = !!activePeer;
 
-  // When a call is live, follow its number so the agent logs against the right
-  // customer without retyping.
+  // Follow the live call's number; keep it after the call ends so the agent can
+  // still wrap up. There is no manual number entry here anymore.
   useEffect(() => {
-    if (activePeer) setNumber(displayNumber(activePeer));
+    if (activePeer) setCustomer(displayNumber(activePeer));
   }, [activePeer]);
 
   const loadHistory = useCallback((n: string) => {
-    if (!canSearch) return; // looking a customer up requires the search permission
+    if (!canSearch) { setHistory([]); return; }
     const key = n.trim();
     if (!key) { setHistory([]); return; }
     api.escalationHistory(key).then(setHistory).catch(() => setHistory([]));
   }, [canSearch]);
 
-  useEffect(() => {
-    if (!canSearch) return;
-    const t = window.setTimeout(() => loadHistory(number), 400);
-    return () => window.clearTimeout(t);
-  }, [number, loadHistory, canSearch]);
+  useEffect(() => { loadHistory(customer); }, [customer, loadHistory]);
 
   const reasons = useMemo(() => categories.find((c) => c.id === catId)?.reasons ?? [], [categories, catId]);
   const catOptions = useMemo(() => categories.map((c) => ({ id: c.id, label: c.name })), [categories]);
   const reasonOptions = useMemo(() => reasons.map((r) => ({ id: r.id, label: r.name })), [reasons]);
 
   async function save() {
-    if (!number.trim() || reasonId === null) { setStatus({ kind: "err", text: "Numara ve durum seçin." }); return; }
+    if (!customer.trim() || reasonId === null) { setStatus({ kind: "err", text: "Durum seçin." }); return; }
     setSaving(true);
     setStatus(null);
     try {
-      await api.logEscalation({ number: number.trim(), reasonId, note: note.trim() || undefined });
+      await api.logEscalation({ number: customer.trim(), reasonId, note: note.trim() || undefined });
       setNote("");
+      setReasonId(null);
+      setCatId(null);
       setStatus({ kind: "ok", text: "Eskalasyon kaydedildi." });
-      loadHistory(number);
+      loadHistory(customer);
     } catch (e) {
       setStatus({ kind: "err", text: e instanceof ApiError ? e.message : "Kaydedilemedi." });
     } finally {
@@ -402,108 +450,109 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
     }
   }
 
+  if (categories.length === 0) {
+    return (
+      <Card title="Eskalasyon">
+        <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
+          Henüz eskalasyon durumu tanımlı değil. Yönetici, <span className="font-medium">Eskalasyon</span> menüsünden kategori ve durum ekleyebilir.
+        </p>
+      </Card>
+    );
+  }
+
+  if (!customer.trim()) {
+    return (
+      <Card title="Eskalasyon">
+        <p className="rounded-xl bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
+          Bir çağrı başladığında müşteri bilgisi burada belirir ve eskalasyon girebilirsiniz.
+        </p>
+      </Card>
+    );
+  }
+
   return (
     <Card title="Eskalasyon">
-      <div className="space-y-5">
-        {/* Entry */}
-        <div className="space-y-4">
-          {categories.length === 0 ? (
-            <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">
-              Henüz eskalasyon durumu tanımlı değil. Yönetici, <span className="font-medium">Eskalasyon</span> menüsünden kategori ve durum ekleyebilir.
-            </p>
-          ) : (
-            <>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Müşteri Numarası</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    value={number}
-                    onChange={(e) => setNumber(e.target.value)}
-                    placeholder="0530 000 00 00"
-                    inputMode="tel"
-                    className="h-12 w-full rounded-xl border border-border/70 bg-muted/40 pl-10 pr-3 text-base outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-                  />
-                </div>
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">Kategori</span>
-                  <SearchableSelect
-                    size="lg"
-                    value={catId}
-                    onChange={(id) => { setCatId(id); setReasonId(null); }}
-                    options={catOptions}
-                    placeholder="Kategori seçin"
-                    searchPlaceholder="Kategori ara..."
-                  />
-                </label>
-                <label className="block space-y-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">Durum</span>
-                  <SearchableSelect
-                    size="lg"
-                    value={reasonId}
-                    onChange={setReasonId}
-                    options={reasonOptions}
-                    placeholder={catId === null ? "Önce kategori" : "Durum seçin"}
-                    searchPlaceholder="Durum ara..."
-                    disabled={catId === null}
-                  />
-                </label>
-              </div>
-
-              <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Not</span>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Görüşme notu (opsiyonel)"
-                  rows={3}
-                  className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-                />
-              </label>
-
-              <div className="flex items-center justify-between gap-3">
-                {status ? (
-                  <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span>
-                ) : (
-                  <span />
-                )}
-                <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null || !number.trim()}>
-                  {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
-                </Button>
-              </div>
-            </>
-          )}
+      <div className="space-y-4">
+        {/* Prominent customer header — highlighted during a live call */}
+        <div className={cn("rounded-2xl px-4 py-3 transition", onActiveCall ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/40")}>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs text-muted-foreground">{onActiveCall ? "Görüşülen müşteri" : "Son müşteri"}</div>
+              <div className="text-2xl font-bold tabular-nums tracking-wide">{customer}</div>
+            </div>
+            {canSearch && (
+              <Badge tone={history.length ? "amber" : "slate"}>{history.length} geçmiş kayıt</Badge>
+            )}
+          </div>
         </div>
 
-        {/* This customer's history (requires the search permission) */}
-        {canSearch && (
-        <div className="rounded-xl bg-muted/30 p-4">
-          <p className="mb-3 text-sm font-semibold">
-            Bu müşterinin geçmişi{number.trim() && <span className="text-muted-foreground"> · {displayNumber(number)}</span>}
-          </p>
-          {history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{number.trim() ? "Bu numara için kayıt yok." : "Numara girin veya çağrı başlatın."}</p>
-          ) : (
-            <ul className="max-h-56 space-y-2 overflow-y-auto">
+        {/* Customer history opens prominently as soon as a call is answered */}
+        {canSearch && history.length > 0 && (
+          <div className="rounded-xl bg-muted/30 p-3">
+            <p className="mb-2 text-xs font-semibold text-muted-foreground">Geçmiş görüşmeler</p>
+            <ul className="max-h-44 space-y-2 overflow-y-auto">
               {history.map((h) => (
-                <li key={h.id} className="rounded-lg bg-card px-3 py-2.5 text-sm ring-1 ring-border/50">
+                <li key={h.id} className="rounded-lg bg-card px-3 py-2 text-sm ring-1 ring-border/50">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">{h.agentName} görüştü</span>
                     <span className="text-xs text-muted-foreground">{h.createdAt}</span>
                   </div>
-                  <div className="mt-1">
-                    <Badge tone="amber">{h.categoryName}</Badge> <span className="text-muted-foreground">{h.reasonName}</span>
-                  </div>
+                  <div className="mt-1"><Badge tone="amber">{h.categoryName}</Badge> <span className="text-muted-foreground">{h.reasonName}</span></div>
                   {h.note && <p className="mt-1 text-foreground/80">{h.note}</p>}
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </div>
         )}
+
+        {/* Step 1: big category combobox */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-muted-foreground">1 · Kategori</span>
+          <SearchableSelect
+            size="lg"
+            value={catId}
+            onChange={(id) => { setCatId(id); setReasonId(null); }}
+            options={catOptions}
+            placeholder="Kategori seçin"
+            searchPlaceholder="Kategori ara..."
+          />
+        </div>
+
+        {/* Step 2: durum appears once a category is chosen */}
+        {catId !== null && (
+          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="text-xs font-medium text-muted-foreground">2 · Durum</span>
+            <SearchableSelect
+              size="lg"
+              value={reasonId}
+              onChange={setReasonId}
+              options={reasonOptions}
+              placeholder="Durum seçin"
+              searchPlaceholder="Durum ara..."
+            />
+          </div>
+        )}
+
+        {/* Step 3: note appears once a durum is chosen */}
+        {reasonId !== null && (
+          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="text-xs font-medium text-muted-foreground">3 · Not</span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Görüşme notu (opsiyonel)"
+              rows={3}
+              className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+            />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3">
+          {status ? <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span> : <span />}
+          <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null}>
+            {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
+          </Button>
+        </div>
       </div>
     </Card>
   );
@@ -603,7 +652,8 @@ function AgentsQueues({ exts, queues, canCall }: { exts: PBXExtension[]; queues:
 function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
-  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0 });
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -621,7 +671,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
-          setTotal(r.total ?? r.items.length);
+          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered });
           setError(null);
           setLoading(false);
         })
@@ -633,7 +683,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
     };
     load();
     // Our own store is authoritative and cheap; refresh often so a just-ended
-    // call appears right away.
+    // call appears right away. It also resets at local midnight (server-side).
     const timer = window.setInterval(load, 10000);
     return () => {
       live = false;
@@ -663,23 +713,44 @@ function CallHistory({ canCall }: { canCall: boolean }) {
     });
   }
 
+  const real = counts.short + counts.long;
+  const total = real + counts.unanswered;
+  const term = query.trim();
+  const filtered = term ? calls.filter((c) => displayNumber(c.direction === "outbound" ? c.toNumber : c.fromNumber).includes(displayNumber(term))) : calls;
+
   return (
-    <Card title="Çağrı Geçmişi" actions={<Badge tone="slate">{total} çağrı</Badge>}>
+    <Card title="Çağrı Geçmişi">
       {loading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : error ? (
         <p className="text-sm text-destructive">{error}</p>
-      ) : calls.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Henüz çağrı kaydı yok.</p>
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <Legend dot="bg-success" label="Gerçek görüşme" />
-            <Legend dot="bg-warning" label="Kısa" />
-            <Legend dot="bg-muted-foreground/50" label="Cevapsız" />
+          {/* Today's breakdown (resets at 00:00) */}
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <CountBox label="Gerçek" value={real} tone="green" hint="Kısa + uzun" />
+            <CountBox label="Kısa" value={counts.short} tone="amber" />
+            <CountBox label="Uzun" value={counts.long} tone="green" />
+            <CountBox label="Cevapsız" value={counts.unanswered} tone="slate" />
+            <CountBox label="Toplam" value={total} tone="blue" hint="Cevapsız dahil" />
           </div>
-          <ul className="max-h-[32rem] space-y-1 overflow-y-auto">
-            {calls.map((c) => {
+
+          <div className="relative mb-2">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Numaraya göre ara"
+              inputMode="tel"
+              className="h-9 w-full rounded-xl border border-border/70 bg-muted/40 pl-9 pr-3 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+            />
+          </div>
+
+          {filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">{calls.length === 0 ? "Bugün çağrı kaydı yok." : "Eşleşen çağrı yok."}</p>
+          ) : (
+          <ul className="max-h-[28rem] space-y-1 overflow-y-auto">
+            {filtered.map((c) => {
               const counterpart = c.direction === "outbound" ? c.toNumber : c.fromNumber;
               const isOpen = open === c.uuid;
               const q = callQuality(c.disposition, c.durationSeconds);
@@ -719,6 +790,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
               );
             })}
           </ul>
+          )}
         </>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
@@ -726,12 +798,18 @@ function CallHistory({ canCall }: { canCall: boolean }) {
   );
 }
 
-function Legend({ dot, label }: { dot: string; label: string }) {
+function CountBox({ label, value, tone, hint }: { label: string; value: number; tone: "green" | "amber" | "slate" | "blue"; hint?: string }) {
+  const toneClass: Record<string, string> = {
+    green: "text-success",
+    amber: "text-warning",
+    slate: "text-muted-foreground",
+    blue: "text-primary",
+  };
   return (
-    <span className="flex items-center gap-1.5">
-      <span className={cn("size-2 rounded-full", dot)} />
-      {label}
-    </span>
+    <div className="rounded-xl bg-muted/40 px-3 py-2 text-center" title={hint}>
+      <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>{value}</div>
+      <div className="mt-1 text-[0.7rem] text-muted-foreground">{label}</div>
+    </div>
   );
 }
 

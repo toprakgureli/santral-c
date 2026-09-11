@@ -22,7 +22,8 @@ export function Login() {
   const [newPassword, setNewPassword] = useState("");
   const [code, setCode] = useState("");
   const [token, setToken] = useState("");
-  const [enrollUri, setEnrollUri] = useState("");
+  const [enrollQr, setEnrollQr] = useState("");
+  const [enrollSecret, setEnrollSecret] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -56,7 +57,8 @@ export function Login() {
   async function startEnroll(t: string) {
     try {
       const res = await api.mfaEnroll(t);
-      setEnrollUri(res.otpauthUrl ?? res.uri ?? res.secret);
+      setEnrollQr(res.qr);
+      setEnrollSecret(res.secret);
       setStep("enroll");
     } catch (e) {
       setError(message(e));
@@ -176,9 +178,15 @@ export function Login() {
       )}
 
       {step === "enroll" && (
-        <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); run(() => api.mfaEnrollVerify(token, code)); }}>
-          <p className="text-sm text-muted-foreground">İki adımlı doğrulamayı kur: aşağıdaki anahtarı uygulamana ekle, sonra üretilen kodu gir.</p>
-          <div className="rounded-lg bg-muted/50 p-2 text-xs break-all text-muted-foreground">{enrollUri}</div>
+        <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); run(() => api.mfaEnrollVerify(token, code)); }}>
+          <p className="text-sm text-muted-foreground">İki adımlı doğrulamayı kur: QR'ı doğrulama uygulamanla (Google Authenticator, Authy...) tara, sonra üretilen 6 haneli kodu gir.</p>
+          {enrollQr && (
+            <img src={enrollQr} alt="TOTP QR" width={192} height={192} className="mx-auto rounded-xl bg-white p-2 shadow-sm" />
+          )}
+          <div className="space-y-1">
+            <p className="text-center text-xs text-muted-foreground">QR okutamıyorsan bu anahtarı elle ekle:</p>
+            <div className="rounded-lg bg-muted/50 p-2 text-center font-mono text-xs tracking-wider break-all text-muted-foreground">{enrollSecret}</div>
+          </div>
           <Field label="Kod">
             <Input inputMode="numeric" maxLength={6} autoFocus value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>

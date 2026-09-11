@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -52,19 +53,36 @@ func (r *Repository) Update(ctx context.Context, id uint, fields map[string]any)
 	return nil
 }
 
-// Recent returns a user's most recent call logs and their total count.
-func (r *Repository) Recent(ctx context.Context, userID uint, limit int) ([]models.CallLog, int64, error) {
-	var total int64
-	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("call logs could not be counted: %w", err)
+// Counts is a breakdown of a user's calls since a cut-off.
+type Counts struct {
+	Short      int64 `json:"short"`
+	Long       int64 `json:"long"`
+	Unanswered int64 `json:"unanswered"`
+}
+
+// Today returns a user's call logs since `from` plus their breakdown, split
+// short/long by the shortLong threshold (seconds).
+func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, shortLong, limit int) ([]models.CallLog, Counts, error) {
+	var counts Counts
+	err := r.db.WithContext(ctx).
+		Model(&models.CallLog{}).
+		Select(
+			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds < ?) AS short, "+
+				"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS long, "+
+				"count(*) FILTER (WHERE disposition <> 'answered') AS unanswered",
+			shortLong, shortLong).
+		Where("user_id = ? AND started_at >= ?", userID, from).
+		Scan(&counts).Error
+	if err != nil {
+		return nil, counts, fmt.Errorf("call logs could not be counted: %w", err)
 	}
 	var logs []models.CallLog
 	if err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
+		Where("user_id = ? AND started_at >= ?", userID, from).
 		Order("started_at DESC").
 		Limit(limit).
 		Find(&logs).Error; err != nil {
-		return nil, 0, fmt.Errorf("call logs could not be listed: %w", err)
+		return nil, counts, fmt.Errorf("call logs could not be listed: %w", err)
 	}
-	return logs, total, nil
+	return logs, counts, nil
 }

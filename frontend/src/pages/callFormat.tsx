@@ -34,9 +34,9 @@ export function CallDisposition({ value }: { value: string }) {
   return <Badge tone={dispositionTone[value] ?? "slate"}>{dispositionLabel[value] ?? value}</Badge>;
 }
 
-// REAL_CALL_SECONDS is the threshold above which an answered call counts as a
-// real conversation rather than a quick pickup/misdial.
-export const REAL_CALL_SECONDS = 5;
+// SHORT_LONG_SECONDS splits an answered call into a short vs a long
+// conversation (kept in sync with the backend breakdown).
+export const SHORT_LONG_SECONDS = 30;
 
 export type QualityTone = "green" | "amber" | "slate" | "blue";
 
@@ -56,12 +56,22 @@ export function callQuality(disposition: string, durationSeconds: number): CallQ
     return { tone: "blue", label: "Sürüyor", dot: "bg-primary", text: "text-primary", border: "border-primary/60" };
   }
   if (disposition === "answered") {
-    if (durationSeconds >= REAL_CALL_SECONDS) {
-      return { tone: "green", label: "Gerçek görüşme", dot: "bg-success", text: "text-success", border: "border-success/70" };
+    if (durationSeconds >= SHORT_LONG_SECONDS) {
+      return { tone: "green", label: "Uzun görüşme", dot: "bg-success", text: "text-success", border: "border-success/70" };
     }
     return { tone: "amber", label: "Kısa görüşme", dot: "bg-warning", text: "text-warning", border: "border-warning/70" };
   }
   return { tone: "slate", label: dispositionLabel[disposition] ?? "Cevapsız", dot: "bg-muted-foreground/50", text: "text-muted-foreground", border: "border-muted-foreground/30" };
+}
+
+// formatClock renders a running duration as H:MM:SS (or MM:SS under an hour).
+export function formatClock(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 export function formatDuration(seconds: number): string {
