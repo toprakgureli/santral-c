@@ -121,6 +121,10 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 	if err != nil {
 		return "", err
 	}
+	// Present as a normal browser: the webphone host may serve a different page
+	// (or a bot-check) to a bare HTTP client, which would omit the SIP config.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	raw, status, err := c.do(req)
 	if err != nil {
 		return "", err
@@ -130,7 +134,7 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 	}
 	m := sipPasswordRe.FindSubmatch(raw)
 	if m == nil || len(m[1]) == 0 {
-		return "", fmt.Errorf("sip password not found for extension %s", extension)
+		return "", fmt.Errorf("sip password not found on webphone page for extension %s (page %d bytes)", extension, len(raw))
 	}
 	return string(m[1]), nil
 }

@@ -109,7 +109,11 @@ func (h *Handler) SyncAllCredentials(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(fiber.Map{"synced": ok, "failed": len(failed), "failedExtensions": failed})
+	exts := make([]string, len(failed))
+	for i, f := range failed {
+		exts[i] = f.Extension
+	}
+	return c.JSON(fiber.Map{"synced": ok, "failed": len(failed), "failedExtensions": exts, "failures": failed})
 }
 
 // Calls returns a page of call records.

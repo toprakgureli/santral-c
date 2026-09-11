@@ -31,11 +31,17 @@ echo "==> Pulling origin/$BRANCH"
 run_as_app git -C "$APP_DIR" fetch --all --prune
 run_as_app git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 
+# Build stamp so the running app can report which commit it is.
+GIT_SHA=$(run_as_app git -C "$APP_DIR" rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "==> Version $GIT_SHA ($BUILD_TIME)"
+
 echo "==> Building backend"
-run_as_app bash -c "cd '$APP_DIR/backend' && '$GO' build -o '$APP_DIR/santral' ./cmd/santral"
+LDFLAGS="-X main.version=$GIT_SHA -X main.buildTime=$BUILD_TIME"
+run_as_app bash -c "cd '$APP_DIR/backend' && '$GO' build -ldflags '$LDFLAGS' -o '$APP_DIR/santral' ./cmd/santral"
 
 echo "==> Building frontend"
-run_as_app bash -c "cd '$APP_DIR/frontend' && npm ci && npm run build"
+run_as_app bash -c "cd '$APP_DIR/frontend' && npm ci && VITE_BUILD_SHA='$GIT_SHA' VITE_BUILD_TIME='$BUILD_TIME' npm run build"
 
 echo "==> Publishing frontend to $WEB_ROOT"
 sudo mkdir -p "$WEB_ROOT"

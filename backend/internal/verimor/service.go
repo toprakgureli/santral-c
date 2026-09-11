@@ -320,10 +320,17 @@ func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, exte
 	return nil
 }
 
+// SIPSyncFailure is one extension that could not be synced, with why.
+type SIPSyncFailure struct {
+	Extension string `json:"extension"`
+	Reason    string `json:"reason"`
+}
+
 // SyncAllSIP pulls the SIP password from Verimor for every user that has an
 // extension and stores it, returning how many succeeded and which extensions
-// failed (usually because they have no Verimor employee/webphone).
-func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []string, error) {
+// failed with the reason, so a missing employee can be told apart from a
+// throttle or a changed webphone page.
+func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []SIPSyncFailure, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return 0, nil, err
@@ -336,7 +343,7 @@ func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []string, 
 		return 0, nil, errs.Internal(err)
 	}
 	ok := 0
-	failed := make([]string, 0)
+	failed := make([]SIPSyncFailure, 0)
 	for i, u := range users {
 		// Each extension costs two API calls (token + page); space them out so a
 		// bulk sync does not trip the hosted rate limit and fail every extension.
@@ -347,16 +354,16 @@ func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []string, 
 		}
 		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
 		if err != nil {
-			failed = append(failed, u.Extension)
+			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: err.Error()})
 			continue
 		}
 		enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
 		if err != nil {
-			failed = append(failed, u.Extension)
+			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: "şifre şifrelenemedi"})
 			continue
 		}
 		if err := s.repo.SetSIP(ctx, u.ID, u.Extension, enc); err != nil {
-			failed = append(failed, u.Extension)
+			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: "kaydedilemedi"})
 			continue
 		}
 		ok++

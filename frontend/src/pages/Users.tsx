@@ -249,7 +249,12 @@ function SyncSipButton({ onDone }: { onDone: () => void }) {
     setMsg(null);
     try {
       const r = await api.syncAllSip();
-      const fails = r.failedExtensions?.length ? ` (dahili ${r.failedExtensions.join(", ")} — Verimor'da personel yok)` : "";
+      let fails = "";
+      if (r.failures?.length) {
+        fails = " — " + r.failures.map((f) => `${f.extension}: ${f.reason}`).join(" · ");
+      } else if (r.failedExtensions?.length) {
+        fails = ` (dahili ${r.failedExtensions.join(", ")})`;
+      }
       setMsg(`${r.synced} çekildi${r.failed ? ` · ${r.failed} başarısız${fails}` : ""}`);
       onDone();
     } catch (e) {

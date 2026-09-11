@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { visibleMenu } from "@/lib/menu";
 import { APP_NAME } from "@/lib/brand";
 import { useAuth } from "@/auth/AuthContext";
+import VersionInfo from "@/components/layout/VersionInfo";
 
 type SidebarProps = {
   open: boolean;
@@ -101,6 +102,7 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
           <ChevronsLeft className={cn("size-4 shrink-0 transition-transform duration-300 ease-out", collapsed && "rotate-180")} />
           <span className={cn("truncate text-xs font-medium", collapsed && "hidden")}>Menüyü daralt</span>
         </button>
+        <VersionInfo collapsed={collapsed} />
       </div>
     </aside>
   );

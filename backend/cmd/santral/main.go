@@ -36,6 +36,13 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
 )
 
+// Build stamp, set at link time via -ldflags "-X main.version=... -X main.buildTime=...".
+// They default to "dev" so a local build is obviously not a release.
+var (
+	version   = "dev"
+	buildTime = "unknown"
+)
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	if err := run(); err != nil {
@@ -118,10 +125,15 @@ func run() error {
 		AllowCredentials: configs.Cnf.App.CORSOrigins != "",
 	}))
 	app.Get("/healthz", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
+		return c.JSON(fiber.Map{"status": "ok", "version": version, "buildTime": buildTime})
 	})
 
 	api := app.Group("/api/v1")
+	// Public build stamp so the panel can show whether the running backend is the
+	// latest deploy.
+	api.Get("/version", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"version": version, "buildTime": buildTime})
+	})
 	auth.NewRouter(authHandler, guard).Routes(api)
 	user.NewRouter(userHandler, guard).Routes(api)
 	role.NewRouter(roleHandler, guard).Routes(api)
@@ -145,7 +157,7 @@ func run() error {
 			stop()
 		}
 	}()
-	slog.Info("server started", "port", configs.Cnf.App.Port, "env", string(configs.Cnf.App.Development))
+	slog.Info("server started", "port", configs.Cnf.App.Port, "env", string(configs.Cnf.App.Development), "version", version, "buildTime", buildTime)
 
 	<-ctx.Done()
 	slog.Info("shutdown signal received")
