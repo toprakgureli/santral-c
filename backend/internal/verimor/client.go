@@ -157,12 +157,22 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 
 // CDRs lists call records filtered by params (key is added automatically).
 func (c *Client) CDRs(ctx context.Context, params url.Values) ([]CDR, Pagination, error) {
+	return c.cdrs(ctx, c.http, params)
+}
+
+// CDRsSlow is CDRs on the longer-timeout client, for date-filtered queries which
+// the hosted API answers slowly (~15-18s).
+func (c *Client) CDRsSlow(ctx context.Context, params url.Values) ([]CDR, Pagination, error) {
+	return c.cdrs(ctx, c.slow, params)
+}
+
+func (c *Client) cdrs(ctx context.Context, client *http.Client, params url.Values) ([]CDR, Pagination, error) {
 	params.Set("key", c.apiKey)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/cdrs?"+params.Encode(), nil)
 	if err != nil {
 		return nil, Pagination{}, err
 	}
-	raw, status, err := c.do(req)
+	raw, status, err := c.doWith(client, req)
 	if err != nil {
 		return nil, Pagination{}, err
 	}

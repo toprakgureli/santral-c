@@ -496,15 +496,84 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		phoneSearch = strings.TrimSpace(filter.Number) // real phone-number search (or none)
 	}
 
+	hasDate := dateOnly(filter.From) != "" || dateOnly(filter.To) != ""
+
+	// A date-filtered full-santral view is served from the warm window when it has
+	// those days (instant); otherwise it falls back to Verimor's own server-side
+	// date query, which reaches any historical date but is slow (~15-18s).
+	if extFilter == "" && phoneSearch == "" && hasDate {
+		if w := s.windowCalls("", "", filter.From, filter.To, filter); w.Total > 0 {
+			return w, nil
+		}
+		return s.dateSearchCalls(ctx, filter)
+	}
+
 	// A pure phone-number search over the whole santral uses Verimor's own filter,
-	// which searches full history server-side. Everything else (all / own / a
-	// chosen extension), optionally narrowed by a date range, is served from the
-	// warm window in-process (fast, no API, no throttling).
+	// which searches full history server-side.
 	if extFilter == "" && phoneSearch != "" {
 		filter.Number = phoneSearch
 		return s.phoneSearchCalls(ctx, filter)
 	}
+
+	// Everything else (all / own / a chosen extension, optionally narrowed by date)
+	// is served from the warm window in-process.
 	return s.windowCalls(extFilter, phoneSearch, filter.From, filter.To, filter), nil
+}
+
+// dateSearchCalls queries the hosted API server-side by date range. Verimor's
+// date filter works but is slow (~15-18s), so it uses the long-timeout client.
+// This reaches any historical date, unlike the recent warm window.
+func (s *Service) dateSearchCalls(ctx context.Context, filter Filter) (*CallList, error) {
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.Limit < 10 || filter.Limit > 100 {
+		filter.Limit = 20
+	}
+	params := url.Values{}
+	params.Set("page", strconv.Itoa(filter.Page))
+	params.Set("limit", strconv.Itoa(filter.Limit))
+	if d := apiDirection(filter.Direction); d != "" {
+		params.Set("direction", d)
+	}
+	// Local day boundaries -> UTC instants, in the format the hosted API expects.
+	if from := dateOnly(filter.From); from != "" {
+		if t, err := time.ParseInLocation("2006-01-02", from, istanbul); err == nil {
+			params.Set("start_stamp_from", t.UTC().Format("2006-01-02 15:04:05")+" UTC")
+		}
+	}
+	if to := dateOnly(filter.To); to != "" {
+		if t, err := time.ParseInLocation("2006-01-02", to, istanbul); err == nil {
+			// inclusive end: up to the start of the next day
+			params.Set("start_stamp_to", t.AddDate(0, 0, 1).UTC().Format("2006-01-02 15:04:05")+" UTC")
+		}
+	}
+	key := params.Encode()
+	if cached, ok := s.cachedCalls(key); ok {
+		return cached, nil
+	}
+	if s.cdrCooling() {
+		if stale, ok := s.staleCalls(key); ok {
+			return stale, nil
+		}
+		return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
+	}
+	cdrs, pg, err := s.client.CDRsSlow(ctx, params)
+	if err != nil {
+		s.startCDRCooldown()
+		if stale, ok := s.staleCalls(key); ok {
+			return stale, nil
+		}
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yavaş yanıt veriyor). Birazdan tekrar deneyin.", err)
+	}
+	items := make([]Call, 0, len(cdrs))
+	for i := range cdrs {
+		items = append(items, mapCDR(cdrs[i]))
+	}
+	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
+	fillPaging(list, filter.Page, filter.Limit, len(items))
+	s.storeCalls(key, list)
+	return list, nil
 }
 
 // phoneSearchCalls queries the hosted API by phone number (its one filter that
