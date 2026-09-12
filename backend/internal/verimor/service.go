@@ -36,11 +36,12 @@ type Service struct {
 	repo   *Repository
 	cfg    configs.Bulutsantralim
 
-	mu        sync.Mutex
-	cache     map[string]cdrCacheEntry
-	cdrCool   time.Time // until when on-demand CDR calls back off after a 429/timeout
-	scan      []CDR     // rolling CDR window the poller accumulates for extension filtering
-	scanTotal int       // santral-wide total_count from the latest head fetch
+	mu         sync.Mutex
+	cache      map[string]cdrCacheEntry
+	cdrCool    time.Time             // until when on-demand CDR calls back off after a 429/timeout
+	scan       []CDR                 // rolling CDR window the poller accumulates for extension filtering
+	scanTotal  int                   // santral-wide total_count from the latest head fetch
+	matchCache map[string]matchEntry // cached extension-filtered results for a past date
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -437,7 +438,6 @@ type Filter struct {
 	Scope     string // "own" (default) or "all"
 	From      string // inclusive start date, local "YYYY-MM-DD" (optional)
 	To        string // inclusive end date, local "YYYY-MM-DD" (optional)
-	Archive   bool   // search old records via Verimor's slow server-side date query
 	Page      int
 	Limit     int
 }
@@ -497,18 +497,16 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		phoneSearch = strings.TrimSpace(filter.Number) // real phone-number search (or none)
 	}
 
-	hasDate := dateOnly(filter.From) != "" || dateOnly(filter.To) != ""
+	fromDay, toDay := dateOnly(filter.From), dateOnly(filter.To)
+	hasDate := fromDay != "" || toDay != ""
 
-	// A date-filtered full-santral view is served instantly from the warm window
-	// (recent days). Only when the user explicitly asks for old records does it use
-	// Verimor's own server-side date query, which reaches any date but is slow
-	// (~15-18s). This keeps the common (recent) case fast.
-	if extFilter == "" && phoneSearch == "" && hasDate {
-		if filter.Archive {
-			return s.dateSearchCalls(ctx, filter)
-		}
-		return s.windowCalls("", "", filter.From, filter.To, filter), nil
-	}
+	// Date-filtered full-santral view. Today is served instantly from the warm
+	// window (its newest rows are today's calls); any other day is served by
+	// Verimor's own server-side date query, which is complete for any date but
+	// slow (~15-18s). So the common "today" case is fast, and picking an older day
+	// returns the full, correct set (with a loading state) instead of an empty page.
+	today := time.Now().In(istanbul).Format("2006-01-02")
+	isToday := hasDate && fromDay == today && toDay == today
 
 	// A pure phone-number search over the whole santral uses Verimor's own filter,
 	// which searches full history server-side.
@@ -517,8 +515,19 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		return s.phoneSearchCalls(ctx, filter)
 	}
 
-	// Everything else (all / own / a chosen extension, optionally narrowed by date)
-	// is served from the warm window in-process.
+	// A specific PAST day lives only in Verimor's records (the warm window and the
+	// no-date CDR list are today-only). Serve it from Verimor's server-side date
+	// query: paged directly for the whole santral, or scanned and filtered
+	// in-process for an extension scope. Both are slow (~15s+, loading shown) but
+	// return real data instead of an empty page.
+	if hasDate && !isToday {
+		if extFilter != "" {
+			return s.dateScopedCalls(ctx, extFilter, filter)
+		}
+		return s.dateSearchCalls(ctx, filter)
+	}
+
+	// Today or no date: served instantly from the warm window.
 	return s.windowCalls(extFilter, phoneSearch, filter.From, filter.To, filter), nil
 }
 
@@ -532,23 +541,11 @@ func (s *Service) dateSearchCalls(ctx context.Context, filter Filter) (*CallList
 	if filter.Limit < 10 || filter.Limit > 100 {
 		filter.Limit = 20
 	}
-	params := url.Values{}
+	params := dateParams(filter)
 	params.Set("page", strconv.Itoa(filter.Page))
 	params.Set("limit", strconv.Itoa(filter.Limit))
 	if d := apiDirection(filter.Direction); d != "" {
 		params.Set("direction", d)
-	}
-	// Local day boundaries -> UTC instants, in the format the hosted API expects.
-	if from := dateOnly(filter.From); from != "" {
-		if t, err := time.ParseInLocation("2006-01-02", from, istanbul); err == nil {
-			params.Set("start_stamp_from", t.UTC().Format("2006-01-02 15:04:05")+" UTC")
-		}
-	}
-	if to := dateOnly(filter.To); to != "" {
-		if t, err := time.ParseInLocation("2006-01-02", to, istanbul); err == nil {
-			// inclusive end: up to the start of the next day
-			params.Set("start_stamp_to", t.AddDate(0, 0, 1).UTC().Format("2006-01-02 15:04:05")+" UTC")
-		}
 	}
 	key := params.Encode()
 	if cached, ok := s.cachedCalls(key); ok {
@@ -576,6 +573,133 @@ func (s *Service) dateSearchCalls(ctx context.Context, filter Filter) (*CallList
 	fillPaging(list, filter.Page, filter.Limit, len(items))
 	s.storeCalls(key, list)
 	return list, nil
+}
+
+// dateParams builds the hosted API's UTC date-range params from a filter's local
+// From/To days.
+func dateParams(filter Filter) url.Values {
+	p := url.Values{}
+	if from := dateOnly(filter.From); from != "" {
+		if t, err := time.ParseInLocation("2006-01-02", from, istanbul); err == nil {
+			p.Set("start_stamp_from", t.UTC().Format("2006-01-02 15:04:05")+" UTC")
+		}
+	}
+	if to := dateOnly(filter.To); to != "" {
+		if t, err := time.ParseInLocation("2006-01-02", to, istanbul); err == nil {
+			// inclusive end: up to the start of the next day
+			p.Set("start_stamp_to", t.AddDate(0, 0, 1).UTC().Format("2006-01-02 15:04:05")+" UTC")
+		}
+	}
+	return p
+}
+
+// matchEntry caches an extension-filtered result set for a past date.
+type matchEntry struct {
+	calls []Call
+	at    time.Time
+}
+
+// dateScopeScanPages caps how many pages of a past day are scanned when filtering
+// to one extension (each page is a slow ~15s call), so a busy day stays bounded.
+const dateScopeScanPages = 3
+
+// dateScopedCalls returns an extension's calls on a past date. Verimor cannot
+// filter CDRs by extension, so it scans a bounded slice of that day's records
+// (newest first) and filters in-process. The result is cached so paging is
+// instant after the first (slow) fetch.
+func (s *Service) dateScopedCalls(ctx context.Context, ext string, filter Filter) (*CallList, error) {
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	limit := filter.Limit
+	if limit < 10 || limit > 100 {
+		limit = 20
+	}
+	dir := apiDirection(filter.Direction)
+	key := "dscoped|" + ext + "|" + dateOnly(filter.From) + "|" + dateOnly(filter.To) + "|" + dir
+	matched, ok := s.matchCached(key)
+	if !ok {
+		if s.cdrCooling() {
+			if m, stale := s.matchStale(key); stale {
+				matched = m
+			} else {
+				return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
+			}
+		} else {
+			base := dateParams(filter)
+			if dir != "" {
+				base.Set("direction", dir)
+			}
+			acc := make([]Call, 0, 64)
+			for page := 1; page <= dateScopeScanPages; page++ {
+				p := cloneValues(base)
+				p.Set("page", strconv.Itoa(page))
+				p.Set("limit", "100")
+				cdrs, pg, err := s.client.CDRsSlow(ctx, p)
+				if err != nil {
+					s.startCDRCooldown()
+					break // keep whatever we gathered
+				}
+				for i := range cdrs {
+					if extIsParty(cdrs[i], ext) {
+						acc = append(acc, mapCDR(cdrs[i]))
+					}
+				}
+				if len(cdrs) < 100 || pg.Page >= pg.TotalPages {
+					break
+				}
+			}
+			matched = acc
+			s.matchStore(key, matched)
+		}
+	}
+	total := len(matched)
+	pages := (total + limit - 1) / limit
+	if pages < 1 {
+		pages = 1
+	}
+	start := (filter.Page - 1) * limit
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	return &CallList{Items: matched[start:end], Page: filter.Page, Total: total, TotalPages: pages}, nil
+}
+
+func cloneValues(v url.Values) url.Values {
+	out := make(url.Values, len(v))
+	for k, vs := range v {
+		out[k] = append([]string(nil), vs...)
+	}
+	return out
+}
+
+func (s *Service) matchCached(key string) ([]Call, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e, ok := s.matchCache[key]; ok && time.Since(e.at) < 30*time.Minute {
+		return e.calls, true
+	}
+	return nil, false
+}
+
+func (s *Service) matchStale(key string) ([]Call, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.matchCache[key]
+	return e.calls, ok
+}
+
+func (s *Service) matchStore(key string, calls []Call) {
+	s.mu.Lock()
+	if s.matchCache == nil {
+		s.matchCache = make(map[string]matchEntry)
+	}
+	s.matchCache[key] = matchEntry{calls: calls, at: time.Now()}
+	s.mu.Unlock()
 }
 
 // phoneSearchCalls queries the hosted API by phone number (its one filter that
