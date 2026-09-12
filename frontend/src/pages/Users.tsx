@@ -10,6 +10,7 @@ import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "../components/ui";
 import UserForm from "../components/user/UserForm";
+import CredentialsHandoff, { type Handoff } from "../components/user/CredentialsHandoff";
 import { cn, formatDateTime } from "../lib/utils";
 
 const PER_PAGE = 25;
@@ -30,6 +31,7 @@ export function Users() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<User | null>(null);
   const [creating, setCreating] = useState(false);
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [tick, setTick] = useState(0);
   // A fast filter change can let an older, slower response land last; the
   // sequence number makes sure only the newest request paints.
@@ -166,8 +168,11 @@ export function Users() {
           roles={roles}
           onClose={() => { setEditing(null); setCreating(false); }}
           onSaved={closeAndReload}
+          onHandoff={setHandoff}
         />
       )}
+
+      {handoff && <CredentialsHandoff handoff={handoff} onClose={() => setHandoff(null)} />}
     </div>
   );
 }

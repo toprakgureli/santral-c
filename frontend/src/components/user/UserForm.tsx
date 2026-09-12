@@ -7,6 +7,7 @@ import AuthError from "@/components/auth/AuthError";
 import { errorMessage } from "@/components/auth/messages";
 import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Separator } from "@/components/ui";
 import PasswordField, { PasswordRules } from "@/components/ui/PasswordField";
+import type { Handoff } from "@/components/user/CredentialsHandoff";
 import { LIMITS } from "@/lib/limits";
 import { passwordValid } from "@/lib/password";
 import { can } from "@/lib/permissions";
@@ -17,12 +18,15 @@ type UserFormProps = {
   roles: Role[];
   onClose: () => void;
   onSaved: () => void;
+  // onHandoff receives the temporary password once it is set, so the caller can
+  // show it for copying; the form itself never displays it again.
+  onHandoff?: (handoff: Handoff) => void;
 };
 
 // UserForm creates or edits an account. Editing also hosts the password reset,
 // the SIP account and the activate/deactivate switch, so everything about one
 // user lives in one place.
-export default function UserForm({ user, roles, onClose, onSaved }: UserFormProps) {
+export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: UserFormProps) {
   const { user: me } = useAuth();
   const editing = Boolean(user);
   const canAssign = can(me, "role.assign");
@@ -100,7 +104,10 @@ export default function UserForm({ user, roles, onClose, onSaved }: UserFormProp
       const created = await api.createUser({ ...payload, password: form.password, sipExtension: ext || undefined });
       if (ext && form.sipPassword) await api.setUserSip(created.id, ext, form.sipPassword);
     });
-    if (ok) onSaved();
+    if (ok) {
+      onHandoff?.({ name: payload.name, email: payload.email, password: form.password });
+      onSaved();
+    }
   };
 
   const resetPassword = async () => {
@@ -110,8 +117,9 @@ export default function UserForm({ user, roles, onClose, onSaved }: UserFormProp
       return;
     }
     if (await run(() => api.resetUserPassword(user.id, form.password))) {
-      setForm((prev) => ({ ...prev, password: "" }));
-      setNotice("Şifre sıfırlandı. Kullanıcı bir sonraki girişinde yeni bir şifre belirleyecek.");
+      // Close the form and hand the password over once; it is never shown here.
+      onHandoff?.({ name: user.name, email: user.email, password: form.password });
+      onSaved();
     }
   };
 
