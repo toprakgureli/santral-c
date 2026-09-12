@@ -21,10 +21,12 @@ func TestExtIsParty(t *testing.T) {
 		caller, dest, ext string
 		want              bool
 	}{
-		{"1014 (902129510292)", "05304230113", "1014", true},
-		{"1015 (902129510292)", "05367441605", "1014", false},
-		{"05325219502", "902129092554", "1014", false},
-		{"1021 (902127060510)", "1014", "1014", true}, // internal call to 1014
+		{"1014 (902129510292)", "05304230113", "1014", true},  // outbound: ext is caller prefix
+		{"1015 (902129510292)", "05367441605", "1014", false}, // another ext's outbound
+		{"05325219502", "902129092554", "1014", false},        // inbound to a bare DID (not this ext)
+		{"05357352889", "902129510292 (1008)", "1008", true},  // inbound answered by 1008
+		{"05357352889", "902129510292 (1008)", "1014", false}, // inbound to 1008, not 1014
+		{"1021 (902127060510)", "1014", "1014", true},         // internal call to 1014
 		{"1008 (902128526465)", "05309752651", "1014", false},
 	}
 	for _, c := range cases {

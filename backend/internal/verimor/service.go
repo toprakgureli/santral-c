@@ -827,15 +827,19 @@ func dateOnly(s string) string {
 }
 
 // extIsParty reports whether the extension is a party on the call (as caller or
-// callee). An extension shows as "1014 (902...)" in the caller id, or as the bare
-// number in an internal call.
+// callee), covering both directions. The extension appears as the prefix on an
+// outbound leg ("1014 (902...)") and inside the parentheses on an answered
+// inbound leg ("902... (1008)"); an internal call is the bare number.
 func extIsParty(c CDR, ext string) bool {
 	return partyIsExt(c.CallerIDNumber, ext) || partyIsExt(c.DestinationNumber, ext)
 }
 
 func partyIsExt(field, ext string) bool {
 	field = strings.TrimSpace(field)
-	return field == ext || strings.HasPrefix(field, ext+" ") || strings.HasPrefix(field, ext+"(")
+	return field == ext ||
+		strings.HasPrefix(field, ext+" ") ||
+		strings.HasPrefix(field, ext+"(") ||
+		strings.Contains(field, "("+ext+")") // inbound leg answered by the extension
 }
 
 // currentScan returns the warm recent-CDR window maintained by the poller (empty
