@@ -22,6 +22,8 @@ export function Calls() {
   // "ext" narrows to a single extension's calls (managers only).
   const [scope, setScope] = useState<"own" | "all" | "ext">(canAll ? "all" : "own");
   const [ext, setExt] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<{ uuid: string; label: string } | null>(null);
@@ -41,6 +43,8 @@ export function Calls() {
         direction: direction || undefined,
         number: q || undefined,
         scope: extMode ? "all" : scope,
+        from: from || undefined,
+        to: to || undefined,
         page,
         perPage,
       })
@@ -54,7 +58,7 @@ export function Calls() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [page, direction, scope]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [page, direction, scope, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounce the extension filter so typing a dahili searches without Enter.
   useEffect(() => {
@@ -99,6 +103,14 @@ export function Calls() {
               <option value="outbound">Giden</option>
               <option value="internal">Dahili</option>
             </Select>
+            <div className="flex items-center gap-1">
+              <Input type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-36" title="Başlangıç tarihi" />
+              <span className="text-muted-foreground">–</span>
+              <Input type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" title="Bitiş tarihi" />
+              {(from || to) && (
+                <Button variant="ghost" className="h-9 px-2" onClick={() => { setFrom(""); setTo(""); setPage(1); }} title="Tarihi temizle">Temizle</Button>
+              )}
+            </div>
           </div>
         }
       >

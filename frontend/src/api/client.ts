@@ -145,7 +145,7 @@ export const api = {
   lookupContact: (number: string) => request<Contact>("/contacts/lookup" + query({ number })),
 
   // Calls (Bulutsantralim CDR — full santral view)
-  listCalls: (params: { direction?: string; number?: string; scope?: string; page?: number; perPage?: number } = {}) =>
+  listCalls: (params: { direction?: string; number?: string; scope?: string; from?: string; to?: string; page?: number; perPage?: number } = {}) =>
     request<CallPage>("/calls" + query(params)),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
 
