@@ -128,6 +128,7 @@ func (h *Handler) Calls(c *fiber.Ctx) error {
 		Scope:     c.Query("scope"),
 		From:      c.Query("from"),
 		To:        c.Query("to"),
+		Archive:   c.Query("archive") == "1",
 		Page:      c.QueryInt("page", 1),
 		Limit:     c.QueryInt("perPage", 20),
 	})

@@ -437,6 +437,7 @@ type Filter struct {
 	Scope     string // "own" (default) or "all"
 	From      string // inclusive start date, local "YYYY-MM-DD" (optional)
 	To        string // inclusive end date, local "YYYY-MM-DD" (optional)
+	Archive   bool   // search old records via Verimor's slow server-side date query
 	Page      int
 	Limit     int
 }
@@ -498,14 +499,15 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 
 	hasDate := dateOnly(filter.From) != "" || dateOnly(filter.To) != ""
 
-	// A date-filtered full-santral view is served from the warm window when it has
-	// those days (instant); otherwise it falls back to Verimor's own server-side
-	// date query, which reaches any historical date but is slow (~15-18s).
+	// A date-filtered full-santral view is served instantly from the warm window
+	// (recent days). Only when the user explicitly asks for old records does it use
+	// Verimor's own server-side date query, which reaches any date but is slow
+	// (~15-18s). This keeps the common (recent) case fast.
 	if extFilter == "" && phoneSearch == "" && hasDate {
-		if w := s.windowCalls("", "", filter.From, filter.To, filter); w.Total > 0 {
-			return w, nil
+		if filter.Archive {
+			return s.dateSearchCalls(ctx, filter)
 		}
-		return s.dateSearchCalls(ctx, filter)
+		return s.windowCalls("", "", filter.From, filter.To, filter), nil
 	}
 
 	// A pure phone-number search over the whole santral uses Verimor's own filter,

@@ -57,6 +57,9 @@ export function Calls() {
   const [preset, setPreset] = useState("today");
   const [from, setFrom] = useState(() => datePreset("today").from);
   const [to, setTo] = useState(() => datePreset("today").to);
+  // Old-record search hits Verimor's slow server-side date query; off by default
+  // so the recent (window) view stays instant.
+  const [archive, setArchive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<{ uuid: string; label: string } | null>(null);
@@ -78,6 +81,7 @@ export function Calls() {
         scope: extMode ? "all" : scope,
         from: from || undefined,
         to: to || undefined,
+        archive: archive ? "1" : undefined,
         page,
         perPage,
       })
@@ -91,7 +95,11 @@ export function Calls() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [page, direction, scope, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [page, direction, scope, from, to, archive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A fresh date/scope selection starts fast (window); the user re-enables the
+  // slow old-record search per query if they need it.
+  useEffect(() => { setArchive(false); }, [from, to, scope, direction]);
 
   // Debounce the extension filter so typing a dahili searches without Enter.
   useEffect(() => {
@@ -217,9 +225,18 @@ export function Calls() {
               {calls.length === 0 && !error && !loading && (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
-                    {(from || to)
-                      ? "Bu tarih aralığında kayıt yok. (Yakın tarihler anlık gelir; çok eski günler için OİM raporlarına bakın.)"
-                      : "Kayıt yok."}
+                    {(from || to) ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <span>Bu tarih aralığında yakın kayıt yok.</span>
+                        {!archive && (
+                          <Button variant="secondary" onClick={() => { setPage(1); setArchive(true); }}>
+                            Eski kayıtlarda ara (yavaş, ~15 sn)
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      "Kayıt yok."
+                    )}
                   </td>
                 </tr>
               )}
