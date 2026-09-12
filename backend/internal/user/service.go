@@ -3,7 +3,9 @@ package user
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
@@ -13,6 +15,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/hash"
+	"github.com/toprakgureli/santral-c/backend/pkg/password"
 )
 
 // Meta carries request context for audit trails.
@@ -80,8 +83,11 @@ func (s *Service) SetMFA(ctx context.Context, id uint, secret *string, enabled b
 }
 
 // ChangePassword hashes and stores a new password and clears the must-change flag.
-func (s *Service) ChangePassword(ctx context.Context, id uint, password string) error {
-	hashed, err := hash.Password(password)
+func (s *Service) ChangePassword(ctx context.Context, id uint, pw string) error {
+	if err := password.Validate(pw); err != nil {
+		return err
+	}
+	hashed, err := hash.Password(pw)
 	if err != nil {
 		return errs.Internal(err)
 	}
@@ -113,6 +119,9 @@ func (s *Service) CreateUser(ctx context.Context, actorID uint, req requests.Use
 	}
 	if exists {
 		return nil, errs.Conflict("Bu e-posta zaten kullanımda.", nil)
+	}
+	if err := password.Validate(req.Password); err != nil {
+		return nil, err
 	}
 
 	hashed, err := hash.Password(req.Password)
@@ -263,9 +272,80 @@ func (s *Service) SetRoles(ctx context.Context, actorID, targetID uint, roleIDs 
 	return &res, nil
 }
 
+// UpdateUser edits a user's name, email and role assignment in one step.
+// Changing roles additionally needs role.assign, mirroring SetRoles, and the
+// same invisible-admin guards apply.
+func (s *Service) UpdateUser(ctx context.Context, actorID, targetID uint, req requests.UserUpdate, meta Meta) (*responses.User, error) {
+	actor, err := s.authorize(ctx, actorID, enums.UserUpdate)
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.visibleTarget(ctx, actor, targetID)
+	if err != nil {
+		return nil, err
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	exists, err := s.repo.EmailExistsExcept(ctx, email, target.ID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if exists {
+		return nil, errs.Conflict("Bu e-posta adresi başka bir kullanıcıya ait.", nil)
+	}
+
+	currentRoles := make([]uint, 0, len(target.Roles))
+	for _, r := range target.Roles {
+		currentRoles = append(currentRoles, r.ID)
+	}
+	rolesChanged := !sameIDs(currentRoles, req.RoleIDs)
+	var roles []models.Role
+	if rolesChanged {
+		if _, err := s.require(actor, enums.RoleAssign); err != nil {
+			return nil, err
+		}
+		if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
+			return nil, errs.Forbidden("Bu kullanıcının rollerini değiştiremezsiniz.")
+		}
+		roles, err = s.resolveRoles(ctx, actor, req.RoleIDs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	fields := map[string]any{
+		"name":  strings.TrimSpace(req.Name),
+		"email": email,
+	}
+	if err := s.repo.UpdateCore(ctx, target.ID, fields); err != nil {
+		return nil, errs.Internal(err)
+	}
+	if rolesChanged {
+		if err := s.repo.ReplaceRoles(ctx, target, roles); err != nil {
+			return nil, errs.Internal(err)
+		}
+	}
+
+	s.audit.Record(ctx, audit.Entry{
+		ActorID:    &actorID,
+		Action:     enums.AuditUserUpdated,
+		TargetType: "user",
+		TargetID:   strconv.FormatUint(uint64(target.ID), 10),
+		IP:         meta.IP,
+		Detail:     map[string]any{"name": fields["name"], "email": email, "roleIds": req.RoleIDs, "rolesChanged": rolesChanged},
+	})
+
+	updated, err := s.repo.GetByID(ctx, target.ID)
+	if err != nil || updated == nil {
+		return nil, errs.Internal(err)
+	}
+	res := responses.NewUser(updated)
+	return &res, nil
+}
+
 // ResetPassword sets a new password for a user, forces a change at next login
 // and revokes the target's sessions.
-func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, password string, meta Meta) error {
+func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, pw string, meta Meta) error {
 	actor, err := s.authorize(ctx, actorID, enums.UserUpdate)
 	if err != nil {
 		return err
@@ -275,8 +355,11 @@ func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, pas
 	if err != nil {
 		return err
 	}
+	if err := password.Validate(pw); err != nil {
+		return err
+	}
 
-	hashed, err := hash.Password(password)
+	hashed, err := hash.Password(pw)
 	if err != nil {
 		return errs.Internal(err)
 	}
@@ -358,6 +441,22 @@ func normalizePaging(page, perPage int) (int, int) {
 		perPage = 20
 	}
 	return page, perPage
+}
+
+// sameIDs reports whether two id lists hold the same set.
+func sameIDs(a, b []uint) bool {
+	x, y := dedupe(a), dedupe(b)
+	if len(x) != len(y) {
+		return false
+	}
+	sort.Slice(x, func(i, j int) bool { return x[i] < x[j] })
+	sort.Slice(y, func(i, j int) bool { return y[i] < y[j] })
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func dedupe(ids []uint) []uint {

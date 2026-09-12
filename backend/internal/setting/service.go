@@ -1,28 +1,109 @@
-// Package setting reads runtime flags from system_settings.
+// Package setting reads and writes runtime flags in system_settings.
 package setting
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
+	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
+	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
+	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
-// Service reads system settings.
+// KeyMFARequired is the flag forcing MFA enrollment at login.
+const KeyMFARequired = "mfa_required"
+
+// IActorResolver loads the acting user for authorization.
+type IActorResolver interface {
+	GetByID(ctx context.Context, id uint) (*models.User, error)
+}
+
+// IAudit records privileged mutations.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
+}
+
+// Service reads and writes system settings.
 type Service struct {
-	db *gorm.DB
+	db    *gorm.DB
+	users IActorResolver
+	audit IAudit
 }
 
 // NewService builds a setting service.
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+func NewService(db *gorm.DB, users IActorResolver, auditor IAudit) *Service {
+	return &Service{db: db, users: users, audit: auditor}
 }
 
 // MFARequired reports whether MFA enrollment is forced at login.
 func (s *Service) MFARequired(ctx context.Context) bool {
-	return s.flag(ctx, "mfa_required")
+	return s.flag(ctx, KeyMFARequired)
+}
+
+// Settings returns the current flags to a user holding system.settings.
+func (s *Service) Settings(ctx context.Context, actorID uint) (*responses.Settings, error) {
+	if err := s.authorize(ctx, actorID); err != nil {
+		return nil, err
+	}
+	return &responses.Settings{MFARequired: s.MFARequired(ctx)}, nil
+}
+
+// Update writes the flags and records the change.
+func (s *Service) Update(ctx context.Context, actorID uint, req requests.SettingsUpdate, ip string) (*responses.Settings, error) {
+	if err := s.authorize(ctx, actorID); err != nil {
+		return nil, err
+	}
+	value := "0"
+	if req.MFARequired {
+		value = "1"
+	}
+	if err := s.set(ctx, KeyMFARequired, value); err != nil {
+		return nil, errs.Internal(err)
+	}
+	if s.audit != nil {
+		s.audit.Record(ctx, audit.Entry{
+			ActorID:    &actorID,
+			Action:     enums.AuditSettingsUpdated,
+			TargetType: "settings",
+			TargetID:   KeyMFARequired,
+			IP:         ip,
+			Detail:     map[string]any{"mfaRequired": req.MFARequired},
+		})
+	}
+	return &responses.Settings{MFARequired: req.MFARequired}, nil
+}
+
+func (s *Service) authorize(ctx context.Context, actorID uint) error {
+	if s.users == nil {
+		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+	}
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.SystemSettings) {
+		return errs.Forbidden("Sistem ayarlarını değiştirme yetkiniz yok.")
+	}
+	return nil
+}
+
+func (s *Service) set(ctx context.Context, key, value string) error {
+	row := models.SystemSetting{Key: key, Value: value, UpdatedAt: time.Now()}
+	if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+	}).Create(&row).Error; err != nil {
+		return fmt.Errorf("setting %s could not be saved: %w", key, err)
+	}
+	return nil
 }
 
 func (s *Service) flag(ctx context.Context, key string) bool {

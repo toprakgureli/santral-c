@@ -1,4 +1,4 @@
-import { Headset, PhoneCall, Contact, SearchCheck, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { Headset, PhoneCall, Contact, ScrollText, SearchCheck, Settings, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -33,6 +33,8 @@ export const MENU: MenuGroup[] = [
       { label: "Eskalasyon Durumları", path: "/escalations", icon: TriangleAlert, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: Users, permission: "user.view" },
       { label: "Roller", path: "/roles", icon: ShieldCheck, permission: "role.view" },
+      { label: "Sistem Ayarları", path: "/settings", icon: Settings, permission: ["system.settings", "system.logs"] },
+      { label: "Denetim Kayıtları", path: "/audit", icon: ScrollText, permission: "system.audit_view" },
     ],
   },
 ];

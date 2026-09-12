@@ -178,10 +178,16 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	return &res, nil
 }
 
-// History returns past escalations for a customer number.
+// History returns past escalations for a customer number. Agents see it for
+// the caller on the line (escalation.view); the standalone search page needs
+// escalation.search.
 func (s *Service) History(ctx context.Context, actorID uint, number string) ([]Record, error) {
-	if _, err := s.authorize(ctx, actorID, enums.EscalationView); err != nil {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
 		return nil, err
+	}
+	if !actor.Can(enums.EscalationView) && !actor.Can(enums.EscalationSearch) {
+		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	key := phone.Key(number)
 	if key == "" {

@@ -1,7 +1,9 @@
 package verimor
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -310,12 +312,8 @@ func (s *Service) Credentials(ctx context.Context, actorID uint) (*SIPCredential
 
 // SetCredentials stores a user's SIP extension and password (encrypted).
 func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, extension, password string) error {
-	actor, err := s.users.GetByID(ctx, actorID)
-	if err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
 		return err
-	}
-	if !actor.Can(enums.UserUpdate) {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	enc, err := crypt.Encrypt(s.cfg.SIPKey, password)
 	if err != nil {
@@ -330,12 +328,8 @@ func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, ex
 // ProvisionSIP pulls a single extension's SIP password from Verimor and stores
 // it (encrypted) for the target user, so the admin only enters the extension.
 func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, extension string) error {
-	actor, err := s.users.GetByID(ctx, actorID)
-	if err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
 		return err
-	}
-	if !actor.Can(enums.UserUpdate) {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	if extension == "" {
 		return errs.Invalid("Dahili numarası zorunlu.", nil)
@@ -365,12 +359,8 @@ type SIPSyncFailure struct {
 // failed with the reason, so a missing employee can be told apart from a
 // throttle or a changed webphone page.
 func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []SIPSyncFailure, error) {
-	actor, err := s.users.GetByID(ctx, actorID)
-	if err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
 		return 0, nil, err
-	}
-	if !actor.Can(enums.UserUpdate) {
-		return 0, nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	users, err := s.repo.UsersWithExtension(ctx)
 	if err != nil {
@@ -459,6 +449,54 @@ func (s *Service) WebphoneURL(ctx context.Context, actorID uint) (*Webphone, err
 		Extension: *actor.SIPExtension,
 		URL:       s.cfg.WebphoneBase + "?token=" + url.QueryEscape(token),
 	}, nil
+}
+
+// Export bounds: pages of 100 (the largest page Verimor serves reliably) and at
+// most exportPages of them, so a date-backed export stays under a minute.
+const (
+	exportPageSize = 100
+	exportPages    = 5
+)
+
+// ExportCalls returns the calls matching filter as UTF-8 CSV (with a BOM so
+// Excel reads Turkish text). It pages through Calls so the export holds exactly
+// what the list would show, bounded by exportPages.
+func (s *Service) ExportCalls(ctx context.Context, actorID uint, filter Filter) ([]byte, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.Can(enums.CDRExport) {
+		return nil, errs.Forbidden("Çağrı kayıtlarını dışa aktarma yetkiniz yok.")
+	}
+	var buf bytes.Buffer
+	buf.WriteString("ï»¿") // UTF-8 BOM so Excel detects the encoding
+	w := csv.NewWriter(&buf)
+	w.Comma = ';'
+	_ = w.Write([]string{"Zaman", "Yön", "Kimden", "Kime", "Durum", "Süre (sn)", "Kayıt", "UUID"})
+	filter.Limit = exportPageSize
+	for page := 1; page <= exportPages; page++ {
+		filter.Page = page
+		list, err := s.Calls(ctx, actorID, filter)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range list.Items {
+			rec := "hayır"
+			if c.Recording {
+				rec = "evet"
+			}
+			_ = w.Write([]string{c.StartedAt, c.Direction, c.FromNumber, c.ToNumber, c.Disposition, strconv.Itoa(c.DurationSeconds), rec, c.UUID})
+		}
+		if len(list.Items) < exportPageSize || page >= list.TotalPages {
+			break
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, errs.Internal(err)
+	}
+	return buf.Bytes(), nil
 }
 
 // Calls returns a page of tenant call records.
@@ -953,7 +991,7 @@ type PBXQueue struct {
 // path never touches the rate-limited API; it returns an empty list while
 // warming.
 func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension, error) {
-	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer); err != nil {
 		return nil, err
 	}
 	return s.overlaidExtensions(ctx), nil
@@ -1041,7 +1079,7 @@ func (s *Service) broadcast(msg []byte) {
 // StreamStart authorizes an SSE client and returns the initial agent-list
 // payload plus a channel of subsequent updates. Call StreamStop to release it.
 func (s *Service) StreamStart(ctx context.Context, actorID uint) ([]byte, chan []byte, error) {
-	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer); err != nil {
 		return nil, nil, err
 	}
 	return s.extensionsJSON(ctx), s.subscribe(), nil
@@ -1069,7 +1107,7 @@ func presenceStatus(state string) string {
 
 // Queues lists call queues from the warm snapshot (poller-owned, never blocks).
 func (s *Service) Queues(ctx context.Context, actorID uint) ([]PBXQueue, error) {
-	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+	if _, err := s.authorizeAny(ctx, actorID, enums.QueueView, enums.CallTransfer); err != nil {
 		return nil, err
 	}
 	if snap := s.snapQueues(); snap != nil {
@@ -1231,6 +1269,21 @@ func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
 		return errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	return nil
+}
+
+// authorizeAny loads the actor and passes when they hold at least one of the
+// permissions.
+func (s *Service) authorizeAny(ctx context.Context, actorID uint, perms ...enums.Permission) (*models.User, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range perms {
+		if actor.Can(p) {
+			return actor, nil
+		}
+	}
+	return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 }
 
 func canViewCalls(u *models.User) bool {

@@ -117,6 +117,29 @@ func (r *Repository) EmailExists(ctx context.Context, email string) (bool, error
 	return count > 0, nil
 }
 
+// EmailExistsExcept reports whether another account already uses the email.
+func (r *Repository) EmailExistsExcept(ctx context.Context, email string, exceptID uint) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("email = ? AND id <> ?", email, exceptID).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("email existence could not be checked: %w", err)
+	}
+	return count > 0, nil
+}
+
+// UpdateCore updates a user's profile columns.
+func (r *Repository) UpdateCore(ctx context.Context, id uint, fields map[string]any) error {
+	if err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("id = ?", id).
+		Updates(fields).Error; err != nil {
+		return fmt.Errorf("user could not be updated: %w", err)
+	}
+	return nil
+}
+
 // RolesByIDs loads roles with their permissions for the given ids.
 func (r *Repository) RolesByIDs(ctx context.Context, ids []uint) ([]models.Role, error) {
 	var roles []models.Role

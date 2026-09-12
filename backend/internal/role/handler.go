@@ -60,7 +60,7 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 	if err := validator.Struct(req); err != nil {
 		return err
 	}
-	res, err := h.service.Create(c.UserContext(), id, req)
+	res, err := h.service.Create(c.UserContext(), id, req, meta(c))
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	if err := validator.Struct(req); err != nil {
 		return err
 	}
-	res, err := h.service.Update(c.UserContext(), id, roleID, req)
+	res, err := h.service.Update(c.UserContext(), id, roleID, req, meta(c))
 	if err != nil {
 		return err
 	}
@@ -101,10 +101,14 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if err := h.service.Delete(c.UserContext(), id, roleID); err != nil {
+	if err := h.service.Delete(c.UserContext(), id, roleID, meta(c)); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func meta(c *fiber.Ctx) Meta {
+	return Meta{IP: c.IP()}
 }
 
 func actor(c *fiber.Ctx) (uint, error) {

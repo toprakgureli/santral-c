@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
 
@@ -26,6 +27,16 @@ type IRepository interface {
 	Ban(ctx context.Context, ip, reason string, base time.Duration) error
 	MarkUserLock(ctx context.Context, email string, until *time.Time) error
 	ResetFailures(ctx context.Context, email string) error
+}
+
+// IActorResolver loads the acting user for authorization.
+type IActorResolver interface {
+	GetByID(ctx context.Context, id uint) (*models.User, error)
+}
+
+// IAudit records privileged mutations.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
 }
 
 // ILockout tracks account lock windows.

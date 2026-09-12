@@ -9,7 +9,43 @@ export interface User {
   mfaEnabled: boolean;
   mustChangePassword: boolean;
   sipExtension?: string;
+  lastLoginAt?: string;
   createdAt: string;
+}
+
+export interface LoginAttempt {
+  id: number;
+  email: string;
+  ip: string;
+  userAgent: string;
+  success: boolean;
+  reason: string;
+  createdAt: string;
+}
+
+export interface IPBan {
+  id: number;
+  ip: string;
+  reason: string;
+  attempts: number;
+  until: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  actorId?: number;
+  actorName: string;
+  actorEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  ip: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface SystemSettings {
+  mfaRequired: boolean;
 }
 
 export interface LoginChallenge {

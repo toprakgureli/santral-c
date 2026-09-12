@@ -30,5 +30,6 @@ type IManagement interface {
 	List(ctx context.Context, actorID uint, filter requests.UserFilter) (*responses.UserList, error)
 	SetActive(ctx context.Context, actorID, targetID uint, active bool, meta Meta) error
 	SetRoles(ctx context.Context, actorID, targetID uint, roleIDs []uint, meta Meta) (*responses.User, error)
+	UpdateUser(ctx context.Context, actorID, targetID uint, req requests.UserUpdate, meta Meta) (*responses.User, error)
 	ResetPassword(ctx context.Context, actorID, targetID uint, password string, meta Meta) error
 }

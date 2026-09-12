@@ -137,6 +137,34 @@ func (h *Handler) Calls(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// ExportCalls streams the filtered call list as a CSV download.
+func (h *Handler) ExportCalls(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	data, err := h.service.ExportCalls(c.UserContext(), id, Filter{
+		Direction: c.Query("direction"),
+		Number:    c.Query("number"),
+		Scope:     c.Query("scope"),
+		From:      c.Query("from"),
+		To:        c.Query("to"),
+	})
+	if err != nil {
+		return err
+	}
+	name := "cagrilar"
+	if from := c.Query("from"); from != "" {
+		name += "-" + from
+		if to := c.Query("to"); to != "" && to != from {
+			name += "_" + to
+		}
+	}
+	c.Set("Content-Type", "text/csv; charset=utf-8")
+	c.Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
+	return c.Send(data)
+}
+
 // Extensions lists extensions with live status (for transfer shortcuts).
 func (h *Handler) Extensions(c *fiber.Ctx) error {
 	id, err := actor(c)

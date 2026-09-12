@@ -32,7 +32,7 @@ type MFACode struct {
 // PasswordChange is the forced first-login password step.
 type PasswordChange struct {
 	Token    string `json:"token" validate:"required"`
-	Password string `json:"password" validate:"required,min=8,max=128"`
+	Password string `json:"password" validate:"required,min=8,max=16"`
 }
 
 // SIPSetup is the forced first-login SIP step; skipped when a manager

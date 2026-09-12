@@ -113,6 +113,30 @@ func (h *Handler) ResetPassword(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// Update edits a user's profile and role assignment.
+func (h *Handler) Update(c *fiber.Ctx) error {
+	actorID, err := actor(c)
+	if err != nil {
+		return err
+	}
+	targetID, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req requests.UserUpdate
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	res, err := h.service.UpdateUser(c.UserContext(), actorID, targetID, req, meta(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // SetRoles replaces a user's role assignment.
 func (h *Handler) SetRoles(c *fiber.Ctx) error {
 	actorID, err := actor(c)

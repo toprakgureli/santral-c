@@ -145,3 +145,85 @@ export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <p className="text-sm text-destructive">{children}</p>;
 }
+
+// FieldGroup labels a control that is not a single input (pills, buttons), so
+// the caption is not a <label> that would steal focus on click.
+export function FieldGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <span className="block text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+// FieldHint is the small explanatory line under a field.
+export function FieldHint({ children }: { children: ReactNode }) {
+  return <p className="text-xs leading-relaxed text-muted-foreground">{children}</p>;
+}
+
+// CharCount shows used / max characters and turns amber near the limit and
+// red at it. It counts code points so Turkish letters are not double counted.
+export function CharCount({ value, max, className }: { value: string; max: number; className?: string }) {
+  const used = [...value].length;
+  const left = max - used;
+  return (
+    <span
+      aria-live="polite"
+      className={cn(
+        "block text-[0.6875rem] tabular-nums transition-colors duration-200",
+        left <= 0 ? "font-medium text-destructive" : left <= max * 0.1 ? "text-warning" : "text-muted-foreground/60",
+        className,
+      )}
+    >
+      {used} / {max}
+    </span>
+  );
+}
+
+export function Separator({ className }: { className?: string }) {
+  return <hr className={cn("border-0 border-t border-border/60", className)} />;
+}
+
+// Notice is a quiet inline info box (system role note, copy hint).
+export function Notice({ icon, children }: { icon?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-border/60 bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+      {icon && <span className="mt-0.5 shrink-0 [&_svg]:size-4">{icon}</span>}
+      <span>{children}</span>
+    </div>
+  );
+}
+
+// EmptyState fills a list that has nothing to show.
+export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+      {icon && <span className="flex size-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground [&_svg]:size-5">{icon}</span>}
+      <div className="space-y-1">
+        <p className="text-sm font-medium">{title}</p>
+        {description && <p className="mx-auto max-w-sm text-xs leading-relaxed text-muted-foreground">{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// Pagination is the list footer; it renders nothing when everything fits on
+// one page.
+export function Pagination({ page, perPage, total, onChange }: { page: number; perPage: number; total: number; onChange: (page: number) => void }) {
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  if (total <= perPage) return null;
+  const from = (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, total);
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+      <span className="text-xs tabular-nums text-muted-foreground">{from}-{to} / {total} kayıt</span>
+      <div className="flex items-center gap-1">
+        <Button variant="secondary" className="h-8 px-3 text-xs" disabled={page <= 1} onClick={() => onChange(page - 1)}>Önceki</Button>
+        <span className="px-2 text-xs tabular-nums text-muted-foreground">{page} / {pages}</span>
+        <Button variant="secondary" className="h-8 px-3 text-xs" disabled={page >= pages} onClick={() => onChange(page + 1)}>Sonraki</Button>
+      </div>
+    </div>
+  );
+}

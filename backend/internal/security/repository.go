@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
 
@@ -89,6 +91,69 @@ func (r *Repository) Ban(ctx context.Context, ip, reason string, base time.Durat
 		}),
 	}).Create(&ban).Error; err != nil {
 		return fmt.Errorf("ip could not be banned: %w", err)
+	}
+	return nil
+}
+
+// Attempts returns a filtered page of login attempts, newest first.
+func (r *Repository) Attempts(ctx context.Context, f requests.SecurityFilter) ([]models.LoginAttempt, int64, error) {
+	build := func() *gorm.DB {
+		q := r.db.WithContext(ctx).Model(&models.LoginAttempt{})
+		if s := strings.TrimSpace(f.Email); s != "" {
+			q = q.Where("email ILIKE ?", "%"+s+"%")
+		}
+		if s := strings.TrimSpace(f.IP); s != "" {
+			q = q.Where("ip = ?", s)
+		}
+		if f.Success != nil {
+			q = q.Where("success = ?", *f.Success)
+		}
+		return q
+	}
+	var total int64
+	if err := build().Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("login attempts could not be counted: %w", err)
+	}
+	var list []models.LoginAttempt
+	if err := build().
+		Order("created_at DESC").
+		Limit(f.PerPage).
+		Offset((f.Page - 1) * f.PerPage).
+		Find(&list).Error; err != nil {
+		return nil, 0, fmt.Errorf("login attempts could not be listed: %w", err)
+	}
+	return list, total, nil
+}
+
+// Bans lists the bans still in force at the given time.
+func (r *Repository) Bans(ctx context.Context, at time.Time) ([]models.IPBan, error) {
+	var list []models.IPBan
+	if err := r.db.WithContext(ctx).
+		Where("until > ?", at).
+		Order("until DESC").
+		Find(&list).Error; err != nil {
+		return nil, fmt.Errorf("ip bans could not be listed: %w", err)
+	}
+	return list, nil
+}
+
+// BanByID loads one ban, or nil when absent.
+func (r *Repository) BanByID(ctx context.Context, id uint) (*models.IPBan, error) {
+	var ban models.IPBan
+	err := r.db.WithContext(ctx).First(&ban, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ip ban could not be fetched: %w", err)
+	}
+	return &ban, nil
+}
+
+// Unban removes a ban row.
+func (r *Repository) Unban(ctx context.Context, id uint) error {
+	if err := r.db.WithContext(ctx).Delete(&models.IPBan{}, id).Error; err != nil {
+		return fmt.Errorf("ip ban could not be removed: %w", err)
 	}
 	return nil
 }

@@ -43,6 +43,8 @@ export function Calls() {
   const { user } = useAuth();
   const canRec = can(user, "call.record_access") || can(user, "cdr.view_all");
   const canAll = can(user, "cdr.view_all") || can(user, "call.view_all");
+  const canExport = can(user, "cdr.export");
+  const [exporting, setExporting] = useState(false);
   const [calls, setCalls] = useState<Call[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -92,6 +94,25 @@ export function Calls() {
   }
 
   useEffect(load, [page, direction, scope, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // exportCsv downloads the current filter (all pages, bounded server-side) as CSV.
+  async function exportCsv() {
+    const q = extMode ? ext.trim() : number.trim();
+    setExporting(true);
+    try {
+      await api.exportCalls({
+        direction: direction || undefined,
+        number: q || undefined,
+        scope: extMode ? "all" : scope,
+        from: from || undefined,
+        to: to || undefined,
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Dışa aktarma başarısız oldu.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Debounce the extension filter so typing a dahili searches without Enter.
   useEffect(() => {
@@ -158,6 +179,12 @@ export function Calls() {
                 <span className="text-muted-foreground">–</span>
                 <Input type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" title="Bitiş tarihi" />
               </div>
+            )}
+            {canExport && (
+              <Button variant="secondary" onClick={exportCsv} disabled={exporting || loading} title="Bu filtreyi CSV olarak indir">
+                <Download />
+                {exporting ? "Hazırlanıyor..." : "CSV"}
+              </Button>
             )}
           </div>
         }

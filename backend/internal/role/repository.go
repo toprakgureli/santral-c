@@ -65,6 +65,15 @@ func (r *Repository) UserCounts(ctx context.Context) (map[uint]int64, error) {
 	return out, nil
 }
 
+// UserCount returns how many users hold one role.
+func (r *Repository) UserCount(ctx context.Context, id uint) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Table("user_roles").Where("role_id = ?", id).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("role user count could not be computed: %w", err)
+	}
+	return count, nil
+}
+
 // Permissions returns the full permission catalog ordered by module then key.
 func (r *Repository) Permissions(ctx context.Context) ([]models.Permission, error) {
 	var perms []models.Permission

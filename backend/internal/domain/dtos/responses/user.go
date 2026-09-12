@@ -20,6 +20,7 @@ type User struct {
 	MustChangePassword bool       `json:"mustChangePassword"`
 	SIPExtension       string     `json:"sipExtension,omitempty"`
 	OnboardedAt        *time.Time `json:"onboardedAt,omitempty"`
+	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
 }
 
@@ -60,6 +61,7 @@ func NewUser(u *models.User) User {
 		MustChangePassword: u.MustChangePassword,
 		SIPExtension:       ext,
 		OnboardedAt:        u.OnboardedAt,
+		LastLoginAt:        u.LastLoginAt,
 		CreatedAt:          u.CreatedAt,
 	}
 }

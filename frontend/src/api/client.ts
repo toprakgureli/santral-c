@@ -1,12 +1,15 @@
 import type {
   AgentPresence,
   AgentPresenceState,
+  AuditEntry,
   CallPage,
   Contact,
   TodayCalls,
   EscalationCategory,
   EscalationReason,
   EscalationRecord,
+  IPBan,
+  LoginAttempt,
   LoginResult,
   Paged,
   PBXExtension,
@@ -15,6 +18,7 @@ import type {
   PermissionGroup,
   Role,
   SipCredentials,
+  SystemSettings,
   User,
 } from "./types";
 
@@ -74,6 +78,33 @@ async function request<T>(path: string, options: RequestInit = {}, allowRetry = 
   return body as T;
 }
 
+// download fetches a file endpoint (same auth/refresh handling as request) and
+// hands it to the browser as a save dialog.
+async function download(path: string, fallbackName: string, allowRetry = true): Promise<void> {
+  const res = await fetch(BASE + path, { credentials: "include" });
+  if (res.status === 401 && allowRetry) {
+    if (await tryRefresh()) {
+      return download(path, fallbackName, false);
+    }
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    let body: { code?: string; message?: string } | undefined;
+    try { body = text ? JSON.parse(text) : undefined; } catch { body = undefined; }
+    throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "İndirme başarısız oldu.");
+  }
+  const blob = await res.blob();
+  const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] ?? fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function query(params: Record<string, string | number | undefined>): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -102,10 +133,12 @@ export const api = {
   version: () => request<{ version: string; buildTime: string }>("/version"),
 
   // Users
-  listUsers: (params: { query?: string; page?: number; perPage?: number } = {}) =>
+  listUsers: (params: { query?: string; roleId?: number | string; active?: string; page?: number; perPage?: number } = {}) =>
     request<Paged<User>>("/users/" + query(params)),
   createUser: (body: { name: string; email: string; password: string; roleIds: number[]; sipExtension?: string }) =>
     request<User>("/users/", { method: "POST", body: JSON.stringify(body) }),
+  updateUser: (id: number, body: { name: string; email: string; roleIds: number[] }) =>
+    request<User>(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   setUserActive: (id: number, active: boolean) =>
     request<void>(`/users/${id}/active`, { method: "PATCH", body: JSON.stringify({ active }) }),
   resetUserPassword: (id: number, password: string) =>
@@ -131,6 +164,18 @@ export const api = {
   setUserRoles: (id: number, roleIds: number[]) =>
     request<User>(`/users/${id}/roles`, { method: "PATCH", body: JSON.stringify({ roleIds }) }),
 
+  // Security page (system.logs) and system settings (system.settings)
+  securityAttempts: (params: { page?: number; perPage?: number; success?: string; email?: string } = {}) =>
+    request<Paged<LoginAttempt>>("/security/attempts" + query(params)),
+  securityBans: () => request<{ items: IPBan[] }>("/security/bans").then((r) => r.items),
+  removeBan: (id: number) => request<void>(`/security/bans/${id}`, { method: "DELETE" }),
+  systemSettings: () => request<SystemSettings>("/settings/"),
+  updateSystemSettings: (body: SystemSettings) => request<SystemSettings>("/settings/", { method: "PUT", body: JSON.stringify(body) }),
+
+  // Audit trail (system.audit_view)
+  auditLogs: (params: { page?: number; perPage?: number; action?: string; query?: string } = {}) =>
+    request<Paged<AuditEntry>>("/audit" + query(params)),
+
   // Contacts
   listContacts: (params: { query?: string; page?: number; perPage?: number } = {}) =>
     request<Paged<Contact>>("/contacts/" + query(params)),
@@ -147,6 +192,8 @@ export const api = {
   // Calls (Bulutsantralim CDR — full santral view)
   listCalls: (params: { direction?: string; number?: string; scope?: string; from?: string; to?: string; archive?: string; page?: number; perPage?: number } = {}) =>
     request<CallPage>("/calls" + query(params)),
+  exportCalls: (params: { direction?: string; number?: string; scope?: string; from?: string; to?: string } = {}) =>
+    download("/calls/export" + query(params), "cagrilar.csv"),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
 
   // Call log (our own store, used for the panel history — today, per agent)

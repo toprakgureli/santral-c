@@ -1,245 +1,174 @@
-import { useEffect, useState } from "react";
+// User management. Role assignment, deactivation, password reset and the SIP
+// account are all edited from the row's form. Deactivation and password reset
+// also end the user's open sessions.
+
+import { useEffect, useRef, useState } from "react";
+import { Plus, Search, Users as UsersIcon } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Role, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
-import { Badge, Button, Card, ErrorText, Field, Input, Modal, Select, TableSkeleton } from "../components/ui";
-import { cn } from "../lib/utils";
+import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "../components/ui";
+import UserForm from "../components/user/UserForm";
+import { cn, formatDateTime } from "../lib/utils";
+
+const PER_PAGE = 25;
 
 export function Users() {
   const { user } = useAuth();
   const canCreate = can(user, "user.create");
-  const canDeactivate = can(user, "user.deactivate");
-  const canReset = can(user, "user.update");
-  const canAssignRoles = can(user, "role.assign");
+  const canUpdate = can(user, "user.update");
+  const canSip = canUpdate || can(user, "agent.manage");
 
-  const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [editingRoles, setEditingRoles] = useState<User | null>(null);
+  const [query, setQuery] = useState("");
+  const [roleId, setRoleId] = useState("");
+  const [active, setActive] = useState("");
+  const [page, setPage] = useState(1);
+  const [items, setItems] = useState<User[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<User | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [tick, setTick] = useState(0);
+  // A fast filter change can let an older, slower response land last; the
+  // sequence number makes sure only the newest request paints.
+  const seq = useRef(0);
 
-  function load() {
-    api.listUsers({ perPage: 100 }).then((r) => setUsers(r.items)).catch(() => setUsers([])).finally(() => setLoading(false));
-  }
   useEffect(() => {
-    load();
-    if (canCreate || canAssignRoles) api.listRoles().then(setRoles).catch(() => setRoles([]));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const id = ++seq.current;
+    setLoading(true);
+    const wait = query ? 350 : 0;
+    const timer = window.setTimeout(() => {
+      api
+        .listUsers({ query: query.trim() || undefined, roleId: roleId || undefined, active: active || undefined, page, perPage: PER_PAGE })
+        .then((r) => {
+          if (id !== seq.current) return;
+          setItems(r.items);
+          setTotal(r.total);
+        })
+        .catch(() => {
+          if (id !== seq.current) return;
+          setItems([]);
+          setTotal(0);
+        })
+        .finally(() => {
+          if (id === seq.current) setLoading(false);
+        });
+    }, wait);
+    return () => window.clearTimeout(timer);
+  }, [query, roleId, active, page, tick]);
+
+  useEffect(() => {
+    api.listRoles().then(setRoles).catch(() => setRoles([]));
+  }, []);
+
+  const reload = () => setTick((n) => n + 1);
+  const roleName = (id: number) => roles.find((r) => r.id === id)?.displayName;
+
+  const closeAndReload = () => {
+    setEditing(null);
+    setCreating(false);
+    reload();
+  };
 
   return (
     <div className="space-y-6">
       <Card
         title="Kullanıcılar"
         actions={
-          <div className="flex items-center gap-2">
-            {canReset && <SyncSipButton onDone={load} />}
-            {canCreate && <Button onClick={() => setCreating((v) => !v)}>{creating ? "Kapat" : "Yeni kullanıcı"}</Button>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="text-xs text-muted-foreground">{total} kayıt</span>
+            {canSip && <SyncSipButton onDone={reload} />}
+            {canCreate && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus />
+                Yeni Kullanıcı
+              </Button>
+            )}
           </div>
         }
       >
-        {creating && <CreateUser roles={roles} onCreated={() => { setCreating(false); load(); }} />}
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground">
-              <th className="pb-2">Ad</th>
-              <th className="pb-2">E-posta</th>
-              <th className="pb-2">Roller</th>
-              <th className="pb-2">Dahili</th>
-              <th className="pb-2">Durum</th>
-              <th className="pb-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && users.length === 0 && <TableSkeleton rows={5} cols={6} />}
-            {users.map((u) => (
-              <tr key={u.id} className="border-t border-border/60">
-                <td className="py-2 font-medium">{u.name}</td>
-                <td className="py-2 text-muted-foreground">{u.email}</td>
-                <td className="py-2">{u.roles.join(", ")}</td>
-                <td className="py-2">{u.sipExtension ?? "—"}</td>
-                <td className="py-2">{u.active ? <Badge tone="green">Aktif</Badge> : <Badge tone="red">Pasif</Badge>}</td>
-                <td className="py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    {canAssignRoles && <Button variant="ghost" onClick={() => setEditingRoles(u)}>Roller</Button>}
-                    {canReset && <SetSip id={u.id} ext={u.sipExtension} onDone={load} />}
-                    {canReset && <ResetPassword id={u.id} />}
-                    {canDeactivate && u.id !== user?.id && (
-                      <Button
-                        variant="secondary"
-                        onClick={async () => { await api.setUserActive(u.id, !u.active).catch(() => undefined); load(); }}
-                      >
-                        {u.active ? "Pasifleştir" : "Aktifleştir"}
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Select value={roleId} onChange={(e) => { setRoleId(e.target.value); setPage(1); }} className="w-auto min-w-40">
+            <option value="">Tüm roller</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>{r.displayName}</option>
             ))}
-          </tbody>
-        </table>
+          </Select>
+          <Select value={active} onChange={(e) => { setActive(e.target.value); setPage(1); }} className="w-auto min-w-36">
+            <option value="">Tüm durumlar</option>
+            <option value="true">Aktif</option>
+            <option value="false">Pasif</option>
+          </Select>
+          <div className="relative ml-auto w-full sm:w-64">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="İsim veya e-posta ara..." className="pl-9" />
+          </div>
+        </div>
+
+        {loading && items.length === 0 ? (
+          <div className="space-y-2">
+            {[0, 1, 2, 3].map((row) => (
+              <Skeleton key={row} className="h-12 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : !items.length ? (
+          <EmptyState icon={<UsersIcon />} title="Kullanıcı bulunamadı" description="Filtreleri değiştirip tekrar deneyin." />
+        ) : (
+          <div className={cn("overflow-x-auto transition-opacity", loading && "opacity-60")}>
+            <table className="w-full min-w-[44rem] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="pb-2">Kullanıcı</th>
+                  <th className="pb-2">Roller</th>
+                  <th className="pb-2">Dahili</th>
+                  <th className="pb-2">Durum</th>
+                  <th className="pb-2">Son Giriş</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((u) => (
+                  <tr
+                    key={u.id}
+                    onClick={() => canUpdate && setEditing(u)}
+                    className={cn("border-t border-border/60", canUpdate && "cursor-pointer transition-colors hover:bg-accent/50")}
+                  >
+                    <td className="py-2.5">
+                      <span className="block font-medium">{u.name}</span>
+                      <span className="block text-xs text-muted-foreground">{u.email}</span>
+                    </td>
+                    <td className="py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {u.roleIds.map((id, i) => (
+                          <Badge key={id} tone="blue">{roleName(id) ?? u.roles[i] ?? id}</Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2.5 tabular-nums">{u.sipExtension ?? "—"}</td>
+                    <td className="py-2.5">
+                      <Badge tone={u.active ? "green" : "red"}>{u.active ? "Aktif" : "Pasif"}</Badge>
+                    </td>
+                    <td className="py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(u.lastLoginAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <Pagination page={page} perPage={PER_PAGE} total={total} onChange={setPage} />
       </Card>
 
-      {editingRoles && (
-        <EditRoles
-          user={editingRoles}
+      {(creating || editing) && (
+        <UserForm
+          user={editing}
           roles={roles}
-          onClose={() => setEditingRoles(null)}
-          onSaved={() => { setEditingRoles(null); load(); }}
+          onClose={() => { setEditing(null); setCreating(false); }}
+          onSaved={closeAndReload}
         />
       )}
     </div>
-  );
-}
-
-function EditRoles({ user, roles, onClose, onSaved }: { user: User; roles: Role[]; onClose: () => void; onSaved: () => void }) {
-  const [selected, setSelected] = useState<number[]>(user.roleIds ?? []);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  function toggle(id: number) {
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  async function save() {
-    setError(null);
-    if (selected.length === 0) { setError("En az bir rol seçin."); return; }
-    setSaving(true);
-    try {
-      await api.setUserRoles(user.id, selected);
-      onSaved();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`${user.name} · Roller`}
-      description="Kullanıcının rollerini düzenleyin"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {roles.map((r) => {
-            const on = selected.includes(r.id);
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => toggle(r.id)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  on ? "border-primary bg-primary text-primary-foreground" : "border-border/70 bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {r.displayName}
-              </button>
-            );
-          })}
-        </div>
-        <ErrorText>{error}</ErrorText>
-      </div>
-    </Modal>
-  );
-}
-
-function CreateUser({ roles, onCreated }: { roles: Role[]; onCreated: () => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [roleId, setRoleId] = useState<number | "">("");
-  const [ext, setExt] = useState("");
-  const [sipPassword, setSipPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (roleId === "") { setError("Rol seçin."); return; }
-    try {
-      const created = await api.createUser({ name, email, password, roleIds: [roleId], sipExtension: ext || undefined });
-      if (ext && sipPassword) await api.setUserSip(created.id, ext, sipPassword);
-      onCreated();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Oluşturulamadı.");
-    }
-  }
-
-  return (
-    <form className="mb-4 grid gap-3 rounded-lg bg-muted/40 p-4 md:grid-cols-6" onSubmit={submit}>
-      <Field label="Ad"><Input value={name} onChange={(e) => setName(e.target.value)} required /></Field>
-      <Field label="E-posta"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
-      <Field label="Geçici parola"><Input type="text" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} /></Field>
-      <Field label="Rol">
-        <Select value={roleId} onChange={(e) => setRoleId(e.target.value ? Number(e.target.value) : "")}>
-          <option value="">Seçin</option>
-          {roles.map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
-        </Select>
-      </Field>
-      <Field label="Dahili"><Input value={ext} onChange={(e) => setExt(e.target.value)} placeholder="1005" /></Field>
-      <Field label="SIP parola"><Input value={sipPassword} onChange={(e) => setSipPassword(e.target.value)} placeholder="Verimor SIP" /></Field>
-      <div className="md:col-span-6 flex items-center gap-3">
-        <Button type="submit">Oluştur</Button>
-        <ErrorText>{error}</ErrorText>
-      </div>
-    </form>
-  );
-}
-
-function SetSip({ id, ext, onDone }: { id: number; ext?: string; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [extension, setExtension] = useState(ext ?? "");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>SIP</Button>;
-
-  async function pull() {
-    if (!extension) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await api.syncUserSip(id, extension);
-      setOpen(false);
-      onDone();
-    } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "Çekilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function manual() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await api.setUserSip(id, extension, password);
-      setOpen(false);
-      onDone();
-    } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "Kaydedilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <span className="flex items-center gap-1">
-      <Input value={extension} onChange={(e) => setExtension(e.target.value)} className="w-20" placeholder="Dahili" />
-      <Button onClick={pull} disabled={!extension || busy}>{busy ? "..." : "Verimor'dan çek"}</Button>
-      <Input value={password} onChange={(e) => setPassword(e.target.value)} className="w-28" placeholder="veya elle parola" />
-      <Button variant="secondary" onClick={manual} disabled={!extension || !password || busy}>Kaydet</Button>
-      {msg && <span className="text-xs text-destructive">{msg}</span>}
-    </span>
   );
 }
 
@@ -253,7 +182,7 @@ function SyncSipButton({ onDone }: { onDone: () => void }) {
       const r = await api.syncAllSip();
       let fails = "";
       if (r.failures?.length) {
-        fails = " — " + r.failures.map((f) => `${f.extension}: ${f.reason}`).join(" · ");
+        fails = " · " + r.failures.map((f) => `${f.extension}: ${f.reason}`).join(" · ");
       } else if (r.failedExtensions?.length) {
         fails = ` (dahili ${r.failedExtensions.join(", ")})`;
       }
@@ -267,26 +196,8 @@ function SyncSipButton({ onDone }: { onDone: () => void }) {
   }
   return (
     <span className="flex items-center gap-2">
-      {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+      {msg && <span className="max-w-md text-xs text-muted-foreground">{msg}</span>}
       <Button variant="secondary" onClick={run} disabled={busy}>{busy ? "Senkronize..." : "SIP Senkronize (Verimor)"}</Button>
-    </span>
-  );
-}
-
-function ResetPassword({ id }: { id: number }) {
-  const [open, setOpen] = useState(false);
-  const [pw, setPw] = useState("");
-  const [done, setDone] = useState(false);
-  if (!open) return <Button variant="ghost" onClick={() => setOpen(true)}>Parola</Button>;
-  return (
-    <span className="flex items-center gap-1">
-      <Input value={pw} onChange={(e) => setPw(e.target.value)} className="w-32" placeholder="Yeni parola" />
-      <Button
-        onClick={async () => { await api.resetUserPassword(id, pw).catch(() => undefined); setDone(true); setOpen(false); setPw(""); }}
-        disabled={pw.length < 8}
-      >
-        {done ? "✓" : "Ayarla"}
-      </Button>
     </span>
   );
 }

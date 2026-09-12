@@ -23,6 +23,7 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Post("/users/:id/sip/sync", r.guard, r.handler.SyncCredentials)
 	g.Post("/pbx/sip/sync-all", r.guard, r.handler.SyncAllCredentials)
 	g.Get("/calls", r.guard, r.handler.Calls)
+	g.Get("/calls/export", r.guard, r.handler.ExportCalls) // before /:uuid so it is not shadowed
 	g.Get("/calls/:uuid/recording", r.guard, r.handler.Recording)
 	g.Post("/calls/originate", r.guard, r.handler.Originate)
 	g.Get("/pbx/extensions", r.guard, r.handler.Extensions)
