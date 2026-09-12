@@ -8,6 +8,37 @@ import { displayNumber } from "../softphone/dial";
 import { Button, Card, Input, Select, Spinner, TableSkeleton } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
+// ymd formats a Date as a local YYYY-MM-DD (not UTC, so it matches the panel's day).
+function ymd(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// datePreset resolves a named range to [from, to] local dates.
+function datePreset(key: string): { from: string; to: string } {
+  const now = new Date();
+  const today = ymd(now);
+  const shift = (days: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
+  switch (key) {
+    case "today": return { from: today, to: today };
+    case "yesterday": return { from: shift(1), to: shift(1) };
+    case "last7": return { from: shift(6), to: today };
+    case "last30": return { from: shift(29), to: today };
+    case "month": return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
+    default: return { from: "", to: "" }; // "all"
+  }
+}
+
+const datePresetLabels: { key: string; label: string }[] = [
+  { key: "today", label: "Bugün" },
+  { key: "yesterday", label: "Dün" },
+  { key: "last7", label: "Son 7 gün" },
+  { key: "last30", label: "Son 30 gün" },
+  { key: "month", label: "Bu ay" },
+  { key: "all", label: "Tüm tarihler" },
+  { key: "custom", label: "Özel aralık" },
+];
+
 export function Calls() {
   const { user } = useAuth();
   const canRec = can(user, "call.record_access") || can(user, "cdr.view_all");
@@ -22,8 +53,10 @@ export function Calls() {
   // "ext" narrows to a single extension's calls (managers only).
   const [scope, setScope] = useState<"own" | "all" | "ext">(canAll ? "all" : "own");
   const [ext, setExt] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // Default to today's calls, as requested.
+  const [preset, setPreset] = useState("today");
+  const [from, setFrom] = useState(() => datePreset("today").from);
+  const [to, setTo] = useState(() => datePreset("today").to);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<{ uuid: string; label: string } | null>(null);
@@ -103,14 +136,29 @@ export function Calls() {
               <option value="outbound">Giden</option>
               <option value="internal">Dahili</option>
             </Select>
-            <div className="flex items-center gap-1">
-              <Input type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-36" title="Başlangıç tarihi" />
-              <span className="text-muted-foreground">–</span>
-              <Input type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" title="Bitiş tarihi" />
-              {(from || to) && (
-                <Button variant="ghost" className="h-9 px-2" onClick={() => { setFrom(""); setTo(""); setPage(1); }} title="Tarihi temizle">Temizle</Button>
-              )}
-            </div>
+            <Select
+              value={preset}
+              onChange={(e) => {
+                const key = e.target.value;
+                setPreset(key);
+                if (key !== "custom") {
+                  const r = datePreset(key);
+                  setFrom(r.from);
+                  setTo(r.to);
+                }
+                setPage(1);
+              }}
+              className="w-36"
+            >
+              {datePresetLabels.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </Select>
+            {preset === "custom" && (
+              <div className="flex items-center gap-1">
+                <Input type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-36" title="Başlangıç tarihi" />
+                <span className="text-muted-foreground">–</span>
+                <Input type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" title="Bitiş tarihi" />
+              </div>
+            )}
           </div>
         }
       >
@@ -168,7 +216,11 @@ export function Calls() {
               })}
               {calls.length === 0 && !error && !loading && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">Kayıt yok.</td>
+                  <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                    {(from || to)
+                      ? "Bu tarih aralığında kayıt yok. (Yakın tarihler anlık gelir; çok eski günler için OİM raporlarına bakın.)"
+                      : "Kayıt yok."}
+                  </td>
                 </tr>
               )}
             </tbody>
