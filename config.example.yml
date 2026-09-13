@@ -9,7 +9,7 @@ app:
 
 auth:
   secret: "change-me-to-a-long-random-secret"
-  accessTTL: 15m
+  accessTTL: 24h
   refreshTTL: 720h
   issuer: santral-c
   cookieName: santral_access

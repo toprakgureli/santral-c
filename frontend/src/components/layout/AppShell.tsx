@@ -5,6 +5,7 @@ import Topbar from "./Topbar";
 import CallBar from "./CallBar";
 import UnloadGuard from "./UnloadGuard";
 import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
+import { ShiftProvider } from "@/shift/ShiftContext";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -37,6 +38,7 @@ export default function AppShell() {
 
   return (
     <SoftphoneProvider>
+    <ShiftProvider>
     <UnloadGuard />
     <div className="min-h-svh bg-background">
       <Sidebar
@@ -67,6 +69,7 @@ export default function AppShell() {
       </div>
       <CallBar />
     </div>
+    </ShiftProvider>
     </SoftphoneProvider>
   );
 }

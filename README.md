@@ -25,6 +25,9 @@ filters, contacts, escalations, and a proper identity model with TOTP.
 - Agent presence: available, break, back office, do not disturb. Non-available
   states engage DND on the PBX so the agent stops receiving calls. Daily totals
   per state are shown on the dashboard.
+- Shifts: the dialer opens only after the agent presses "Mesai Başlat", and
+  "Mesai Bitir" engages DND and stops the presence clocks. The working day ends
+  at 18:30 Istanbul; a shift still open at 19:20 is closed by the server.
 - Live agent list over Server-Sent Events with a polling fallback.
 
 **Calls**

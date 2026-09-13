@@ -27,6 +27,8 @@ const ACTION_LABELS: Record<string, string> = {
   "contact.phone_removed": "Kişiden numara silindi",
   "settings.updated": "Sistem ayarı değişti",
   "security.ip_unbanned": "IP banı kaldırıldı",
+  "shift.started": "Mesai başlatıldı",
+  "shift.ended": "Mesai bitirildi",
 };
 
 const MODULES: { key: string; label: string }[] = [
@@ -36,6 +38,7 @@ const MODULES: { key: string; label: string }[] = [
   { key: "contact.", label: "Kişiler" },
   { key: "settings.", label: "Ayarlar" },
   { key: "security.", label: "Güvenlik" },
+  { key: "shift.", label: "Mesai" },
 ];
 
 const TARGET_LABELS: Record<string, string> = {
@@ -44,6 +47,7 @@ const TARGET_LABELS: Record<string, string> = {
   contact: "Kişi",
   settings: "Ayar",
   ip_ban: "IP banı",
+  shift: "Mesai",
 };
 
 function tone(action: string): "slate" | "green" | "red" | "amber" | "blue" {

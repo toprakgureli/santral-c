@@ -31,12 +31,19 @@ type IActorResolver interface {
 	GetByID(ctx context.Context, id uint) (*models.User, error)
 }
 
+// IShiftReader reports whether a user is on shift. Placing calls and changing
+// presence are only allowed on shift.
+type IShiftReader interface {
+	Active(ctx context.Context, userID uint) (bool, error)
+}
+
 // Service exposes the hosted PBX to the panel.
 type Service struct {
 	client *Client
 	users  IActorResolver
 	repo   *Repository
 	cfg    configs.Bulutsantralim
+	shifts IShiftReader
 
 	mu         sync.Mutex
 	cache      map[string]cdrCacheEntry
@@ -73,6 +80,65 @@ func NewService(client *Client, users IActorResolver, repo *Repository, cfg conf
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
 	return &Service{client: client, users: users, repo: repo, cfg: cfg, cache: make(map[string]cdrCacheEntry)}
+}
+
+// SetShifts wires the shift reader that gates outbound calls and presence.
+func (s *Service) SetShifts(r IShiftReader) { s.shifts = r }
+
+// onShift reports whether the user may place calls and change presence. With
+// no shift reader wired, everything is allowed.
+func (s *Service) onShift(ctx context.Context, userID uint) bool {
+	if s.shifts == nil {
+		return true
+	}
+	active, err := s.shifts.Active(ctx, userID)
+	if err != nil {
+		slog.WarnContext(ctx, "shift lookup failed", "user", userID, "error", err)
+		return false
+	}
+	return active
+}
+
+// ShiftStarted puts the agent back on the floor: presence becomes available
+// and do-not-disturb is lifted on the hosted PBX. Users without an extension
+// only get the presence row.
+func (s *Service) ShiftStarted(ctx context.Context, userID uint) {
+	if err := s.repo.SetPresence(ctx, userID, "available"); err != nil {
+		slog.WarnContext(ctx, "presence could not be reset at shift start", "user", userID, "error", err)
+		return
+	}
+	_ = s.repo.RecordTransition(ctx, userID, "available")
+	s.broadcastExtensions(ctx)
+	if ext := s.extensionOf(ctx, userID); ext != "" {
+		if err := s.client.SetDND(ctx, ext, false); err != nil {
+			slog.WarnContext(ctx, "dnd could not be lifted at shift start", "user", userID, "error", err)
+		}
+	}
+}
+
+// ShiftEnded takes the agent off the floor: the open presence stretch is
+// closed so no more time accrues, the agent list shows "off shift", and the
+// hosted PBX stops routing calls to the extension.
+func (s *Service) ShiftEnded(ctx context.Context, userID uint) {
+	if err := s.repo.SetPresence(ctx, userID, "off"); err != nil {
+		slog.WarnContext(ctx, "presence could not be set at shift end", "user", userID, "error", err)
+		return
+	}
+	_ = s.repo.CloseOpenEvent(ctx, userID)
+	s.broadcastExtensions(ctx)
+	if ext := s.extensionOf(ctx, userID); ext != "" {
+		if err := s.client.SetDND(ctx, ext, true); err != nil {
+			slog.WarnContext(ctx, "dnd could not be engaged at shift end", "user", userID, "error", err)
+		}
+	}
+}
+
+func (s *Service) extensionOf(ctx context.Context, userID uint) string {
+	u, err := s.users.GetByID(ctx, userID)
+	if err != nil || u.SIPExtension == nil {
+		return ""
+	}
+	return *u.SIPExtension
 }
 
 // snapshotLimit is the page size for the "all" call-history view's first page.
@@ -966,6 +1032,9 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
 		return "", errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
 	}
+	if !s.onShift(ctx, actorID) {
+		return "", errs.Forbidden("Çağrı başlatmak için önce mesai başlatın.")
+	}
 	uuid, err := s.client.Originate(ctx, *actor.SIPExtension, destination)
 	if err != nil {
 		return "", errs.Internal(err)
@@ -1100,6 +1169,8 @@ func presenceStatus(state string) string {
 		return "BACKOFFICE"
 	case "dnd":
 		return "SS_DND"
+	case "off":
+		return "OFF_SHIFT"
 	default:
 		return "AVAILABLE"
 	}
@@ -1133,6 +1204,9 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 	}
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
 		return errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
+	}
+	if !s.onShift(ctx, actorID) {
+		return errs.Forbidden("Durum değiştirmek için önce mesai başlatın.")
 	}
 	if state == "" {
 		state = "available"
@@ -1174,7 +1248,11 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 		return &Presence{State: "available", Totals: map[string]int64{}}, nil
 	}
 	// Start the clock the first time the agent appears, so totals accumulate.
-	_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
+	// Off shift nothing accrues, so no stretch is opened.
+	onShift := s.onShift(ctx, actorID)
+	if onShift {
+		_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
+	}
 	// Prefer the open stretch's start as "since" so the timer is stable across
 	// page navigation (agent_presence.updated_at is absent until a manual change).
 	if started, ok, _ := s.repo.OpenEventStartedAt(ctx, actorID); ok {
@@ -1206,6 +1284,10 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 		if last, ok, _ := s.repo.LastCallEndedAt(ctx, actorID, from); ok && last.After(since) {
 			since = last
 		}
+	}
+	if !onShift {
+		state = "off"
+		since = time.Time{}
 	}
 
 	out := &Presence{State: state, Totals: totals, Talk: call, Online: online}

@@ -4,6 +4,7 @@ import { LogOut, Menu, Moon, Sun } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import ShiftButton from "./ShiftButton";
 
 type TopbarProps = {
   title: string;
@@ -40,6 +41,8 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
       <h1 className="truncate text-[0.9375rem] font-semibold tracking-tight">{title}</h1>
 
       <div className="ml-auto flex items-center gap-1.5">
+        <ShiftButton />
+        <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <button
           type="button"
           onClick={toggle}

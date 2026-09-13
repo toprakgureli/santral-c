@@ -16,6 +16,9 @@ const (
 	AuditSettingsUpdated string = "settings.updated"
 	AuditIPUnbanned      string = "security.ip_unbanned"
 
+	AuditShiftStarted string = "shift.started"
+	AuditShiftEnded   string = "shift.ended"
+
 	AuditContactCreated     string = "contact.created"
 	AuditContactUpdated     string = "contact.updated"
 	AuditContactDeleted     string = "contact.deleted"

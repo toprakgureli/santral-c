@@ -27,6 +27,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/internal/setup"
+	"github.com/toprakgureli/santral-c/backend/internal/shift"
 	"github.com/toprakgureli/santral-c/backend/internal/user"
 	"github.com/toprakgureli/santral-c/backend/internal/verimor"
 	"github.com/toprakgureli/santral-c/backend/migrations"
@@ -103,6 +104,8 @@ func run() error {
 	escalationHandler := escalation.NewHandler(escalationSvc)
 	callLogSvc := calllog.NewService(calllog.NewRepository(db), userSvc)
 	callLogHandler := calllog.NewHandler(callLogSvc)
+	shiftSvc := shift.NewService(shift.NewRepository(db), auditSvc)
+	shiftHandler := shift.NewHandler(shiftSvc)
 	guard := middlewares.Auth(configs.Cnf.Auth, deny)
 
 	fiberCfg := fiber.Config{
@@ -148,13 +151,21 @@ func run() error {
 	contact.NewRouter(contactHandler, guard).Routes(api)
 	escalation.NewRouter(escalationHandler, guard).Routes(api)
 	calllog.NewRouter(callLogHandler, guard).Routes(api)
+	shift.NewRouter(shiftHandler, guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Shifts left open past the evening cutoff are closed by the sweeper.
+	shiftSvc.StartSweeper(ctx)
+
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
 		verimorSvc := verimor.NewService(verimorClient, userSvc, verimor.NewRepository(db), configs.Cnf.Bulutsantralim)
+		// Calls and presence changes need an open shift; a shift change in turn
+		// drives the agent's presence and do-not-disturb.
+		verimorSvc.SetShifts(shiftSvc)
+		shiftSvc.SetPresence(verimorSvc)
 		verimorSvc.Start(ctx)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}

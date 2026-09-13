@@ -21,6 +21,7 @@ import type { AgentPresenceState, Call, EscalationCategory, EscalationRecord, PB
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
+import { useShift } from "../shift/ShiftContext";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
@@ -62,6 +63,7 @@ const agentStatus: Record<string, { label: string; tone: "green" | "amber" | "sl
   BREAK: { label: "Molada", tone: "amber" },
   BACKOFFICE: { label: "Backoffice", tone: "amber" },
   SS_DND: { label: "Rahatsız etmeyin", tone: "red" },
+  OFF_SHIFT: { label: "Mesai dışı", tone: "slate" },
 };
 
 export function Dashboard() {
@@ -69,9 +71,11 @@ export function Dashboard() {
   const canSeeCalls = canAny(user, ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"]);
   const canTransfer = can(user, "call.transfer");
   const canEscalate = can(user, "escalation.view");
-  const canCall = can(user, "call.originate");
   const canSearchEsc = can(user, "escalation.search");
   const phone = useSoftphoneContext();
+  const shift = useShift();
+  // Outbound calls need both the permission and an open shift.
+  const canCall = can(user, "call.originate") && shift.active;
 
   const [exts, setExts] = useState<PBXExtension[]>([]);
   const [extsLoaded, setExtsLoaded] = useState(false);
@@ -151,15 +155,17 @@ export function Dashboard() {
   );
 }
 
-const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "amber" | "red" }> = {
+const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "amber" | "red" | "slate" }> = {
   available: { label: "Müsait", tone: "green" },
   break: { label: "Molada", tone: "amber" },
   backoffice: { label: "Backoffice", tone: "amber" },
   dnd: { label: "Rahatsız Etmeyin", tone: "red" },
+  off: { label: "Mesai Dışı", tone: "slate" },
 };
 
 function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
   const phone = useSoftphoneContext();
+  const shift = useShift();
   const [agentState, setAgentState] = useState<AgentPresenceState>("available");
   const [since, setSince] = useState<number>(() => Date.now());
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
@@ -184,12 +190,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     }).catch(() => undefined);
   }, []);
 
+  // Re-read on every shift change too, so "Mesai dışı" clears the moment the
+  // agent starts a shift and the select becomes usable.
   useEffect(() => {
     if (!hasExtension) return;
     refresh();
     const timer = window.setInterval(refresh, 20000);
     return () => window.clearInterval(timer);
-  }, [hasExtension, refresh]);
+  }, [hasExtension, refresh, shift.active]);
 
   // A live clock so the "how long in this state / on this call" timer ticks.
   useEffect(() => {
@@ -251,12 +259,20 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
           {hasExtension && <span className="font-mono text-sm tabular-nums text-muted-foreground" title={onCall ? "Görüşme süresi" : "Bu durumdaki süre"}>{formatClock(timerSeconds)}</span>}
         </div>
         {hasExtension && (
-          <Select value={agentState} onChange={(e) => changeState(e.target.value as AgentPresenceState)} className="h-9 w-40">
-            {Object.entries(agentStates).map(([v, s]) => (
-              <option key={v} value={v}>
-                {s.label}
-              </option>
-            ))}
+          <Select
+            value={agentState}
+            onChange={(e) => changeState(e.target.value as AgentPresenceState)}
+            disabled={!shift.active}
+            title={shift.active ? undefined : "Durum değiştirmek için mesai başlatın"}
+            className="h-9 w-40"
+          >
+            {Object.entries(agentStates)
+              .filter(([v]) => v !== "off" || agentState === "off")
+              .map(([v, s]) => (
+                <option key={v} value={v} disabled={v === "off"}>
+                  {s.label}
+                </option>
+              ))}
           </Select>
         )}
       </div>
@@ -330,6 +346,7 @@ function Round({ onClick, tone = "muted", title, disabled, size = "md", children
 
 function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: boolean }) {
   const phone = useSoftphoneContext();
+  const shift = useShift();
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
@@ -358,6 +375,23 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
         <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
       ) : phone.secondary ? (
         <p className="text-sm text-muted-foreground">Softphone başka bir sekmede açık. Çağrılar orada yönetiliyor.</p>
+      ) : !shift.active && idle ? (
+        /* Off shift the dialer stays closed; incoming calls still show below when they ring. */
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+            <Phone className="size-5" />
+          </span>
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Mesai başlatılmadı</p>
+            <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
+              Çağrı ekranı mesai başladığında açılır. Mesai 18:30&apos;da biter; bitirilmezse 19:20&apos;de sistem kapatır.
+            </p>
+          </div>
+          {shift.error && <p className="text-xs text-destructive">{shift.error}</p>}
+          <Button onClick={() => void shift.start()} disabled={shift.busy || shift.loading} className="mt-1">
+            Mesai Başlat
+          </Button>
+        </div>
       ) : (
         <div className="space-y-4">
           {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}

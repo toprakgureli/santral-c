@@ -83,7 +83,21 @@ export interface PermissionGroup {
   items: PermissionItem[];
 }
 
-export type AgentPresenceState = "available" | "break" | "backoffice" | "dnd";
+// "off" is reported while the agent has no open shift; it cannot be chosen.
+export type AgentPresenceState = "available" | "break" | "backoffice" | "dnd" | "off";
+
+export interface Shift {
+  id: number;
+  startedAt: string;
+  endedAt?: string;
+  endedBy?: "user" | "auto";
+}
+
+export interface ShiftStatus {
+  shift: Shift | null;
+  reminderAt?: string;
+  autoEndAt?: string;
+}
 
 export interface AgentPresence {
   state: AgentPresenceState;

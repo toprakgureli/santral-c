@@ -79,6 +79,17 @@ func (r *Repository) RecordTransition(ctx context.Context, userID uint, state st
 	})
 }
 
+// CloseOpenEvent ends the agent's open presence stretch without opening a new
+// one, so no time accrues while off shift.
+func (r *Repository) CloseOpenEvent(ctx context.Context, userID uint) error {
+	if err := r.db.WithContext(ctx).Model(&models.PresenceEvent{}).
+		Where("user_id = ? AND ended_at IS NULL", userID).
+		Update("ended_at", time.Now()).Error; err != nil {
+		return fmt.Errorf("open presence event could not be closed: %w", err)
+	}
+	return nil
+}
+
 // EnsureOpenEvent opens a stretch for the agent's current state if none is open,
 // so the timers start counting from when the agent first appears.
 func (r *Repository) EnsureOpenEvent(ctx context.Context, userID uint, state string) error {

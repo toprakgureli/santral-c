@@ -26,6 +26,9 @@ düzgün bir kimlik modeli.
 - Temsilci durumu: müsait, mola, backoffice, rahatsız etmeyin. Müsait
   olmayan durumlar santralde DND açar, temsilciye çağrı düşmez. Günlük durum
   toplamları panoda görünür.
+- Mesai: çağrı ekranı ancak "Mesai Başlat" ile açılır; "Mesai Bitir" DND'yi
+  açar ve durum sayaçlarını durdurur. Mesai 18:30'da biter; 19:20'de hâlâ açık
+  olan mesaiyi sunucu kendisi kapatır.
 - Server-Sent Events ile canlı temsilci listesi, düşerse polling'e geçer.
 
 **Çağrılar**
