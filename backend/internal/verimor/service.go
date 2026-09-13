@@ -31,10 +31,12 @@ type IActorResolver interface {
 	GetByID(ctx context.Context, id uint) (*models.User, error)
 }
 
-// IShiftReader reports whether a user is on shift. Placing calls and changing
-// presence are only allowed on shift.
+// IShiftReader reports the user's open shift. Placing calls and changing
+// presence are only allowed on shift, and the presence clocks run per shift.
 type IShiftReader interface {
-	Active(ctx context.Context, userID uint) (bool, error)
+	// OpenSince returns when the user's current shift started; ok is false
+	// when the user is off shift.
+	OpenSince(ctx context.Context, userID uint) (start time.Time, ok bool, err error)
 }
 
 // Service exposes the hosted PBX to the panel.
@@ -88,15 +90,22 @@ func (s *Service) SetShifts(r IShiftReader) { s.shifts = r }
 // onShift reports whether the user may place calls and change presence. With
 // no shift reader wired, everything is allowed.
 func (s *Service) onShift(ctx context.Context, userID uint) bool {
+	_, ok := s.shiftStart(ctx, userID)
+	return ok
+}
+
+// shiftStart returns when the user's current shift began. With no shift reader
+// wired, the day is the window (the pre-shift behaviour).
+func (s *Service) shiftStart(ctx context.Context, userID uint) (time.Time, bool) {
 	if s.shifts == nil {
-		return true
+		return todayStart(), true
 	}
-	active, err := s.shifts.Active(ctx, userID)
+	start, ok, err := s.shifts.OpenSince(ctx, userID)
 	if err != nil {
 		slog.WarnContext(ctx, "shift lookup failed", "user", userID, "error", err)
-		return false
+		return time.Time{}, false
 	}
-	return active
+	return start, ok
 }
 
 // ShiftStarted puts the agent back on the floor: presence becomes available
@@ -1238,28 +1247,34 @@ type Presence struct {
 }
 
 // Status returns the actor's presence, when the current state started, and
-// today's accumulated durations per state plus total talk time.
+// the current shift's accumulated durations per state plus total talk time.
+// Every clock starts from zero at "Mesai Başlat" and nothing accrues off
+// shift, so a state can never read as older than the shift.
 func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	if _, err := s.users.GetByID(ctx, actorID); err != nil {
 		return nil, err
+	}
+	from, onShift := s.shiftStart(ctx, actorID)
+	if !onShift {
+		return &Presence{State: "off", Totals: map[string]int64{}}, nil
 	}
 	state, since, err := s.repo.GetPresence(ctx, actorID)
 	if err != nil {
 		return &Presence{State: "available", Totals: map[string]int64{}}, nil
 	}
 	// Start the clock the first time the agent appears, so totals accumulate.
-	// Off shift nothing accrues, so no stretch is opened.
-	onShift := s.onShift(ctx, actorID)
-	if onShift {
-		_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
-	}
+	_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
 	// Prefer the open stretch's start as "since" so the timer is stable across
 	// page navigation (agent_presence.updated_at is absent until a manual change).
 	if started, ok, _ := s.repo.OpenEventStartedAt(ctx, actorID); ok {
 		since = started
 	}
+	// A stretch that predates the shift (left open by an old session) must not
+	// leak into the timer.
+	if since.Before(from) {
+		since = from
+	}
 
-	from := todayStart()
 	totals, err := s.repo.PresenceTotals(ctx, actorID, from)
 	if err != nil {
 		totals = map[string]int64{}
@@ -1285,11 +1300,6 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 			since = last
 		}
 	}
-	if !onShift {
-		state = "off"
-		since = time.Time{}
-	}
-
 	out := &Presence{State: state, Totals: totals, Talk: call, Online: online}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)

@@ -230,11 +230,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const callSince = phone.callStartedAt ?? nowTick;
   const timerSeconds = busy
     ? Math.max(0, Math.floor((nowTick - callSince) / 1000))
-    : Math.max(0, Math.floor((nowTick - since) / 1000));
+    : shift.active
+      ? Math.max(0, Math.floor((nowTick - since) / 1000))
+      : 0;
 
   // Tick the current state's total (and talk time during a call) live between
   // 20s refreshes, so the "Bugün toplam" strip keeps moving.
-  const liveDelta = Math.max(0, (nowTick - fetchedAt) / 1000);
+  // Off shift every clock is frozen at zero; the next "Mesai Başlat" restarts them.
+  const liveDelta = shift.active ? Math.max(0, (nowTick - fetchedAt) / 1000) : 0;
   // While on a call, the presence state pauses and call time grows instead, so
   // a call is not counted as idle/available time.
   const totalFor = (key: AgentPresenceState) => Math.round((presenceTotals[key] ?? 0) + (agentState === key && !busy ? liveDelta : 0));
@@ -295,7 +298,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
 
       {hasExtension && (
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2.5 text-xs">
-          <span className="font-semibold text-muted-foreground">Bugün · Çevrimiçi</span>
+          <span className="font-semibold text-muted-foreground">Bu mesai · Çevrimiçi</span>
           <span className="font-mono font-semibold tabular-nums">{formatClock(onlineLive)}</span>
           <span className="text-muted-foreground/40">·</span>
           <Dur label="Görüşme" seconds={talkLive} dot="bg-primary" />

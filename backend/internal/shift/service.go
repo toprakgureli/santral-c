@@ -66,6 +66,16 @@ func (s *Service) Active(ctx context.Context, userID uint) (bool, error) {
 	return s.repo.Active(ctx, userID)
 }
 
+// OpenSince returns when the user's current shift started; ok is false off
+// shift. Telephony uses it as the window for the presence clocks.
+func (s *Service) OpenSince(ctx context.Context, userID uint) (time.Time, bool, error) {
+	open, err := s.repo.Open(ctx, userID)
+	if err != nil || open == nil {
+		return time.Time{}, false, err
+	}
+	return open.StartedAt, true, nil
+}
+
 // Current returns the user's open shift with the day's cutoffs.
 func (s *Service) Current(ctx context.Context, userID uint) (*responses.ShiftStatus, error) {
 	open, err := s.repo.Open(ctx, userID)
