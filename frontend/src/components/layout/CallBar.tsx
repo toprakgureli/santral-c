@@ -111,6 +111,8 @@ export default function CallBar() {
         </div>
       </div>
 
+      {phone.error && <p className="mb-2 text-xs leading-snug text-destructive">{phone.error}</p>}
+
       {phone.status === "incoming" ? (
         <div className="grid grid-cols-2 gap-2">
           <button

@@ -5,6 +5,40 @@ import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
 import { tones } from "./tones";
 
+// mediaError turns a getUserMedia failure into a message the agent can act on.
+// Anything else keeps its own text.
+function mediaError(e: unknown): string {
+  const name = e instanceof Error ? e.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Mikrofon izni verilmedi. Adres çubuğundaki kilit simgesinden mikrofona izin verip sayfayı yenileyin.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "Mikrofon bulunamadı. Bir mikrofon bağlayıp sayfayı yenileyin.";
+    case "NotReadableError":
+    case "AbortError":
+      return "Mikrofon başka bir uygulama tarafından kullanılıyor.";
+  }
+  return e instanceof Error && e.message ? e.message : "Çağrı için ses aygıtı açılamadı.";
+}
+
+// checkMicrophone opens and immediately releases the microphone, so the
+// browser's permission prompt is settled early. It returns a message when the
+// microphone cannot be used, or null when it can.
+async function checkMicrophone(): Promise<string | null> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return "Bu tarayıcı mikrofona erişemiyor. Sayfa HTTPS üzerinden açılmalı.";
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream.getTracks().forEach((t) => t.stop());
+    return null;
+  } catch (e) {
+    return mediaError(e);
+  }
+}
+
 export type PhoneStatus =
   | "connecting"
   | "registered"
@@ -234,6 +268,11 @@ export function useSoftphone(enabled: boolean): Phone {
         registerer = new Registerer(ua);
         await registerer.register();
         if (!cancelled) setStatus("registered");
+        // Ask for the microphone now, so the permission prompt is answered
+        // before the first call rings instead of during it. A refusal is shown
+        // as a warning; the phone stays registered so calls still come in.
+        const micProblem = await checkMicrophone();
+        if (!cancelled && micProblem) setError(micProblem);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Softphone başlatılamadı.");
@@ -274,6 +313,7 @@ export function useSoftphone(enabled: boolean): Phone {
       callDirRef.current = "outbound";
       callPeerRef.current = target;
       setCallStartedAt(Date.now());
+      setError(null);
       logCall("start");
       setStatus("calling");
       watchSession(inviter);
@@ -310,6 +350,7 @@ export function useSoftphone(enabled: boolean): Phone {
         });
       } catch (e) {
         tones.stop();
+        setError(mediaError(e));
         setStatus("registered");
         sessionRef.current = null;
         throw e;
@@ -318,11 +359,21 @@ export function useSoftphone(enabled: boolean): Phone {
     [attachRemoteMedia, watchSession, logCall],
   );
 
+  // answer picks up the ringing call. Accepting needs the microphone, and a
+  // blocked or missing microphone used to fail silently (the call kept ringing
+  // and the button seemed dead), so the reason is now shown and the call keeps
+  // ringing for a retry after the permission is granted.
   const answer = useCallback(async () => {
     const s = sessionRef.current;
     if (!(s instanceof Invitation)) return;
     tones.stop();
-    await s.accept({ sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } } }).catch(() => undefined);
+    setError(null);
+    try {
+      await s.accept({ sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } } });
+    } catch (e) {
+      setError(mediaError(e));
+      if (s.state === SessionState.Initial) tones.incoming();
+    }
   }, []);
 
   const hangup = useCallback(async () => {
