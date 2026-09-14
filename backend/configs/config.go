@@ -103,6 +103,10 @@ type Bulutsantralim struct {
 	TurnUser  string `mapstructure:"turnUser"`
 	TurnPass  string `mapstructure:"turnPass"`
 	SIPKey    string `mapstructure:"sipKey"` // encrypts stored SIP passwords at rest
+
+	// HistoryDays is how far back the call-record mirror backfills on first
+	// run (default 90). Newer records arrive with the regular poll.
+	HistoryDays int `mapstructure:"historyDays"`
 }
 
 // Config is the aggregate configuration.

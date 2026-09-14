@@ -36,9 +36,13 @@ filters, contacts, escalations, and a proper identity model with TOTP.
   recording playback. Filter by date (today by default, presets for yesterday,
   last 7 or 30 days, this month, custom range), direction, phone number, own
   calls or a specific extension.
-- Recent calls are served from a warm in-memory window the poller keeps up to
-  date, so the common views are instant and the rate-limited API is not hit on
-  every page load. Older dates go to Verimor's own server-side query.
+- Call records are mirrored into PostgreSQL (`pbx_cdrs`). Verimor's own API
+  cannot search by number or extension (its filters return unrelated rows), so
+  every list and search runs on the mirror: instant, complete, and the
+  rate-limited API is not hit on page loads. The poller copies the newest
+  page every 30 seconds; on first run a slow background backfill walks back
+  `historyDays` (default 90) one request at a time and resumes after a
+  restart. Recordings still stream from Verimor by call id.
 - CSV export of the current filter (`cdr.export`).
 - Click to call from anywhere a number is shown.
 

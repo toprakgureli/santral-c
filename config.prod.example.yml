@@ -65,3 +65,4 @@ bulutsantralim:
   turnUser: ""
   turnPass: ""
   sipKey: "change-me-to-a-32-byte-sip-key"        # openssl rand -hex 16
+  historyDays: 90

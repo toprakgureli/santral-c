@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Play, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Call } from "../api/types";
@@ -120,6 +120,26 @@ export function Calls() {
     const t = window.setTimeout(() => { setPage(1); load(); }, 350);
     return () => window.clearTimeout(t);
   }, [ext, extMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Same for the number search. Looking up a number means "find this caller",
+  // so the default "today" preset widens to all dates the first time a number
+  // is typed; the date change itself triggers the load.
+  const searched = useRef("");
+  useEffect(() => {
+    if (extMode || number === searched.current) return;
+    const t = window.setTimeout(() => {
+      searched.current = number;
+      setPage(1);
+      if (number.trim() && preset === "today") {
+        setPreset("all");
+        setFrom("");
+        setTo("");
+        return;
+      }
+      load();
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [number, extMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>

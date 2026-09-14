@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,10 +20,6 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
-
-// cdrTTL is how long a CDR page is cached; the hosted API is rate limited, so
-// repeated panel loads must not each hit it.
-const cdrTTL = 30 * time.Second
 
 // IActorResolver loads the acting user for authorization.
 type IActorResolver interface {
@@ -47,13 +42,6 @@ type Service struct {
 	cfg    configs.Bulutsantralim
 	shifts IShiftReader
 
-	mu         sync.Mutex
-	cache      map[string]cdrCacheEntry
-	cdrCool    time.Time             // until when on-demand CDR calls back off after a 429/timeout
-	scan       []CDR                 // rolling CDR window the poller accumulates for extension filtering
-	scanTotal  int                   // santral-wide total_count from the latest head fetch
-	matchCache map[string]matchEntry // cached extension-filtered results for a past date
-
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
 	snapMu sync.RWMutex
@@ -71,17 +59,12 @@ type snapshot struct {
 	stats  *Stats
 }
 
-type cdrCacheEntry struct {
-	list *CallList
-	at   time.Time
-}
-
 // NewService builds a Verimor service.
 func NewService(client *Client, users IActorResolver, repo *Repository, cfg configs.Bulutsantralim) *Service {
 	if cfg.WebphoneBase == "" {
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, repo: repo, cfg: cfg, cache: make(map[string]cdrCacheEntry)}
+	return &Service{client: client, users: users, repo: repo, cfg: cfg}
 }
 
 // SetShifts wires the shift reader that gates outbound calls and presence.
@@ -150,24 +133,14 @@ func (s *Service) extensionOf(ctx context.Context, userID uint) string {
 	return *u.SIPExtension
 }
 
-// snapshotLimit is the page size for the "all" call-history view's first page.
-const snapshotLimit = 20
-
-// The poller keeps a rolling window of recent CDRs warm for in-process extension
-// filtering ("own" / "belirli dahili"). The hosted API only serves the newest
-// page quickly (deep pages time out), so the poller repeatedly fetches page 1 and
-// MERGES it, accumulating every call seen since it started, up to scanMax.
-const (
-	scanPageSize = 100  // CDRs per page fetched (newest page)
-	scanMax      = 5000 // hard cap on the warm accumulated window (~a week for this tenant)
-)
-
-// Start launches the background poller that keeps a snapshot of call history,
-// extensions, queues and daily stats warm. The hosted API is rate limited
-// (roughly 10 requests/minute, and 2/minute on the status endpoint), so the
-// panel must read from this snapshot instead of hitting the API on every load.
+// Start launches the background poller that keeps a snapshot of extensions,
+// queues and daily stats warm and copies new call records into the mirror, plus
+// the one-off history backfill. The hosted API is rate limited (roughly 10
+// requests/minute, and 2/minute on the status endpoint), so the panel must read
+// from the snapshot and the mirror instead of hitting the API on every load.
 func (s *Service) Start(ctx context.Context) {
 	go s.poll(ctx)
+	go s.runMirror(ctx)
 }
 
 func (s *Service) poll(ctx context.Context) {
@@ -240,51 +213,20 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// refreshHead fetches the newest page, merges it into the rolling window, and
-// rebuilds the "all" view's page-1 snapshot. It is cheap (one API call) and runs
-// often so new calls appear quickly.
+// refreshHead copies the newest page of call records into the mirror. It is
+// cheap (one API call) and runs every 30 seconds, so a finished call is
+// searchable within half a minute.
 func (s *Service) refreshHead(ctx context.Context) {
 	params := url.Values{}
 	params.Set("page", "1")
-	params.Set("limit", strconv.Itoa(scanPageSize))
-	cdrs, pg, err := s.client.CDRs(ctx, params)
+	params.Set("limit", strconv.Itoa(headPageSize))
+	cdrs, _, err := s.client.CDRs(ctx, params)
 	if err != nil {
-		return // keep the last good window/snapshot
+		return // the next tick retries
 	}
-	s.mergeScan(cdrs, pg.TotalCount)
-}
-
-// mergeScan merges fresh CDRs into the warm window: dedup by call uuid, newest
-// first (by start_stamp), capped at scanMax.
-func (s *Service) mergeScan(fresh []CDR, total int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if total > 0 {
-		s.scanTotal = total
+	if _, err := s.repo.UpsertCDRs(ctx, cdrs); err != nil {
+		slog.WarnContext(ctx, "call records could not be mirrored", "error", err)
 	}
-	seen := make(map[string]struct{}, len(s.scan)+len(fresh))
-	merged := make([]CDR, 0, len(s.scan)+len(fresh))
-	add := func(c CDR) {
-		if c.CallUUID == "" {
-			return
-		}
-		if _, ok := seen[c.CallUUID]; ok {
-			return
-		}
-		seen[c.CallUUID] = struct{}{}
-		merged = append(merged, c)
-	}
-	for i := range fresh {
-		add(fresh[i]) // fresh copies win over stale
-	}
-	for i := range s.scan {
-		add(s.scan[i])
-	}
-	sort.SliceStable(merged, func(i, j int) bool { return merged[i].StartStamp > merged[j].StartStamp })
-	if len(merged) > scanMax {
-		merged = merged[:scanMax]
-	}
-	s.scan = merged
 }
 
 func (s *Service) refreshExtensions(ctx context.Context) {
@@ -530,7 +472,7 @@ func (s *Service) WebphoneURL(ctx context.Context, actorID uint) (*Webphone, err
 // most exportPages of them, so a date-backed export stays under a minute.
 const (
 	exportPageSize = 100
-	exportPages    = 5
+	exportPages    = 50
 )
 
 // ExportCalls returns the calls matching filter as UTF-8 CSV (with a BOM so
@@ -574,7 +516,9 @@ func (s *Service) ExportCalls(ctx context.Context, actorID uint, filter Filter) 
 	return buf.Bytes(), nil
 }
 
-// Calls returns a page of tenant call records.
+// Calls returns a page of call records from the local mirror. Verimor's own
+// filters cannot search by number or extension, so every query runs here:
+// scope, number, direction and date range all become SQL.
 func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*CallList, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
@@ -583,282 +527,59 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 	if !canViewCalls(actor) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.Limit < 10 || filter.Limit > 100 {
+		filter.Limit = 20
+	}
 
-	// Scope resolution. Verimor's `number` filter does NOT work for short internal
-	// extensions (it returns nearly the whole santral), so scoping to one extension
-	// is done in-process over a recent window. A real phone-number search still uses
-	// Verimor's own filter.
 	canAll := actor.Can(enums.CDRViewAll) || actor.Can(enums.CallViewAll)
 	ext := ""
 	if actor.SIPExtension != nil {
 		ext = *actor.SIPExtension
 	}
-	extFilter, phoneSearch := "", ""
+	number := strings.TrimSpace(filter.Number)
+	q := CDRQuery{Direction: apiDirection(filter.Direction), Page: filter.Page, Limit: filter.Limit}
 	switch {
 	case filter.Scope != "all" || !canAll:
 		// Own scope (or an agent limited to their own calls).
 		if ext == "" {
-			return &CallList{Items: []Call{}, Page: 1}, nil // no extension -> no own calls
+			return &CallList{Items: []Call{}, Page: 1, TotalPages: 1}, nil // no extension -> no own calls
 		}
-		extFilter = ext
-		if !isExtension(filter.Number) {
-			phoneSearch = strings.TrimSpace(filter.Number) // narrow own calls by a number
+		q.Ext = ext
+		if !isExtension(number) {
+			q.Phone = phoneQuery(number) // narrow own calls by a number
 		}
-	case isExtension(filter.Number):
-		extFilter = strings.TrimSpace(filter.Number) // "belirli dahili" mode
+	case isExtension(number):
+		q.Ext = number // "belirli dahili" mode
 	default:
-		phoneSearch = strings.TrimSpace(filter.Number) // real phone-number search (or none)
+		q.Phone = phoneQuery(number) // phone-number search (or none)
 	}
-
-	fromDay, toDay := dateOnly(filter.From), dateOnly(filter.To)
-	hasDate := fromDay != "" || toDay != ""
-
-	// Date-filtered full-santral view. Today is served instantly from the warm
-	// window (its newest rows are today's calls); any other day is served by
-	// Verimor's own server-side date query, which is complete for any date but
-	// slow (~15-18s). So the common "today" case is fast, and picking an older day
-	// returns the full, correct set (with a loading state) instead of an empty page.
-	today := time.Now().In(istanbul).Format("2006-01-02")
-	isToday := hasDate && fromDay == today && toDay == today
-
-	// A pure phone-number search over the whole santral uses Verimor's own filter,
-	// which searches full history server-side.
-	if extFilter == "" && phoneSearch != "" {
-		filter.Number = phoneSearch
-		return s.phoneSearchCalls(ctx, filter)
-	}
-
-	// A specific PAST day lives only in Verimor's records (the warm window and the
-	// no-date CDR list are today-only). Serve it from Verimor's server-side date
-	// query: paged directly for the whole santral, or scanned and filtered
-	// in-process for an extension scope. Both are slow (~15s+, loading shown) but
-	// return real data instead of an empty page.
-	if hasDate && !isToday {
-		if extFilter != "" {
-			return s.dateScopedCalls(ctx, extFilter, filter)
+	if day := dateOnly(filter.From); day != "" {
+		if from, _, err := dayBounds(day); err == nil {
+			q.From = from
 		}
-		return s.dateSearchCalls(ctx, filter)
 	}
-
-	// Today or no date: served instantly from the warm window.
-	return s.windowCalls(extFilter, phoneSearch, filter.From, filter.To, filter), nil
-}
-
-// dateSearchCalls queries the hosted API server-side by date range. Verimor's
-// date filter works but is slow (~15-18s), so it uses the long-timeout client.
-// This reaches any historical date, unlike the recent warm window.
-func (s *Service) dateSearchCalls(ctx context.Context, filter Filter) (*CallList, error) {
-	if filter.Page < 1 {
-		filter.Page = 1
-	}
-	if filter.Limit < 10 || filter.Limit > 100 {
-		filter.Limit = 20
-	}
-	params := dateParams(filter)
-	params.Set("page", strconv.Itoa(filter.Page))
-	params.Set("limit", strconv.Itoa(filter.Limit))
-	if d := apiDirection(filter.Direction); d != "" {
-		params.Set("direction", d)
-	}
-	key := params.Encode()
-	if cached, ok := s.cachedCalls(key); ok {
-		return cached, nil
-	}
-	if s.cdrCooling() {
-		if stale, ok := s.staleCalls(key); ok {
-			return stale, nil
+	if day := dateOnly(filter.To); day != "" {
+		if _, to, err := dayBounds(day); err == nil {
+			q.To = to
 		}
-		return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
 	}
-	cdrs, pg, err := s.client.CDRsSlow(ctx, params)
+
+	rows, total, err := s.repo.QueryCDRs(ctx, q)
 	if err != nil {
-		s.startCDRCooldown()
-		if stale, ok := s.staleCalls(key); ok {
-			return stale, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yavaş yanıt veriyor). Birazdan tekrar deneyin.", err)
+		return nil, errs.Internal(err)
 	}
-	items := make([]Call, 0, len(cdrs))
-	for i := range cdrs {
-		items = append(items, mapCDR(cdrs[i]))
+	items := make([]Call, 0, len(rows))
+	for i := range rows {
+		items = append(items, mapCDR(rowCDR(rows[i])))
 	}
-	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
-	fillPaging(list, filter.Page, filter.Limit, len(items))
-	s.storeCalls(key, list)
-	return list, nil
-}
-
-// dateParams builds the hosted API's UTC date-range params from a filter's local
-// From/To days.
-func dateParams(filter Filter) url.Values {
-	p := url.Values{}
-	if from := dateOnly(filter.From); from != "" {
-		if t, err := time.ParseInLocation("2006-01-02", from, istanbul); err == nil {
-			p.Set("start_stamp_from", t.UTC().Format("2006-01-02 15:04:05")+" UTC")
-		}
-	}
-	if to := dateOnly(filter.To); to != "" {
-		if t, err := time.ParseInLocation("2006-01-02", to, istanbul); err == nil {
-			// inclusive end: up to the start of the next day
-			p.Set("start_stamp_to", t.AddDate(0, 0, 1).UTC().Format("2006-01-02 15:04:05")+" UTC")
-		}
-	}
-	return p
-}
-
-// matchEntry caches an extension-filtered result set for a past date.
-type matchEntry struct {
-	calls []Call
-	at    time.Time
-}
-
-// dateScopeScanPages caps how many pages of a past day are scanned when filtering
-// to one extension (each page is a slow ~15s call), so a busy day stays bounded.
-const dateScopeScanPages = 3
-
-// dateScopedCalls returns an extension's calls on a past date. Verimor cannot
-// filter CDRs by extension, so it scans a bounded slice of that day's records
-// (newest first) and filters in-process. The result is cached so paging is
-// instant after the first (slow) fetch.
-func (s *Service) dateScopedCalls(ctx context.Context, ext string, filter Filter) (*CallList, error) {
-	if filter.Page < 1 {
-		filter.Page = 1
-	}
-	limit := filter.Limit
-	if limit < 10 || limit > 100 {
-		limit = 20
-	}
-	dir := apiDirection(filter.Direction)
-	key := "dscoped|" + ext + "|" + dateOnly(filter.From) + "|" + dateOnly(filter.To) + "|" + dir
-	matched, ok := s.matchCached(key)
-	if !ok {
-		if s.cdrCooling() {
-			if m, stale := s.matchStale(key); stale {
-				matched = m
-			} else {
-				return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
-			}
-		} else {
-			base := dateParams(filter)
-			if dir != "" {
-				base.Set("direction", dir)
-			}
-			acc := make([]Call, 0, 64)
-			for page := 1; page <= dateScopeScanPages; page++ {
-				p := cloneValues(base)
-				p.Set("page", strconv.Itoa(page))
-				p.Set("limit", "100")
-				cdrs, pg, err := s.client.CDRsSlow(ctx, p)
-				if err != nil {
-					s.startCDRCooldown()
-					break // keep whatever we gathered
-				}
-				for i := range cdrs {
-					if extIsParty(cdrs[i], ext) {
-						acc = append(acc, mapCDR(cdrs[i]))
-					}
-				}
-				if len(cdrs) < 100 || pg.Page >= pg.TotalPages {
-					break
-				}
-			}
-			matched = acc
-			s.matchStore(key, matched)
-		}
-	}
-	total := len(matched)
-	pages := (total + limit - 1) / limit
+	pages := int((total + int64(filter.Limit) - 1) / int64(filter.Limit))
 	if pages < 1 {
 		pages = 1
 	}
-	start := (filter.Page - 1) * limit
-	if start > total {
-		start = total
-	}
-	end := start + limit
-	if end > total {
-		end = total
-	}
-	return &CallList{Items: matched[start:end], Page: filter.Page, Total: total, TotalPages: pages}, nil
-}
-
-func cloneValues(v url.Values) url.Values {
-	out := make(url.Values, len(v))
-	for k, vs := range v {
-		out[k] = append([]string(nil), vs...)
-	}
-	return out
-}
-
-func (s *Service) matchCached(key string) ([]Call, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if e, ok := s.matchCache[key]; ok && time.Since(e.at) < 30*time.Minute {
-		return e.calls, true
-	}
-	return nil, false
-}
-
-func (s *Service) matchStale(key string) ([]Call, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.matchCache[key]
-	return e.calls, ok
-}
-
-func (s *Service) matchStore(key string, calls []Call) {
-	s.mu.Lock()
-	if s.matchCache == nil {
-		s.matchCache = make(map[string]matchEntry)
-	}
-	s.matchCache[key] = matchEntry{calls: calls, at: time.Now()}
-	s.mu.Unlock()
-}
-
-// phoneSearchCalls queries the hosted API by phone number (its one filter that
-// works and searches full history), with caching and a throttle cooldown.
-func (s *Service) phoneSearchCalls(ctx context.Context, filter Filter) (*CallList, error) {
-	if filter.Page < 1 {
-		filter.Page = 1
-	}
-	if filter.Limit < 10 || filter.Limit > 100 {
-		filter.Limit = 20
-	}
-	params := url.Values{}
-	params.Set("page", strconv.Itoa(filter.Page))
-	params.Set("limit", strconv.Itoa(filter.Limit))
-	if d := apiDirection(filter.Direction); d != "" {
-		params.Set("direction", d)
-	}
-	if filter.Number != "" {
-		params.Set("number", filter.Number)
-	}
-	key := params.Encode()
-	if cached, ok := s.cachedCalls(key); ok {
-		return cached, nil
-	}
-	if s.cdrCooling() {
-		if stale, ok := s.staleCalls(key); ok {
-			return stale, nil
-		}
-		return &CallList{Items: []Call{}, Page: filter.Page, TotalPages: filter.Page}, nil
-	}
-	cdrs, pg, err := s.client.CDRs(ctx, params)
-	if err != nil {
-		s.startCDRCooldown()
-		if stale, ok := s.staleCalls(key); ok {
-			return stale, nil
-		}
-		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kayıtları şu an alınamıyor (santral yoğun). Birazdan tekrar deneyin.", err)
-	}
-	items := make([]Call, 0, len(cdrs))
-	for i := range cdrs {
-		items = append(items, mapCDR(cdrs[i]))
-	}
-	list := &CallList{Items: items, Page: pg.Page, Total: pg.TotalCount, TotalPages: pg.TotalPages}
-	fillPaging(list, filter.Page, filter.Limit, len(items))
-	s.storeCalls(key, list)
-	return list, nil
+	return &CallList{Items: items, Page: filter.Page, Total: int(total), TotalPages: pages}, nil
 }
 
 // extRe matches a short internal extension (3-4 digits) as opposed to a full
@@ -866,67 +587,6 @@ func (s *Service) phoneSearchCalls(ctx context.Context, filter Filter) (*CallLis
 var extRe = regexp.MustCompile(`^\d{3,4}$`)
 
 func isExtension(s string) bool { return extRe.MatchString(strings.TrimSpace(s)) }
-
-// windowCalls serves a page from the warm accumulated window, filtered
-// in-process by extension (optional), phone substring (optional), date range
-// (optional, local "YYYY-MM-DD"), and direction. It never hits the API, so it
-// cannot hang or throttle; the window is empty only while the poller is warming.
-func (s *Service) windowCalls(ext, phone, from, to string, filter Filter) *CallList {
-	if filter.Page < 1 {
-		filter.Page = 1
-	}
-	limit := filter.Limit
-	if limit < 10 || limit > 100 {
-		limit = 20
-	}
-	scan, _ := s.currentScan()
-	dir := apiDirection(filter.Direction)
-	phone = strings.TrimSpace(phone)
-	from, to = dateOnly(from), dateOnly(to)
-	matched := make([]Call, 0, 64)
-	for i := range scan {
-		c := scan[i]
-		if ext != "" && !extIsParty(c, ext) {
-			continue
-		}
-		if from != "" || to != "" {
-			// start_stamp is local time ("2026-09-11 22:42:34 +0300"); its first 10
-			// chars are the local date, so a plain string compare bounds the range.
-			day := c.StartStamp
-			if len(day) >= 10 {
-				day = day[:10]
-			}
-			if from != "" && day < from {
-				continue
-			}
-			if to != "" && day > to {
-				continue
-			}
-		}
-		call := mapCDR(c)
-		if dir != "" && call.Direction != dir {
-			continue
-		}
-		if phone != "" && !strings.Contains(call.FromNumber, phone) && !strings.Contains(call.ToNumber, phone) {
-			continue
-		}
-		matched = append(matched, call)
-	}
-	total := len(matched)
-	pages := (total + limit - 1) / limit
-	if pages < 1 {
-		pages = 1
-	}
-	start := (filter.Page - 1) * limit
-	if start > total {
-		start = total
-	}
-	end := start + limit
-	if end > total {
-		end = total
-	}
-	return &CallList{Items: matched[start:end], Page: filter.Page, Total: total, TotalPages: pages}
-}
 
 // dateOnly keeps a valid "YYYY-MM-DD" prefix and drops anything else.
 var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}`)
@@ -937,96 +597,6 @@ func dateOnly(s string) string {
 		return m
 	}
 	return ""
-}
-
-// extIsParty reports whether the extension is a party on the call (as caller or
-// callee), covering both directions. The extension appears as the prefix on an
-// outbound leg ("1014 (902...)") and inside the parentheses on an answered
-// inbound leg ("902... (1008)"); an internal call is the bare number.
-func extIsParty(c CDR, ext string) bool {
-	return partyIsExt(c.CallerIDNumber, ext) || partyIsExt(c.DestinationNumber, ext)
-}
-
-func partyIsExt(field, ext string) bool {
-	field = strings.TrimSpace(field)
-	return field == ext ||
-		strings.HasPrefix(field, ext+" ") ||
-		strings.HasPrefix(field, ext+"(") ||
-		strings.Contains(field, "("+ext+")") // inbound leg answered by the extension
-}
-
-// currentScan returns the warm recent-CDR window maintained by the poller (empty
-// while warming). Callers filter it in-process; they never hit the API.
-func (s *Service) currentScan() ([]CDR, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.scan, s.scan != nil
-}
-
-// fillPaging backfills the page envelope when the hosted API omits or zeroes the
-// total count/pages, so the panel's Next/Previous controls still work. It derives
-// pages from the total when known, otherwise assumes a full page means there is at
-// least one more.
-func fillPaging(list *CallList, page, limit, got int) {
-	if list.Page < 1 {
-		if page < 1 {
-			page = 1
-		}
-		list.Page = page
-	}
-	if limit < 1 {
-		limit = snapshotLimit
-	}
-	if list.TotalPages >= 1 {
-		return
-	}
-	switch {
-	case list.Total > 0:
-		list.TotalPages = (list.Total + limit - 1) / limit
-	case got >= limit:
-		list.TotalPages = list.Page + 1 // a full page likely has more
-	default:
-		list.TotalPages = list.Page
-	}
-}
-
-// cdrCooldown is how long on-demand CDR calls back off after the hosted API
-// throttles or times out, to keep a burst from starving the shared rate limit.
-const cdrCooldown = 20 * time.Second
-
-func (s *Service) cdrCooling() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return time.Now().Before(s.cdrCool)
-}
-
-func (s *Service) startCDRCooldown() {
-	s.mu.Lock()
-	s.cdrCool = time.Now().Add(cdrCooldown)
-	s.mu.Unlock()
-}
-
-func (s *Service) cachedCalls(key string) (*CallList, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.cache[key]
-	if ok && time.Since(e.at) < cdrTTL {
-		return e.list, true
-	}
-	return nil, false
-}
-
-func (s *Service) staleCalls(key string) (*CallList, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.cache[key]
-	return e.list, ok
-}
-
-func (s *Service) storeCalls(key string, list *CallList) {
-	s.mu.Lock()
-	s.cache[key] = cdrCacheEntry{list: list, at: time.Now()}
-	s.mu.Unlock()
 }
 
 // Originate places a click-to-call from the actor's extension.

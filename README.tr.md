@@ -36,10 +36,13 @@ düzgün bir kimlik modeli.
 - Verimor CDR'ından çağrı geçmişi: yön, sonuç, süre ve kayıt dinleme. Tarihe
   göre filtre (varsayılan bugün; dün, son 7 / 30 gün, bu ay, özel aralık),
   yön, telefon numarası, kendi çağrıların veya belirli bir dahili.
-- Son çağrılar, arka planda güncel tutulan sıcak bir bellek penceresinden
-  gelir; sık kullanılan görünümler anında açılır ve oran sınırlı API her
-  sayfa yüklemesinde yorulmaz. Eski tarihler Verimor'un kendi sunucu tarafı
-  sorgusuna gider.
+- Çağrı kayıtları PostgreSQL'e aynalanır (`pbx_cdrs`). Verimor'un API'si
+  numaraya veya dahiliye göre arayamıyor (filtreleri alakasız kayıt döndürüyor),
+  bu yüzden liste ve arama tamamen aynadan çalışır: anında, eksiksiz ve oran
+  sınırlı API sayfa yüklemelerinde yorulmaz. Poller en yeni sayfayı 30 saniyede
+  bir kopyalar; ilk çalışmada arka planda yavaş bir doldurma `historyDays`
+  (varsayılan 90) gün geriye gider, yeniden başlatmada kaldığı yerden sürer.
+  Kayıt dinleme yine Verimor'dan çağrı kimliğiyle akar.
 - Mevcut filtreyi CSV olarak indirme (`cdr.export`).
 - Numaranın göründüğü her yerden tıkla-ara.
 

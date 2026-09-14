@@ -65,3 +65,6 @@ bulutsantralim:
   turnUser: ""
   turnPass: ""
   sipKey: "change-me-to-a-32-byte-sip-key"
+  # Days of call history to mirror locally on first run (newer calls arrive
+  # with the regular poll). Searching runs on this mirror.
+  historyDays: 90

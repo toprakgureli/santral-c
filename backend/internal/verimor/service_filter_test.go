@@ -1,20 +1,9 @@
 package verimor
 
 import (
-	"strings"
 	"testing"
+	"time"
 )
-
-func sampleScan() []CDR {
-	return []CDR{
-		{CallUUID: "a", Direction: "outbound", CallerIDNumber: "1014 (902129510292)", DestinationNumber: "05304230113", StartStamp: "2026-09-11 17:44:10 +0300", AnswerStamp: "x"},
-		{CallUUID: "b", Direction: "outbound", CallerIDNumber: "1015 (902129510292)", DestinationNumber: "05367441605", StartStamp: "2026-09-11 17:40:00 +0300", AnswerStamp: "x"},
-		{CallUUID: "c", Direction: "inbound", CallerIDNumber: "05325219502", DestinationNumber: "902129092554", StartStamp: "2026-09-11 17:39:30 +0300", AnswerStamp: "x"},
-		{CallUUID: "d", Direction: "outbound", CallerIDNumber: "1008 (902128526465)", DestinationNumber: "05309752651", StartStamp: "2026-09-10 09:00:00 +0300", AnswerStamp: "x"},
-		{CallUUID: "e", Direction: "outbound", CallerIDNumber: "1014 (902129510292)", DestinationNumber: "05333635081", StartStamp: "2026-09-10 08:30:00 +0300", AnswerStamp: "x"},
-		{CallUUID: "f", Direction: "internal", CallerIDNumber: "1021 (902127060510)", DestinationNumber: "1014", StartStamp: "2026-09-11 10:00:00 +0300", AnswerStamp: "x"},
-	}
-}
 
 func TestExtIsParty(t *testing.T) {
 	cases := []struct {
@@ -37,55 +26,69 @@ func TestExtIsParty(t *testing.T) {
 	}
 }
 
-func TestWindowCallsFiltersToExtension(t *testing.T) {
-	s := &Service{scan: sampleScan()}
-	res := s.windowCalls("1014", "", "", "", Filter{Page: 1, Limit: 20})
-	if res.Total != 3 { // a, e, f involve 1014
-		t.Fatalf("expected 3 matches for 1014, got %d", res.Total)
+func TestParseParty(t *testing.T) {
+	cases := []struct {
+		field    string
+		ext, num string
+	}{
+		{"1014 (902129510292)", "1014", "902129510292"},
+		{"902127060510 (1014)", "1014", "902127060510"},
+		{"05304230113", "", "05304230113"},
+		{"1014", "1014", ""},
+		{"", "", ""},
 	}
-	for _, it := range res.Items {
-		if !strings.HasPrefix(it.FromNumber, "1014") && it.ToNumber != "1014" && !strings.HasPrefix(it.ToNumber, "1014") {
-			t.Errorf("returned a call that is not 1014's: from=%q to=%q", it.FromNumber, it.ToNumber)
+	for _, c := range cases {
+		got := parseParty(c.field)
+		if got.Ext != c.ext || got.Num != c.num {
+			t.Errorf("parseParty(%q) = {%q %q}, want {%q %q}", c.field, got.Ext, got.Num, c.ext, c.num)
 		}
 	}
 }
 
-func TestWindowCallsDirectionFilter(t *testing.T) {
-	s := &Service{scan: sampleScan()}
-	// outbound only for 1014 -> a, e (not f internal, not c inbound)
-	res := s.windowCalls("1014", "", "", "", Filter{Page: 1, Limit: 20, Direction: "outbound"})
-	if res.Total != 2 {
-		t.Fatalf("expected 2 outbound matches, got %d", res.Total)
+func TestPhoneQuery(t *testing.T) {
+	cases := map[string]string{
+		"5304230113":       "5304230113",
+		"05304230113":      "5304230113",
+		"905304230113":     "5304230113",
+		"+90 530 423 0113": "5304230113",
+		"530423":           "530423",
+		"0212 909 25 54":   "2129092554",
+		"":                 "",
 	}
-	for _, it := range res.Items {
-		if it.Direction != "outbound" {
-			t.Errorf("direction filter leaked %q", it.Direction)
+	for in, want := range cases {
+		if got := phoneQuery(in); got != want {
+			t.Errorf("phoneQuery(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-func TestWindowCallsDateRange(t *testing.T) {
-	s := &Service{scan: sampleScan()}
-	// 1014's calls only on 2026-09-11 -> a and f (e is on 09-10)
-	res := s.windowCalls("1014", "", "2026-09-11", "2026-09-11", Filter{Page: 1, Limit: 20})
-	if res.Total != 2 {
-		t.Fatalf("expected 2 matches for 1014 on 2026-09-11, got %d", res.Total)
+func TestCDRRowDerivesSearchColumns(t *testing.T) {
+	c := CDR{CallUUID: "u1", Direction: "Gelen", CallerIDNumber: "05304230113", DestinationNumber: "902127060510 (1014)", StartStamp: "2026-09-12 20:55:41 +0300", RecordingPresent: true}
+	row, ok := cdrRow(c, time.Now())
+	if !ok {
+		t.Fatal("row should be built")
 	}
-	// All calls (no ext) on 2026-09-10 -> d, e
-	all := s.windowCalls("", "", "2026-09-10", "2026-09-10", Filter{Page: 1, Limit: 20})
-	if all.Total != 2 {
-		t.Fatalf("expected 2 calls on 2026-09-10, got %d", all.Total)
+	if row.Direction != "inbound" || row.CallerNum != "05304230113" || row.DestNum != "902127060510" || row.DestExt != "1014" || row.CallerExt != "" {
+		t.Fatalf("unexpected row: %+v", row)
+	}
+	want := time.Date(2026, 9, 12, 17, 55, 41, 0, time.UTC)
+	if !row.StartAt.Equal(want) {
+		t.Fatalf("start_at = %s, want %s", row.StartAt, want)
+	}
+	if back := mapCDR(rowCDR(row)); back.Direction != "inbound" || !back.Recording || back.StartedAt != c.StartStamp {
+		t.Fatalf("round trip lost data: %+v", back)
+	}
+	if _, ok := cdrRow(CDR{CallUUID: "u2", StartStamp: "garbage"}, time.Now()); ok {
+		t.Fatal("a row with an unreadable stamp must be skipped")
 	}
 }
 
-func TestWindowCallsPaging(t *testing.T) {
-	scan := make([]CDR, 0, 25)
-	for i := 0; i < 25; i++ {
-		scan = append(scan, CDR{CallUUID: string(rune('a' + i)), Direction: "outbound", CallerIDNumber: "1014 (902129510292)", DestinationNumber: "0530000000", StartStamp: "2026-09-11 10:00:00 +0300", AnswerStamp: "x"})
+func TestDayBounds(t *testing.T) {
+	from, to, err := dayBounds("2026-09-12")
+	if err != nil {
+		t.Fatal(err)
 	}
-	s := &Service{scan: scan}
-	res := s.windowCalls("1014", "", "", "", Filter{Page: 2, Limit: 20})
-	if res.Total != 25 || res.TotalPages != 2 || res.Page != 2 || len(res.Items) != 5 {
-		t.Fatalf("paging wrong: total=%d pages=%d page=%d items=%d (want 25/2/2/5)", res.Total, res.TotalPages, res.Page, len(res.Items))
+	if !from.Equal(time.Date(2026, 9, 11, 21, 0, 0, 0, time.UTC)) || !to.Equal(time.Date(2026, 9, 12, 21, 0, 0, 0, time.UTC)) {
+		t.Fatalf("bounds = %s .. %s", from, to)
 	}
 }
