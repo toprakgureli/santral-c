@@ -146,7 +146,7 @@ export interface TeamRow {
   status: TeamStatus;
   since?: string;
   call?: { peer: string; peerName?: string; direction: string; startedAt: string };
-  shift: { startedAt?: string; seconds: number };
+  shift: { startedAt?: string; firstStart?: string; lastEnd?: string; open: boolean; seconds: number };
   calls: TeamCounts;
 }
 

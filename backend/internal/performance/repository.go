@@ -121,10 +121,15 @@ func (r *Repository) Presence(ctx context.Context) (map[uint]models.AgentPresenc
 }
 
 // ShiftInfo is an agent's shift picture: when the open shift began (nil when
-// off shift) and the seconds worked inside the requested window.
+// off shift), the first shift start and the last shift end inside the
+// requested window (LastEnd nil while the latest one is still open), and the
+// seconds worked inside the window.
 type ShiftInfo struct {
-	StartedAt *time.Time `json:"startedAt,omitempty"`
-	Seconds   int64      `json:"seconds"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	FirstStart *time.Time `json:"firstStart,omitempty"`
+	LastEnd    *time.Time `json:"lastEnd,omitempty"`
+	Open       bool       `json:"open"`
+	Seconds    int64      `json:"seconds"`
 }
 
 // Shifts sums shift time per user inside [from, to) and reports the open
@@ -147,12 +152,22 @@ func (r *Repository) Shifts(ctx context.Context, from, to time.Time) (map[uint]S
 		if start.Before(from) {
 			start = from
 		}
+		if info.FirstStart == nil {
+			first := s.StartedAt
+			info.FirstStart = &first
+		}
 		end := now
 		if s.EndedAt != nil {
 			end = *s.EndedAt
+			if !info.Open && (info.LastEnd == nil || end.After(*info.LastEnd)) {
+				ended := end
+				info.LastEnd = &ended
+			}
 		} else {
 			started := s.StartedAt
 			info.StartedAt = &started
+			info.Open = true
+			info.LastEnd = nil
 		}
 		if end.After(to) {
 			end = to

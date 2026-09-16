@@ -81,6 +81,13 @@ function hhmm(iso?: string) {
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
 
+// stamp is hh:mm, prefixed with the day when the range spans several days.
+function stamp(iso: string, withDay: boolean) {
+  const d = new Date(iso);
+  const t = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  return withDay ? `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${t}` : t;
+}
+
 export function TeamPerformance() {
   const [rows, setRows] = useState<TeamRow[]>([]);
   const [scope, setScope] = useState<"all" | "role">("role");
@@ -219,7 +226,7 @@ export function TeamPerformance() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((r) => (
-            <AgentCard key={r.userId} row={r} now={now} live={isToday} />
+            <AgentCard key={r.userId} row={r} now={now} live={isToday} multiDay={from !== to} />
           ))}
         </div>
       )}
@@ -227,7 +234,7 @@ export function TeamPerformance() {
   );
 }
 
-function AgentCard({ row: r, now, live }: { row: TeamRow; now: number; live: boolean }) {
+function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number; live: boolean; multiDay: boolean }) {
   const s = STATUS[r.status] ?? STATUS.off;
   const off = r.status === "off";
   const [showMissed, setShowMissed] = useState(false);
@@ -269,9 +276,22 @@ function AgentCard({ row: r, now, live }: { row: TeamRow; now: number; live: boo
           ) : (
             <span />
           )}
-          <span className="shrink-0 font-mono tabular-nums" title={live ? (r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı") : "Seçilen tarihlerdeki toplam mesai"}>
+          <span className="shrink-0 font-mono tabular-nums" title={live ? "Bugünkü toplam mesai" : "Seçilen tarihlerdeki toplam mesai"}>
             Mesai {r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"}
           </span>
+        </div>
+
+        {/* Shift start and end: first start and last end inside the range */}
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          {r.shift.firstStart ? (
+            <span className="font-mono tabular-nums" title={multiDay ? "İlk mesai başlangıcı ve son mesai bitişi" : "Mesai başlangıcı ve bitişi"}>
+              {stamp(r.shift.firstStart, multiDay)}
+              <span className="mx-1 font-sans">-</span>
+              {r.shift.open ? <span className="font-sans text-success">devam ediyor</span> : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}
+            </span>
+          ) : (
+            <span>{live ? "Mesai başlatılmadı" : "Mesai kaydı yok"}</span>
+          )}
         </div>
 
         {/* Reached: real conversations */}
