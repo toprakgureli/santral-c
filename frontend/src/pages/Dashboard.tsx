@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -17,18 +17,19 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { AgentPresenceState, Call, EscalationCategory, EscalationRecord, PBXExtension, PBXQueue, PBXStats } from "../api/types";
+import type { AgentPresenceState, Call, EscalationCategory, PBXExtension, PBXQueue, PBXStats } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { useShift } from "../shift/ShiftContext";
 import { usePresence } from "../presence/PresenceContext";
+import { EscalationForm } from "../components/escalation/EscalationForm";
+import { markWrapUpDone } from "../components/layout/WrapUpCard";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
-import { SearchableSelect } from "../components/SearchableSelect";
 import { callQuality, formatClock, formatDuration, formatStamp } from "./callFormat";
 
 const statusLabel: Record<string, string> = {
@@ -74,6 +75,9 @@ export function Dashboard() {
   const canEscalate = can(user, "escalation.view");
   const canSearchEsc = can(user, "escalation.search");
   const phone = useSoftphoneContext();
+  // A connected conversation widens the middle column so the escalation
+  // area grows while the agent is talking to the customer.
+  const connected = phone.status === "in-call" || phone.status === "held";
   const shift = useShift();
   // Outbound calls need both the permission and an open shift.
   const canCall = can(user, "call.originate") && shift.active;
@@ -143,12 +147,12 @@ export function Dashboard() {
   return (
     <div className="space-y-4">
       <StatusBar totals={totals} showTotals={canTransfer} extension={user?.sipExtension} hasExtension={!!user?.sipExtension} stats={stats} />
-      <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr_1fr]">
+      <div className={cn("grid gap-4 transition-[grid-template-columns] duration-300", connected ? "xl:grid-cols-[0.8fr_1.9fr_0.8fr]" : "xl:grid-cols-[1fr_1.3fr_1fr]")}>
         {canSeeCalls ? <CallHistory canCall={canCall} /> : <div className="hidden xl:block" />}
         {/* Softphone with the escalation panel directly below it. */}
         <div className="space-y-4">
           <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
-          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} canSearch={canSearchEsc} />}
+          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} connected={connected} callId={phone.callId} canSearch={canSearchEsc} />}
         </div>
         {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} loading={!extsLoaded} /> : <div className="hidden xl:block" />}
       </div>
@@ -552,14 +556,9 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
   );
 }
 
-function Escalation({ categories, activePeer, canSearch }: { categories: EscalationCategory[]; activePeer?: string; canSearch: boolean }) {
+function Escalation({ categories, activePeer, connected, callId, canSearch }: { categories: EscalationCategory[]; activePeer?: string; connected: boolean; callId: string | null; canSearch: boolean }) {
   const [customer, setCustomer] = useState("");
-  const [catId, setCatId] = useState<number | null>(null);
-  const [reasonId, setReasonId] = useState<number | null>(null);
-  const [note, setNote] = useState("");
-  const [history, setHistory] = useState<EscalationRecord[]>([]);
-  const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [historyCount, setHistoryCount] = useState(0);
   const onActiveCall = !!activePeer;
 
   // Follow the live call's number; keep it after the call ends so the agent can
@@ -567,37 +566,6 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
   useEffect(() => {
     if (activePeer) setCustomer(displayNumber(activePeer));
   }, [activePeer]);
-
-  const loadHistory = useCallback((n: string) => {
-    if (!canSearch) { setHistory([]); return; }
-    const key = n.trim();
-    if (!key) { setHistory([]); return; }
-    api.escalationHistory(key).then(setHistory).catch(() => setHistory([]));
-  }, [canSearch]);
-
-  useEffect(() => { loadHistory(customer); }, [customer, loadHistory]);
-
-  const reasons = useMemo(() => categories.find((c) => c.id === catId)?.reasons ?? [], [categories, catId]);
-  const catOptions = useMemo(() => categories.map((c) => ({ id: c.id, label: c.name })), [categories]);
-  const reasonOptions = useMemo(() => reasons.map((r) => ({ id: r.id, label: r.name })), [reasons]);
-
-  async function save() {
-    if (!customer.trim() || reasonId === null) { setStatus({ kind: "err", text: "Durum seçin." }); return; }
-    setSaving(true);
-    setStatus(null);
-    try {
-      await api.logEscalation({ number: customer.trim(), reasonId, note: note.trim() || undefined });
-      setNote("");
-      setReasonId(null);
-      setCatId(null);
-      setStatus({ kind: "ok", text: "Eskalasyon kaydedildi." });
-      loadHistory(customer);
-    } catch (e) {
-      setStatus({ kind: "err", text: e instanceof ApiError ? e.message : "Kaydedilemedi." });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (categories.length === 0) {
     return (
@@ -620,88 +588,34 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
   }
 
   return (
-    <EscalationFrame active={onActiveCall}>
+    <EscalationFrame active={onActiveCall} connected={connected}>
       <div className="space-y-4">
-        {/* Prominent customer header — highlighted during a live call */}
+        {/* Prominent customer header, highlighted during a live call */}
         <div className={cn("rounded-2xl px-4 py-3 transition", onActiveCall ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/40")}>
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-xs text-muted-foreground">{onActiveCall ? "Görüşülen müşteri" : "Son müşteri"}</div>
-              <div className="text-2xl font-bold tabular-nums tracking-wide">{customer}</div>
+              <div className={cn("font-bold tabular-nums tracking-wide", connected ? "text-3xl" : "text-2xl")}>{customer}</div>
             </div>
             {canSearch && (
-              <Badge tone={history.length ? "amber" : "slate"}>{history.length} geçmiş kayıt</Badge>
+              <Badge tone={historyCount ? "amber" : "slate"}>{historyCount} geçmiş kayıt</Badge>
             )}
           </div>
+          {connected && (
+            <p className="mt-2 text-xs text-primary">Görüşme bitince eskalasyon kartı açılır. Şimdiden girersen çağrı sonunda tekrar sorulmaz.</p>
+          )}
         </div>
 
-        {/* Customer history opens prominently as soon as a call is answered */}
-        {canSearch && history.length > 0 && (
-          <div className="rounded-xl bg-muted/30 p-3">
-            <p className="mb-2 text-xs font-semibold text-muted-foreground">Geçmiş görüşmeler</p>
-            <ul className="max-h-44 space-y-2 overflow-y-auto">
-              {history.map((h) => (
-                <li key={h.id} className="rounded-lg bg-card px-3 py-2 text-sm ring-1 ring-border/50">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{h.agentName} görüştü</span>
-                    <span className="text-xs text-muted-foreground">{h.createdAt}</span>
-                  </div>
-                  <div className="mt-1"><Badge tone="amber">{h.categoryName}</Badge> <span className="text-muted-foreground">{h.reasonName}</span></div>
-                  {h.note && <p className="mt-1 text-foreground/80">{h.note}</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Step 1: big category combobox */}
-        <div className="space-y-1.5">
-          <span className="text-xs font-medium text-muted-foreground">1 · Kategori</span>
-          <SearchableSelect
-            size="lg"
-            value={catId}
-            onChange={(id) => { setCatId(id); setReasonId(null); }}
-            options={catOptions}
-            placeholder="Kategori seçin"
-            searchPlaceholder="Kategori ara..."
-          />
-        </div>
-
-        {/* Step 2: durum appears once a category is chosen */}
-        {catId !== null && (
-          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-            <span className="text-xs font-medium text-muted-foreground">2 · Durum</span>
-            <SearchableSelect
-              size="lg"
-              value={reasonId}
-              onChange={setReasonId}
-              options={reasonOptions}
-              placeholder="Durum seçin"
-              searchPlaceholder="Durum ara..."
-            />
-          </div>
-        )}
-
-        {/* Step 3: note appears once a durum is chosen */}
-        {reasonId !== null && (
-          <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-            <span className="text-xs font-medium text-muted-foreground">3 · Not</span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Görüşme notu (opsiyonel)"
-              rows={3}
-              className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-            />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3">
-          {status ? <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span> : <span />}
-          <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null}>
-            {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
-          </Button>
-        </div>
+        <EscalationForm
+          categories={categories}
+          number={customer}
+          canSearch={canSearch}
+          callUuid={connected && callId ? callId : undefined}
+          onSaved={() => {
+            if (connected && callId) markWrapUpDone(callId);
+          }}
+          onHistory={(items) => setHistoryCount(items.length)}
+        />
       </div>
     </EscalationFrame>
   );
@@ -709,9 +623,9 @@ function Escalation({ categories, activePeer, canSearch }: { categories: Escalat
 
 // EscalationFrame is a deliberately prominent card: a coloured header with an
 // icon and a strong ring so the escalation area stands out during a call.
-function EscalationFrame({ active, children }: { active?: boolean; children: React.ReactNode }) {
+function EscalationFrame({ active, connected, children }: { active?: boolean; connected?: boolean; children: React.ReactNode }) {
   return (
-    <section className={cn("rounded-2xl bg-card shadow-md ring-2 transition", active ? "ring-primary/50" : "ring-primary/20")}>
+    <section className={cn("rounded-2xl bg-card shadow-md ring-2 transition", connected ? "ring-primary shadow-lg shadow-primary/15" : active ? "ring-primary/50" : "ring-primary/20")}>
       <header className="flex items-center gap-3 rounded-t-2xl border-b border-primary/15 bg-gradient-to-r from-primary/10 to-transparent px-5 py-3.5">
         <span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary [&_svg]:size-5">
           <TriangleAlert />

@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useAuth } from "@/auth/AuthContext";
 import { useShift } from "@/shift/ShiftContext";
 import { useSoftphone, type Phone } from "./useSoftphone";
+
+export type { EndedCall } from "./useSoftphone";
 import { usePanelBridge } from "./extensionBridge";
 
 type SoftphoneValue = Phone & { secondary: boolean; takeOver: () => void };

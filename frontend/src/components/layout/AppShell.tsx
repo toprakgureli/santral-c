@@ -6,6 +6,7 @@ import CallBar from "./CallBar";
 import UnloadGuard from "./UnloadGuard";
 import BreakOverlay from "./BreakOverlay";
 import WelcomeCard from "./WelcomeCard";
+import WrapUpCard from "./WrapUpCard";
 import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { ShiftProvider } from "@/shift/ShiftContext";
 import { PresenceProvider } from "@/presence/PresenceContext";
@@ -46,6 +47,7 @@ export default function AppShell() {
     <UnloadGuard />
     <BreakOverlay />
     <WelcomeCard />
+    <WrapUpCard />
     <div className="min-h-svh bg-background">
       <Sidebar
         open={menuOpen}

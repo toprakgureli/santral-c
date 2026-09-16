@@ -95,7 +95,7 @@ export default function CallBar() {
     <div
       ref={ref}
       style={style}
-      className="animate-in fade-in slide-in-from-bottom-2 fixed right-5 bottom-5 z-50 w-72 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl duration-200"
+      className="animate-in fade-in slide-in-from-bottom-2 fixed right-5 bottom-5 z-[70] w-72 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl duration-200"
     >
       <div className="mb-3 flex items-center gap-3">
         <span

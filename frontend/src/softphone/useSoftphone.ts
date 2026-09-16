@@ -50,8 +50,24 @@ export type PhoneStatus =
   | "error"
   | "disabled";
 
+// EndedCall describes an answered call that has just ended, for the
+// after-call wrap-up. id is the panel's call log id for that call.
+export interface EndedCall {
+  id: string;
+  peer: string;
+  direction: "inbound" | "outbound";
+  answeredAt: number;
+  endedAt: number;
+}
+
 export interface Phone {
   status: PhoneStatus;
+  // The last answered call that ended (null until one does). Unanswered,
+  // missed and cancelled calls never set it.
+  lastEnded: EndedCall | null;
+  // The panel's call log id of the current call (null when idle or for
+  // feature codes), so an escalation entered mid-call can be tied to it.
+  callId: string | null;
   extension: string | null;
   error: string | null;
   muted: boolean;
@@ -120,6 +136,8 @@ export function useSoftphone(enabled: boolean): Phone {
   const [endReason, setEndReason] = useState<string | null>(null);
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [answeredAt, setAnsweredAt] = useState<number | null>(null);
+  const [lastEnded, setLastEnded] = useState<EndedCall | null>(null);
+  const [callId, setCallId] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const uaRef = useRef<UserAgent | null>(null);
@@ -179,6 +197,15 @@ export function useSoftphone(enabled: boolean): Phone {
             setEndReason(localEndRef.current ? "Kapattınız" : "Karşı taraf kapattı");
           }
           const duration = wasEstablished ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0;
+          if (wasEstablished && callIdRef.current) {
+            setLastEnded({
+              id: callIdRef.current,
+              peer: callPeerRef.current,
+              direction: callDirRef.current,
+              answeredAt: establishedAtRef.current,
+              endedAt: Date.now(),
+            });
+          }
           const disposition = wasEstablished
             ? "answered"
             : localEndRef.current
@@ -188,6 +215,7 @@ export function useSoftphone(enabled: boolean): Phone {
                 : "no_answer";
           logCall("end", { disposition, durationSeconds: duration });
           callIdRef.current = "";
+          setCallId(null);
           setPeer(null);
           setMuted(false);
           setHeld(false);
@@ -255,6 +283,7 @@ export function useSoftphone(enabled: boolean): Phone {
               const from = invitation.remoteIdentity.uri.user ?? "";
               setPeer(from);
               callIdRef.current = newCallId();
+              setCallId(callIdRef.current);
               callDirRef.current = "inbound";
               callPeerRef.current = from;
               setCallStartedAt(Date.now());
@@ -316,6 +345,7 @@ export function useSoftphone(enabled: boolean): Phone {
       // they never count as an outbound call.
       const featureCode = /^[*#]/.test(target);
       callIdRef.current = featureCode ? "" : newCallId();
+      setCallId(callIdRef.current || null);
       callDirRef.current = "outbound";
       callPeerRef.current = target;
       setCallStartedAt(Date.now());
@@ -346,6 +376,7 @@ export function useSoftphone(enabled: boolean): Phone {
               window.setTimeout(() => tones.stop(), 2500);
               logCall("end", { disposition: reason === "Meşgul" ? "busy" : "no_answer", durationSeconds: 0 });
               callIdRef.current = "";
+          setCallId(null);
               setPeer(null);
               setCallStartedAt(null);
               setAnsweredAt(null);
@@ -447,6 +478,8 @@ export function useSoftphone(enabled: boolean): Phone {
 
   return {
     status,
+    lastEnded,
+    callId,
     extension,
     error,
     muted,
