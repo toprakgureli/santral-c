@@ -1,6 +1,7 @@
 package escalation
 
 import (
+	"time"
 	"context"
 	"strings"
 
@@ -206,6 +207,9 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	return &res, nil
 }
 
+// istanbul is the panel's display zone; stored stamps are UTC.
+var istanbul = time.FixedZone("+03", 3*3600)
+
 // Labels of the record written when an agent marks a call as needing no
 // escalation. They live on the record itself, not in the catalog.
 const (
@@ -297,6 +301,6 @@ func toRecord(e *models.CallEscalation) Record {
 		ReasonName:   e.ReasonName,
 		Note:         e.Note,
 		AgentName:    e.AgentName,
-		CreatedAt:    e.CreatedAt.Format("2006-01-02 15:04"),
+		CreatedAt:    e.CreatedAt.In(istanbul).Format("02.01.2006 15:04"),
 	}
 }

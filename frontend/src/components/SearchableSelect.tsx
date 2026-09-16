@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +11,9 @@ export interface Option {
 
 // SearchableSelect is a large combobox: a button that opens a panel with a
 // search box and a filtered option list. Used for the escalation category and
-// reason pickers.
+// reason pickers. The panel is rendered at the document root and pinned to
+// the trigger, so it is never clipped by a scrolling card or modal; it opens
+// upward when there is more room above.
 export function SearchableSelect({
   value,
   onChange,
@@ -31,11 +34,42 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; up: boolean; maxHeight: number } | null>(null);
+
+  // Pin the panel to the trigger; follow scrolling and resizing while open.
+  useLayoutEffect(() => {
+    if (!open) {
+      setRect(null);
+      return;
+    }
+    const place = () => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const gap = 6;
+      const below = window.innerHeight - r.bottom - gap - 8;
+      const above = r.top - gap - 8;
+      const wanted = 340;
+      const up = below < Math.min(wanted, 220) && above > below;
+      const maxHeight = Math.max(160, Math.min(wanted, up ? above : below));
+      setRect({ top: up ? r.top - gap : r.bottom + gap, left: r.left, width: r.width, up, maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDoc);
@@ -72,8 +106,12 @@ export function SearchableSelect({
         <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
 
-      {open && (
-        <div className="absolute z-30 mt-1.5 w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+      {open && rect && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: "fixed", left: rect.left, width: rect.width, ...(rect.up ? { bottom: window.innerHeight - rect.top } : { top: rect.top }) }}
+          className="z-[90] flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xl"
+        >
           <div className="relative border-b border-border/60 p-2">
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -84,7 +122,7 @@ export function SearchableSelect({
               className="h-9 w-full rounded-lg bg-muted/50 pl-8 pr-3 text-sm outline-none placeholder:text-muted-foreground/60"
             />
           </div>
-          <ul className="max-h-64 overflow-y-auto p-1">
+          <ul className="overflow-y-auto p-1" style={{ maxHeight: rect.maxHeight }}>
             {filtered.map((o) => (
               <li key={o.id}>
                 <button
@@ -105,7 +143,8 @@ export function SearchableSelect({
             ))}
             {filtered.length === 0 && <li className="px-3 py-4 text-center text-sm text-muted-foreground">Sonuç yok.</li>}
           </ul>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

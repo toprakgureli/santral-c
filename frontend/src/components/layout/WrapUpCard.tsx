@@ -11,7 +11,7 @@ import { api, ApiError } from "@/api/client";
 import type { EscalationCategory } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
-import { Badge } from "@/components/ui";
+import { Badge, Button } from "@/components/ui";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { displayNumber } from "@/softphone/dial";
@@ -183,29 +183,51 @@ export default function WrapUpCard() {
               onHistory={(items) => setHistoryCount(items.length)}
               onSaved={done}
               aside={
-                confirmSkip ? (
-                  <span className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Kayda "eskalasyon gerekli değil" olarak geçecek.</span>
-                    <button type="button" onClick={skip} disabled={skipping} className="font-medium text-destructive hover:underline disabled:opacity-50">
-                      {skipping ? "Kaydediliyor..." : "Evet, öyle işaretle"}
-                    </button>
-                    <button type="button" onClick={() => setConfirmSkip(false)} className="text-muted-foreground hover:underline">Vazgeç</button>
-                    {skipError && <span className="text-destructive">{skipError}</span>}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmSkip(true)}
-                    className={cn("text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline")}
-                  >
-                    Eskalasyon gerekli değil
-                  </button>
-                )
+                <button
+                  type="button"
+                  onClick={() => setConfirmSkip(true)}
+                  className={cn("text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline")}
+                >
+                  Eskalasyon gerekli değil
+                </button>
               }
             />
           </div>
         </div>
       </div>
+
+      {/* Are you sure? Skipping is a record too, so it deserves a stop. */}
+      {confirmSkip && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={() => !skipping && setConfirmSkip(false)}>
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="skip-title"
+            onClick={(e) => e.stopPropagation()}
+            className="animate-in fade-in zoom-in-95 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl duration-200"
+          >
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-warning/15 text-warning">
+                <TriangleAlert className="size-5" />
+              </span>
+              <div className="space-y-1">
+                <h3 id="skip-title" className="text-base font-semibold leading-tight">Emin misin?</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  <span className="font-mono tabular-nums text-foreground">{number}</span> numaralı müşteri için bu görüşme
+                  {" "}<span className="font-medium text-foreground">"eskalasyon gerekli değil"</span> olarak senin adınla kaydedilecek.
+                </p>
+              </div>
+            </div>
+            {skipError && <p className="mt-3 text-xs text-destructive">{skipError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmSkip(false)} disabled={skipping}>Vazgeç</Button>
+              <Button onClick={skip} disabled={skipping} className="bg-warning text-black hover:bg-warning/90">
+                {skipping ? "Kaydediliyor..." : "Evet, öyle işaretle"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
