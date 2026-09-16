@@ -855,7 +855,6 @@ function CallHistory({ canCall }: { canCall: boolean }) {
     });
   }
 
-  const real = counts.short + counts.long;
 
   const term = query.trim();
   const filtered = term ? calls.filter((c) => displayNumber(c.direction === "outbound" ? c.toNumber : c.fromNumber).includes(displayNumber(term))) : calls;
@@ -885,16 +884,22 @@ function CallHistory({ canCall }: { canCall: boolean }) {
               onClick={() => setShowMissed((v) => !v)}
               className="flex w-full items-center justify-between px-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
             >
-              <span>Ulaşılamayanlar · {counts.unanswered + counts.short}</span>
+              <span>
+                Ulaşılamayanlar · {counts.unanswered + counts.short}
+                <span className="ml-1 font-normal text-muted-foreground/80">({counts.unanswered} cevapsız, {counts.short} geçersiz)</span>
+              </span>
               <ChevronDown className={cn("size-4 transition-transform", showMissed && "rotate-180")} />
             </button>
             {showMissed && (
-              <div className="mt-1.5 grid grid-cols-3 gap-2">
-                <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
-                <CountBox label="Gelen" sub="cevapsız" value={counts.inboundMissed} tone="slate" />
-                <CountBox label="Giden" sub="cevapsız" value={counts.outboundMissed} tone="slate" />
-                <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
-                <CountBox label="Görüşülen" sub="gerçek + geçersiz" value={real} tone="blue" />
+              <div className="mt-1.5 space-y-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <CountBox label="Cevapsız" sub="hiç bağlanmadı" value={counts.unanswered} tone="slate" />
+                  <CountBox label="Gelen" sub="arayan, cevaplanmadı" value={counts.inboundMissed} tone="slate" />
+                  <CountBox label="Giden" sub="aradın, açılmadı" value={counts.outboundMissed} tone="slate" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <CountBox label="Geçersiz çağrı" sub="bağlandı, 30 saniye dolmadı" value={counts.short} tone="amber" />
+                </div>
               </div>
             )}
           </div>
