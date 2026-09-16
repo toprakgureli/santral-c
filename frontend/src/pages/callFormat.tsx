@@ -14,6 +14,7 @@ const dispositionLabel: Record<string, string> = {
   failed: "Başarısız",
   canceled: "İptal",
   voicemail: "Sesli mesaj",
+  elsewhere: "Başkası cevapladı", // rang here too, a teammate picked it up
 };
 
 const dispositionTone: Record<string, "slate" | "green" | "red" | "amber" | "blue"> = {
@@ -24,6 +25,7 @@ const dispositionTone: Record<string, "slate" | "green" | "red" | "amber" | "blu
   failed: "red",
   canceled: "slate",
   voicemail: "slate",
+  elsewhere: "slate",
 };
 
 export function Direction({ value }: { value: string }) {

@@ -147,9 +147,21 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	ids := make([]uint, 0, len(logs))
+	for i := range logs {
+		ids = append(ids, logs[i].ID)
+	}
+	elsewhere, err := s.repo.AnsweredElsewhere(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	items := make([]Entry, 0, len(logs))
 	for i := range logs {
-		items = append(items, toEntry(actor, &logs[i]))
+		e := toEntry(actor, &logs[i])
+		if elsewhere[logs[i].ID] {
+			e.Disposition = "elsewhere" // rang here, another agent answered
+		}
+		items = append(items, e)
 	}
 	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered, Inbound: counts.Inbound, Outbound: counts.Outbound}, nil
 }

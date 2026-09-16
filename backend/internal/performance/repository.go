@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
 
@@ -64,6 +65,8 @@ func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong i
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds",
 			shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ?", from).
+		// A ring that a teammate answered is not this agent's call.
+		Where("NOT (" + calllog.AnsweredElsewhereSQL + ")").
 		Group("user_id").
 		Scan(&rows).Error
 	if err != nil {
