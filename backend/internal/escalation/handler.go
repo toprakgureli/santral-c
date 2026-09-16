@@ -163,6 +163,26 @@ func (h *Handler) Log(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
 
+// LogNone records that a call needed no escalation.
+func (h *Handler) LogNone(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.EscalationNone
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	res, err := h.service.LogNone(c.UserContext(), id, req)
+	if err != nil {
+		return err
+	}
+	return c.Status(fiber.StatusCreated).JSON(res)
+}
+
 // History returns past escalations for a number.
 func (h *Handler) History(c *fiber.Ctx) error {
 	id, err := actor(c)

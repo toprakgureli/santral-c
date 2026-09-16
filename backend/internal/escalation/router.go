@@ -28,4 +28,5 @@ func (r *Router) Routes(g fiber.Router) {
 
 	group.Get("/", r.handler.History)
 	group.Post("/", r.handler.Log)
+	group.Post("/none", r.handler.LogNone)
 }

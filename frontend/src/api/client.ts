@@ -238,6 +238,8 @@ export const api = {
     request<{ items: EscalationRecord[] }>("/escalations/" + query({ number })).then((r) => r.items),
   logEscalation: (body: { number: string; reasonId: number; note?: string; callUuid?: string }) =>
     request<EscalationRecord>("/escalations/", { method: "POST", body: JSON.stringify(body) }),
+  logNoEscalation: (body: { number: string; callUuid?: string }) =>
+    request<EscalationRecord>("/escalations/none", { method: "POST", body: JSON.stringify(body) }),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {

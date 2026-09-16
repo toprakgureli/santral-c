@@ -178,6 +178,44 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	return &res, nil
 }
 
+// Labels of the record written when an agent marks a call as needing no
+// escalation. They live on the record itself, not in the catalog.
+const (
+	NoneCategoryName = "Eskalasyon yok"
+	NoneReasonName   = "Eskalasyon gerekli değil"
+)
+
+// LogNone records the agent's decision that the call needed no escalation,
+// under the actor's own name, so the wrap-up leaves a trace either way.
+func (s *Service) LogNone(ctx context.Context, actorID uint, req requests.EscalationNone) (*Record, error) {
+	actor, err := s.authorize(ctx, actorID, enums.EscalationView)
+	if err != nil {
+		return nil, err
+	}
+	key := phone.Key(req.Number)
+	if key == "" {
+		return nil, errs.Invalid("Geçersiz numara.", nil)
+	}
+	e := &models.CallEscalation{
+		NumberKey:    key,
+		Number:       strings.TrimSpace(req.Number),
+		CategoryName: NoneCategoryName,
+		ReasonName:   NoneReasonName,
+		Note:         actor.Name + " bu müşteriyi eskalasyon gerekli değil olarak işaretledi.",
+		AgentID:      &actorID,
+		AgentName:    actor.Name,
+	}
+	if req.CallUUID != "" {
+		uuid := req.CallUUID
+		e.CallUUID = &uuid
+	}
+	if err := s.repo.CreateEscalation(ctx, e); err != nil {
+		return nil, errs.Internal(err)
+	}
+	res := toRecord(e)
+	return &res, nil
+}
+
 // History returns past escalations for a customer number. Agents see it for
 // the caller on the line (escalation.view); the standalone search page needs
 // escalation.search.
