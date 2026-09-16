@@ -1,8 +1,9 @@
 // WelcomeCard greets an agent who has not started a shift yet, in the same
 // shape as the break card but in the panel's blue. Unlike the break card it
 // can be closed: without a shift the dialer stays locked anyway, and the
-// agent may only be here to look at calls and figures. It shows once per
-// browser session and never again after a shift has been started.
+// agent may only be here to look at calls and figures. It shows on every
+// page load while no shift is open, stays closed once dismissed, and does not
+// come back after a shift has been started (so ending the day is quiet).
 
 import { useEffect, useState } from "react";
 import { Sunrise, X } from "lucide-react";
@@ -10,24 +11,6 @@ import { Button } from "@/components/ui";
 import { useAuth } from "@/auth/AuthContext";
 import { usePresence } from "@/presence/PresenceContext";
 import { useShift } from "@/shift/ShiftContext";
-
-const KEY = "santral.welcome.dismissed";
-
-function readDismissed() {
-  try {
-    return window.sessionStorage.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeDismissed() {
-  try {
-    window.sessionStorage.setItem(KEY, "1");
-  } catch {
-    // session storage unavailable; the card simply shows again next load
-  }
-}
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -41,16 +24,13 @@ export default function WelcomeCard() {
   const { user } = useAuth();
   const shift = useShift();
   const presence = usePresence();
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const [dismissed, setDismissed] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
-  // A started shift closes the card for the rest of the session, so ending
-  // the shift in the evening does not bring the greeting back.
+  // A started shift closes the card until the next page load, so ending the
+  // shift in the evening does not bring the greeting back.
   useEffect(() => {
-    if (shift.active && !dismissed) {
-      setDismissed(true);
-      writeDismissed();
-    }
+    if (shift.active && !dismissed) setDismissed(true);
   }, [shift.active, dismissed]);
 
   const show = !shift.loading && !shift.active && presence.hasExtension && !dismissed;
@@ -67,7 +47,6 @@ export default function WelcomeCard() {
 
   function close() {
     setDismissed(true);
-    writeDismissed();
   }
 
   return (
