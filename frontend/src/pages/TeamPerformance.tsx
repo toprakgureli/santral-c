@@ -1,35 +1,43 @@
-// Ekip Performansı: every agent the viewer may see, with live status and
-// today's call figures. The server scopes the list by permission
+// Ekip Performansı: every agent the viewer may see as a card, with live
+// status and today's figures. The server scopes the list by permission
 // (performance.view_all: everyone, performance.view_role: agents sharing a
 // role with the viewer); the page only renders what it gets.
 //
-// The columns mirror the dashboard's two cards: "Ulaşılanlar" are real
+// Each card mirrors the dashboard's two blocks: "Ulaşılanlar" are real
 // conversations (answered, 30 seconds or longer) split by direction,
 // "Ulaşılamayanlar" are calls that never connected plus the ones too short
-// to count. No call appears in both groups.
+// to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { TeamCounts, TeamRow, TeamStatus } from "../api/types";
-import { Badge, Card, EmptyState, Skeleton } from "../components/ui";
+import type { TeamRow, TeamStatus } from "../api/types";
+import { Badge, Card, EmptyState, Select, Skeleton } from "../components/ui";
 import { displayNumber } from "../softphone/dial";
-import { cn } from "../lib/utils";
+import { cn, initials } from "../lib/utils";
 import { formatClock } from "./callFormat";
 
 const REFRESH_MS = 15000;
 
-const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red" | "slate" | "blue" }> = {
-  talking: { label: "Görüşmede", tone: "blue" },
-  available: { label: "Boşta", tone: "green" },
-  break: { label: "Molada", tone: "amber" },
-  backoffice: { label: "Backoffice", tone: "amber" },
-  dnd: { label: "Rahatsız etmeyin", tone: "red" },
-  unregistered: { label: "Kayıtsız", tone: "slate" },
-  off: { label: "Mesai dışı", tone: "slate" },
+const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red" | "slate" | "blue"; dot: string }> = {
+  talking: { label: "Görüşmede", tone: "blue", dot: "bg-primary" },
+  available: { label: "Boşta", tone: "green", dot: "bg-success" },
+  break: { label: "Molada", tone: "amber", dot: "bg-warning" },
+  backoffice: { label: "Backoffice", tone: "amber", dot: "bg-warning" },
+  dnd: { label: "Rahatsız etmeyin", tone: "red", dot: "bg-destructive" },
+  unregistered: { label: "Kayıtsız", tone: "slate", dot: "bg-muted-foreground/50" },
+  off: { label: "Mesai dışı", tone: "slate", dot: "bg-muted-foreground/40" },
 };
 
-type SortKey = keyof TeamCounts | "shift";
+type SortKey = "long" | "talkSeconds" | "unanswered" | "shift" | "name";
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "long", label: "Gerçek çağrıya göre" },
+  { key: "talkSeconds", label: "Görüşme süresine göre" },
+  { key: "unanswered", label: "Cevapsıza göre" },
+  { key: "shift", label: "Mesai süresine göre" },
+  { key: "name", label: "İsme göre" },
+];
 
 function hhmm(iso?: string) {
   if (!iso) return "";
@@ -72,7 +80,7 @@ export function TeamPerformance() {
   }, []);
 
   const sorted = useMemo(() => {
-    const value = (r: TeamRow) => (sort === "shift" ? r.shift.seconds : r.calls[sort]);
+    const value = (r: TeamRow) => (sort === "shift" ? r.shift.seconds : sort === "name" ? 0 : r.calls[sort]);
     return [...rows].sort((a, b) => {
       const oa = a.status !== "off" ? 0 : 1;
       const ob = b.status !== "off" ? 0 : 1;
@@ -95,129 +103,142 @@ export function TeamPerformance() {
     return t;
   }, [rows]);
 
-  const header = (key: SortKey, label: string, hint: string, tone: "green" | "muted" = "muted") => (
-    <th className="pb-2 pr-3 text-right">
-      <button
-        type="button"
-        onClick={() => setSort(key)}
-        title={hint}
-        className={cn(
-          "font-medium hover:text-foreground",
-          sort === key ? "text-foreground underline decoration-dotted underline-offset-4" : tone === "green" ? "text-success/80" : "text-muted-foreground",
-        )}
-      >
-        {label}
-      </button>
-    </th>
-  );
-
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl bg-card px-5 py-3 text-sm ring-1 ring-border/60">
-        <Stat label="Mesaide" value={totals.onShift} dot="bg-success" />
-        <Stat label="Görüşmede" value={totals.talking} dot="bg-primary" />
-        <span className="h-5 w-px bg-border" />
-        <Stat label="Gerçek çağrı" value={totals.real} dot="bg-success" hint="Ekip toplamı, 30 saniye ve üstü görüşmeler" />
-        <Stat label="Gelen" value={totals.inReal} dot="bg-success/60" hint="Gerçek çağrı olan gelenler" />
-        <Stat label="Giden" value={totals.outReal} dot="bg-success/60" hint="Gerçek çağrı olan gidenler" />
-        <span className="h-5 w-px bg-border" />
-        <Stat label="Cevapsız" value={totals.unanswered} dot="bg-destructive" hint="Hiç bağlanmayan çağrılar" />
-        <Stat label="Geçersiz" value={totals.short} dot="bg-warning" hint="Bağlanıp 30 saniye dolmayanlar" />
-        <span className="ml-auto text-xs text-muted-foreground">
-          {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · bugün, 00:00'dan beri · 15 sn'de bir yenilenir
-        </span>
+      {/* Team strip, same shape as the dashboard's status bar. */}
+      <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-5 text-sm">
+            <Stat dot="bg-success" label="Mesaide" value={totals.onShift} />
+            <Stat dot="bg-primary" label="Görüşmede" value={totals.talking} />
+            <span className="hidden h-5 w-px bg-border sm:block" />
+            <Stat dot="bg-success" label="Gerçek çağrı" value={totals.real} hint="Ekip toplamı, 30 saniye ve üstü görüşmeler" />
+            <Stat dot="bg-success/60" label="Gelen" value={totals.inReal} hint="Gerçek çağrı olan gelenler" />
+            <Stat dot="bg-success/60" label="Giden" value={totals.outReal} hint="Gerçek çağrı olan gidenler" />
+            <span className="hidden h-5 w-px bg-border sm:block" />
+            <Stat dot="bg-destructive" label="Cevapsız" value={totals.unanswered} hint="Hiç bağlanmayan çağrılar" />
+            <Stat dot="bg-warning" label="Geçersiz" value={totals.short} hint="Bağlanıp 30 saniye dolmayanlar" />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-muted-foreground md:inline">
+              {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · bugün · 15 sn'de bir yenilenir
+            </span>
+            <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-9 w-52">
+              {SORTS.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
       </div>
 
-      <Card title="Ekip Performansı">
-        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
-        {loading ? (
-          <div className="space-y-2">
-            {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
-        ) : rows.length === 0 ? (
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-56 w-full rounded-2xl" />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <Card>
           <EmptyState icon={<Users />} title="Görüntülenecek temsilci yok" description="Dahilisi olan aktif kullanıcı bulunamadı ya da rolünüzle eşleşen kimse yok." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[72rem] text-sm">
-              <thead>
-                <tr className="text-xs">
-                  <th colSpan={3} />
-                  <th colSpan={3} className="rounded-t-lg bg-success/10 pb-1 pt-1.5 text-center font-semibold text-success" title="Cevaplanan ve 30 saniye ve üstü süren görüşmeler">
-                    Ulaşılanlar
-                  </th>
-                  <th className="w-2" />
-                  <th colSpan={4} className="rounded-t-lg bg-muted/40 pb-1 pt-1.5 text-center font-semibold text-muted-foreground" title="Hiç bağlanmayan çağrılar ve 30 saniyeden kısa sürenler">
-                    Ulaşılamayanlar
-                  </th>
-                  <th />
-                </tr>
-                <tr className="text-left text-xs text-muted-foreground">
-                  <th className="pb-2 pr-3">Temsilci</th>
-                  <th className="pb-2 pr-3">Durum</th>
-                  {header("shift", "Mesai", "Bugün mesaide geçen süre")}
-                  {header("long", "Gerçek çağrı", "30 saniye ve üstü görüşmeler", "green")}
-                  {header("inboundReal", "Gelen", "Gerçek çağrı olan gelenler", "green")}
-                  {header("outboundReal", "Giden", "Gerçek çağrı olan gidenler", "green")}
-                  <th />
-                  {header("unanswered", "Cevapsız", "Hiç bağlanmayan çağrılar")}
-                  {header("inboundMissed", "Gelen", "Arayan, cevaplanmadı")}
-                  {header("outboundMissed", "Giden", "Aradı, açılmadı")}
-                  {header("short", "Geçersiz", "Bağlandı, 30 saniye dolmadı")}
-                  {header("talkSeconds", "Görüşme", "Toplam görüşme süresi")}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((r) => {
-                  const s = STATUS[r.status] ?? STATUS.off;
-                  const off = r.status === "off";
-                  const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
-                  return (
-                    <tr key={r.userId} className={cn("border-t border-border/60", off && "text-muted-foreground/70")}>
-                      <td className="py-2 pr-3">
-                        <div className="font-medium">{r.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {r.extension}
-                          {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone={s.tone}>{s.label}</Badge>
-                          {r.call && (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                              {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5" /> : <PhoneOutgoing className="size-3.5" />}
-                              <span className="font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
-                              {r.call.peerName && <span>({r.call.peerName})</span>}
-                              <span className="font-mono tabular-nums">{formatClock(callFor)}</span>
-                            </span>
-                          )}
-                          {!r.call && r.since && !off && r.status !== "available" && (
-                            <span className="text-xs text-muted-foreground">{hhmm(r.since)}&apos;den beri</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3 text-right font-mono tabular-nums" title={r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı"}>
-                        {r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"}
-                      </td>
-                      <td className="py-2 pr-3 text-right font-semibold tabular-nums text-success">{r.calls.long}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.inboundReal}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.outboundReal}</td>
-                      <td />
-                      <td className="py-2 pr-3 text-right tabular-nums text-destructive">{r.calls.unanswered}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{r.calls.inboundMissed}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{r.calls.outboundMissed}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-warning">{r.calls.short}</td>
-                      <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatClock(r.calls.talkSeconds)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {sorted.map((r) => (
+            <AgentCard key={r.userId} row={r} now={now} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentCard({ row: r, now }: { row: TeamRow; now: number }) {
+  const s = STATUS[r.status] ?? STATUS.off;
+  const off = r.status === "off";
+  const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
+  const unreached = r.calls.unanswered + r.calls.short;
+
+  return (
+    <section className={cn("flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-border/60 transition", off && "opacity-60")}>
+      {/* Header: who, and what they are doing right now */}
+      <header className="flex items-start justify-between gap-3 border-b border-border/60 px-5 py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            {initials(r.name)}
+            <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "available" && "animate-pulse")} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate font-semibold leading-tight">{r.name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {r.extension}
+              {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}
+            </div>
           </div>
-        )}
-      </Card>
+        </div>
+        <Badge tone={s.tone}>{s.label}</Badge>
+      </header>
+
+      <div className="space-y-3 px-5 py-4">
+        {/* Live line: current call or how long in the current state, plus shift time */}
+        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+          {r.call ? (
+            <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+              {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
+              <span className="truncate font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
+              {r.call.peerName && <span className="truncate text-muted-foreground">{r.call.peerName}</span>}
+              <span className="font-mono tabular-nums text-muted-foreground">{formatClock(callFor)}</span>
+            </span>
+          ) : r.since && !off && r.status !== "available" ? (
+            <span>{hhmm(r.since)}&apos;den beri</span>
+          ) : (
+            <span />
+          )}
+          <span className="shrink-0 font-mono tabular-nums" title={r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı"}>
+            Mesai {r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"}
+          </span>
+        </div>
+
+        {/* Reached: real conversations */}
+        <div className="rounded-xl border border-success/30 bg-success/5 p-2">
+          <div className="mb-1.5 px-1 text-[0.7rem] font-semibold text-success">Ulaşılanlar</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Tile label="Gerçek çağrı" sub="30 sn ve üstü" value={r.calls.long} tone="green" big />
+            <Tile label="Gelen" sub="gerçek" value={r.calls.inboundReal} tone="green" />
+            <Tile label="Giden" sub="gerçek" value={r.calls.outboundReal} tone="green" />
+          </div>
+        </div>
+
+        {/* Unreached: never connected or too short */}
+        <div className="rounded-xl border border-border/60 bg-muted/20 p-2">
+          <div className="mb-1.5 flex items-center justify-between px-1 text-[0.7rem] font-semibold text-muted-foreground">
+            <span>Ulaşılamayanlar · {unreached}</span>
+            <span className="font-normal">{r.calls.unanswered} cevapsız, {r.calls.short} geçersiz</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Tile label="Cevapsız" sub="bağlanmadı" value={r.calls.unanswered} tone="slate" />
+            <Tile label="Gelen" sub="cevapsız" value={r.calls.inboundMissed} tone="slate" />
+            <Tile label="Giden" sub="cevapsız" value={r.calls.outboundMissed} tone="slate" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Toplam görüşme</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">{formatClock(r.calls.talkSeconds)}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Tile({ label, sub, value, tone, big }: { label: string; sub?: string; value: number; tone: "green" | "slate"; big?: boolean }) {
+  return (
+    <div className="rounded-lg bg-card/70 px-2 py-1.5 text-center ring-1 ring-border/40">
+      <div className={cn("font-bold tabular-nums leading-none", big ? "text-2xl" : "text-lg", tone === "green" ? "text-success" : "text-muted-foreground")}>{value}</div>
+      <div className="mt-1 text-[0.65rem] font-medium text-foreground/80">{label}</div>
+      {sub && <div className="text-[0.6rem] text-muted-foreground">{sub}</div>}
     </div>
   );
 }

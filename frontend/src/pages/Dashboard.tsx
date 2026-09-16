@@ -220,6 +220,13 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     api.setAgentStatus(v).then(refresh).catch(() => undefined);
   }
 
+  // Placing a call while paused ends the pause on its own: the agent is
+  // clearly working again, and DND must drop so the PBX routes to them.
+  const paused = shift.active && hasExtension && agentState !== "available" && agentState !== "off";
+  useEffect(() => {
+    if (paused && phone.status === "calling") changeState("available");
+  }, [paused, phone.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // While in a call the live call status wins; otherwise the presence badge
   // reflects the agent's chosen state (so "Molada" no longer shows green).
   const badgeTone = busy ? statusTone[phone.status] : state.tone;
@@ -246,7 +253,29 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   // it (talk + idle + break + backoffice + dnd == online).
   const onlineLive = Math.round(online + liveDelta);
 
+  const pauseLabel: Record<string, string> = { break: "Moladasın", backoffice: "Backoffice'tesin", dnd: "Rahatsız etmeyin açık" };
+
   return (
+    <>
+    {paused && !busy && (
+      /* A pause is easy to forget; make it impossible to miss and one click to end. */
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3 rounded-2xl px-5 py-3 ring-1",
+          agentState === "dnd" ? "bg-destructive/10 ring-destructive/30" : "bg-warning/10 ring-warning/30",
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <span className={cn("size-3 animate-pulse rounded-full", agentState === "dnd" ? "bg-destructive" : "bg-warning")} />
+          <span className="text-lg font-semibold">{pauseLabel[agentState] ?? state.label}</span>
+          <span className="font-mono text-sm tabular-nums text-muted-foreground">{formatClock(timerSeconds)}</span>
+          <span className="hidden text-sm text-muted-foreground sm:inline">Bu sırada sana çağrı düşmez.</span>
+        </div>
+        <Button onClick={() => changeState("available")} className={agentState === "dnd" ? "bg-destructive hover:bg-destructive/90" : "bg-warning text-black hover:bg-warning/90"}>
+          {agentState === "break" ? "Molayı bitir" : "Müsait ol"}
+        </Button>
+      </div>
+    )}
     <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
       <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4">
@@ -309,6 +338,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
         </div>
       )}
     </div>
+    </>
   );
 }
 
