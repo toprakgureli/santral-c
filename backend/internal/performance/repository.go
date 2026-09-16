@@ -49,6 +49,8 @@ type Counts struct {
 	Outbound       int64 `json:"outbound"`
 	InboundMissed  int64 `json:"inboundMissed"`
 	OutboundMissed int64 `json:"outboundMissed"`
+	InboundReal    int64 `json:"inboundReal"`
+	OutboundReal   int64 `json:"outboundReal"`
 	TalkSeconds    int64 `json:"talkSeconds"`
 }
 
@@ -66,8 +68,10 @@ func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong i
 			"count(*) FILTER (WHERE direction = 'outbound') AS outbound, "+
 			"count(*) FILTER (WHERE direction = 'inbound' AND disposition NOT IN ('answered', 'in_progress')) AS inbound_missed, "+
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed, "+
+			"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
+			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds",
-			shortLong, shortLong).
+			shortLong, shortLong, shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ?", from).
 		// A ring that a teammate answered is not this agent's call.
 		Where("NOT (" + calllog.NotMineSQL + ")").

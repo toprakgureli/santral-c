@@ -133,6 +133,8 @@ export interface TeamCounts {
   outbound: number;
   inboundMissed: number;
   outboundMissed: number;
+  inboundReal: number;
+  outboundReal: number;
   talkSeconds: number;
 }
 
