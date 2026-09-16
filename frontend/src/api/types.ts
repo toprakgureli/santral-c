@@ -99,12 +99,19 @@ export interface ShiftStatus {
   autoEndAt?: string;
 }
 
+export interface PresencePause {
+  state: AgentPresenceState;
+  startedAt: string;
+  endedAt?: string;
+}
+
 export interface AgentPresence {
   state: AgentPresenceState;
   since?: string;
   totals?: Record<string, number>;
   talk?: number;
   online?: number;
+  pauses?: PresencePause[];
 }
 
 export interface TodayCalls {

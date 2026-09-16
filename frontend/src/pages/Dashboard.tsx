@@ -22,6 +22,7 @@ import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { useShift } from "../shift/ShiftContext";
+import { usePresence } from "../presence/PresenceContext";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
@@ -166,6 +167,7 @@ const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "
 function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
   const phone = useSoftphoneContext();
   const shift = useShift();
+  const presence = usePresence();
   const [agentState, setAgentState] = useState<AgentPresenceState>("available");
   const [since, setSince] = useState<number>(() => Date.now());
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
@@ -177,27 +179,20 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   const onCall = phone.status === "in-call" || phone.status === "held";
   const state = agentStates[agentState] ?? agentStates.available;
 
-  // Presence is stored server-side; load the current value, when it started, and
-  // today's totals. fetchedAt lets us tick the current state's total live.
-  const refresh = useCallback(() => {
-    api.getAgentStatus().then((s) => {
-      setAgentState(s.state);
-      setSince(s.since ? Date.parse(s.since) : Date.now());
-      setPresenceTotals(s.totals ?? {});
-      setTalk(s.talk ?? 0);
-      setOnline(s.online ?? 0);
-      setFetchedAt(Date.now());
-    }).catch(() => undefined);
-  }, []);
-
-  // Re-read on every shift change too, so "Mesai dışı" clears the moment the
-  // agent starts a shift and the select becomes usable.
+  // Presence is stored server-side and polled by PresenceProvider (shared with
+  // the break overlay); mirror each read into the local timers. fetchedAt lets
+  // us tick the current state's total live.
+  const refresh = presence.refresh;
   useEffect(() => {
-    if (!hasExtension) return;
-    refresh();
-    const timer = window.setInterval(refresh, 20000);
-    return () => window.clearInterval(timer);
-  }, [hasExtension, refresh, shift.active]);
+    const s = presence.data;
+    if (!s) return;
+    setAgentState(s.state);
+    setSince(s.since ? Date.parse(s.since) : presence.fetchedAt);
+    setPresenceTotals(s.totals ?? {});
+    setTalk(s.talk ?? 0);
+    setOnline(s.online ?? 0);
+    setFetchedAt(presence.fetchedAt);
+  }, [presence.data, presence.fetchedAt]);
 
   // A live clock so the "how long in this state / on this call" timer ticks.
   useEffect(() => {
@@ -217,7 +212,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
     setAgentState(v);
     setSince(Date.now());
     setFetchedAt(Date.now());
-    api.setAgentStatus(v).then(refresh).catch(() => undefined);
+    presence.change(v).catch(() => undefined);
   }
 
   // Placing a call while paused ends the pause on its own: the agent is

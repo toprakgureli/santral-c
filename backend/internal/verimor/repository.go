@@ -120,6 +120,21 @@ func (r *Repository) OpenEventStartedAt(ctx context.Context, userID uint) (time.
 	return e.StartedAt, true, nil
 }
 
+// PauseStretches lists the agent's non-available presence stretches that
+// touch the window starting at `from`, oldest first, so the panel can show
+// the breaks of the day.
+func (r *Repository) PauseStretches(ctx context.Context, userID uint, from time.Time) ([]models.PresenceEvent, error) {
+	var events []models.PresenceEvent
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND state <> 'available' AND COALESCE(ended_at, now()) >= ?", userID, from).
+		Order("started_at").
+		Find(&events).Error
+	if err != nil {
+		return nil, fmt.Errorf("pause stretches could not be listed: %w", err)
+	}
+	return events, nil
+}
+
 // PresenceTotals sums the seconds the agent spent in each state since `from`,
 // clamping each stretch to the window and counting open stretches up to now.
 func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.Time) (map[string]int64, error) {

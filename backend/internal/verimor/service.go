@@ -831,6 +831,16 @@ type Presence struct {
 	// per-state totals plus talk partition it: idle + talk + break + backoffice
 	// + dnd == online.
 	Online int64 `json:"online"`
+	// Pauses are today's break / backoffice / dnd stretches, oldest first; the
+	// open one has no EndedAt.
+	Pauses []Pause `json:"pauses"`
+}
+
+// Pause is one non-available stretch of the day.
+type Pause struct {
+	State     string  `json:"state"`
+	StartedAt string  `json:"startedAt"`
+	EndedAt   *string `json:"endedAt,omitempty"`
 }
 
 // Status returns the actor's presence, when the current state started, and
@@ -887,9 +897,23 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 			since = last
 		}
 	}
-	out := &Presence{State: state, Totals: totals, Talk: call, Online: online}
+	out := &Presence{State: state, Totals: totals, Talk: call, Online: online, Pauses: []Pause{}}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
+	}
+	if stretches, err := s.repo.PauseStretches(ctx, actorID, from); err == nil {
+		for _, e := range stretches {
+			start := e.StartedAt
+			if start.Before(from) {
+				start = from
+			}
+			p := Pause{State: e.State, StartedAt: start.UTC().Format(time.RFC3339)}
+			if e.EndedAt != nil {
+				ended := e.EndedAt.UTC().Format(time.RFC3339)
+				p.EndedAt = &ended
+			}
+			out.Pauses = append(out.Pauses, p)
+		}
 	}
 	return out, nil
 }
