@@ -5,7 +5,7 @@ import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
-import { Button, Card, Input, Select, Spinner, TableSkeleton } from "../components/ui";
+import { Button, Card, DateField, Input, Select, Spinner, TableSkeleton } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 // ymd formats a Date as a local YYYY-MM-DD (not UTC, so it matches the panel's day).
@@ -195,9 +195,9 @@ export function Calls() {
             </Select>
             {preset === "custom" && (
               <div className="flex items-center gap-1">
-                <Input type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-36" title="Başlangıç tarihi" />
-                <span className="text-muted-foreground">–</span>
-                <Input type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-36" title="Bitiş tarihi" />
+                <DateField value={from} max={to || undefined} onChange={(v) => { setFrom(v); setPage(1); }} className="w-40" title="Başlangıç tarihi" />
+                <span className="text-muted-foreground">-</span>
+                <DateField value={to} min={from || undefined} onChange={(v) => { setTo(v); setPage(1); }} className="w-40" title="Bitiş tarihi" />
               </div>
             )}
             {canExport && (

@@ -9,10 +9,10 @@
 // to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
+import { ArrowUpDown, CalendarRange, ChevronDown, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
-import { Badge, Card, EmptyState, Input, Select, Skeleton } from "../components/ui";
+import { Badge, Card, DateField, EmptyState, Select, Skeleton } from "../components/ui";
 import { displayNumber } from "../softphone/dial";
 import { cn, initials } from "../lib/utils";
 import { formatClock } from "./callFormat";
@@ -184,26 +184,32 @@ export function TeamPerformance() {
             <span className="hidden text-xs text-muted-foreground md:inline">
               {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · {isToday ? "bugün" : from === to ? dmy(from) : `${dmy(from)} - ${dmy(to)}`}
             </span>
-            <Select value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className="h-9 w-36">
-              {PRESETS.map((p) => (
-                <option key={p.key} value={p.key}>{p.label}</option>
-              ))}
-            </Select>
+            <label className="relative" title="Tarih">
+              <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Select value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className="h-9 w-40 pl-9">
+                {PRESETS.map((p) => (
+                  <option key={p.key} value={p.key}>{p.label}</option>
+                ))}
+              </Select>
+            </label>
             {preset === "day" && (
-              <Input type="date" value={from} max={ymd(new Date())} onChange={(e) => { setFrom(e.target.value); setTo(e.target.value); }} className="h-9 w-40" title="Gün" />
+              <DateField value={from} max={ymd(new Date())} onChange={(v) => { setFrom(v); setTo(v); }} className="w-40 [&>input]:h-9" title="Gün" />
             )}
             {preset === "custom" && (
               <div className="flex items-center gap-1">
-                <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" title="Başlangıç" />
+                <DateField value={from} max={to || undefined} onChange={setFrom} className="w-40 [&>input]:h-9" title="Başlangıç" />
                 <span className="text-muted-foreground">-</span>
-                <Input type="date" value={to} min={from || undefined} max={ymd(new Date())} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" title="Bitiş" />
+                <DateField value={to} min={from || undefined} max={ymd(new Date())} onChange={setTo} className="w-40 [&>input]:h-9" title="Bitiş" />
               </div>
             )}
-            <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-9 w-52">
+            <label className="relative" title="Sıralama">
+              <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-9 w-52 pl-9">
               {SORTS.map((s) => (
                 <option key={s.key} value={s.key}>{s.label}</option>
               ))}
-            </Select>
+              </Select>
+            </label>
           </div>
         </div>
       </div>

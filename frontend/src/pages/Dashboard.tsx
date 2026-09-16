@@ -714,6 +714,12 @@ function EscalationFrame({ active, children }: { active?: boolean; children: Rea
   );
 }
 
+// joinNames reads "Toprak", "Toprak ve Ahmet", "Toprak, Ahmet ve Mehmet".
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} ve ${names[names.length - 1]}`;
+}
+
 function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]; queues: PBXQueue[]; canCall: boolean; loading?: boolean }) {
   const phone = useSoftphoneContext();
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -775,9 +781,12 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                 title="Sol tık: ara · Sağ tık: aktar veya dinle"
                 className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-accent"
               >
-                <span className="flex items-center gap-2 text-sm">
-                  <span className={cn("size-2 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className={cn("size-2 shrink-0 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
                   <span className="font-medium">{e.extension}</span>
+                  {e.names && e.names.length > 0 && (
+                    <span className="truncate text-muted-foreground" title={joinNames(e.names)}>{joinNames(e.names)}</span>
+                  )}
                 </span>
                 <Badge tone={s.tone}>{s.label}</Badge>
               </li>

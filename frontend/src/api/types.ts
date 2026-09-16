@@ -208,6 +208,7 @@ export interface Webphone {
 export interface PBXExtension {
   extension: string;
   status: string;
+  names?: string[];
 }
 
 export interface PBXQueue {

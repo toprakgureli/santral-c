@@ -219,6 +219,30 @@ func (r *Repository) LastCallEndedAt(ctx context.Context, userID uint, from time
 	return last.Time, true, nil
 }
 
+// NamesByExtension maps each extension to the active users registered on it,
+// ordered by name, so the agent list can show who sits behind a number.
+func (r *Repository) NamesByExtension(ctx context.Context) (map[string][]string, error) {
+	type row struct {
+		Extension string
+		Name      string
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Table("users").
+		Select("sip_extension AS extension, name").
+		Where("active = TRUE AND sip_extension IS NOT NULL AND sip_extension <> ''").
+		Order("name").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("extension names could not be listed: %w", err)
+	}
+	out := make(map[string][]string, len(rows))
+	for _, r := range rows {
+		out[r.Extension] = append(out[r.Extension], r.Name)
+	}
+	return out, nil
+}
+
 // PresenceByExtension maps each extension to its stored non-available presence
 // state, so the live agent list can reflect who is on a break or in backoffice.
 func (r *Repository) PresenceByExtension(ctx context.Context) (map[string]string, error) {

@@ -623,8 +623,9 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 
 // PBXExtension is an extension and its live status.
 type PBXExtension struct {
-	Extension string `json:"extension"`
-	Status    string `json:"status"`
+	Extension string   `json:"extension"`
+	Status    string   `json:"status"`
+	Names     []string `json:"names,omitempty"` // active panel users on this extension
 }
 
 // PBXQueue is a call queue.
@@ -653,14 +654,19 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 		return []PBXExtension{}
 	}
 	presence, err := s.repo.PresenceByExtension(ctx)
-	if err != nil || len(presence) == 0 {
-		return snap
+	if err != nil {
+		presence = nil
+	}
+	names, err := s.repo.NamesByExtension(ctx)
+	if err != nil {
+		names = nil
 	}
 	// Copy so the shared snapshot is never mutated; overlay presence only over
 	// an idle (AVAILABLE) extension, so a live call (TALKING) still wins.
 	out := make([]PBXExtension, len(snap))
 	copy(out, snap)
 	for i := range out {
+		out[i].Names = names[out[i].Extension]
 		if out[i].Status != "AVAILABLE" {
 			continue
 		}

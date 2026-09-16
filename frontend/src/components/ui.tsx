@@ -1,4 +1,5 @@
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonBase =
@@ -40,6 +41,103 @@ export function Select({ className = "", children, ...props }: SelectHTMLAttribu
     <select className={cn(fieldBase, "bg-card", className)} {...props}>
       {children}
     </select>
+  );
+}
+
+// toDMY renders an ISO day (YYYY-MM-DD) as gg.aa.yyyy; fromDMY parses it back
+// and returns null when the text is not a real date.
+function toDMY(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : "";
+}
+function fromDMY(text: string): string | null {
+  const t = text.trim();
+  if (t === "") return "";
+  const m = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(t);
+  if (!m) return null;
+  const d = Number(m[1]), mo = Number(m[2]), y = Number(m[3]);
+  const date = new Date(y, mo - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${y}-${p(mo)}-${p(d)}`;
+}
+
+// DateField is a day picker that always reads gg.aa.yyyy whatever the
+// browser's locale: a text box that accepts typed dates plus a calendar
+// button that opens the native picker. Values in and out are YYYY-MM-DD.
+export function DateField({
+  value,
+  onChange,
+  min,
+  max,
+  className = "",
+  title,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  min?: string;
+  max?: string;
+  className?: string;
+  title?: string;
+}) {
+  const [text, setText] = useState(() => toDMY(value));
+  const picker = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setText(toDMY(value));
+  }, [value]);
+
+  function commit() {
+    const iso = fromDMY(text);
+    if (iso === null || (iso !== "" && ((min && iso < min) || (max && iso > max)))) {
+      setText(toDMY(value));
+      return;
+    }
+    if (iso !== value) onChange(iso);
+  }
+
+  function openPicker() {
+    const p = picker.current;
+    if (!p) return;
+    try {
+      p.showPicker();
+    } catch {
+      p.click();
+    }
+  }
+
+  return (
+    <div className={cn("relative", className)} title={title}>
+      <input
+        className={cn(fieldBase, "pr-9 font-mono tabular-nums")}
+        value={text}
+        placeholder="gg.aa.yyyy"
+        inputMode="numeric"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+      />
+      <input
+        ref={picker}
+        type="date"
+        tabIndex={-1}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        onClick={openPicker}
+        aria-label="Takvimden seç"
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <CalendarDays className="size-4" />
+      </button>
+    </div>
   );
 }
 
