@@ -2,12 +2,12 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Coffee, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { IPBan, LoginAttempt, Paged } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
-import { Badge, Button, Card, EmptyState, Pagination, Skeleton } from "../components/ui";
+import { Badge, Button, Card, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
 import { cn, formatDateTime } from "../lib/utils";
 
 const REASONS: Record<string, string> = {
@@ -24,6 +24,7 @@ export function Settings() {
   const { user } = useAuth();
   const canSeeLogs = can(user, "system.logs");
   const canManage = can(user, "system.settings");
+  const canBreakLimit = can(user, "agent.break_limit");
 
   const [attempts, setAttempts] = useState<Paged<LoginAttempt> | null>(null);
   const [bans, setBans] = useState<IPBan[]>([]);
@@ -58,6 +59,7 @@ export function Settings() {
   return (
     <div className="space-y-6">
       {canManage && <MfaRequiredCard />}
+      {canBreakLimit && <BreakLimitCard />}
 
       {canSeeLogs && (
         <>
@@ -156,6 +158,112 @@ export function Settings() {
         </Card>
       )}
     </div>
+  );
+}
+
+const BREAK_PRESETS = [30, 45, 60, 90, 120];
+
+// BreakLimitCard sets the daily break allowance. Past it the break card turns
+// red and counts the excess; the number is read by every agent's panel.
+function BreakLimitCard() {
+  const [saved, setSaved] = useState<number | null>(null);
+  const [minutes, setMinutes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .breakLimit()
+      .then((r) => {
+        if (!alive) return;
+        setSaved(r.minutes);
+        setMinutes(String(r.minutes));
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(e instanceof ApiError ? e.message : "Ayar okunamadı.");
+        setSaved(60);
+        setMinutes("60");
+      });
+    return () => { alive = false; };
+  }, []);
+
+  const value = Number(minutes);
+  const valid = Number.isInteger(value) && value >= 5 && value <= 720;
+  const dirty = saved !== null && valid && value !== saved;
+
+  const save = async () => {
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.updateBreakLimit(value);
+      setSaved(r.minutes);
+      setMinutes(String(r.minutes));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Ayar kaydedilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = (m: number) => (m % 60 === 0 ? `${m / 60} saat` : m > 60 ? `${Math.floor(m / 60)} sa ${m % 60} dk` : `${m} dk`);
+
+  return (
+    <Card
+      title="Günlük Mola Sınırı"
+      actions={saved === null ? <Skeleton className="h-5 w-16" /> : <Badge tone="amber">{label(saved)}</Badge>}
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
+          <Coffee className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Bir temsilcinin gün içinde toplam ne kadar mola kullanabileceği</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Sınır dolduğunda mola kartının çerçevesi kırmızıya döner ve sayaç aşılan süreyi eksi olarak saymaya başlar.
+              Mola bitirilmez, yalnızca görünür hale gelir. Değişiklik bir sonraki okumada tüm panellere yansır.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {BREAK_PRESETS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMinutes(String(m))}
+              className={cn(
+                "h-9 rounded-xl border px-3 text-sm transition-colors",
+                value === m ? "border-primary bg-primary/10 text-primary" : "border-border/70 text-muted-foreground hover:border-border hover:bg-accent",
+              )}
+            >
+              {label(m)}
+            </button>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={5}
+              max={720}
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              className="h-9 w-24 font-mono tabular-nums"
+              title="Dakika (5 ile 720 arası)"
+            />
+            <span className="text-sm text-muted-foreground">dakika</span>
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        {saved !== null && (
+          <Button onClick={save} disabled={busy || !dirty}>
+            {busy ? "Kaydediliyor..." : "Kaydet"}
+          </Button>
+        )}
+      </div>
+    </Card>
   );
 }
 

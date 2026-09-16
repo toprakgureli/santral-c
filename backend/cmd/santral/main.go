@@ -170,6 +170,7 @@ func run() error {
 		// Calls and presence changes need an open shift; a shift change in turn
 		// drives the agent's presence and do-not-disturb.
 		verimorSvc.SetShifts(shiftSvc)
+		verimorSvc.SetBreakLimit(settingSvc)
 		shiftSvc.SetPresence(verimorSvc)
 		perfSvc.SetLive(verimorSvc)
 		verimorSvc.Start(ctx)

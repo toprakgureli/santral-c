@@ -112,6 +112,7 @@ export interface AgentPresence {
   talk?: number;
   online?: number;
   pauses?: PresencePause[];
+  breakLimit?: number;
 }
 
 export interface TodayCalls {

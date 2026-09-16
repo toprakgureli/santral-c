@@ -42,6 +42,8 @@ type Service struct {
 	cfg    configs.Bulutsantralim
 	shifts IShiftReader
 
+	breakLimit IBreakLimit
+
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
 	snapMu sync.RWMutex
@@ -69,6 +71,14 @@ func NewService(client *Client, users IActorResolver, repo *Repository, cfg conf
 
 // SetShifts wires the shift reader that gates outbound calls and presence.
 func (s *Service) SetShifts(r IShiftReader) { s.shifts = r }
+
+// IBreakLimit reads the daily break allowance.
+type IBreakLimit interface {
+	BreakLimitMinutes(ctx context.Context) int
+}
+
+// SetBreakLimit wires the settings reader for the daily break allowance.
+func (s *Service) SetBreakLimit(r IBreakLimit) { s.breakLimit = r }
 
 // onShift reports whether the user may place calls and change presence. With
 // no shift reader wired, everything is allowed.
@@ -834,6 +844,8 @@ type Presence struct {
 	// Pauses are today's break / backoffice / dnd stretches, oldest first; the
 	// open one has no EndedAt.
 	Pauses []Pause `json:"pauses"`
+	// BreakLimit is the daily break allowance in seconds.
+	BreakLimit int64 `json:"breakLimit"`
 }
 
 // Pause is one non-available stretch of the day.
@@ -897,7 +909,10 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 			since = last
 		}
 	}
-	out := &Presence{State: state, Totals: totals, Talk: call, Online: online, Pauses: []Pause{}}
+	out := &Presence{State: state, Totals: totals, Talk: call, Online: online, Pauses: []Pause{}, BreakLimit: 60 * 60}
+	if s.breakLimit != nil {
+		out.BreakLimit = int64(s.breakLimit.BreakLimitMinutes(ctx)) * 60
+	}
 	if !since.IsZero() {
 		out.Since = since.UTC().Format(time.RFC3339)
 	}

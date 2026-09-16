@@ -22,9 +22,10 @@ function clock(seconds: number) {
   return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
 }
 
-// brief renders a duration in words: "45 sn", "12 dk", "1 sa 05 dk".
+// brief renders a duration in words: "45 sn", "12 dk", "1 sa 05 dk". It
+// floors like clock() so the two never disagree by a second.
 function brief(seconds: number) {
-  const s = Math.max(0, Math.round(seconds));
+  const s = Math.max(0, Math.floor(seconds));
   if (s < 60) return `${s} sn`;
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -58,12 +59,18 @@ export default function BreakOverlay() {
   if (!show || !data) return null;
 
   const startedAt = data.since ? Date.parse(data.since) : presence.fetchedAt;
-  const current = (now - startedAt) / 1000;
-  const liveDelta = Math.max(0, (now - presence.fetchedAt) / 1000);
+  const current = Math.floor((now - startedAt) / 1000);
+  const liveDelta = Math.max(0, Math.floor((now - presence.fetchedAt) / 1000));
   const todayTotal = (data.totals?.break ?? 0) + liveDelta;
   const pauses = (data.pauses ?? []).filter((p) => p.state === "break");
   const earlier = pauses.filter((p) => p.endedAt);
   const count = earlier.length + 1;
+  // Daily allowance: under it the bar fills amber and the remaining time is
+  // shown; past it the card turns red and the clock counts the excess.
+  const limit = data.breakLimit ?? 3600;
+  const over = todayTotal > limit;
+  const excess = todayTotal - limit;
+  const ratio = Math.min(1, todayTotal / limit);
 
   async function end() {
     setEnding(true);
@@ -80,27 +87,60 @@ export default function BreakOverlay() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="break-title"
-        className="animate-in fade-in zoom-in-95 w-full max-w-md overflow-hidden rounded-3xl border border-warning/30 bg-card shadow-2xl shadow-warning/10 duration-300"
+        className={cn(
+          "animate-in fade-in zoom-in-95 w-full max-w-md overflow-hidden rounded-3xl border-2 bg-card shadow-2xl duration-300",
+          over ? "border-destructive shadow-destructive/20" : "border-warning/30 shadow-warning/10",
+        )}
       >
         {/* Header */}
         <div className="relative px-7 pt-7 pb-6">
-          <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-warning/15 blur-3xl" />
+          <div className={cn("pointer-events-none absolute -right-10 -top-10 size-40 rounded-full blur-3xl", over ? "bg-destructive/20" : "bg-warning/15")} />
           <div className="flex items-center gap-3">
-            <span className="relative flex size-11 items-center justify-center rounded-2xl bg-warning/15 text-warning">
+            <span className={cn("relative flex size-11 items-center justify-center rounded-2xl", over ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning")}>
               <Coffee className="size-5" />
-              <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-warning ring-2 ring-card animate-pulse" />
+              <span className={cn("absolute -right-0.5 -top-0.5 size-2.5 rounded-full ring-2 ring-card animate-pulse", over ? "bg-destructive" : "bg-warning")} />
             </span>
             <div>
-              <h2 id="break-title" className="text-lg font-semibold leading-tight">Moladasın</h2>
-              <p className="text-xs text-muted-foreground">Bu sırada sana çağrı düşmez.</p>
+              <h2 id="break-title" className="text-lg font-semibold leading-tight">{over ? "Mola hakkın doldu" : "Moladasın"}</h2>
+              <p className="text-xs text-muted-foreground">{over ? "Günlük sınırı aştın, sayaç aşılan süreyi gösteriyor." : "Bu sırada sana çağrı düşmez."}</p>
             </div>
           </div>
 
           <div className="mt-6 text-center">
-            <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{clock(current)}</div>
-            <div className="mt-2 text-sm text-muted-foreground">
-              <span className="font-mono tabular-nums text-foreground">{hhmm(new Date(startedAt).toISOString())}</span>
-              {"'de başladı"}
+            {over ? (
+              <>
+                <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight text-destructive">-{clock(excess)}</div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  Bu mola <span className="font-mono tabular-nums text-foreground">{clock(current)}</span>
+                  {", "}
+                  <span className="font-mono tabular-nums text-foreground">{hhmm(new Date(startedAt).toISOString())}</span>
+                  {"'de başladı"}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{clock(current)}</div>
+                <div className="mt-2 text-sm text-muted-foreground">
+                  <span className="font-mono tabular-nums text-foreground">{hhmm(new Date(startedAt).toISOString())}</span>
+                  {"'de başladı"}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Daily allowance bar */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between text-[0.7rem] text-muted-foreground">
+              <span>Günlük mola hakkı {brief(limit)}</span>
+              <span className={cn("font-mono tabular-nums", over && "font-semibold text-destructive")}>
+                {over ? `${brief(excess)} aşıldı` : `${brief(limit - todayTotal)} kaldı`}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn("h-full rounded-full transition-[width] duration-1000 ease-linear", over ? "bg-destructive" : ratio > 0.85 ? "bg-destructive/70" : "bg-warning")}
+                style={{ width: `${ratio * 100}%` }}
+              />
             </div>
           </div>
         </div>
@@ -109,7 +149,7 @@ export default function BreakOverlay() {
         <div className="grid grid-cols-2 divide-x divide-border/60 border-y border-border/60 bg-muted/30">
           <div className="px-6 py-3.5">
             <div className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Bugün toplam mola</div>
-            <div className="mt-0.5 font-mono text-lg font-semibold tabular-nums">{brief(todayTotal)}</div>
+            <div className={cn("mt-0.5 font-mono text-lg font-semibold tabular-nums", over && "text-destructive")}>{brief(todayTotal)}</div>
           </div>
           <div className="px-6 py-3.5">
             <div className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Mola sayısı</div>
@@ -135,7 +175,7 @@ export default function BreakOverlay() {
         </div>
 
         <div className="px-7 pb-7">
-          <Button onClick={end} disabled={ending} className="h-12 w-full bg-warning text-base text-black shadow-md hover:bg-warning/90">
+          <Button onClick={end} disabled={ending} className={cn("h-12 w-full text-base shadow-md", over ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : "bg-warning text-black hover:bg-warning/90")}>
             {ending ? "Bitiriliyor..." : "Molayı bitir"}
           </Button>
         </div>

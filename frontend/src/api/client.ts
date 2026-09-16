@@ -173,6 +173,8 @@ export const api = {
   removeBan: (id: number) => request<void>(`/security/bans/${id}`, { method: "DELETE" }),
   systemSettings: () => request<SystemSettings>("/settings/"),
   updateSystemSettings: (body: SystemSettings) => request<SystemSettings>("/settings/", { method: "PUT", body: JSON.stringify(body) }),
+  breakLimit: () => request<{ minutes: number }>("/settings/break-limit"),
+  updateBreakLimit: (minutes: number) => request<{ minutes: number }>("/settings/break-limit", { method: "PUT", body: JSON.stringify({ minutes }) }),
 
   // Audit trail (system.audit_view)
   auditLogs: (params: { page?: number; perPage?: number; action?: string; query?: string } = {}) =>

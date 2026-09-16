@@ -39,6 +39,7 @@ const (
 	AgentView            Permission = "agent.view"
 	AgentManage          Permission = "agent.manage"
 	AgentPresenceViewAll Permission = "agent.presence_view_all"
+	AgentBreakLimit      Permission = "agent.break_limit"
 
 	QueueView   Permission = "queue.view"
 	QueueManage Permission = "queue.manage"
@@ -88,6 +89,7 @@ var permissions = []PermissionInfo{
 	{AgentView, "Temsilci listesini görür"},
 	{AgentManage, "Temsilcileri yönetir"},
 	{AgentPresenceViewAll, "Tüm temsilcilerin canlı durumunu görür"},
+	{AgentBreakLimit, "Günlük mola sınırını belirler"},
 	{QueueView, "Kuyrukları görür"},
 	{QueueManage, "Kuyrukları yönetir"},
 	{ContactView, "Kişileri görür"},

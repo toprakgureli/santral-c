@@ -48,6 +48,33 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// BreakLimit returns the daily break allowance in minutes. Every signed-in
+// user may read it (the break card needs it); changing it is gated.
+func (h *Handler) BreakLimit(c *fiber.Ctx) error {
+	if _, err := actor(c); err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"minutes": h.service.BreakLimitMinutes(c.UserContext())})
+}
+
+// UpdateBreakLimit stores the daily break allowance.
+func (h *Handler) UpdateBreakLimit(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req struct {
+		Minutes int `json:"minutes"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.SetBreakLimit(c.UserContext(), id, req.Minutes, c.IP()); err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"minutes": req.Minutes})
+}
+
 // Router mounts the settings endpoints.
 type Router struct {
 	handler *Handler
@@ -64,6 +91,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/settings", r.guard)
 	group.Get("/", r.handler.Get)
 	group.Put("/", r.handler.Update)
+	group.Get("/break-limit", r.handler.BreakLimit)
+	group.Put("/break-limit", r.handler.UpdateBreakLimit)
 }
 
 func actor(c *fiber.Ctx) (uint, error) {
