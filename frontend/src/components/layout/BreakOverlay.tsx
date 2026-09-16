@@ -22,15 +22,16 @@ function clock(seconds: number) {
   return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
 }
 
-// brief renders a duration in words: "45 sn", "12 dk", "1 sa 05 dk". It
-// floors like clock() so the two never disagree by a second.
+// brief renders a duration in words: "45 sn", "2 dk 15 sn", "1 sa 05 dk".
+// It floors like clock() so the two never disagree by a second.
 function brief(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
-  if (s < 60) return `${s} sn`;
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h === 0) return `${m} dk`;
-  return `${h} sa ${String(m).padStart(2, "0")} dk`;
+  const sec = s % 60;
+  if (h > 0) return `${h} sa ${String(m).padStart(2, "0")} dk`;
+  if (m > 0) return sec > 0 ? `${m} dk ${sec} sn` : `${m} dk`;
+  return `${sec} sn`;
 }
 
 export default function BreakOverlay() {
