@@ -2,11 +2,11 @@
 // for one customer number, with the customer's past escalations above it.
 // The dashboard card and the after-call wrap-up card both render it.
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "@/api/client";
 import type { EscalationCategory, EscalationRecord } from "@/api/types";
 import { Badge, Button } from "@/components/ui";
-import { SearchableSelect } from "@/components/SearchableSelect";
+import { EscalationPicker } from "@/components/escalation/EscalationPicker";
 import { cn } from "@/lib/utils";
 
 export function EscalationForm({
@@ -17,6 +17,8 @@ export function EscalationForm({
   onSaved,
   onHistory,
   aside,
+  showHistory = true,
+  pickerHeight,
 }: {
   categories: EscalationCategory[];
   number: string;
@@ -27,6 +29,9 @@ export function EscalationForm({
   onHistory?: (items: EscalationRecord[]) => void;
   // Rendered left of the save button (e.g. a skip link).
   aside?: ReactNode;
+  // The parent may render the history itself (the wrap-up card does).
+  showHistory?: boolean;
+  pickerHeight?: number;
 }) {
   const [catId, setCatId] = useState<number | null>(null);
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -69,9 +74,6 @@ export function EscalationForm({
     setStatus(null);
   }, [number]);
 
-  const reasons = useMemo(() => categories.find((c) => c.id === catId)?.reasons ?? [], [categories, catId]);
-  const catOptions = useMemo(() => categories.map((c) => ({ id: c.id, label: c.name })), [categories]);
-  const reasonOptions = useMemo(() => reasons.map((r) => ({ id: r.id, label: r.name })), [reasons]);
 
   async function save() {
     if (!number.trim() || reasonId === null) {
@@ -97,7 +99,7 @@ export function EscalationForm({
 
   return (
     <div className="space-y-4">
-      {canSearch && history.length > 0 && (
+      {showHistory && canSearch && history.length > 0 && (
         <div className="rounded-xl bg-muted/30 p-3">
           <p className="mb-2 text-xs font-semibold text-muted-foreground">Geçmiş görüşmeler</p>
           <ul className="max-h-44 space-y-2 overflow-y-auto">
@@ -118,30 +120,22 @@ export function EscalationForm({
       )}
 
       <div className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">1 · Kategori</span>
-        <SearchableSelect
-          size="lg"
-          value={catId}
-          onChange={(id) => {
-            setCatId(id);
-            setReasonId(null);
+        <span className="text-xs font-medium text-muted-foreground">Kategori ve durum</span>
+        <EscalationPicker
+          categories={categories}
+          catId={catId}
+          reasonId={reasonId}
+          height={pickerHeight}
+          onChange={(c, r) => {
+            setCatId(c);
+            setReasonId(r);
           }}
-          options={catOptions}
-          placeholder="Kategori seçin"
-          searchPlaceholder="Kategori ara..."
         />
       </div>
 
-      {catId !== null && (
-        <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-          <span className="text-xs font-medium text-muted-foreground">2 · Durum</span>
-          <SearchableSelect size="lg" value={reasonId} onChange={setReasonId} options={reasonOptions} placeholder="Durum seçin" searchPlaceholder="Durum ara..." />
-        </div>
-      )}
-
       {reasonId !== null && (
         <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-          <span className="text-xs font-medium text-muted-foreground">3 · Not</span>
+          <span className="text-xs font-medium text-muted-foreground">Not</span>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}

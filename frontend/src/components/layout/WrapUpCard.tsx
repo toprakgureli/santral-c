@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "@/api/client";
-import type { EscalationCategory } from "@/api/types";
+import type { EscalationCategory, EscalationRecord } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
 import { Badge, Button } from "@/components/ui";
@@ -78,7 +78,8 @@ export default function WrapUpCard() {
   const canSearch = can(user, "escalation.search");
   const [pending, setPending] = useState<EndedCall[]>(readPending);
   const [categories, setCategories] = useState<EscalationCategory[] | null>(null);
-  const [historyCount, setHistoryCount] = useState(0);
+  const [history, setHistory] = useState<EscalationRecord[]>([]);
+  const historyCount = history.length;
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [skipError, setSkipError] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export default function WrapUpCard() {
   useEffect(() => {
     setConfirmSkip(false);
     setSkipError(null);
-    setHistoryCount(0);
+    setHistory([]);
   }, [current?.id]);
 
   if (!show || !current) return null;
@@ -145,7 +146,7 @@ export default function WrapUpCard() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="wrapup-title"
-        className="animate-in fade-in zoom-in-95 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border-2 border-violet-500/40 bg-card shadow-2xl shadow-violet-500/10 duration-300"
+        className="animate-in fade-in zoom-in-95 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border-2 border-violet-500/40 bg-card shadow-2xl shadow-violet-500/10 duration-300"
       >
         <div className="relative flex items-center gap-3 border-b border-border/60 px-7 py-5">
           <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-violet-500/15 blur-3xl" />
@@ -159,9 +160,9 @@ export default function WrapUpCard() {
           {rest > 0 && <Badge tone="amber">+{rest} bekliyor</Badge>}
         </div>
 
-        <div className="grid flex-1 overflow-hidden md:grid-cols-[17rem_1fr]">
-          {/* Call facts */}
-          <div className="border-b border-border/60 bg-violet-500/5 px-6 py-5 md:border-b-0 md:border-r">
+        <div className="grid min-h-0 flex-1 overflow-hidden md:grid-cols-[19rem_1fr]">
+          {/* Call facts and the customer's past escalations */}
+          <div className="flex min-h-0 flex-col border-b border-border/60 bg-violet-500/5 px-6 py-5 md:border-b-0 md:border-r">
             <div className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Müşteri</div>
             <div className="mt-1 text-3xl font-bold tabular-nums tracking-wide">{number}</div>
             <ul className="mt-4 space-y-2.5 text-sm">
@@ -171,6 +172,27 @@ export default function WrapUpCard() {
               <Fact label="Süre" value={duration((current.endedAt - current.answeredAt) / 1000)} mono />
               {canSearch && <Fact label="Geçmiş kayıt" value={historyCount === 0 ? "Yok" : `${historyCount} kayıt`} tone={historyCount ? "amber" : undefined} />}
             </ul>
+            {canSearch && history.length > 0 && (
+              <div className="mt-4 flex min-h-0 flex-1 flex-col">
+                <div className="mb-1.5 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Geçmiş görüşmeler</div>
+                <ul className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+                  {history.map((h) => (
+                    <li key={h.id} className="rounded-lg bg-card px-3 py-2 text-xs ring-1 ring-border/50">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{h.agentName}</span>
+                        <span className="shrink-0 text-muted-foreground">{h.createdAt}</span>
+                      </div>
+                      <div className="mt-0.5 truncate">
+                        <span className="text-warning">{h.categoryName}</span>
+                        <span className="mx-1 text-muted-foreground">›</span>
+                        <span className="text-muted-foreground">{h.reasonName}</span>
+                      </div>
+                      {h.note && <p className="mt-0.5 line-clamp-2 text-foreground/80">{h.note}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Form */}
@@ -180,8 +202,10 @@ export default function WrapUpCard() {
               number={number}
               canSearch={canSearch}
               callUuid={current.id}
-              onHistory={(items) => setHistoryCount(items.length)}
+              onHistory={setHistory}
               onSaved={done}
+              showHistory={false}
+              pickerHeight={280}
               aside={
                 <button
                   type="button"
