@@ -17,13 +17,28 @@ func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
 }
 
-// Today returns the team page payload for the actor.
+// Today returns the team page payload for the actor. Optional from/to query
+// values (local YYYY-MM-DD, inclusive) widen the figures to a day range.
 func (h *Handler) Today(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
 		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
 	}
-	res, err := h.service.Today(c.UserContext(), id)
+	from, to := c.Query("from"), c.Query("to")
+	if from == "" && to == "" {
+		res, err := h.service.Today(c.UserContext(), id)
+		if err != nil {
+			return err
+		}
+		return c.JSON(res)
+	}
+	if from == "" {
+		from = to
+	}
+	if to == "" {
+		to = from
+	}
+	res, err := h.service.Range(c.UserContext(), id, from, to)
 	if err != nil {
 		return err
 	}

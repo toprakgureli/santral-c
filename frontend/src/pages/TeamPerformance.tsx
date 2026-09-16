@@ -9,10 +9,10 @@
 // to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
+import { ChevronDown, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
-import { Badge, Card, EmptyState, Select, Skeleton } from "../components/ui";
+import { Badge, Card, EmptyState, Input, Select, Skeleton } from "../components/ui";
 import { displayNumber } from "../softphone/dial";
 import { cn, initials } from "../lib/utils";
 import { formatClock } from "./callFormat";
@@ -39,6 +39,43 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "İsme göre" },
 ];
 
+// ymd formats a Date as a local YYYY-MM-DD.
+function ymd(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+type Preset = "today" | "yesterday" | "last7" | "last30" | "month" | "day" | "custom";
+
+const PRESETS: { key: Preset; label: string }[] = [
+  { key: "today", label: "Bugün" },
+  { key: "yesterday", label: "Dün" },
+  { key: "last7", label: "Son 7 gün" },
+  { key: "last30", label: "Son 30 gün" },
+  { key: "month", label: "Bu ay" },
+  { key: "day", label: "Belirli gün" },
+  { key: "custom", label: "Tarih aralığı" },
+];
+
+// presetRange resolves a preset to an inclusive local [from, to].
+function presetRange(key: Preset): { from: string; to: string } {
+  const now = new Date();
+  const today = ymd(now);
+  const shift = (days: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
+  switch (key) {
+    case "yesterday": return { from: shift(1), to: shift(1) };
+    case "last7": return { from: shift(6), to: today };
+    case "last30": return { from: shift(29), to: today };
+    case "month": return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
+    default: return { from: today, to: today };
+  }
+}
+
+function dmy(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 function hhmm(iso?: string) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
@@ -51,12 +88,28 @@ export function TeamPerformance() {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("long");
   const [now, setNow] = useState(() => Date.now());
+  const [preset, setPreset] = useState<Preset>("today");
+  const [from, setFrom] = useState(() => ymd(new Date()));
+  const [to, setTo] = useState(() => ymd(new Date()));
+  const isToday = from === ymd(new Date()) && to === from;
+
+  function choosePreset(key: Preset) {
+    setPreset(key);
+    if (key !== "day" && key !== "custom") {
+      const r = presetRange(key);
+      setFrom(r.from);
+      setTo(r.to);
+    } else if (key === "day") {
+      setTo(from);
+    }
+  }
 
   useEffect(() => {
+    if (!from || !to || to < from) return;
     let live = true;
     const load = () =>
       api
-        .performanceToday()
+        .performanceToday({ from, to })
         .then((r) => {
           if (!live) return;
           setRows(r.items);
@@ -65,13 +118,14 @@ export function TeamPerformance() {
         })
         .catch((e) => live && setError(e instanceof ApiError ? e.message : "Ekip verisi alınamadı."))
         .finally(() => live && setLoading(false));
+    setLoading(true);
     load();
     const timer = window.setInterval(load, REFRESH_MS);
     return () => {
       live = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [from, to]);
 
   // A one-second clock so the call timers move between refreshes.
   useEffect(() => {
@@ -119,10 +173,25 @@ export function TeamPerformance() {
             <Stat dot="bg-destructive" label="Cevapsız" value={totals.unanswered} hint="Hiç bağlanmayan çağrılar" />
             <Stat dot="bg-warning" label="Geçersiz" value={totals.short} hint="Bağlanıp 30 saniye dolmayanlar" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="hidden text-xs text-muted-foreground md:inline">
-              {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · bugün · 15 sn'de bir yenilenir
+              {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · {isToday ? "bugün" : from === to ? dmy(from) : `${dmy(from)} - ${dmy(to)}`}
             </span>
+            <Select value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className="h-9 w-36">
+              {PRESETS.map((p) => (
+                <option key={p.key} value={p.key}>{p.label}</option>
+              ))}
+            </Select>
+            {preset === "day" && (
+              <Input type="date" value={from} max={ymd(new Date())} onChange={(e) => { setFrom(e.target.value); setTo(e.target.value); }} className="h-9 w-40" title="Gün" />
+            )}
+            {preset === "custom" && (
+              <div className="flex items-center gap-1">
+                <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" title="Başlangıç" />
+                <span className="text-muted-foreground">-</span>
+                <Input type="date" value={to} min={from || undefined} max={ymd(new Date())} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" title="Bitiş" />
+              </div>
+            )}
             <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-9 w-52">
               {SORTS.map((s) => (
                 <option key={s.key} value={s.key}>{s.label}</option>
@@ -133,6 +202,9 @@ export function TeamPerformance() {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {!isToday && !loading && (
+        <p className="text-xs text-muted-foreground">Durumlar ve mesai başlangıcı anlık, çağrı rakamları seçilen tarihleri kapsıyor.</p>
+      )}
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -147,7 +219,7 @@ export function TeamPerformance() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((r) => (
-            <AgentCard key={r.userId} row={r} now={now} />
+            <AgentCard key={r.userId} row={r} now={now} live={isToday} />
           ))}
         </div>
       )}
@@ -155,9 +227,10 @@ export function TeamPerformance() {
   );
 }
 
-function AgentCard({ row: r, now }: { row: TeamRow; now: number }) {
+function AgentCard({ row: r, now, live }: { row: TeamRow; now: number; live: boolean }) {
   const s = STATUS[r.status] ?? STATUS.off;
   const off = r.status === "off";
+  const [showMissed, setShowMissed] = useState(false);
   const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
   const unreached = r.calls.unanswered + r.calls.short;
 
@@ -196,7 +269,7 @@ function AgentCard({ row: r, now }: { row: TeamRow; now: number }) {
           ) : (
             <span />
           )}
-          <span className="shrink-0 font-mono tabular-nums" title={r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı"}>
+          <span className="shrink-0 font-mono tabular-nums" title={live ? (r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı") : "Seçilen tarihlerdeki toplam mesai"}>
             Mesai {r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"}
           </span>
         </div>
@@ -213,15 +286,25 @@ function AgentCard({ row: r, now }: { row: TeamRow; now: number }) {
 
         {/* Unreached: never connected or too short */}
         <div className="rounded-xl border border-border/60 bg-muted/20 p-2">
-          <div className="mb-1.5 flex items-center justify-between px-1 text-[0.7rem] font-semibold text-muted-foreground">
-            <span>Ulaşılamayanlar · {unreached}</span>
-            <span className="font-normal">{r.calls.unanswered} cevapsız, {r.calls.short} geçersiz</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <Tile label="Cevapsız" sub="bağlanmadı" value={r.calls.unanswered} tone="slate" />
-            <Tile label="Gelen" sub="cevapsız" value={r.calls.inboundMissed} tone="slate" />
-            <Tile label="Giden" sub="cevapsız" value={r.calls.outboundMissed} tone="slate" />
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowMissed((v) => !v)}
+            className="flex w-full items-center justify-between px-1 text-[0.7rem] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <span>
+              Ulaşılamayanlar · {unreached}
+              <span className="ml-1 font-normal">({r.calls.unanswered} cevapsız, {r.calls.short} geçersiz)</span>
+            </span>
+            <ChevronDown className={cn("size-3.5 transition-transform", showMissed && "rotate-180")} />
+          </button>
+          {showMissed && (
+            <div className="mt-1.5 grid grid-cols-4 gap-2">
+              <Tile label="Cevapsız" sub="bağlanmadı" value={r.calls.unanswered} tone="slate" />
+              <Tile label="Gelen" sub="cevapsız" value={r.calls.inboundMissed} tone="slate" />
+              <Tile label="Giden" sub="cevapsız" value={r.calls.outboundMissed} tone="slate" />
+              <Tile label="Geçersiz" sub="30 sn altı" value={r.calls.short} tone="slate" />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">

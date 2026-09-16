@@ -209,7 +209,7 @@ export const api = {
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
   pbxStats: () => request<PBXStats>("/pbx/stats"),
   // Team performance (today's figures per agent, scoped by permission)
-  performanceToday: () => request<TeamPerformance>("/performance/today"),
+  performanceToday: (params: { from?: string; to?: string } = {}) => request<TeamPerformance>("/performance/today" + query(params)),
 
   // Shift (mesai): the dialer opens only while a shift is open
   shiftStatus: () => request<ShiftStatus>("/shift/"),

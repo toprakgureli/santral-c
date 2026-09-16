@@ -152,7 +152,8 @@ export interface TeamRow {
 
 export interface TeamPerformance {
   scope: "all" | "role";
-  day: string;
+  from: string;
+  to: string;
   items: TeamRow[];
 }
 

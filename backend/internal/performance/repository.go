@@ -54,8 +54,8 @@ type Counts struct {
 	TalkSeconds    int64 `json:"talkSeconds"`
 }
 
-// CallCounts aggregates the call log per user since `from`.
-func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong int) (map[uint]Counts, error) {
+// CallCounts aggregates the call log per user for [from, to).
+func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLong int) (map[uint]Counts, error) {
 	var rows []Counts
 	err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("user_id, "+
@@ -72,7 +72,7 @@ func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong i
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds",
 			shortLong, shortLong, shortLong, shortLong).
-		Where("user_id IS NOT NULL AND started_at >= ?", from).
+		Where("user_id IS NOT NULL AND started_at >= ? AND started_at < ?", from, to).
 		// A ring that a teammate answered is not this agent's call.
 		Where("NOT (" + calllog.NotMineSQL + ")").
 		Group("user_id").
@@ -120,18 +120,19 @@ func (r *Repository) Presence(ctx context.Context) (map[uint]models.AgentPresenc
 	return out, nil
 }
 
-// ShiftInfo is an agent's shift picture for today: when the open shift began
-// (nil when off shift) and the seconds worked since the day started.
+// ShiftInfo is an agent's shift picture: when the open shift began (nil when
+// off shift) and the seconds worked inside the requested window.
 type ShiftInfo struct {
 	StartedAt *time.Time `json:"startedAt,omitempty"`
 	Seconds   int64      `json:"seconds"`
 }
 
-// Shifts sums today's shift time per user and reports the open shift, if any.
-func (r *Repository) Shifts(ctx context.Context, dayStart time.Time) (map[uint]ShiftInfo, error) {
+// Shifts sums shift time per user inside [from, to) and reports the open
+// shift, if any.
+func (r *Repository) Shifts(ctx context.Context, from, to time.Time) (map[uint]ShiftInfo, error) {
 	var shifts []models.Shift
 	err := r.db.WithContext(ctx).
-		Where("ended_at IS NULL OR ended_at >= ?", dayStart).
+		Where("started_at < ? AND (ended_at IS NULL OR ended_at >= ?)", to, from).
 		Order("started_at").
 		Find(&shifts).Error
 	if err != nil {
@@ -143,8 +144,8 @@ func (r *Repository) Shifts(ctx context.Context, dayStart time.Time) (map[uint]S
 		s := shifts[i]
 		info := out[s.UserID]
 		start := s.StartedAt
-		if start.Before(dayStart) {
-			start = dayStart
+		if start.Before(from) {
+			start = from
 		}
 		end := now
 		if s.EndedAt != nil {
@@ -152,6 +153,9 @@ func (r *Repository) Shifts(ctx context.Context, dayStart time.Time) (map[uint]S
 		} else {
 			started := s.StartedAt
 			info.StartedAt = &started
+		}
+		if end.After(to) {
+			end = to
 		}
 		if end.After(start) {
 			info.Seconds += int64(end.Sub(start).Seconds())

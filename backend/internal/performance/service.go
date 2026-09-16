@@ -76,13 +76,36 @@ type Row struct {
 // Team is the page payload.
 type Team struct {
 	Scope string `json:"scope"` // "all" or "role"
-	Day   string `json:"day"`   // local YYYY-MM-DD the figures cover
+	From  string `json:"from"`  // local YYYY-MM-DD, inclusive
+	To    string `json:"to"`    // local YYYY-MM-DD, inclusive
 	Items []Row  `json:"items"`
 }
 
 // Today returns the agents the actor may see with their live status and
 // today's figures. Figures reset at 00:00 Istanbul.
 func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
+	day := todayLocal()
+	return s.Range(ctx, actorID, day, day)
+}
+
+// Range is Today over an inclusive local day range (YYYY-MM-DD). Live status
+// is always current; the figures cover the requested days.
+func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string) (*Team, error) {
+	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	if err != nil {
+		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
+	}
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	if err != nil {
+		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
+	}
+	if toStart.Before(from) {
+		return nil, errs.Invalid("Bitiş tarihi başlangıçtan önce olamaz.", nil)
+	}
+	if toStart.Sub(from) > 366*24*time.Hour {
+		return nil, errs.Invalid("Aralık en fazla bir yıl olabilir.", nil)
+	}
+	to := toStart.AddDate(0, 0, 1)
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, err
@@ -98,7 +121,7 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 			roleIDs = append(roleIDs, r.ID)
 		}
 		if len(roleIDs) == 0 {
-			return &Team{Scope: scope, Day: todayLocal(), Items: []Row{}}, nil
+			return &Team{Scope: scope, From: fromDay, To: toDay, Items: []Row{}}, nil
 		}
 	default:
 		return nil, errs.Forbidden("Ekip performansını görme yetkiniz yok.")
@@ -108,8 +131,7 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	from := todayStart()
-	counts, err := s.repo.CallCounts(ctx, from, shortLongSeconds)
+	counts, err := s.repo.CallCounts(ctx, from, to, shortLongSeconds)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -121,7 +143,7 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	shifts, err := s.repo.Shifts(ctx, from)
+	shifts, err := s.repo.Shifts(ctx, from, to)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -161,7 +183,7 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 		}
 		return rows[i].Name < rows[j].Name
 	})
-	return &Team{Scope: scope, Day: todayLocal(), Items: rows}, nil
+	return &Team{Scope: scope, From: fromDay, To: toDay, Items: rows}, nil
 }
 
 // status combines the stored presence, the shift, the panel's own call log and
@@ -201,12 +223,6 @@ func roleNames(u models.User) []string {
 		out = append(out, r.DisplayName)
 	}
 	return out
-}
-
-// todayStart is local (Istanbul) midnight today.
-func todayStart() time.Time {
-	now := time.Now().In(istanbul)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istanbul)
 }
 
 func todayLocal() string {
