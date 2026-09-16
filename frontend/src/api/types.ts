@@ -217,6 +217,8 @@ export interface PBXExtension {
   extension: string;
   status: string;
   names?: string[];
+  peer?: string;
+  peerName?: string;
 }
 
 export interface PBXQueue {

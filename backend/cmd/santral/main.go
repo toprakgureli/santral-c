@@ -171,6 +171,7 @@ func run() error {
 		// drives the agent's presence and do-not-disturb.
 		verimorSvc.SetShifts(shiftSvc)
 		verimorSvc.SetBreakLimit(settingSvc)
+		verimorSvc.SetContacts(contactRepo)
 		shiftSvc.SetPresence(verimorSvc)
 		perfSvc.SetLive(verimorSvc)
 		verimorSvc.Start(ctx)

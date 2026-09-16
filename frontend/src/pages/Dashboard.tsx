@@ -397,6 +397,16 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
     if (n) phone.call(n).catch(() => undefined);
   }
 
+  // Clicking the number on the call face copies it bare (5304230113).
+  const [peerCopied, setPeerCopied] = useState(false);
+  function copyPeer() {
+    const val = displayNumber(phone.peer || "");
+    if (!val) return;
+    navigator.clipboard?.writeText(val).catch(() => undefined);
+    setPeerCopied(true);
+    window.setTimeout(() => setPeerCopied(false), 1200);
+  }
+
   return (
     <Card title="Softphone">
       {!hasExtension ? (
@@ -483,7 +493,15 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
           {!idle && (
             <div className="flex flex-col items-center gap-5 py-2">
               <div className="text-center">
-                <div className="text-2xl font-semibold tracking-wide">{displayNumber(phone.peer || "") || phone.peer || "—"}</div>
+                <button
+                  type="button"
+                  onClick={copyPeer}
+                  title="Numarayı kopyala"
+                  className="inline-flex items-center gap-2 rounded-lg px-2 py-0.5 text-2xl font-semibold tracking-wide transition-colors hover:bg-accent"
+                >
+                  {displayNumber(phone.peer || "") || phone.peer || "—"}
+                  {peerCopied ? <span className="text-xs font-medium text-success">Kopyalandı</span> : <Copy className="size-4 text-muted-foreground" />}
+                </button>
                 <div className="mt-1 text-sm text-muted-foreground">
                   {phone.status === "incoming" ? "Gelen çağrı" : outgoing ? "Aranıyor..." : phone.held ? "Beklemede" : "Görüşme"}
                 </div>
@@ -778,10 +796,21 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
               >
                 <span className="flex min-w-0 items-center gap-2 text-sm">
                   <span className={cn("size-2 shrink-0 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
-                  <span className="font-medium">{e.extension}</span>
-                  {e.names && e.names.length > 0 && (
-                    <span className="truncate text-muted-foreground" title={joinNames(e.names)}>{joinNames(e.names)}</span>
-                  )}
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">{e.extension}</span>
+                      {e.names && e.names.length > 0 && (
+                        <span className="truncate text-muted-foreground" title={joinNames(e.names)}>{joinNames(e.names)}</span>
+                      )}
+                    </span>
+                    {e.status === "TALKING" && e.peer && (
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Görüştüğü numara">
+                        <PhoneOutgoing className="size-3 shrink-0 text-primary" />
+                        <span className="font-mono tabular-nums">{displayNumber(e.peer) || e.peer}</span>
+                        {e.peerName && <span className="truncate">{e.peerName}</span>}
+                      </span>
+                    )}
+                  </span>
                 </span>
                 <Badge tone={s.tone}>{s.label}</Badge>
               </li>

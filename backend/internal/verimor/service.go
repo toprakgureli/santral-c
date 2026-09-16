@@ -19,6 +19,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 )
 
 // IActorResolver loads the acting user for authorization.
@@ -43,6 +44,7 @@ type Service struct {
 	shifts IShiftReader
 
 	breakLimit IBreakLimit
+	contacts   IContactNames
 
 	// snap holds the last good snapshot the background poller maintains, so the
 	// panel's hot paths never touch the rate-limited API directly.
@@ -79,6 +81,14 @@ type IBreakLimit interface {
 
 // SetBreakLimit wires the settings reader for the daily break allowance.
 func (s *Service) SetBreakLimit(r IBreakLimit) { s.breakLimit = r }
+
+// IContactNames resolves a phone number to a contact name, or "".
+type IContactNames interface {
+	NameByNumber(ctx context.Context, e164 string) string
+}
+
+// SetContacts wires the contact lookup used to name a talking agent's peer.
+func (s *Service) SetContacts(r IContactNames) { s.contacts = r }
 
 // onShift reports whether the user may place calls and change presence. With
 // no shift reader wired, everything is allowed.
@@ -635,7 +645,9 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 type PBXExtension struct {
 	Extension string   `json:"extension"`
 	Status    string   `json:"status"`
-	Names     []string `json:"names,omitempty"` // active panel users on this extension
+	Names     []string `json:"names,omitempty"`    // active panel users on this extension
+	Peer      string   `json:"peer,omitempty"`     // other party while TALKING (from the panel's own call log)
+	PeerName  string   `json:"peerName,omitempty"` // contact name for Peer, when known
 }
 
 // PBXQueue is a call queue.
@@ -671,12 +683,26 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 	if err != nil {
 		names = nil
 	}
+	peers, err := s.repo.OpenPeersByExtension(ctx)
+	if err != nil {
+		peers = nil
+	}
 	// Copy so the shared snapshot is never mutated; overlay presence only over
 	// an idle (AVAILABLE) extension, so a live call (TALKING) still wins.
 	out := make([]PBXExtension, len(snap))
 	copy(out, snap)
 	for i := range out {
 		out[i].Names = names[out[i].Extension]
+		if out[i].Status == "TALKING" {
+			if peer := peers[out[i].Extension]; peer != "" {
+				out[i].Peer = peer
+				if s.contacts != nil {
+					if e164, err := phone.Normalize(peer); err == nil {
+						out[i].PeerName = s.contacts.NameByNumber(ctx, e164)
+					}
+				}
+			}
+		}
 		if out[i].Status != "AVAILABLE" {
 			continue
 		}

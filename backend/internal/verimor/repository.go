@@ -234,6 +234,35 @@ func (r *Repository) LastCallEndedAt(ctx context.Context, userID uint, from time
 	return last.Time, true, nil
 }
 
+// OpenPeersByExtension maps each extension to the other party of its open
+// panel call (the newest in-progress call log of a user on that extension),
+// so the agent list can say who a talking agent is talking to. Only calls
+// started within openCallCap count, so a lost hangup cannot pin a stale peer.
+func (r *Repository) OpenPeersByExtension(ctx context.Context) (map[string]string, error) {
+	type row struct {
+		Extension string
+		Peer      string
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Table("call_logs AS c").
+		Select("u.sip_extension AS extension, c.peer_number AS peer").
+		Joins("JOIN users u ON u.id = c.user_id").
+		Where("c.disposition = 'in_progress' AND c.started_at >= ? AND u.sip_extension IS NOT NULL AND u.sip_extension <> ''", time.Now().Add(-openCallCap)).
+		Order("c.started_at DESC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("open peers could not be listed: %w", err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		if _, seen := out[r.Extension]; !seen {
+			out[r.Extension] = r.Peer
+		}
+	}
+	return out, nil
+}
+
 // NamesByExtension maps each extension to the active users registered on it,
 // ordered by name, so the agent list can show who sits behind a number.
 func (r *Repository) NamesByExtension(ctx context.Context) (map[string][]string, error) {

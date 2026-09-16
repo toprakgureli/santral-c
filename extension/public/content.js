@@ -42,7 +42,10 @@
     .title{font-size:12.5px;font-weight:700;letter-spacing:.2px}
     .st{margin-left:auto;font-size:11px;color:var(--muted)}
     .body{padding:6px 14px 14px}
-    .peer{font-size:16px;font-weight:700;line-height:1.2;word-break:break-all}
+    .peer{font-size:16px;font-weight:700;line-height:1.2;word-break:break-all;cursor:pointer;border-radius:8px;padding:2px 6px;margin:0 -6px;display:inline-flex;align-items:center;gap:6px}
+    .peer:hover{background:var(--input)}
+    .peer .ok{font-size:11px;font-weight:600;color:var(--success)}
+    .dur{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;margin-top:6px;letter-spacing:.3px}
     .sub{font-size:12px;color:var(--muted);margin-top:2px}
     button{border:0;cursor:pointer;font-family:inherit;color:inherit}
     .pill{display:flex;align-items:center;gap:8px;background:var(--input);border-radius:22px;height:44px;padding:0 6px 0 12px}
@@ -89,6 +92,44 @@
   }, 3000);
 
   function send(cmd, arg) { chrome.runtime.sendMessage({ to: "sw", type: "cmd", cmd, arg }).catch(() => {}); }
+
+  // normalizeDial mirrors the panel's dialer: extensions and *codes pass
+  // through, Turkish numbers become 0XXXXXXXXXX whatever prefix was typed.
+  function normalizeDial(raw) {
+    const t = String(raw ?? "").trim();
+    if (/[*#]/.test(t)) return t.replace(/[^\d*#]/g, "");
+    const plus = t.startsWith("+");
+    let d = t.replace(/[^\d]/g, "");
+    if (!d) return "";
+    if (d.length <= 5) return d;
+    if (plus && d.startsWith("90")) d = "0" + d.slice(2);
+    else if (d.startsWith("0090")) d = "0" + d.slice(4);
+    else if (d.startsWith("90") && d.length === 12) d = "0" + d.slice(2);
+    else if (d.length === 10) d = "0" + d;
+    return d;
+  }
+  // displayNumber strips a number to its bare 10 digits (5304230113).
+  function displayNumber(raw) {
+    const d = String(raw ?? "").replace(/[^\d]/g, "");
+    if (!d) return String(raw ?? "");
+    return d.length >= 10 ? d.slice(-10) : d;
+  }
+  function clock(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const m = Math.floor(s / 60), sec = s % 60, h = Math.floor(m / 60);
+    const mm = String(m % 60).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+  let copiedUntil = 0;
+  let tick = null;
+  function copyPeer() {
+    const val = displayNumber(state.peer);
+    if (!val) return;
+    try { navigator.clipboard?.writeText(val).catch(() => {}); } catch { /* ignore */ }
+    copiedUntil = Date.now() + 1200;
+    render();
+    setTimeout(() => { if (Date.now() >= copiedUntil) render(); }, 1300);
+  }
   function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
 
   function render() {
@@ -105,11 +146,14 @@
     let body;
 
     if (st === "incoming") {
-      body = `<div class="peer">${esc(state.peer) || "Bilinmeyen"}</div><div class="sub">Gelen çağrı</div>
+      body = `<div class="peer" id="peer" title="Numarayı kopyala">${esc(displayNumber(state.peer) || state.peer) || "Bilinmeyen"}${Date.now() < copiedUntil ? '<span class="ok">Kopyalandı</span>' : ""}</div><div class="sub">Gelen çağrı</div>
         <div class="ctrls"><button class="btn call" id="answer" title="Cevapla">${svg(I.call)}</button>
         <button class="btn hang" id="hangup" title="Reddet">${svg(I.hang)}</button></div>`;
     } else if (outgoing || active) {
-      body = `<div class="peer">${esc(state.peer)}</div><div class="sub">${outgoing ? "Aranıyor..." : state.held ? "Beklemede" : "Görüşme"}</div>
+      const dur = active && state.answeredAt ? clock((Date.now() - state.answeredAt) / 1000) : "";
+      body = `<div class="peer" id="peer" title="Numarayı kopyala">${esc(displayNumber(state.peer) || state.peer)}${Date.now() < copiedUntil ? '<span class="ok">Kopyalandı</span>' : ""}</div>
+        <div class="sub">${outgoing ? "Aranıyor..." : state.held ? "Beklemede" : "Görüşme"}</div>
+        ${dur ? `<div class="dur" id="dur">${dur}</div>` : ""}
         <div class="ctrls">
           ${active ? `<button class="btn ${state.muted ? "on" : ""}" id="mute" title="Sustur">${svg(state.muted ? I.micoff : I.mic)}</button>
           <button class="btn ${state.held ? "on" : ""}" id="hold" title="Beklet">${svg(state.held ? I.play : I.pause)}</button>
@@ -132,7 +176,24 @@
 
   function bind() {
     const q = (id) => root.getElementById(id);
-    q("dialbtn")?.addEventListener("click", () => { const n = q("dial").value.trim(); if (n) send("call", q("prefix").value + n); });
+    q("dialbtn")?.addEventListener("click", () => {
+      const typed = q("dial").value.trim();
+      if (!typed) return;
+      // "Dahili" sends the digits as typed; "+90" normalises whatever was
+      // typed (0530..., 90530..., +90 530...) to the 0XXXXXXXXXX the PBX dials.
+      const n = q("prefix").value === "" ? normalizeDial(typed) : normalizeDial(typed.length <= 5 ? typed : typed.replace(/^\+?90/, "").replace(/^0/, ""));
+      if (n) send("call", n);
+    });
+    q("peer")?.addEventListener("click", copyPeer);
+    const durEl = q("dur");
+    if (tick) { clearInterval(tick); tick = null; }
+    if (durEl && state.answeredAt) {
+      tick = setInterval(() => {
+        const el = root.getElementById("dur");
+        if (!el) { clearInterval(tick); tick = null; return; }
+        el.textContent = clock((Date.now() - state.answeredAt) / 1000);
+      }, 1000);
+    }
     q("dial")?.addEventListener("keydown", (e) => { if (e.key === "Enter") q("dialbtn").click(); });
     q("answer")?.addEventListener("click", () => send("answer"));
     q("hangup")?.addEventListener("click", () => send("hangup"));
@@ -140,7 +201,7 @@
     q("hold")?.addEventListener("click", () => send("hold"));
     q("keys")?.addEventListener("click", () => { showKeys = !showKeys; if (showKeys) showXfer = false; render(); });
     q("xfer")?.addEventListener("click", () => { showXfer = !showXfer; if (showXfer) showKeys = false; render(); });
-    q("xdo")?.addEventListener("click", () => { const v = q("xnum").value.trim(); if (v) send("transfer", v); });
+    q("xdo")?.addEventListener("click", () => { const v = normalizeDial(q("xnum").value); if (v) send("transfer", v); });
     root.querySelectorAll(".key").forEach((b) => b.addEventListener("click", () => send("dtmf", b.getAttribute("data-k"))));
 
     const drag = q("drag");

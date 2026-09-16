@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Phone } from "./useSoftphone";
+import { normalizeDial } from "./dial";
 
 function postPanel(type: string, extra?: Record<string, unknown>) {
   window.postMessage({ santralc: "panel", type, ...(extra ?? {}) }, "*");
@@ -35,9 +36,11 @@ export function usePanelBridge(phone: Phone, active: boolean) {
         held: phone.held,
         extension: phone.extension,
         endReason: phone.endReason,
+        callStartedAt: phone.callStartedAt,
+        answeredAt: phone.answeredAt,
       },
     });
-  }, [active, phone.status, phone.peer, phone.muted, phone.held, phone.extension, phone.endReason]);
+  }, [active, phone.status, phone.peer, phone.muted, phone.held, phone.extension, phone.endReason, phone.callStartedAt, phone.answeredAt]);
 
   // Run commands coming from the widgets on the live session.
   useEffect(() => {
@@ -48,9 +51,13 @@ export function usePanelBridge(phone: Phone, active: boolean) {
       const p = phoneRef.current;
       const arg = String(d.arg ?? "");
       switch (d.cmd) {
-        case "call":
-          void p.call(arg).catch(() => undefined);
+        case "call": {
+          // Widgets send whatever was typed ("+90 0530...", "90530...");
+          // coerce it to the form the PBX dials, like the panel's own dialer.
+          const n = normalizeDial(arg);
+          if (n) void p.call(n).catch(() => undefined);
           break;
+        }
         case "answer":
           void p.answer().catch(() => undefined);
           break;
@@ -63,9 +70,11 @@ export function usePanelBridge(phone: Phone, active: boolean) {
         case "hold":
           void p.toggleHold().catch(() => undefined);
           break;
-        case "transfer":
-          void p.transfer(arg).catch(() => undefined);
+        case "transfer": {
+          const n = normalizeDial(arg);
+          if (n) void p.transfer(n).catch(() => undefined);
           break;
+        }
         case "dtmf":
           p.sendDtmf(arg);
           break;
