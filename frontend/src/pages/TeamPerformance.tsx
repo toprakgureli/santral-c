@@ -9,7 +9,7 @@
 // to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, CalendarRange, ChevronDown, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
+import { ArrowUpDown, CalendarRange, ChevronDown, Clock, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
 import { Badge, Card, DateField, EmptyState, Select, Skeleton } from "../components/ui";
@@ -268,35 +268,37 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
       </header>
 
       <div className="space-y-3 px-5 py-4">
-        {/* Live line: current call or how long in the current state, plus shift time */}
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-          {r.call ? (
-            <span className="flex min-w-0 items-center gap-1.5 text-foreground">
-              {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
-              <span className="truncate font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
-              {r.call.peerName && <span className="truncate text-muted-foreground">{r.call.peerName}</span>}
-              <span className="font-mono tabular-nums text-muted-foreground">{formatClock(callFor)}</span>
-            </span>
-          ) : r.since && !off && r.status !== "available" ? (
-            <span>{hhmm(r.since)}&apos;den beri</span>
-          ) : (
-            <span />
-          )}
-          <span className="shrink-0 font-mono tabular-nums" title={live ? "Bugünkü toplam mesai" : "Seçilen tarihlerdeki toplam mesai"}>
-            Mesai {r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"}
-          </span>
-        </div>
+        {/* Live line: current call or how long in the current state */}
+        {(r.call || (r.since && !off && r.status !== "available")) && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {r.call ? (
+              <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+                {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
+                <span className="truncate font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
+                {r.call.peerName && <span className="truncate text-muted-foreground">{r.call.peerName}</span>}
+                <span className="font-mono tabular-nums text-muted-foreground">{formatClock(callFor)}</span>
+              </span>
+            ) : (
+              <span>{hhmm(r.since)}&apos;den beri</span>
+            )}
+          </div>
+        )}
 
-        {/* Shift start and end: first start and last end inside the range */}
-        <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        {/* Shift strip: start, end and total inside the range */}
+        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+          <Clock className="size-3.5 shrink-0 text-muted-foreground" />
           {r.shift.firstStart ? (
-            <span className="font-mono tabular-nums" title={multiDay ? "İlk mesai başlangıcı ve son mesai bitişi" : "Mesai başlangıcı ve bitişi"}>
-              {stamp(r.shift.firstStart, multiDay)}
-              <span className="mx-1 font-sans">-</span>
-              {r.shift.open ? <span className="font-sans text-success">devam ediyor</span> : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}
-            </span>
+            <div className="grid flex-1 grid-cols-3 gap-2">
+              <ShiftCell label={multiDay ? "İlk başlangıç" : "Başlangıç"} value={stamp(r.shift.firstStart, multiDay)} />
+              <ShiftCell
+                label={multiDay ? "Son bitiş" : "Bitiş"}
+                value={r.shift.open ? "devam ediyor" : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}
+                tone={r.shift.open ? "live" : undefined}
+              />
+              <ShiftCell label={multiDay ? "Toplam mesai" : "Mesai süresi"} value={r.shift.seconds > 0 ? formatClock(r.shift.seconds) : "—"} strong />
+            </div>
           ) : (
-            <span>{live ? "Mesai başlatılmadı" : "Mesai kaydı yok"}</span>
+            <span className="text-xs text-muted-foreground">{live ? "Mesai başlatılmadı" : "Seçilen tarihlerde mesai kaydı yok"}</span>
           )}
         </div>
 
@@ -339,6 +341,16 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
         </div>
       </div>
     </section>
+  );
+}
+
+// ShiftCell is one labelled value in the card's shift strip.
+function ShiftCell({ label, value, tone, strong }: { label: string; value: string; tone?: "live"; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("truncate text-xs tabular-nums", tone === "live" ? "font-medium text-success" : "font-mono", strong && "font-semibold text-foreground")}>{value}</div>
+    </div>
   );
 }
 
