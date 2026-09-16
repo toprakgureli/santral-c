@@ -22,6 +22,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Get("/categories", r.handler.Categories)
 	group.Post("/categories", r.handler.CreateCategory)
 	group.Post("/categories/import", r.handler.Import)
+	group.Put("/categories/order", r.handler.ReorderCategories)
+	group.Put("/categories/:id/reasons/order", r.handler.ReorderReasons)
 	group.Delete("/categories/:id", r.handler.DeleteCategory)
 	group.Post("/categories/:id/reasons", r.handler.CreateReason)
 	group.Delete("/reasons/:id", r.handler.DeleteReason)

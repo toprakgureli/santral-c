@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
+import { cn } from "../lib/utils";
 import { api, ApiError } from "../api/client";
 import type { EscalationCategory } from "../api/types";
 import { Button, Card, ErrorText, Input } from "../components/ui";
@@ -15,6 +16,22 @@ export function Escalations() {
     api.escalationCategories().then(setCategories).catch(() => setCategories([]));
   }
   useEffect(load, []);
+
+  // Moving a category one step changes the order the agents see everywhere
+  // (dashboard, wrap-up card). Optimistic; the server order is re-read after.
+  async function moveCategory(index: number, dir: -1 | 1) {
+    const to = index + dir;
+    if (to < 0 || to >= categories.length) return;
+    const next = [...categories];
+    [next[index], next[to]] = [next[to], next[index]];
+    setCategories(next);
+    try {
+      await api.reorderEscalationCategories(next.map((c) => c.id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Sıralama kaydedilemedi.");
+    }
+    load();
+  }
 
   async function addCategory(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +77,7 @@ export function Escalations() {
         }
       >
         <p className="mb-4 text-sm text-muted-foreground">
-          Kategori bazlı durumları burada tanımlarsınız; temsilciler çağrı sırasında bunları seçer. Excel/CSV dosyasında ilk sütun kategori, ikinci sütun durum olmalıdır.
+          Kategori bazlı durumları burada tanımlarsınız, temsilciler çağrı sırasında bunları seçer. Oklarla verdiğiniz sıra temsilcilerin listesine aynen yansır. Excel/CSV dosyasında ilk sütun kategori, ikinci sütun durum olmalıdır.
         </p>
         {importInfo && <p className="mb-3 text-sm text-success">{importInfo}</p>}
         <ErrorText>{error}</ErrorText>
@@ -74,8 +91,16 @@ export function Escalations() {
           <p className="text-sm text-muted-foreground">Henüz kategori yok.</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {categories.map((c) => (
-              <CategoryCard key={c.id} category={c} onChange={load} />
+            {categories.map((c, i) => (
+              <CategoryCard
+                key={c.id}
+                category={c}
+                index={i}
+                count={categories.length}
+                onMove={(dir) => moveCategory(i, dir)}
+                onChange={load}
+                onError={setError}
+              />
             ))}
           </div>
         )}
@@ -84,8 +109,38 @@ export function Escalations() {
   );
 }
 
-function CategoryCard({ category, onChange }: { category: EscalationCategory; onChange: () => void }) {
+function CategoryCard({
+  category,
+  index,
+  count,
+  onMove,
+  onChange,
+  onError,
+}: {
+  category: EscalationCategory;
+  index: number;
+  count: number;
+  onMove: (dir: -1 | 1) => void;
+  onChange: () => void;
+  onError: (msg: string | null) => void;
+}) {
   const [newReason, setNewReason] = useState("");
+  const [reasons, setReasons] = useState(category.reasons);
+  useEffect(() => setReasons(category.reasons), [category.reasons]);
+
+  async function moveReason(i: number, dir: -1 | 1) {
+    const to = i + dir;
+    if (to < 0 || to >= reasons.length) return;
+    const next = [...reasons];
+    [next[i], next[to]] = [next[to], next[i]];
+    setReasons(next);
+    try {
+      await api.reorderEscalationReasons(category.id, next.map((r) => r.id));
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Sıralama kaydedilemedi.");
+    }
+    onChange();
+  }
 
   async function addReason(e: React.FormEvent) {
     e.preventDefault();
@@ -99,34 +154,64 @@ function CategoryCard({ category, onChange }: { category: EscalationCategory; on
   return (
     <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="font-semibold">{category.name}</h3>
-        <button
-          onClick={async () => { await api.deleteEscalationCategory(category.id).catch(() => undefined); onChange(); }}
-          title="Kategoriyi sil"
-          className="text-muted-foreground transition hover:text-destructive"
-        >
-          <Trash2 className="size-4" />
-        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
+          <h3 className="truncate font-semibold">{category.name}</h3>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <OrderButton dir={-1} disabled={index === 0} onClick={() => onMove(-1)} title="Bir üste taşı" />
+          <OrderButton dir={1} disabled={index === count - 1} onClick={() => onMove(1)} title="Bir alta taşı" />
+          <button
+            onClick={async () => { await api.deleteEscalationCategory(category.id).catch(() => undefined); onChange(); }}
+            title="Kategoriyi sil"
+            className="ml-1 text-muted-foreground transition hover:text-destructive"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
       </div>
       <ul className="mb-3 space-y-1">
-        {category.reasons.map((r) => (
+        {reasons.map((r, i) => (
           <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg bg-card px-3 py-1.5 text-sm">
-            <span>{r.name}</span>
-            <button
-              onClick={async () => { await api.deleteEscalationReason(r.id).catch(() => undefined); onChange(); }}
-              title="Durumu sil"
-              className="text-muted-foreground transition hover:text-destructive"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
+              <span className="truncate">{r.name}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-0.5">
+              <OrderButton dir={-1} small disabled={i === 0} onClick={() => moveReason(i, -1)} title="Bir üste taşı" />
+              <OrderButton dir={1} small disabled={i === reasons.length - 1} onClick={() => moveReason(i, 1)} title="Bir alta taşı" />
+              <button
+                onClick={async () => { await api.deleteEscalationReason(r.id).catch(() => undefined); onChange(); }}
+                title="Durumu sil"
+                className="ml-1 text-muted-foreground transition hover:text-destructive"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </span>
           </li>
         ))}
-        {category.reasons.length === 0 && <li className="px-1 text-xs text-muted-foreground">Durum yok.</li>}
+        {reasons.length === 0 && <li className="px-1 text-xs text-muted-foreground">Durum yok.</li>}
       </ul>
       <form className="flex gap-2" onSubmit={addReason}>
         <Input value={newReason} onChange={(e) => setNewReason(e.target.value)} placeholder="Yeni durum" className="h-9" />
         <Button type="submit" variant="secondary" className="h-9 shrink-0 px-3"><Plus className="size-4" /></Button>
       </form>
     </div>
+  );
+}
+
+// OrderButton is one of the up/down arrows that move a row a step.
+function OrderButton({ dir, small, disabled, onClick, title }: { dir: -1 | 1; small?: boolean; disabled: boolean; onClick: () => void; title: string }) {
+  const Icon = dir === -1 ? ChevronUp : ChevronDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={cn("rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-25 disabled:hover:bg-transparent", small ? "p-0.5" : "p-1")}
+    >
+      <Icon className={small ? "size-3.5" : "size-4"} />
+    </button>
   );
 }

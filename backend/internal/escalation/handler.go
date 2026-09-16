@@ -58,6 +58,47 @@ func (h *Handler) CreateCategory(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
 
+// orderBody is the id list a reorder request carries, first to last.
+type orderBody struct {
+	IDs []uint `json:"ids"`
+}
+
+// ReorderCategories saves the category order.
+func (h *Handler) ReorderCategories(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req orderBody
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.ReorderCategories(c.UserContext(), id, req.IDs); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ReorderReasons saves the reason order inside a category.
+func (h *Handler) ReorderReasons(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	catID, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req orderBody
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.ReorderReasons(c.UserContext(), id, catID, req.IDs); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // DeleteCategory removes a category.
 func (h *Handler) DeleteCategory(c *fiber.Ctx) error {
 	id, err := actor(c)

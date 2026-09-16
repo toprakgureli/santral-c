@@ -23,14 +23,43 @@ func NewRepository(db *gorm.DB) *Repository {
 // Categories lists every category with its reasons, ordered by name.
 func (r *Repository) Categories(ctx context.Context) ([]models.EscalationCategory, error) {
 	var cats []models.EscalationCategory
+	// Hand-ordered rows first (sort_order > 0), the rest alphabetically after
+	// them, so an imported or freshly created row lands at the end.
 	err := r.db.WithContext(ctx).
-		Preload("Reasons", func(db *gorm.DB) *gorm.DB { return db.Order("name ASC") }).
-		Order("name ASC").
+		Preload("Reasons", func(db *gorm.DB) *gorm.DB { return db.Order(catalogOrder) }).
+		Order(catalogOrder).
 		Find(&cats).Error
 	if err != nil {
 		return nil, fmt.Errorf("categories could not be listed: %w", err)
 	}
 	return cats, nil
+}
+
+// catalogOrder places manually ordered rows first, then the unordered ones by name.
+const catalogOrder = "CASE WHEN sort_order > 0 THEN 0 ELSE 1 END ASC, sort_order ASC, lower(name) ASC"
+
+// ReorderCategories stores the given category order (ids first to last).
+func (r *Repository) ReorderCategories(ctx context.Context, ids []uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, id := range ids {
+			if err := tx.Model(&models.EscalationCategory{}).Where("id = ?", id).Update("sort_order", i+1).Error; err != nil {
+				return fmt.Errorf("category order could not be saved: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// ReorderReasons stores the given reason order inside one category.
+func (r *Repository) ReorderReasons(ctx context.Context, categoryID uint, ids []uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, id := range ids {
+			if err := tx.Model(&models.EscalationReason{}).Where("id = ? AND category_id = ?", id, categoryID).Update("sort_order", i+1).Error; err != nil {
+				return fmt.Errorf("reason order could not be saved: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // CreateCategory inserts a category.

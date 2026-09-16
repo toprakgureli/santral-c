@@ -78,6 +78,34 @@ func (s *Service) CreateCategory(ctx context.Context, actorID uint, req requests
 	return &res, nil
 }
 
+// ReorderCategories saves the manager's category order.
+func (s *Service) ReorderCategories(ctx context.Context, actorID uint, ids []uint) error {
+	if _, err := s.authorize(ctx, actorID, enums.EscalationManage); err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return errs.Invalid("Sıralanacak kategori yok.", nil)
+	}
+	if err := s.repo.ReorderCategories(ctx, ids); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// ReorderReasons saves the manager's reason order inside a category.
+func (s *Service) ReorderReasons(ctx context.Context, actorID, categoryID uint, ids []uint) error {
+	if _, err := s.authorize(ctx, actorID, enums.EscalationManage); err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return errs.Invalid("Sıralanacak durum yok.", nil)
+	}
+	if err := s.repo.ReorderReasons(ctx, categoryID, ids); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
 // DeleteCategory removes a category and its reasons (admin).
 func (s *Service) DeleteCategory(ctx context.Context, actorID, id uint) error {
 	if _, err := s.authorize(ctx, actorID, enums.EscalationManage); err != nil {

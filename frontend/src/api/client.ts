@@ -226,6 +226,10 @@ export const api = {
   createEscalationCategory: (name: string) =>
     request<EscalationCategory>("/escalations/categories", { method: "POST", body: JSON.stringify({ name }) }),
   deleteEscalationCategory: (id: number) => request<void>(`/escalations/categories/${id}`, { method: "DELETE" }),
+  reorderEscalationCategories: (ids: number[]) =>
+    request<void>("/escalations/categories/order", { method: "PUT", body: JSON.stringify({ ids }) }),
+  reorderEscalationReasons: (categoryId: number, ids: number[]) =>
+    request<void>(`/escalations/categories/${categoryId}/reasons/order`, { method: "PUT", body: JSON.stringify({ ids }) }),
   createEscalationReason: (categoryId: number, name: string) =>
     request<EscalationReason>(`/escalations/categories/${categoryId}/reasons`, { method: "POST", body: JSON.stringify({ name }) }),
   deleteEscalationReason: (id: number) => request<void>(`/escalations/reasons/${id}`, { method: "DELETE" }),
