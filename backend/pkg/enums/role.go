@@ -66,6 +66,7 @@ func managerPermissions() []Permission {
 		UserView, UserCreate, UserUpdate, UserDeactivate,
 		RoleView, RoleManage, RoleAssign,
 		SystemLogs, SystemAuditView,
+		PerformanceViewRole,
 	}
 }
 
@@ -74,6 +75,7 @@ func technicalTeamPermissions() []Permission {
 		CallViewOwn, CallViewAll, CallTransfer, CallHangup,
 		CDRViewOwn, CDRViewAll, QualityView,
 		ContactView, EscalationView, EscalationSearch, AgentView, AgentPresenceViewAll, SystemLogs,
+		PerformanceViewRole,
 	}
 }
 
@@ -81,5 +83,6 @@ func salesTeamPermissions() []Permission {
 	return []Permission{
 		CallViewOwn, CallOriginate, CallTransfer, CallHangup,
 		CDRViewOwn, ContactView, ContactManage, EscalationView, AgentView,
+		PerformanceViewRole,
 	}
 }

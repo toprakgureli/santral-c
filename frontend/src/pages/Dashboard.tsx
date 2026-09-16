@@ -681,15 +681,22 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 
   const sorted = [...exts].sort((a, b) => (a.status === "UNREGISTERED" ? 1 : 0) - (b.status === "UNREGISTERED" ? 1 : 0));
 
-  function agentMenu(e: React.MouseEvent, ext: string) {
+  function agentMenu(e: React.MouseEvent, ext: string, status: string) {
     e.preventDefault();
+    // Listening dials the PBX spy code (*5 + extension), so it needs the target
+    // to be on a call and our own line to be free.
+    const talking = status === "TALKING";
     setMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
         { label: `${ext} dahilisini ara`, onClick: () => phone.call(ext).catch(() => undefined), disabled: !canDial || inCall },
         { label: `Çağrıyı ${ext} dahilisine aktar`, onClick: () => phone.transfer(ext).catch(() => undefined), disabled: !inCall },
-        { label: "Çağrıyı dinle (yakında)", onClick: () => undefined, disabled: true },
+        {
+          label: talking ? `${ext} dahilisinin çağrısını dinle` : `Çağrıyı dinle (${ext} görüşmede değil)`,
+          onClick: () => phone.call(`*5${ext}`).catch(() => undefined),
+          disabled: !talking || !canDial || inCall,
+        },
       ],
     });
   }
@@ -718,19 +725,17 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
             ))}
           {sorted.map((e) => {
             const s = agentStatus[e.status] ?? { label: e.status, tone: "slate" as const };
-            const online = e.status !== "UNREGISTERED";
             return (
               <li
                 key={e.extension}
-                onContextMenu={(ev) => agentMenu(ev, e.extension)}
+                onContextMenu={(ev) => agentMenu(ev, e.extension, e.status)}
                 onClick={() => canDial && !inCall && setConfirmExt(e.extension)}
-                title="Sol tık: ara · Sağ tık: aktar"
+                title="Sol tık: ara · Sağ tık: aktar veya dinle"
                 className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-accent"
               >
                 <span className="flex items-center gap-2 text-sm">
                   <span className={cn("size-2 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
                   <span className="font-medium">{e.extension}</span>
-                  <span className="text-xs text-muted-foreground">({online ? "hatta" : "çıkmış"})</span>
                 </span>
                 <Badge tone={s.tone}>{s.label}</Badge>
               </li>
@@ -776,7 +781,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
-  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0 });
+  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0 });
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -795,7 +800,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
-          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered });
+          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered, inbound: r.inbound ?? 0, outbound: r.outbound ?? 0 });
           setError(null);
           setLoading(false);
         })
@@ -851,12 +856,14 @@ function CallHistory({ canCall }: { canCall: boolean }) {
       ) : (
         <>
           {/* Today's breakdown (resets at 00:00) */}
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <CountBox label="Gerçek" value={real} tone="green" hint="Kısa + uzun" />
-            <CountBox label="Kısa" value={counts.short} tone="amber" />
-            <CountBox label="Uzun" value={counts.long} tone="green" />
-            <CountBox label="Cevapsız" value={counts.unanswered} tone="slate" />
-            <CountBox label="Toplam" value={total} tone="blue" hint="Cevapsız dahil" />
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <CountBox label="Toplam çağrı" sub="cevapsız dahil" value={total} tone="blue" />
+            <CountBox label="Görüşülen" sub="cevaplanan" value={real} tone="green" />
+            <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} tone="slate" />
+            <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} tone="slate" />
+            <CountBox label="Kısa görüşme" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
+            <CountBox label="Uzun görüşme" sub="30 saniye ve üstü" value={counts.long} tone="green" />
+            <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
           </div>
 
           <div className="relative mb-2">
@@ -922,7 +929,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
   );
 }
 
-function CountBox({ label, value, tone, hint }: { label: string; value: number; tone: "green" | "amber" | "slate" | "blue"; hint?: string }) {
+function CountBox({ label, sub, value, tone }: { label: string; sub?: string; value: number; tone: "green" | "amber" | "slate" | "blue" }) {
   const toneClass: Record<string, string> = {
     green: "text-success",
     amber: "text-warning",
@@ -930,9 +937,10 @@ function CountBox({ label, value, tone, hint }: { label: string; value: number; 
     blue: "text-primary",
   };
   return (
-    <div className="rounded-xl bg-muted/40 px-3 py-2 text-center" title={hint}>
+    <div className="rounded-xl bg-muted/40 px-3 py-2 text-center">
       <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>{value}</div>
-      <div className="mt-1 text-[0.7rem] text-muted-foreground">{label}</div>
+      <div className="mt-1 text-[0.7rem] font-medium text-foreground/80">{label}</div>
+      {sub && <div className="text-[0.65rem] text-muted-foreground">{sub}</div>}
     </div>
   );
 }

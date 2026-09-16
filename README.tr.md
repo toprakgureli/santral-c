@@ -26,6 +26,14 @@ düzgün bir kimlik modeli.
 - Temsilci durumu: müsait, mola, backoffice, rahatsız etmeyin. Müsait
   olmayan durumlar santralde DND açar, temsilciye çağrı düşmez. Günlük durum
   toplamları panoda görünür.
+- Ekip Performansı sayfası (`performance.view_role` kendi rolündekileri,
+  `performance.view_all` herkesi görür): temsilci başına anlık durum
+  (görüşmede ve kiminle, boşta, molada, mesai dışı), bugünkü mesai süresi,
+  toplam, görüşülen, kısa, uzun, cevapsız, gelen ve giden çağrı ile görüşme
+  süresi. Rakamlar İstanbul saatiyle 00:00'da sıfırlanır.
+- Temsilci listesinden dinleme: görüşmedeki temsilciye sağ tıklayınca
+  softphone santralin dinleme kodunu (`*5` + dahili) arar. Servis kodu
+  çağrıları çağrı günlüğüne yazılmaz.
 - Mesai: çağrı ekranı ancak "Mesai Başlat" ile açılır; "Mesai Bitir" DND'yi
   açar ve durum sayaçlarını durdurur. Mesai 18:30'da biter; 19:20'de hâlâ açık
   olan mesaiyi sunucu kendisi kapatır.

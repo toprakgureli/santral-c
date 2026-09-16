@@ -10,16 +10,17 @@ type Module string
 
 // Permission modules.
 const (
-	ModuleCall       Module = "call"
-	ModuleCDR        Module = "cdr"
-	ModuleAgent      Module = "agent"
-	ModuleQueue      Module = "queue"
-	ModuleContact    Module = "contact"
-	ModuleEscalation Module = "escalation"
-	ModuleUser       Module = "user"
-	ModuleRole       Module = "role"
-	ModuleQuality    Module = "quality"
-	ModuleSystem     Module = "system"
+	ModuleCall        Module = "call"
+	ModuleCDR         Module = "cdr"
+	ModuleAgent       Module = "agent"
+	ModuleQueue       Module = "queue"
+	ModuleContact     Module = "contact"
+	ModuleEscalation  Module = "escalation"
+	ModuleUser        Module = "user"
+	ModuleRole        Module = "role"
+	ModuleQuality     Module = "quality"
+	ModulePerformance Module = "performance"
+	ModuleSystem      Module = "system"
 )
 
 // Permission keys.
@@ -60,6 +61,9 @@ const (
 
 	QualityView Permission = "quality.view"
 
+	PerformanceViewRole Permission = "performance.view_role"
+	PerformanceViewAll  Permission = "performance.view_all"
+
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
@@ -99,6 +103,8 @@ var permissions = []PermissionInfo{
 	{RoleManage, "Rolleri yönetir"},
 	{RoleAssign, "Rol ve izin atar"},
 	{QualityView, "Çağrı kalite metriklerini görür"},
+	{PerformanceViewRole, "Ekip performansında kendi rolündekileri görür"},
+	{PerformanceViewAll, "Ekip performansında herkesi görür"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
@@ -113,16 +119,17 @@ func Permissions() []PermissionInfo {
 
 // moduleLabels are the human-facing group titles for the role editor.
 var moduleLabels = map[Module]string{
-	ModuleCall:       "Çağrı",
-	ModuleCDR:        "Çağrı Kayıtları",
-	ModuleAgent:      "Temsilci",
-	ModuleQueue:      "Kuyruk",
-	ModuleContact:    "Kişiler",
-	ModuleEscalation: "Eskalasyon",
-	ModuleUser:       "Kullanıcı",
-	ModuleRole:       "Rol",
-	ModuleQuality:    "Kalite",
-	ModuleSystem:     "Sistem",
+	ModuleCall:        "Çağrı",
+	ModuleCDR:         "Çağrı Kayıtları",
+	ModuleAgent:       "Temsilci",
+	ModuleQueue:       "Kuyruk",
+	ModuleContact:     "Kişiler",
+	ModuleEscalation:  "Eskalasyon",
+	ModuleUser:        "Kullanıcı",
+	ModuleRole:        "Rol",
+	ModuleQuality:     "Kalite",
+	ModulePerformance: "Ekip Performansı",
+	ModuleSystem:      "Sistem",
 }
 
 // ModuleLabel returns the human-facing title for a module.

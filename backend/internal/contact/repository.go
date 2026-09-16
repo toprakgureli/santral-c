@@ -139,6 +139,16 @@ func (r *Repository) RemovePhone(ctx context.Context, contactID, phoneID uint) (
 	return res.RowsAffected > 0, nil
 }
 
+// NameByNumber returns the name of the contact that owns a number, or "" when
+// the number is unknown. Lookup failures read as unknown.
+func (r *Repository) NameByNumber(ctx context.Context, e164 string) string {
+	c, err := r.ResolveByNumber(ctx, e164)
+	if err != nil || c == nil {
+		return ""
+	}
+	return c.Name
+}
+
 // ResolveByNumber finds the contact that owns a number, or nil when none does.
 func (r *Repository) ResolveByNumber(ctx context.Context, e164 string) (*models.Contact, error) {
 	var phone models.ContactPhone

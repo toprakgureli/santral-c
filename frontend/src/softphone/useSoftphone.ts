@@ -309,7 +309,11 @@ export function useSoftphone(enabled: boolean): Phone {
       localEndRef.current = false;
       setEndReason(null);
       setPeer(target);
-      callIdRef.current = newCallId();
+      // Feature codes (*5<ext> listen-in, *60 echo test and the like) are not
+      // customer calls: an empty call id keeps them out of the call log so
+      // they never count as an outbound call.
+      const featureCode = /^[*#]/.test(target);
+      callIdRef.current = featureCode ? "" : newCallId();
       callDirRef.current = "outbound";
       callPeerRef.current = target;
       setCallStartedAt(Date.now());

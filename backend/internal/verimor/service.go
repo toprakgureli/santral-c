@@ -671,6 +671,17 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 	return out
 }
 
+// ExtensionStatuses returns the overlaid live status of every extension, keyed
+// by extension, for the team page.
+func (s *Service) ExtensionStatuses(ctx context.Context) map[string]string {
+	exts := s.overlaidExtensions(ctx)
+	out := make(map[string]string, len(exts))
+	for _, e := range exts {
+		out[e.Extension] = e.Status
+	}
+	return out
+}
+
 // extensionsEvent is the SSE payload for a live agent-list update.
 type extensionsEvent struct {
 	Type  string         `json:"type"`

@@ -25,6 +25,14 @@ filters, contacts, escalations, and a proper identity model with TOTP.
 - Agent presence: available, break, back office, do not disturb. Non-available
   states engage DND on the PBX so the agent stops receiving calls. Daily totals
   per state are shown on the dashboard.
+- Team performance page (`performance.view_role` sees agents sharing a role
+  with the viewer, `performance.view_all` sees everyone): live status per
+  agent (on a call and with whom, idle, break, off shift), today's shift time,
+  total, answered, short, long, unanswered, inbound and outbound calls and
+  talk time. Figures reset at 00:00 Istanbul.
+- Listen-in from the agent list: right-click an agent who is on a call and
+  the softphone dials the PBX spy code (`*5` + extension). Feature-code calls
+  are kept out of the call log.
 - Shifts: the dialer opens only after the agent presses "Mesai Başlat", and
   "Mesai Bitir" engages DND and stops the presence clocks. The working day ends
   at 18:30 Istanbul; a shift still open at 19:20 is closed by the server.

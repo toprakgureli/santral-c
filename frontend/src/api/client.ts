@@ -20,6 +20,7 @@ import type {
   ShiftStatus,
   SipCredentials,
   SystemSettings,
+  TeamPerformance,
   User,
 } from "./types";
 
@@ -207,6 +208,9 @@ export const api = {
   pbxExtensions: () => request<{ items: PBXExtension[] }>("/pbx/extensions").then((r) => r.items),
   pbxQueues: () => request<{ items: PBXQueue[] }>("/pbx/queues").then((r) => r.items),
   pbxStats: () => request<PBXStats>("/pbx/stats"),
+  // Team performance (today's figures per agent, scoped by permission)
+  performanceToday: () => request<TeamPerformance>("/performance/today"),
+
   // Shift (mesai): the dialer opens only while a shift is open
   shiftStatus: () => request<ShiftStatus>("/shift/"),
   startShift: () => request<ShiftStatus>("/shift/start", { method: "POST" }),

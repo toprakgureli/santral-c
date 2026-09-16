@@ -112,6 +112,40 @@ export interface TodayCalls {
   short: number;
   long: number;
   unanswered: number;
+  inbound: number;
+  outbound: number;
+}
+
+// Team performance page (performance.view_role / performance.view_all).
+export type TeamStatus = "talking" | "available" | "break" | "backoffice" | "dnd" | "off" | "unregistered";
+
+export interface TeamCounts {
+  total: number;
+  answered: number;
+  short: number;
+  long: number;
+  unanswered: number;
+  inbound: number;
+  outbound: number;
+  talkSeconds: number;
+}
+
+export interface TeamRow {
+  userId: number;
+  name: string;
+  extension: string;
+  roles: string[];
+  status: TeamStatus;
+  since?: string;
+  call?: { peer: string; peerName?: string; direction: string; startedAt: string };
+  shift: { startedAt?: string; seconds: number };
+  calls: TeamCounts;
+}
+
+export interface TeamPerformance {
+  scope: "all" | "role";
+  day: string;
+  items: TeamRow[];
 }
 
 export interface Paged<T> {

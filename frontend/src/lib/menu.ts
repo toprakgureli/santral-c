@@ -1,4 +1,4 @@
-import { Headset, PhoneCall, Contact, ScrollText, SearchCheck, Settings, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { Gauge, Headset, PhoneCall, Contact, ScrollText, SearchCheck, Settings, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -23,6 +23,7 @@ export const MENU: MenuGroup[] = [
         icon: PhoneCall,
         permission: ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"],
       },
+      { label: "Ekip Performansı", path: "/performance", icon: Gauge, permission: ["performance.view_role", "performance.view_all"] },
       { label: "Kişiler", path: "/contacts", icon: Contact, permission: "contact.view" },
       { label: "Eskalasyon Ara", path: "/escalation-search", icon: SearchCheck, permission: "escalation.search" },
     ],

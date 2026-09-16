@@ -23,6 +23,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/internal/performance"
 	"github.com/toprakgureli/santral-c/backend/internal/role"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
@@ -98,8 +99,11 @@ func run() error {
 	userHandler := user.NewHandler(userSvc)
 	roleSvc := role.NewService(role.NewRepository(db), userSvc, auditSvc)
 	roleHandler := role.NewHandler(roleSvc)
-	contactSvc := contact.NewService(contact.NewRepository(db), userSvc, auditSvc)
+	contactRepo := contact.NewRepository(db)
+	contactSvc := contact.NewService(contactRepo, userSvc, auditSvc)
 	contactHandler := contact.NewHandler(contactSvc)
+	perfSvc := performance.NewService(performance.NewRepository(db), userSvc, contactRepo)
+	perfHandler := performance.NewHandler(perfSvc)
 	escalationSvc := escalation.NewService(escalation.NewRepository(db), userSvc)
 	escalationHandler := escalation.NewHandler(escalationSvc)
 	callLogSvc := calllog.NewService(calllog.NewRepository(db), userSvc)
@@ -152,6 +156,7 @@ func run() error {
 	escalation.NewRouter(escalationHandler, guard).Routes(api)
 	calllog.NewRouter(callLogHandler, guard).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
+	performance.NewRouter(perfHandler, guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -166,6 +171,7 @@ func run() error {
 		// drives the agent's presence and do-not-disturb.
 		verimorSvc.SetShifts(shiftSvc)
 		shiftSvc.SetPresence(verimorSvc)
+		perfSvc.SetLive(verimorSvc)
 		verimorSvc.Start(ctx)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}

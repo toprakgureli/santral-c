@@ -11,6 +11,7 @@ import { Escalations } from "./pages/Escalations";
 import { Login } from "./pages/Login";
 import { Roles } from "./pages/Roles";
 import { Settings } from "./pages/Settings";
+import { TeamPerformance } from "./pages/TeamPerformance";
 import { Users } from "./pages/Users";
 
 export function App() {
@@ -38,6 +39,7 @@ export function App() {
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/calls" element={<Calls />} />
+        <Route path="/performance" element={<TeamPerformance />} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/escalation-search" element={<EscalationSearch />} />
         <Route path="/escalations" element={<Escalations />} />

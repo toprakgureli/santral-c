@@ -58,6 +58,8 @@ type Counts struct {
 	Short      int64 `json:"short"`
 	Long       int64 `json:"long"`
 	Unanswered int64 `json:"unanswered"`
+	Inbound    int64 `json:"inbound"`
+	Outbound   int64 `json:"outbound"`
 }
 
 // Today returns a user's call logs since `from` plus their breakdown, split
@@ -69,7 +71,9 @@ func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, sho
 		Select(
 			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds < ?) AS short, "+
 				"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS long, "+
-				"count(*) FILTER (WHERE disposition <> 'answered') AS unanswered",
+				"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress')) AS unanswered, "+
+				"count(*) FILTER (WHERE direction = 'inbound') AS inbound, "+
+				"count(*) FILTER (WHERE direction = 'outbound') AS outbound",
 			shortLong, shortLong).
 		Where("user_id = ? AND started_at >= ?", userID, from).
 		Scan(&counts).Error
