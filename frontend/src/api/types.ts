@@ -116,6 +116,8 @@ export interface TodayCalls {
   outbound: number;
   inboundMissed: number;
   outboundMissed: number;
+  inboundReal: number;
+  outboundReal: number;
 }
 
 // Team performance page (performance.view_role / performance.view_all).

@@ -793,7 +793,8 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
-  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0, inboundMissed: 0, outboundMissed: 0 });
+  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0, inboundMissed: 0, outboundMissed: 0, inboundReal: 0, outboundReal: 0 });
+  const [showMissed, setShowMissed] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -812,7 +813,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
-          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered, inbound: r.inbound ?? 0, outbound: r.outbound ?? 0, inboundMissed: r.inboundMissed ?? 0, outboundMissed: r.outboundMissed ?? 0 });
+          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered, inbound: r.inbound ?? 0, outbound: r.outbound ?? 0, inboundMissed: r.inboundMissed ?? 0, outboundMissed: r.outboundMissed ?? 0, inboundReal: r.inboundReal ?? 0, outboundReal: r.outboundReal ?? 0 });
           setError(null);
           setLoading(false);
         })
@@ -868,13 +869,34 @@ function CallHistory({ canCall }: { canCall: boolean }) {
       ) : (
         <>
           {/* Today's breakdown (resets at 00:00) */}
-          <div className="mb-3 grid grid-cols-3 gap-2">
-            <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
-            <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
-            <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
-            <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} minus={counts.inboundMissed} tone="slate" />
-            <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} minus={counts.outboundMissed} tone="slate" />
-            <CountBox label="Görüşülen" sub="gerçek + geçersiz" value={real} tone="blue" />
+          {/* Reached: real (30s+) conversations, split by direction. */}
+          <div className="mb-2 rounded-xl border border-success/30 bg-success/5 p-2">
+            <div className="mb-1.5 px-1 text-xs font-semibold text-success">Ulaşılanlar</div>
+            <div className="grid grid-cols-3 gap-2">
+              <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
+              <CountBox label="Gelen" sub="gerçek çağrı" value={counts.inboundReal} tone="green" />
+              <CountBox label="Giden" sub="gerçek çağrı" value={counts.outboundReal} tone="green" />
+            </div>
+          </div>
+          {/* Not reached: unanswered plus too-short calls, folded away by default. */}
+          <div className="mb-3 rounded-xl border border-border/60 bg-muted/20 p-2">
+            <button
+              type="button"
+              onClick={() => setShowMissed((v) => !v)}
+              className="flex w-full items-center justify-between px-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <span>Ulaşılamayanlar · {counts.unanswered + counts.short}</span>
+              <ChevronDown className={cn("size-4 transition-transform", showMissed && "rotate-180")} />
+            </button>
+            {showMissed && (
+              <div className="mt-1.5 grid grid-cols-3 gap-2">
+                <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
+                <CountBox label="Gelen" sub="cevapsız" value={counts.inboundMissed} tone="slate" />
+                <CountBox label="Giden" sub="cevapsız" value={counts.outboundMissed} tone="slate" />
+                <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
+                <CountBox label="Görüşülen" sub="gerçek + geçersiz" value={real} tone="blue" />
+              </div>
+            )}
           </div>
 
           <div className="relative mb-2">

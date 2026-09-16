@@ -53,6 +53,8 @@ type EntryList struct {
 	Outbound       int64   `json:"outbound"`
 	InboundMissed  int64   `json:"inboundMissed"`
 	OutboundMissed int64   `json:"outboundMissed"`
+	InboundReal    int64   `json:"inboundReal"`
+	OutboundReal   int64   `json:"outboundReal"`
 	// Real (short+long) and Total (all) are derived on the client.
 }
 
@@ -172,7 +174,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 		}
 		items = append(items, e)
 	}
-	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered, Inbound: counts.Inbound, Outbound: counts.Outbound, InboundMissed: counts.InboundMissed, OutboundMissed: counts.OutboundMissed}, nil
+	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered, Inbound: counts.Inbound, Outbound: counts.Outbound, InboundMissed: counts.InboundMissed, OutboundMissed: counts.OutboundMissed, InboundReal: counts.InboundReal, OutboundReal: counts.OutboundReal}, nil
 }
 
 func toEntry(actor *models.User, log *models.CallLog) Entry {
