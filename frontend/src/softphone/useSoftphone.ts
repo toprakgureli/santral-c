@@ -232,6 +232,8 @@ export function useSoftphone(enabled: boolean): Phone {
           authorizationUsername: creds.extension,
           authorizationPassword: creds.password,
           displayName: creds.extension,
+          // Shown as the device in the PBX's call details instead of the library name.
+          userAgentString: "santral-c/toprakgureli",
           sessionDescriptionHandlerFactoryOptions: {
             // SIP.js holds the INVITE until ICE gathering completes or this
             // timeout elapses, so a large value delays ringing by that long when
