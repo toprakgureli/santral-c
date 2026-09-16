@@ -157,11 +157,18 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	repeats, err := s.repo.RepeatRings(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	items := make([]Entry, 0, len(logs))
 	for i := range logs {
 		e := toEntry(actor, &logs[i])
-		if elsewhere[logs[i].ID] {
+		switch {
+		case elsewhere[logs[i].ID]:
 			e.Disposition = "elsewhere" // rang here, another agent answered
+		case repeats[logs[i].ID]:
+			e.Disposition = "repeat" // the queue offered the same call again
 		}
 		items = append(items, e)
 	}

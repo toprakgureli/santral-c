@@ -70,7 +70,7 @@ func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong i
 			shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ?", from).
 		// A ring that a teammate answered is not this agent's call.
-		Where("NOT (" + calllog.AnsweredElsewhereSQL + ")").
+		Where("NOT (" + calllog.NotMineSQL + ")").
 		Group("user_id").
 		Scan(&rows).Error
 	if err != nil {

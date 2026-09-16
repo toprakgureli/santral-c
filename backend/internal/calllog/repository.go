@@ -86,7 +86,7 @@ func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, sho
 				"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed",
 			shortLong, shortLong).
 		Where("user_id = ? AND started_at >= ?", userID, from).
-		Where("NOT (" + AnsweredElsewhereSQL + ")").
+		Where("NOT (" + NotMineSQL + ")").
 		Scan(&counts).Error
 	if err != nil {
 		return nil, counts, fmt.Errorf("call logs could not be counted: %w", err)
@@ -103,17 +103,44 @@ func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, sho
 }
 
 // AnsweredElsewhereSQL is true for an unanswered inbound row whose caller was
-// answered by another agent within the ring window: the same call rang this
-// agent too and someone else picked it up. It refers to the call_logs row
-// under evaluation, so it must be used in a query on call_logs.
-const AnsweredElsewhereSQL = "call_logs.direction = 'inbound' AND call_logs.disposition IN ('missed', 'no_answer', 'canceled') " +
-	"AND EXISTS (SELECT 1 FROM call_logs o WHERE o.id <> call_logs.id AND o.peer_key = call_logs.peer_key " +
+// answered by someone else within the ring window: the same call rang this
+// agent too and a teammate picked it up. Two sources say so: another agent's
+// panel log with the same caller, or the hosted PBX's own record of the call
+// (pbx_cdrs) carrying an answer stamp, which also covers teammates who answer
+// outside the panel. It refers to the call_logs row under evaluation, so it
+// must be used in a query on call_logs.
+const AnsweredElsewhereSQL = "call_logs.direction = 'inbound' AND call_logs.disposition IN ('missed', 'no_answer', 'canceled') AND (" +
+	"EXISTS (SELECT 1 FROM call_logs o WHERE o.id <> call_logs.id AND o.peer_key = call_logs.peer_key " +
 	"AND o.user_id IS DISTINCT FROM call_logs.user_id AND o.answered_at IS NOT NULL " +
-	"AND o.started_at BETWEEN call_logs.started_at - interval '90 seconds' AND call_logs.started_at + interval '90 seconds')"
+	"AND o.started_at BETWEEN call_logs.started_at - interval '90 seconds' AND call_logs.started_at + interval '90 seconds') " +
+	"OR EXISTS (SELECT 1 FROM pbx_cdrs c WHERE call_logs.peer_key <> '' AND c.caller_num LIKE '%' || call_logs.peer_key " +
+	"AND c.answer_stamp <> '' AND c.start_at BETWEEN call_logs.started_at - interval '120 seconds' AND call_logs.started_at + interval '120 seconds'))"
+
+// RepeatRingSQL is true for an unanswered inbound row that is a repeat of an
+// earlier unanswered ring from the same caller to the same agent within five
+// minutes: a queue re-offering one call several times. Only the first ring
+// counts as a missed call.
+const RepeatRingSQL = "call_logs.direction = 'inbound' AND call_logs.disposition IN ('missed', 'no_answer', 'canceled') " +
+	"AND EXISTS (SELECT 1 FROM call_logs p WHERE p.id <> call_logs.id AND p.user_id = call_logs.user_id AND p.peer_key = call_logs.peer_key " +
+	"AND p.disposition IN ('missed', 'no_answer', 'canceled') AND p.started_at < call_logs.started_at " +
+	"AND p.started_at >= call_logs.started_at - interval '5 minutes')"
+
+// NotMineSQL combines the two: rows that must not count as this agent's call.
+const NotMineSQL = "(" + AnsweredElsewhereSQL + ") OR (" + RepeatRingSQL + ")"
 
 // AnsweredElsewhere returns the ids among the given logs that another agent
 // answered, so the list can label them instead of showing them as missed.
 func (r *Repository) AnsweredElsewhere(ctx context.Context, ids []uint) (map[uint]bool, error) {
+	return r.matching(ctx, ids, AnsweredElsewhereSQL)
+}
+
+// RepeatRings returns the ids among the given logs that are re-offers of an
+// earlier unanswered ring from the same caller.
+func (r *Repository) RepeatRings(ctx context.Context, ids []uint) (map[uint]bool, error) {
+	return r.matching(ctx, ids, RepeatRingSQL)
+}
+
+func (r *Repository) matching(ctx context.Context, ids []uint, cond string) (map[uint]bool, error) {
 	out := make(map[uint]bool)
 	if len(ids) == 0 {
 		return out, nil
@@ -121,10 +148,10 @@ func (r *Repository) AnsweredElsewhere(ctx context.Context, ids []uint) (map[uin
 	var hits []uint
 	err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Where("call_logs.id IN ?", ids).
-		Where(AnsweredElsewhereSQL).
+		Where(cond).
 		Pluck("call_logs.id", &hits).Error
 	if err != nil {
-		return nil, fmt.Errorf("answered-elsewhere check failed: %w", err)
+		return nil, fmt.Errorf("call log classification failed: %w", err)
 	}
 	for _, id := range hits {
 		out[id] = true
