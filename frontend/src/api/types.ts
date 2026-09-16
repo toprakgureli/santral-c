@@ -114,6 +114,8 @@ export interface TodayCalls {
   unanswered: number;
   inbound: number;
   outbound: number;
+  inboundMissed: number;
+  outboundMissed: number;
 }
 
 // Team performance page (performance.view_role / performance.view_all).
@@ -127,6 +129,8 @@ export interface TeamCounts {
   unanswered: number;
   inbound: number;
   outbound: number;
+  inboundMissed: number;
+  outboundMissed: number;
   talkSeconds: number;
 }
 

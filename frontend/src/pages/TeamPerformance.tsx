@@ -185,8 +185,8 @@ export function TeamPerformance() {
                         {r.calls.short} / {r.calls.long}
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums text-destructive">{r.calls.unanswered}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.inbound}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.outbound}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.inbound}<Minus n={r.calls.inboundMissed} /></td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{r.calls.outbound}<Minus n={r.calls.outboundMissed} /></td>
                       <td className="py-2 pr-3 text-right font-mono tabular-nums">{formatClock(r.calls.talkSeconds)}</td>
                     </tr>
                   );
@@ -198,6 +198,12 @@ export function TeamPerformance() {
       </Card>
     </div>
   );
+}
+
+// Minus is the unanswered share of a direction count, small and red.
+function Minus({ n }: { n: number }) {
+  if (!n) return null;
+  return <span className="ml-1 text-xs font-semibold text-destructive" title="Bağlanmayan">-{n}</span>;
 }
 
 function Stat({ dot, label, value }: { dot: string; label: string; value: number }) {

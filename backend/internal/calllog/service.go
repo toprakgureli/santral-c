@@ -45,12 +45,14 @@ type Entry struct {
 
 // EntryList is today's call logs plus their breakdown for the user.
 type EntryList struct {
-	Items      []Entry `json:"items"`
-	Short      int64   `json:"short"`
-	Long       int64   `json:"long"`
-	Unanswered int64   `json:"unanswered"`
-	Inbound    int64   `json:"inbound"`
-	Outbound   int64   `json:"outbound"`
+	Items          []Entry `json:"items"`
+	Short          int64   `json:"short"`
+	Long           int64   `json:"long"`
+	Unanswered     int64   `json:"unanswered"`
+	Inbound        int64   `json:"inbound"`
+	Outbound       int64   `json:"outbound"`
+	InboundMissed  int64   `json:"inboundMissed"`
+	OutboundMissed int64   `json:"outboundMissed"`
 	// Real (short+long) and Total (all) are derived on the client.
 }
 
@@ -163,7 +165,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 		}
 		items = append(items, e)
 	}
-	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered, Inbound: counts.Inbound, Outbound: counts.Outbound}, nil
+	return &EntryList{Items: items, Short: counts.Short, Long: counts.Long, Unanswered: counts.Unanswered, Inbound: counts.Inbound, Outbound: counts.Outbound, InboundMissed: counts.InboundMissed, OutboundMissed: counts.OutboundMissed}, nil
 }
 
 func toEntry(actor *models.User, log *models.CallLog) Entry {

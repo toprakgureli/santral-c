@@ -39,15 +39,17 @@ func (r *Repository) Agents(ctx context.Context, roleIDs []uint) ([]models.User,
 
 // Counts is one agent's call breakdown since a point in time.
 type Counts struct {
-	UserID      uint  `json:"-"`
-	Total       int64 `json:"total"`
-	Answered    int64 `json:"answered"`
-	Short       int64 `json:"short"`
-	Long        int64 `json:"long"`
-	Unanswered  int64 `json:"unanswered"`
-	Inbound     int64 `json:"inbound"`
-	Outbound    int64 `json:"outbound"`
-	TalkSeconds int64 `json:"talkSeconds"`
+	UserID         uint  `json:"-"`
+	Total          int64 `json:"total"`
+	Answered       int64 `json:"answered"`
+	Short          int64 `json:"short"`
+	Long           int64 `json:"long"`
+	Unanswered     int64 `json:"unanswered"`
+	Inbound        int64 `json:"inbound"`
+	Outbound       int64 `json:"outbound"`
+	InboundMissed  int64 `json:"inboundMissed"`
+	OutboundMissed int64 `json:"outboundMissed"`
+	TalkSeconds    int64 `json:"talkSeconds"`
 }
 
 // CallCounts aggregates the call log per user since `from`.
@@ -62,6 +64,8 @@ func (r *Repository) CallCounts(ctx context.Context, from time.Time, shortLong i
 			"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress')) AS unanswered, "+
 			"count(*) FILTER (WHERE direction = 'inbound') AS inbound, "+
 			"count(*) FILTER (WHERE direction = 'outbound') AS outbound, "+
+			"count(*) FILTER (WHERE direction = 'inbound' AND disposition NOT IN ('answered', 'in_progress')) AS inbound_missed, "+
+			"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds",
 			shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ?", from).

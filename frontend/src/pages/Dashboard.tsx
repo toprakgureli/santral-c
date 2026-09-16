@@ -793,7 +793,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
   const [calls, setCalls] = useState<Call[]>([]);
-  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0 });
+  const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0, inboundMissed: 0, outboundMissed: 0 });
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -812,7 +812,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
         .then((r) => {
           if (!live) return;
           setCalls(r.items);
-          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered, inbound: r.inbound ?? 0, outbound: r.outbound ?? 0 });
+          setCounts({ short: r.short, long: r.long, unanswered: r.unanswered, inbound: r.inbound ?? 0, outbound: r.outbound ?? 0, inboundMissed: r.inboundMissed ?? 0, outboundMissed: r.outboundMissed ?? 0 });
           setError(null);
           setLoading(false);
         })
@@ -872,8 +872,8 @@ function CallHistory({ canCall }: { canCall: boolean }) {
             <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
             <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
             <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
-            <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} tone="slate" />
-            <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} tone="slate" />
+            <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} minus={counts.inboundMissed} tone="slate" />
+            <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} minus={counts.outboundMissed} tone="slate" />
             <CountBox label="Görüşülen" sub="gerçek + geçersiz" value={real} tone="blue" />
           </div>
 
@@ -940,7 +940,8 @@ function CallHistory({ canCall }: { canCall: boolean }) {
   );
 }
 
-function CountBox({ label, sub, value, tone }: { label: string; sub?: string; value: number; tone: "green" | "amber" | "slate" | "blue" }) {
+// minus is the unanswered share of the count, shown small and red beside it.
+function CountBox({ label, sub, value, minus, tone }: { label: string; sub?: string; value: number; minus?: number; tone: "green" | "amber" | "slate" | "blue" }) {
   const toneClass: Record<string, string> = {
     green: "text-success",
     amber: "text-warning",
@@ -949,7 +950,10 @@ function CountBox({ label, sub, value, tone }: { label: string; sub?: string; va
   };
   return (
     <div className="rounded-xl bg-muted/40 px-3 py-2 text-center">
-      <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>{value}</div>
+      <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>
+        {value}
+        {minus ? <span className="ml-1 align-middle text-xs font-semibold text-destructive" title="Bağlanmayan">-{minus}</span> : null}
+      </div>
       <div className="mt-1 text-[0.7rem] font-medium text-foreground/80">{label}</div>
       {sub && <div className="text-[0.65rem] text-muted-foreground">{sub}</div>}
     </div>

@@ -60,6 +60,9 @@ type Counts struct {
 	Unanswered int64 `json:"unanswered"`
 	Inbound    int64 `json:"inbound"`
 	Outbound   int64 `json:"outbound"`
+	// Unanswered split by direction, for the "-N" hint next to each count.
+	InboundMissed  int64 `json:"inboundMissed"`
+	OutboundMissed int64 `json:"outboundMissed"`
 }
 
 // Today returns a user's call logs since `from` plus their breakdown, split
@@ -78,7 +81,9 @@ func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, sho
 				"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS long, "+
 				"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress')) AS unanswered, "+
 				"count(*) FILTER (WHERE direction = 'inbound') AS inbound, "+
-				"count(*) FILTER (WHERE direction = 'outbound') AS outbound",
+				"count(*) FILTER (WHERE direction = 'outbound') AS outbound, "+
+				"count(*) FILTER (WHERE direction = 'inbound' AND disposition NOT IN ('answered', 'in_progress')) AS inbound_missed, "+
+				"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed",
 			shortLong, shortLong).
 		Where("user_id = ? AND started_at >= ?", userID, from).
 		Where("NOT (" + AnsweredElsewhereSQL + ")").
