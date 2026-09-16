@@ -113,11 +113,11 @@ export function EscalationPicker({
                     onClick={() => onChange(current.id, r.id)}
                     className={cn(
                       "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition",
-                      active ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+                      active ? "bg-success/10 font-medium ring-1 ring-success/40" : "hover:bg-accent",
                     )}
                   >
                     <span className="min-w-0 break-words">{r.name}</span>
-                    {active && <Check className="size-4 shrink-0" />}
+                    {active && <Check className="size-4 shrink-0 text-success" />}
                   </button>
                 </li>
               );
