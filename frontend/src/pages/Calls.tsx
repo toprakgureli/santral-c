@@ -249,7 +249,7 @@ export function Calls() {
                           <Button variant={isPlaying ? "primary" : "ghost"} className="h-8 gap-1.5 px-2" onClick={() => setPlaying({ uuid: c.uuid, label })}>
                             <Play className="size-3.5" /> Dinle
                           </Button>
-                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} title="İndir" className="text-muted-foreground transition hover:text-foreground">
+                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} target="_blank" rel="noopener" title="İndir" className="text-muted-foreground transition hover:text-foreground">
                             <Download className="size-4" />
                           </a>
                         </div>
@@ -306,7 +306,7 @@ function RecordingBar({ uuid, label, onClose }: { uuid: string; label: string; o
         </div>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio key={uuid} controls autoPlay src={src} className="h-10 flex-1" />
-        <a href={`${src}?download=1`} title="İndir" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
+        <a href={`${src}?download=1`} target="_blank" rel="noopener" title="İndir" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
           <Download className="size-5" />
         </a>
         <button onClick={onClose} title="Kapat" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">

@@ -150,14 +150,14 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 		}
 		rows = append(rows, row)
 	}
-	// On-shift agents first, then by calls handled, then by name.
+	// On-shift agents first, then by valid (30s+) calls, then by name.
 	sort.SliceStable(rows, func(i, j int) bool {
 		oi, oj := rows[i].Status != "off", rows[j].Status != "off"
 		if oi != oj {
 			return oi
 		}
-		if rows[i].Calls.Total != rows[j].Calls.Total {
-			return rows[i].Calls.Total > rows[j].Calls.Total
+		if rows[i].Calls.Long != rows[j].Calls.Long {
+			return rows[i].Calls.Long > rows[j].Calls.Long
 		}
 		return rows[i].Name < rows[j].Name
 	})

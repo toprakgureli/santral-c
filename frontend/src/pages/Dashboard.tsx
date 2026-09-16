@@ -873,8 +873,8 @@ function CallHistory({ canCall }: { canCall: boolean }) {
             <CountBox label="Görüşülen" sub="cevaplanan" value={real} tone="green" />
             <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} tone="slate" />
             <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} tone="slate" />
-            <CountBox label="Kısa görüşme" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
-            <CountBox label="Uzun görüşme" sub="30 saniye ve üstü" value={counts.long} tone="green" />
+            <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
+            <CountBox label="Geçerli çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
             <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
           </div>
 

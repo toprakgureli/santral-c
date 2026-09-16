@@ -150,7 +150,9 @@ func (r *Repository) PresenceTotals(ctx context.Context, userID uint, from time.
 // recorded, e.g. the tab closed mid-call) may contribute to today's call time.
 // A closed call always uses its real end; only an open row is clamped, so a lost
 // call can never inflate the total indefinitely.
-const openCallCap = 30 * time.Minute
+// Long support calls are real, so the cap is generous; a genuine end phase
+// still overwrites the row with the true duration whenever it arrives.
+const openCallCap = 2 * time.Hour
 
 // CallSecondsToday sums the agent's actual talk time since `from`: from when a
 // call was answered to when it ended. Only answered calls count, so ring time

@@ -24,7 +24,7 @@ const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red
   off: { label: "Mesai dışı", tone: "slate" },
 };
 
-type SortKey = "total" | "answered" | "unanswered" | "inbound" | "outbound" | "talkSeconds" | "shift";
+type SortKey = "long" | "answered" | "unanswered" | "inbound" | "outbound" | "talkSeconds" | "shift";
 
 function hhmm(iso?: string) {
   if (!iso) return "";
@@ -36,7 +36,7 @@ export function TeamPerformance() {
   const [scope, setScope] = useState<"all" | "role">("role");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortKey>("total");
+  const [sort, setSort] = useState<SortKey>("long");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -77,11 +77,11 @@ export function TeamPerformance() {
   }, [rows, sort]);
 
   const totals = useMemo(() => {
-    const t = { onShift: 0, talking: 0, total: 0, answered: 0, unanswered: 0, inbound: 0, outbound: 0 };
+    const t = { onShift: 0, talking: 0, valid: 0, answered: 0, unanswered: 0, inbound: 0, outbound: 0 };
     for (const r of rows) {
       if (r.status !== "off") t.onShift += 1;
       if (r.status === "talking") t.talking += 1;
-      t.total += r.calls.total;
+      t.valid += r.calls.long;
       t.answered += r.calls.answered;
       t.unanswered += r.calls.unanswered;
       t.inbound += r.calls.inbound;
@@ -108,7 +108,7 @@ export function TeamPerformance() {
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl bg-card px-5 py-3 text-sm ring-1 ring-border/60">
         <Stat label="Mesaide" value={totals.onShift} dot="bg-success" />
         <Stat label="Görüşmede" value={totals.talking} dot="bg-primary" />
-        <Stat label="Toplam çağrı" value={totals.total} dot="bg-primary" />
+        <Stat label="Gerçek toplam" value={totals.valid} dot="bg-primary" />
         <Stat label="Görüşülen" value={totals.answered} dot="bg-success" />
         <Stat label="Cevapsız" value={totals.unanswered} dot="bg-destructive" />
         <Stat label="Gelen" value={totals.inbound} dot="bg-muted-foreground/60" />
@@ -136,9 +136,9 @@ export function TeamPerformance() {
                   <th className="pb-2 pr-3">Temsilci</th>
                   <th className="pb-2 pr-3">Durum</th>
                   {header("shift", "Mesai", "Bugün mesaide geçen süre")}
-                  {header("total", "Toplam", "Bugünkü tüm çağrılar, cevapsız dahil")}
-                  {header("answered", "Görüşülen", "Cevaplanan çağrılar")}
-                  <th className="pb-2 pr-3 text-right text-muted-foreground" title="30 saniyeden kısa / 30 saniye ve üstü görüşmeler">Kısa / Uzun</th>
+                  {header("long", "Gerçek toplam", "Geçerli çağrılar: 30 saniye ve üstü görüşmeler")}
+                  {header("answered", "Görüşülen", "Cevaplanan çağrılar, geçersiz dahil")}
+                  <th className="pb-2 pr-3 text-right text-muted-foreground" title="Geçersiz: 30 saniyeden kısa / Geçerli: 30 saniye ve üstü">Geçersiz / Geçerli</th>
                   {header("unanswered", "Cevapsız")}
                   {header("inbound", "Gelen")}
                   {header("outbound", "Giden")}
@@ -179,7 +179,7 @@ export function TeamPerformance() {
                       <td className="py-2 pr-3 text-right font-mono tabular-nums" title={r.shift.startedAt ? `Mesai ${hhmm(r.shift.startedAt)} başladı` : "Mesai başlatılmadı"}>
                         {shiftLive > 0 ? formatClock(shiftLive) : "—"}
                       </td>
-                      <td className="py-2 pr-3 text-right font-semibold tabular-nums">{r.calls.total}</td>
+                      <td className="py-2 pr-3 text-right font-semibold tabular-nums">{r.calls.long}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-success">{r.calls.answered}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
                         {r.calls.short} / {r.calls.long}

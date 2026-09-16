@@ -59,9 +59,9 @@ export function callQuality(disposition: string, durationSeconds: number): CallQ
   }
   if (disposition === "answered") {
     if (durationSeconds >= SHORT_LONG_SECONDS) {
-      return { tone: "green", label: "Uzun görüşme", dot: "bg-success", text: "text-success", border: "border-success/70" };
+      return { tone: "green", label: "Geçerli çağrı", dot: "bg-success", text: "text-success", border: "border-success/70" };
     }
-    return { tone: "amber", label: "Kısa görüşme", dot: "bg-warning", text: "text-warning", border: "border-warning/70" };
+    return { tone: "amber", label: "Geçersiz çağrı", dot: "bg-warning", text: "text-warning", border: "border-warning/70" };
   }
   return { tone: "slate", label: dispositionLabel[disposition] ?? "Cevapsız", dot: "bg-muted-foreground/50", text: "text-muted-foreground", border: "border-muted-foreground/30" };
 }
