@@ -139,8 +139,8 @@
     const st = state.status;
     const active = st === "in-call" || st === "held";
     const outgoing = st === "calling" || st === "ringing";
-    const stLabel = st === "registered" || st === "idle" ? "Hazır" : st === "unconfigured" ? "Panel kapalı" : "";
-    const on = st !== "unconfigured" && st !== "error";
+    const stLabel = st === "registered" || st === "idle" ? "Hazır" : st === "unconfigured" ? "Panel kapalı" : st === "disabled" ? "Mesai dışı" : "";
+    const on = st !== "unconfigured" && st !== "error" && st !== "disabled";
 
     const head = `<div class="head" id="drag"><span class="dot ${on ? "on" : ""}"></span><span class="title">SantralC</span><span class="st">${stLabel}</span></div>`;
     let body;
@@ -163,6 +163,9 @@
         </div>
         ${active && showKeys ? `<div class="keys">${["1","2","3","4","5","6","7","8","9","*","0","#"].map((k) => `<button class="key" data-k="${k}">${k}</button>`).join("")}</div>` : ""}
         ${active && showXfer ? `<div class="xfer"><input class="num" id="xnum" placeholder="Dahili / kuyruk / numara"><button class="go" id="xdo">Aktar</button></div>` : ""}`;
+    } else if (st === "disabled") {
+      body = `<div class="peer" style="cursor:default;margin:0;padding:0">Mesai başlatılmadı</div>
+        <div class="sub">Mesai başlamadan çağrı gelmez ve arama yapılamaz. Panelden mesaiyi başlat.</div>`;
     } else {
       body = `<div class="pill">
         <select class="sel" id="prefix"><option value="+90">+90</option><option value="">Dahili</option></select>

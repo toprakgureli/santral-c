@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/auth/AuthContext";
+import { useShift } from "@/shift/ShiftContext";
 import { useSoftphone, type Phone } from "./useSoftphone";
 import { usePanelBridge } from "./extensionBridge";
 
@@ -63,11 +64,16 @@ function useLeader(): { leader: boolean; takeOver: () => void } {
 // leader tab, where the microphone works) and keeps it alive across navigation.
 // The SantralC extension mirrors and controls this same session from other
 // tabs, so the mini widget and the panel are always in sync.
+//
+// The extension only registers while a shift is open. Off shift nothing rings
+// anywhere (panel or mini widget): the PBX sees the extension as unregistered,
+// on top of the do-not-disturb the server sets when a shift ends.
 export function SoftphoneProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const shift = useShift();
   const { leader, takeOver } = useLeader();
   const hasExtension = !!user?.sipExtension;
-  const enabled = leader && hasExtension;
+  const enabled = leader && hasExtension && shift.active;
 
   const phone = useSoftphone(enabled);
   usePanelBridge(phone, enabled);

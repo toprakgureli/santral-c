@@ -40,8 +40,8 @@ export default function AppShell() {
   }, []);
 
   return (
-    <SoftphoneProvider>
     <ShiftProvider>
+    <SoftphoneProvider>
     <PresenceProvider>
     <UnloadGuard />
     <BreakOverlay />
@@ -76,7 +76,7 @@ export default function AppShell() {
       <CallBar />
     </div>
     </PresenceProvider>
-    </ShiftProvider>
     </SoftphoneProvider>
+    </ShiftProvider>
   );
 }
