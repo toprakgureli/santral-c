@@ -855,7 +855,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
   }
 
   const real = counts.short + counts.long;
-  const total = real + counts.unanswered;
+
   const term = query.trim();
   const filtered = term ? calls.filter((c) => displayNumber(c.direction === "outbound" ? c.toNumber : c.fromNumber).includes(displayNumber(term))) : calls;
 
@@ -868,14 +868,13 @@ function CallHistory({ canCall }: { canCall: boolean }) {
       ) : (
         <>
           {/* Today's breakdown (resets at 00:00) */}
-          <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <CountBox label="Toplam çağrı" sub="cevapsız dahil" value={total} tone="blue" />
-            <CountBox label="Görüşülen" sub="cevaplanan" value={real} tone="green" />
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
+            <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
+            <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
             <CountBox label="Gelen" sub="bugün arayan" value={counts.inbound} tone="slate" />
             <CountBox label="Giden" sub="bugün aradığın" value={counts.outbound} tone="slate" />
-            <CountBox label="Geçersiz çağrı" sub="30 saniyeden kısa" value={counts.short} tone="amber" />
-            <CountBox label="Geçerli çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
-            <CountBox label="Cevapsız" sub="bağlanmayan" value={counts.unanswered} tone="slate" />
+            <CountBox label="Görüşülen" sub="gerçek + geçersiz" value={real} tone="blue" />
           </div>
 
           <div className="relative mb-2">
