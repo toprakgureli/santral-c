@@ -30,7 +30,7 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
       )}
     >
       <div className={cn("flex h-16 shrink-0 items-center gap-2.5 px-4", collapsed && "lg:px-0")}>
-        <Logo className={cn("size-9 text-sm shrink-0", collapsed && "lg:mx-auto")} />
+        <Logo className={cn("size-9", collapsed && "lg:mx-auto")} />
         <span className={cn("min-w-0", collapsed && "lg:hidden")}>
           <span className="block truncate text-sm leading-tight font-semibold tracking-tight">{APP_NAME}</span>
           <span className="block truncate text-[0.6875rem] leading-tight text-muted-foreground">Çağrı Yönetimi</span>

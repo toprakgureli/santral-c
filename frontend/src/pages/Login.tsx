@@ -12,7 +12,6 @@ import PasswordChange from "@/components/auth/PasswordChange";
 import { SUCCESS_DELAY_MS, errorMessage } from "@/components/auth/messages";
 import { Button, Field, Input } from "@/components/ui";
 import SuccessCheck from "@/components/ui/SuccessCheck";
-import { APP_FULL_NAME } from "@/lib/brand";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -131,7 +130,7 @@ export function Login() {
 
   return (
     <AuthLayout
-      title={APP_FULL_NAME}
+      title="Giriş yap"
       description={step === "email" ? "Devam etmek için e-posta adresini gir." : "Şifreni girerek oturumunu aç."}
     >
       {step === "email" ? (

@@ -26,7 +26,7 @@ export default function AuthLayout({ title, description, children }: AuthLayoutP
 
       <div className="animate-in fade-in slide-in-from-bottom-3 w-full max-w-[26rem] duration-500 ease-out">
         <div className="mb-7 flex flex-col items-center gap-3 text-center">
-          <Logo className="size-14 text-xl" />
+          <Logo className="size-16" wordmark wordmarkClassName="text-2xl" />
           <div className="space-y-1.5">
             <h1 className="text-[1.375rem] leading-tight font-semibold tracking-tight">{title}</h1>
             <p className="mx-auto max-w-[22rem] text-sm leading-relaxed text-muted-foreground">{description}</p>
