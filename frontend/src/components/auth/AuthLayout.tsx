@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { Moon, Sun } from "lucide-react";
 import Logo from "@/components/ui/Logo";
-import { useTheme } from "@/contexts/ThemeContext";
+import ThemeMenu from "@/components/layout/ThemeMenu";
 import { COMPANY } from "@/lib/brand";
 
 type AuthLayoutProps = {
@@ -11,18 +10,11 @@ type AuthLayoutProps = {
 };
 
 export default function AuthLayout({ title, description, children }: AuthLayoutProps) {
-  const { isDark, toggle } = useTheme();
-
   return (
     <div className="auth-backdrop relative flex min-h-svh flex-col items-center justify-center gap-8 p-6 md:p-10">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={isDark ? "Aydınlık temaya geç" : "Koyu temaya geç"}
-        className="absolute top-5 right-5 flex size-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent"
-      >
-        {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-      </button>
+      <div className="absolute top-5 right-5">
+        <ThemeMenu />
+      </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-3 w-full max-w-[26rem] duration-500 ease-out">
         <div className="mb-7 flex flex-col items-center gap-3 text-center">

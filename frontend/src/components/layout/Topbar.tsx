@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Menu, Moon, Sun } from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
 import ShiftButton from "./ShiftButton";
+import ThemeMenu from "./ThemeMenu";
 
 type TopbarProps = {
   title: string;
@@ -13,7 +13,6 @@ type TopbarProps = {
 
 export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const { user, logout } = useAuth();
-  const { isDark, toggle } = useTheme();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -43,14 +42,7 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
       <div className="ml-auto flex items-center gap-1.5">
         <ShiftButton />
         <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label={isDark ? "Aydınlık temaya geç" : "Koyu temaya geç"}
-          className="flex size-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent"
-        >
-          {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-        </button>
+        <ThemeMenu />
 
         <div className="relative" ref={menuRef}>
           <button
