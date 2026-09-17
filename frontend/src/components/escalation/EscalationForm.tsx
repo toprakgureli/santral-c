@@ -8,6 +8,7 @@ import type { EscalationCategory, EscalationRecord } from "@/api/types";
 import { CheckCircle2, Plus } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { EscalationPicker } from "@/components/escalation/EscalationPicker";
+import { emitEscalationSaved, onEscalationSaved, sameNumber } from "@/components/escalation/events";
 import { cn } from "@/lib/utils";
 
 export function EscalationForm({
@@ -71,6 +72,19 @@ export function EscalationForm({
     loadHistory(number);
   }, [number, loadHistory]);
 
+  // A save made elsewhere for this number (the wrap-up card, or the form on
+  // another card) shows up here too, so no card claims nothing was entered.
+  useEffect(
+    () =>
+      onEscalationSaved((rec) => {
+        if (!sameNumber(rec.number, number)) return;
+        setSaved((list) => (list.some((r) => r.id === rec.id) ? list : [...list, rec]));
+        setAdding(false);
+        loadHistory(number);
+      }),
+    [number, loadHistory],
+  );
+
   // A new number starts a clean form.
   useEffect(() => {
     setCatId(null);
@@ -95,8 +109,9 @@ export function EscalationForm({
       setReasonId(null);
       setCatId(null);
       setStatus(null);
-      setSaved((list) => [...list, rec]);
+      setSaved((list) => (list.some((r) => r.id === rec.id) ? list : [...list, rec]));
       setAdding(false);
+      emitEscalationSaved(rec);
       loadHistory(number);
       onSaved?.(rec);
     } catch (e) {

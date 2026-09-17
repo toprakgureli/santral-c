@@ -13,6 +13,7 @@ import { api, ApiError } from "@/api/client";
 import type { EscalationCategory, EscalationRecord } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
+import { emitEscalationSaved } from "@/components/escalation/events";
 import { Badge, Button } from "@/components/ui";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -136,7 +137,8 @@ export default function WrapUpCard() {
     setSkipping(true);
     setSkipError(null);
     try {
-      await api.logNoEscalation({ number, callUuid: current!.id });
+      const rec = await api.logNoEscalation({ number, callUuid: current!.id });
+      emitEscalationSaved(rec);
       done();
     } catch (e) {
       setSkipError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
