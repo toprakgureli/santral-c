@@ -1,9 +1,11 @@
 // WrapUpCard asks for an escalation after every answered call. The moment a
 // conversation ends it comes to the front on whichever page the agent is on
 // and stays until the escalation is saved or the agent says none was
-// needed. Only calls that were actually answered count; missed, cancelled
-// and unanswered calls never open it. Pending wrap-ups survive a reload and
-// wait while a new call is in progress.
+// needed. Only real conversations count: missed, cancelled and unanswered
+// calls never open it, and neither does a call the PBX "answered" only to
+// play a rejection or busy announcement, which is why answered calls under
+// MIN_SECONDS (the panel's own valid-call threshold) are skipped too.
+// Pending wrap-ups survive a reload and wait while a new call is in progress.
 
 import { useEffect, useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
@@ -18,6 +20,8 @@ import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext, type EndedCall } from "@/softphone/SoftphoneContext";
 
 const KEY = "santral.wrapup.pending";
+// A call shorter than this is not a conversation (same 30 s rule as Geçerli çağrı).
+const MIN_SECONDS = 30;
 const DONE_KEY = "santral.wrapup.done";
 
 // markWrapUpDone records that an escalation was already entered for a call
@@ -88,6 +92,7 @@ export default function WrapUpCard() {
   useEffect(() => {
     const c = phone.lastEnded;
     if (!c || !allowed || isWrapUpDone(c.id)) return;
+    if ((c.endedAt - c.answeredAt) / 1000 < MIN_SECONDS) return;
     setPending((list) => {
       if (list.some((p) => p.id === c.id)) return list;
       const next = [...list, c];
@@ -155,7 +160,7 @@ export default function WrapUpCard() {
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="wrapup-title" className="text-lg font-semibold leading-tight">Görüşme bitti, eskalasyonu gir</h2>
-            <p className="text-xs text-muted-foreground">Her cevaplanan çağrının sonucu kaydedilir. Kayıt olmadan bu kart kapanmaz.</p>
+            <p className="text-xs text-muted-foreground">Her geçerli çağrının (30 sn ve üstü) sonucu kaydedilir. Kayıt olmadan bu kart kapanmaz.</p>
           </div>
           {rest > 0 && <Badge tone="amber">+{rest} bekliyor</Badge>}
         </div>
