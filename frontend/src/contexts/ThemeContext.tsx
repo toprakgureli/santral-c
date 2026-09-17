@@ -12,7 +12,7 @@ import {
 // Every theme is a full token set in index.css, selected by data-theme on
 // <html>. Dark-kind themes also carry the .dark class so dark: utilities
 // keep working. `swatch` feeds the picker: background, card, primary.
-export type Theme = "light" | "dark" | "midnight" | "forest" | "sand";
+export type Theme = "light" | "dark" | "midnight" | "forest" | "sand" | "crimson" | "matte";
 
 export interface ThemeInfo {
   id: Theme;
@@ -28,6 +28,8 @@ export const THEMES: ThemeInfo[] = [
   { id: "midnight", label: "Gece Mavisi", hint: "Lacivert zemin, mavi vurgu", kind: "dark", swatch: ["#151a2b", "#1d2337", "#5b8cff"] },
   { id: "forest", label: "Orman", hint: "Yeşile çalan koyu ton", kind: "dark", swatch: ["#171f1b", "#1f2924", "#4fd1a1"] },
   { id: "sand", label: "Kum", hint: "Sıcak krem, kahve vurgu", kind: "light", swatch: ["#f6f1e8", "#fdfaf4", "#6b4f2a"] },
+  { id: "crimson", label: "Bordo", hint: "Koyu kızıl zemin, kırmızı vurgu", kind: "dark", swatch: ["#1c1114", "#26171b", "#e0475a"] },
+  { id: "matte", label: "Mat Siyah", hint: "Saf siyah, en koyu", kind: "dark", swatch: ["#000000", "#111111", "#f2f2f2"] },
 ];
 
 const IDS = new Set<string>(THEMES.map((t) => t.id));
