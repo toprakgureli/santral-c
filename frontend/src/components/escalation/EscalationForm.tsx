@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "@/api/client";
 import type { EscalationCategory, EscalationRecord } from "@/api/types";
+import { CheckCircle2, Plus } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { EscalationPicker } from "@/components/escalation/EscalationPicker";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,10 @@ export function EscalationForm({
   const [history, setHistory] = useState<EscalationRecord[]>([]);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  // What was just saved for this number, shown in place of the form so a
+  // save is unmistakable and a second escalation is a deliberate choice.
+  const [saved, setSaved] = useState<EscalationRecord[]>([]);
+  const [adding, setAdding] = useState(false);
 
   const loadHistory = useCallback(
     (n: string) => {
@@ -72,6 +77,8 @@ export function EscalationForm({
     setReasonId(null);
     setNote("");
     setStatus(null);
+    setSaved([]);
+    setAdding(false);
   }, [number]);
 
 
@@ -87,7 +94,9 @@ export function EscalationForm({
       setNote("");
       setReasonId(null);
       setCatId(null);
-      setStatus({ kind: "ok", text: "Eskalasyon kaydedildi." });
+      setStatus(null);
+      setSaved((list) => [...list, rec]);
+      setAdding(false);
       loadHistory(number);
       onSaved?.(rec);
     } catch (e) {
@@ -119,42 +128,88 @@ export function EscalationForm({
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <span className="text-xs font-medium text-muted-foreground">Kategori ve durum</span>
-        <EscalationPicker
-          categories={categories}
-          catId={catId}
-          reasonId={reasonId}
-          height={pickerHeight}
-          onChange={(c, r) => {
-            setCatId(c);
-            setReasonId(r);
-          }}
-        />
-      </div>
-
-      {reasonId !== null && (
-        <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-          <span className="text-xs font-medium text-muted-foreground">Not</span>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Görüşme notu (opsiyonel)"
-            rows={3}
-            className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
-          />
+      {saved.length > 0 && !adding ? (
+        <div className="animate-in fade-in zoom-in-95 rounded-2xl border border-success/30 bg-success/5 p-5 duration-300">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+              <CheckCircle2 className="size-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-base font-semibold leading-tight">
+                {saved.length === 1 ? "Eskalasyon kaydedildi" : `${saved.length} eskalasyon kaydedildi`}
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">Bu görüşme için kayıt tamamlandı. Görüşme bitince tekrar sorulmaz.</p>
+            </div>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {saved.map((r) => (
+              <li key={r.id} className="rounded-xl bg-card px-3.5 py-2.5 text-sm ring-1 ring-border/60">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{r.categoryName}</span>
+                    <span className="mx-1.5 text-muted-foreground">›</span>
+                    {r.reasonName}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{r.createdAt.slice(-5)}</span>
+                </div>
+                {r.note && <p className="mt-1 text-xs text-foreground/80">{r.note}</p>}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            {aside ?? <span />}
+            <Button variant="secondary" className="h-10" onClick={() => setAdding(true)}>
+              <Plus className="size-4" /> Yeni eskalasyon ekle
+            </Button>
+          </div>
         </div>
+      ) : (
+        <>
+          {saved.length > 0 && (
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-success/10 px-3.5 py-2 text-xs text-success">
+              <span>Bu görüşmede {saved.length} eskalasyon zaten kaydedildi, ikinci bir kayıt giriyorsun.</span>
+              <button type="button" onClick={() => setAdding(false)} className="font-medium underline-offset-2 hover:underline">Vazgeç</button>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Kategori ve durum</span>
+            <EscalationPicker
+              categories={categories}
+              catId={catId}
+              reasonId={reasonId}
+              height={pickerHeight}
+              onChange={(c, r) => {
+                setCatId(c);
+                setReasonId(r);
+              }}
+            />
+          </div>
+
+          {reasonId !== null && (
+            <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              <span className="text-xs font-medium text-muted-foreground">Not</span>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Görüşme notu (opsiyonel)"
+                rows={3}
+                className="w-full resize-none rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+              />
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {status && <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span>}
+              {saved.length === 0 && aside}
+            </div>
+            <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null}>
+              {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
+            </Button>
+          </div>
+        </>
       )}
-
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {status && <span className={cn("text-sm", status.kind === "ok" ? "text-success" : "text-destructive")}>{status.text}</span>}
-          {aside}
-        </div>
-        <Button className="h-11 px-6" onClick={save} disabled={saving || reasonId === null}>
-          {saving ? "Kaydediliyor..." : "Eskalasyonu Kaydet"}
-        </Button>
-      </div>
     </div>
   );
 }
