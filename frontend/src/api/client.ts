@@ -8,6 +8,7 @@ import type {
   EscalationCategory,
   EscalationReason,
   EscalationRecord,
+  EscalationListPage,
   IPBan,
   LoginAttempt,
   LoginResult,
@@ -242,6 +243,9 @@ export const api = {
     request<{ items: EscalationRecord[] }>("/escalations/" + query({ number })).then((r) => r.items),
   logEscalation: (body: { number: string; reasonId: number; note?: string; callUuid?: string }) =>
     request<EscalationRecord>("/escalations/", { method: "POST", body: JSON.stringify(body) }),
+  listEscalations: (params: { number?: string; from?: string; to?: string; agentId?: number; categoryId?: number; page?: number; perPage?: number } = {}) =>
+    request<EscalationListPage>("/escalations/list" + query(params)),
+  escalationAgents: () => request<{ items: { id: number; name: string }[] }>("/escalations/agents").then((r) => r.items),
   logNoEscalation: (body: { number: string; callUuid?: string }) =>
     request<EscalationRecord>("/escalations/none", { method: "POST", body: JSON.stringify(body) }),
 };

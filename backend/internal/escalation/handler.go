@@ -224,6 +224,41 @@ func (h *Handler) LogNone(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
 
+// List returns escalations in pages, scoped by the actor's permissions.
+func (h *Handler) List(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	q := ListQuery{
+		Number:     c.Query("number"),
+		From:       c.Query("from"),
+		To:         c.Query("to"),
+		Page:       c.QueryInt("page", 1),
+		PerPage:    c.QueryInt("perPage", 25),
+		AgentID:    uint(c.QueryInt("agentId", 0)),
+		CategoryID: uint(c.QueryInt("categoryId", 0)),
+	}
+	res, err := h.service.List(c.UserContext(), id, q)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// Agents lists the agents behind the records (escalation.list_all).
+func (h *Handler) Agents(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Agents(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": res})
+}
+
 // History returns past escalations for a number.
 func (h *Handler) History(c *fiber.Ctx) error {
 	id, err := actor(c)

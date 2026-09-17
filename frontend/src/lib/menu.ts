@@ -25,7 +25,7 @@ export const MENU: MenuGroup[] = [
       },
       { label: "Ekip Performansı", path: "/performance", icon: Gauge, permission: ["performance.view_role", "performance.view_all"] },
       { label: "Kişiler", path: "/contacts", icon: Contact, permission: "contact.view" },
-      { label: "Eskalasyon Ara", path: "/escalation-search", icon: SearchCheck, permission: "escalation.search" },
+      { label: "Eskalasyonlar", path: "/escalation-search", icon: SearchCheck, permission: ["escalation.list_own", "escalation.list_all", "escalation.search"] },
     ],
   },
   {

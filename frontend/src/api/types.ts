@@ -248,8 +248,13 @@ export interface EscalationRecord {
   categoryName: string;
   reasonName: string;
   note: string;
+  agentId?: number;
   agentName: string;
   createdAt: string;
+}
+
+export interface EscalationListPage extends Paged<EscalationRecord> {
+  scope: "all" | "own";
 }
 
 export interface SipCredentials {

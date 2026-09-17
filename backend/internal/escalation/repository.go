@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -143,6 +144,72 @@ func (r *Repository) EscalationsByNumberKey(ctx context.Context, key string, lim
 		Find(&out).Error
 	if err != nil {
 		return nil, fmt.Errorf("escalations could not be listed: %w", err)
+	}
+	return out, nil
+}
+
+// ListFilter narrows the escalation list. Zero values mean "any".
+type ListFilter struct {
+	NumberKey  string
+	AgentID    uint
+	CategoryID uint
+	From       time.Time
+	To         time.Time // exclusive
+	Page       int
+	PerPage    int
+}
+
+// List returns one page of escalations, newest first, and the total count.
+func (r *Repository) List(ctx context.Context, f ListFilter) ([]models.CallEscalation, int64, error) {
+	q := r.db.WithContext(ctx).Model(&models.CallEscalation{})
+	if f.NumberKey != "" {
+		q = q.Where("number_key = ?", f.NumberKey)
+	}
+	if f.AgentID != 0 {
+		q = q.Where("agent_id = ?", f.AgentID)
+	}
+	if f.CategoryID != 0 {
+		q = q.Where("category_id = ?", f.CategoryID)
+	}
+	if !f.From.IsZero() {
+		q = q.Where("created_at >= ?", f.From)
+	}
+	if !f.To.IsZero() {
+		q = q.Where("created_at < ?", f.To)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("escalations could not be counted: %w", err)
+	}
+	var out []models.CallEscalation
+	err := q.Order("created_at DESC").
+		Offset((f.Page - 1) * f.PerPage).
+		Limit(f.PerPage).
+		Find(&out).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("escalations could not be listed: %w", err)
+	}
+	return out, total, nil
+}
+
+// AgentRef is one agent who has logged escalations, for the list filter.
+type AgentRef struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+// Agents lists the distinct agents behind the escalation records.
+func (r *Repository) Agents(ctx context.Context) ([]AgentRef, error) {
+	var out []AgentRef
+	err := r.db.WithContext(ctx).
+		Model(&models.CallEscalation{}).
+		Select("agent_id AS id, MAX(agent_name) AS name").
+		Where("agent_id IS NOT NULL").
+		Group("agent_id").
+		Order("name").
+		Scan(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("escalation agents could not be listed: %w", err)
 	}
 	return out, nil
 }

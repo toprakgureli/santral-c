@@ -47,9 +47,11 @@ const (
 	ContactView   Permission = "contact.view"
 	ContactManage Permission = "contact.manage"
 
-	EscalationView   Permission = "escalation.view"
-	EscalationSearch Permission = "escalation.search"
-	EscalationManage Permission = "escalation.manage"
+	EscalationView    Permission = "escalation.view"
+	EscalationSearch  Permission = "escalation.search"
+	EscalationManage  Permission = "escalation.manage"
+	EscalationListOwn Permission = "escalation.list_own"
+	EscalationListAll Permission = "escalation.list_all"
 
 	UserView       Permission = "user.view"
 	UserCreate     Permission = "user.create"
@@ -97,6 +99,8 @@ var permissions = []PermissionInfo{
 	{EscalationView, "Eskalasyon kayıtlarını görür ve oluşturur"},
 	{EscalationSearch, "Müşteriye göre eskalasyon geçmişini arar"},
 	{EscalationManage, "Eskalasyon durum kataloğunu yönetir"},
+	{EscalationListOwn, "Kendi eskalasyon kayıtlarını listeler"},
+	{EscalationListAll, "Tüm eskalasyon kayıtlarını listeler"},
 	{UserView, "Kullanıcıları görür"},
 	{UserCreate, "Kullanıcı oluşturur"},
 	{UserUpdate, "Kullanıcı günceller"},

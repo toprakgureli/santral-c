@@ -29,6 +29,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Delete("/reasons/:id", r.handler.DeleteReason)
 
 	group.Get("/", r.handler.History)
+	group.Get("/list", r.handler.List)
+	group.Get("/agents", r.handler.Agents)
 	group.Post("/", r.handler.Log)
 	group.Post("/none", r.handler.LogNone)
 }

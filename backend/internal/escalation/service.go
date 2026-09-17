@@ -1,9 +1,9 @@
 package escalation
 
 import (
-	"time"
 	"context"
 	"strings"
+	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -46,8 +46,104 @@ type Record struct {
 	CategoryName string `json:"categoryName"`
 	ReasonName   string `json:"reasonName"`
 	Note         string `json:"note"`
+	AgentID      uint   `json:"agentId,omitempty"`
 	AgentName    string `json:"agentName"`
 	CreatedAt    string `json:"createdAt"`
+}
+
+// ListQuery is what the list page asks for. Dates are local YYYY-MM-DD.
+type ListQuery struct {
+	Number     string
+	AgentID    uint
+	CategoryID uint
+	From       string
+	To         string
+	Page       int
+	PerPage    int
+}
+
+// ListPage is one page of the escalation list. Scope says whose records the
+// page holds: "all" or "own".
+type ListPage struct {
+	Items   []Record `json:"items"`
+	Total   int64    `json:"total"`
+	Page    int      `json:"page"`
+	PerPage int      `json:"perPage"`
+	Scope   string   `json:"scope"`
+}
+
+// List returns escalations in pages. Who sees what:
+//   - escalation.list_all: everyone's records, any filter.
+//   - escalation.list_own: only the actor's own records.
+//   - escalation.search with a number: everyone's records for that number
+//     (the customer history lookup the search permission always allowed).
+func (s *Service) List(ctx context.Context, actorID uint, q ListQuery) (*ListPage, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	f := ListFilter{Page: q.Page, PerPage: q.PerPage, AgentID: q.AgentID, CategoryID: q.CategoryID}
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.PerPage < 1 || f.PerPage > 100 {
+		f.PerPage = 25
+	}
+	if n := strings.TrimSpace(q.Number); n != "" {
+		f.NumberKey = phone.Key(n)
+		if f.NumberKey == "" {
+			return &ListPage{Items: []Record{}, Page: f.Page, PerPage: f.PerPage, Scope: "all"}, nil
+		}
+	}
+	scope := ""
+	switch {
+	case actor.Can(enums.EscalationListAll):
+		scope = "all"
+	case f.NumberKey != "" && actor.Can(enums.EscalationSearch):
+		scope = "all"
+	case actor.Can(enums.EscalationListOwn):
+		scope = "own"
+		f.AgentID = actorID
+	case actor.Can(enums.EscalationSearch):
+		return nil, errs.Forbidden("Listeleme yetkiniz yok. Müşteri numarası girerek arayabilirsiniz.")
+	default:
+		return nil, errs.Forbidden("Eskalasyon kayıtlarını görme yetkiniz yok.")
+	}
+	if q.From != "" {
+		t, err := time.ParseInLocation("2006-01-02", q.From, istanbul)
+		if err != nil {
+			return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
+		}
+		f.From = t
+	}
+	if q.To != "" {
+		t, err := time.ParseInLocation("2006-01-02", q.To, istanbul)
+		if err != nil {
+			return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
+		}
+		f.To = t.AddDate(0, 0, 1)
+	}
+	rows, total, err := s.repo.List(ctx, f)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	items := make([]Record, 0, len(rows))
+	for i := range rows {
+		items = append(items, toRecord(&rows[i]))
+	}
+	return &ListPage{Items: items, Total: total, Page: f.Page, PerPage: f.PerPage, Scope: scope}, nil
+}
+
+// Agents lists the agents behind the records, for the list_all filter.
+func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentRef, error) {
+	if _, err := s.authorize(ctx, actorID, enums.EscalationListAll); err != nil {
+		return nil, err
+	}
+	out, err := s.repo.Agents(ctx)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	return out, nil
 }
 
 // Categories returns the full catalog for agents and admins.
@@ -294,7 +390,7 @@ func toCategory(c *models.EscalationCategory) Category {
 }
 
 func toRecord(e *models.CallEscalation) Record {
-	return Record{
+	rec := Record{
 		ID:           e.ID,
 		Number:       e.Number,
 		CategoryName: e.CategoryName,
@@ -303,4 +399,8 @@ func toRecord(e *models.CallEscalation) Record {
 		AgentName:    e.AgentName,
 		CreatedAt:    e.CreatedAt.In(istanbul).Format("02.01.2006 15:04"),
 	}
+	if e.AgentID != nil {
+		rec.AgentID = *e.AgentID
+	}
+	return rec
 }
