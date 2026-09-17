@@ -152,7 +152,8 @@ export function Dashboard() {
         {/* Softphone with the escalation panel directly below it. */}
         <div className="space-y-4">
           <Softphone hasExtension={!!user?.sipExtension} canCall={canCall} />
-          {canEscalate && <Escalation categories={categories} activePeer={phone.peer ?? undefined} connected={connected} callId={phone.callId} canSearch={canSearchEsc} />}
+          {/* A ringing incoming call does not replace the customer being written up; the switch happens when it is answered. */}
+          {canEscalate && <Escalation categories={categories} activePeer={phone.status === "incoming" ? undefined : phone.peer ?? undefined} connected={connected} callId={phone.callId} canSearch={canSearchEsc} />}
         </div>
         {canTransfer ? <AgentsQueues exts={exts} queues={queues} canCall={canCall} loading={!extsLoaded} /> : <div className="hidden xl:block" />}
       </div>

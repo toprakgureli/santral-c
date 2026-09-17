@@ -5,7 +5,9 @@
 // calls never open it, and neither does a call the PBX "answered" only to
 // play a rejection or busy announcement, which is why answered calls under
 // MIN_SECONDS (the panel's own valid-call threshold) are skipped too.
-// Pending wrap-ups survive a reload and wait while a new call is in progress.
+// Pending wrap-ups survive a reload. While a new call rings or runs the card
+// steps aside as a small pill but stays mounted, so a half-filled form is
+// exactly where it was when the call is over.
 
 import { useEffect, useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
@@ -109,7 +111,7 @@ export default function WrapUpCard() {
 
   const current = pending[0];
   const busy = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
-  const show = allowed && !!current && !busy && categories !== null && categories.length > 0;
+  const show = allowed && !!current && categories !== null && categories.length > 0;
 
   useEffect(() => {
     setConfirmSkip(false);
@@ -148,7 +150,16 @@ export default function WrapUpCard() {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md">
+    <div className={cn("fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md", busy && "invisible pointer-events-none")}>
+      {/* While a call rings or runs: a pill that says the entry is waiting. */}
+      {busy && (
+        <div className="visible pointer-events-auto fixed bottom-5 left-5 z-[56] flex items-center gap-2 rounded-full border border-violet-500/40 bg-card px-4 py-2 text-xs shadow-lg">
+          <TriangleAlert className="size-3.5 text-violet-500" />
+          <span>Eskalasyon girişi bekliyor</span>
+          <span className="font-mono tabular-nums text-muted-foreground">{number}</span>
+          <span className="text-muted-foreground">· çağrı bitince devam</span>
+        </div>
+      )}
       <div
         role="dialog"
         aria-modal="true"
