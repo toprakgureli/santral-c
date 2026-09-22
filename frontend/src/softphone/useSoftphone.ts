@@ -60,6 +60,18 @@ export interface EndedCall {
   endedAt: number;
 }
 
+// UnreachedCall is an outbound call that ended without a conversation.
+export interface UnreachedCall {
+  id: string;
+  peer: string;
+  endedAt: number;
+  reason: "no_answer" | "busy" | "canceled" | "short";
+}
+
+// A connected call shorter than this was an announcement, not a conversation
+// (the same 30 s rule as Geçerli çağrı).
+const CONVERSATION_SECONDS = 30;
+
 export interface Phone {
   status: PhoneStatus;
   // The last answered call that ended (null until one does). Unanswered,
@@ -71,6 +83,8 @@ export interface Phone {
   // The other party of the most recent call (in or out, answered or not),
   // kept after hangup so a follow-up (WhatsApp) can target it.
   lastPeer: string | null;
+  // The last outbound call that did not reach the customer.
+  lastUnreached: UnreachedCall | null;
   extension: string | null;
   error: string | null;
   muted: boolean;
@@ -142,6 +156,7 @@ export function useSoftphone(enabled: boolean): Phone {
   const [lastEnded, setLastEnded] = useState<EndedCall | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [lastPeer, setLastPeer] = useState<string | null>(null);
+  const [lastUnreached, setLastUnreached] = useState<UnreachedCall | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const uaRef = useRef<UserAgent | null>(null);
@@ -217,6 +232,14 @@ export function useSoftphone(enabled: boolean): Phone {
               : callDirRef.current === "inbound"
                 ? "missed"
                 : "no_answer";
+          if (callDirRef.current === "outbound" && callIdRef.current && (!wasEstablished || duration < CONVERSATION_SECONDS)) {
+            setLastUnreached({
+              id: callIdRef.current,
+              peer: callPeerRef.current,
+              endedAt: Date.now(),
+              reason: wasEstablished ? "short" : localEndRef.current ? "canceled" : "no_answer",
+            });
+          }
           logCall("end", { disposition, durationSeconds: duration });
           callIdRef.current = "";
           setCallId(null);
@@ -381,6 +404,9 @@ export function useSoftphone(enabled: boolean): Phone {
               else tones.congestion();
               window.setTimeout(() => tones.stop(), 2500);
               logCall("end", { disposition: reason === "Meşgul" ? "busy" : "no_answer", durationSeconds: 0 });
+              if (callIdRef.current) {
+                setLastUnreached({ id: callIdRef.current, peer: callPeerRef.current, endedAt: Date.now(), reason: reason === "Meşgul" ? "busy" : "no_answer" });
+              }
               callIdRef.current = "";
           setCallId(null);
               setPeer(null);
@@ -487,6 +513,7 @@ export function useSoftphone(enabled: boolean): Phone {
     lastEnded,
     callId,
     lastPeer,
+    lastUnreached,
     extension,
     error,
     muted,

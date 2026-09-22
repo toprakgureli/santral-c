@@ -5,7 +5,6 @@ import {
   Copy,
   Delete,
   Grid3x3,
-  MessageCircle,
   Mic,
   MicOff,
   Pause,
@@ -28,6 +27,7 @@ import { usePresence } from "../presence/PresenceContext";
 import { EscalationForm } from "../components/escalation/EscalationForm";
 import { markWrapUpDone } from "../components/layout/WrapUpCard";
 import WhatsAppTemplateDialog from "../components/WhatsAppTemplateDialog";
+import WhatsAppIcon from "../components/icons/WhatsAppIcon";
 import { renderWhatsAppTemplate, whatsappLink, whatsappNumber } from "../lib/whatsapp";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
@@ -488,23 +488,29 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 
               {/* WhatsApp follow-up for the last number: one click opens the chat with the agent's own message. */}
               {waNumber && (
-                <div className="mx-auto flex max-w-[15rem] items-stretch gap-1.5">
+                <div className="flex items-stretch gap-2">
                   <button
                     type="button"
                     onClick={openWhatsApp}
                     title={`${displayNumber(phone.lastPeer ?? "")} numarasına WhatsApp'tan yaz`}
-                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366]/12 px-3 text-sm font-medium text-[#1da851] ring-1 ring-[#25D366]/35 transition-colors hover:bg-[#25D366]/20 dark:text-[#4fe08a]"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#25D366]/10 px-3.5 py-2.5 text-left ring-1 ring-[#25D366]/30 transition-colors hover:bg-[#25D366]/18 hover:ring-[#25D366]/50"
                   >
-                    <MessageCircle className="size-4" />
-                    WhatsApp'tan yaz
-                    <span className="font-mono text-xs tabular-nums opacity-80">{displayNumber(phone.lastPeer ?? "")}</span>
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-black">
+                      <WhatsAppIcon className="size-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold leading-tight">WhatsApp'tan yaz</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        Son çağrı · <span className="font-mono tabular-nums">{displayNumber(phone.lastPeer ?? "")}</span>
+                      </span>
+                    </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setWaOpen(true)}
                     aria-label="WhatsApp mesajını düzenle"
                     title="Mesajı düzenle"
-                    className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
                   </button>
