@@ -382,7 +382,7 @@ func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, pw 
 
 // SetWhatsAppTemplate stores the actor's own WhatsApp follow-up text. Any
 // signed-in user may set their own; empty restores the panel default.
-func (s *Service) SetWhatsAppTemplate(ctx context.Context, actorID uint, template string) (*responses.User, error) {
+func (s *Service) SetWhatsAppTemplate(ctx context.Context, actorID uint, template, live string) (*responses.User, error) {
 	actor, err := s.repo.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -390,7 +390,8 @@ func (s *Service) SetWhatsAppTemplate(ctx context.Context, actorID uint, templat
 	if actor == nil {
 		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
 	}
-	if err := s.repo.UpdateCore(ctx, actorID, map[string]any{"whatsapp_template": strings.TrimSpace(template)}); err != nil {
+	fields := map[string]any{"whatsapp_template": strings.TrimSpace(template), "whatsapp_template_live": strings.TrimSpace(live)}
+	if err := s.repo.UpdateCore(ctx, actorID, fields); err != nil {
 		return nil, errs.Internal(err)
 	}
 	updated, err := s.repo.GetByID(ctx, actorID)

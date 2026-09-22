@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
+import { useAuth } from "@/auth/AuthContext";
+import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
+import { displayNumber } from "@/softphone/dial";
+import { whatsappLink, whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 
 const statusLabel: Record<string, string> = {
   calling: "Aranıyor",
@@ -27,6 +31,12 @@ function clampPos(p: Pos, height = 140): Pos {
 // It can be dragged by its header and remembers where it was left.
 export default function CallBar() {
   const phone = useSoftphoneContext();
+  const { user } = useAuth();
+  const waNumber = whatsappNumber(phone.peer ?? "");
+  function openWhatsApp() {
+    if (!waNumber) return;
+    window.open(whatsappLink(waNumber, whatsappTextFor(user, "live", displayNumber(phone.peer ?? ""))), "_blank", "noopener");
+  }
   const [pos, setPos] = useState<Pos | null>(() => {
     try {
       const raw = localStorage.getItem(POS_KEY);
@@ -146,6 +156,15 @@ export default function CallBar() {
               >
                 {phone.held ? <Play className="size-4" /> : <Pause className="size-4" />}
               </button>
+              {waNumber && (
+                <button
+                  onClick={openWhatsApp}
+                  title="Müşteriye WhatsApp'tan yaz"
+                  className="flex size-10 items-center justify-center rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 text-[#1da851] hover:bg-[#25D366]/20 dark:text-[#4fe08a]"
+                >
+                  <WhatsAppIcon className="size-4" />
+                </button>
+              )}
             </>
           )}
           <button

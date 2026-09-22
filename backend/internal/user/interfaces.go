@@ -32,5 +32,5 @@ type IManagement interface {
 	SetRoles(ctx context.Context, actorID, targetID uint, roleIDs []uint, meta Meta) (*responses.User, error)
 	UpdateUser(ctx context.Context, actorID, targetID uint, req requests.UserUpdate, meta Meta) (*responses.User, error)
 	ResetPassword(ctx context.Context, actorID, targetID uint, password string, meta Meta) error
-	SetWhatsAppTemplate(ctx context.Context, actorID uint, template string) (*responses.User, error)
+	SetWhatsAppTemplate(ctx context.Context, actorID uint, template, live string) (*responses.User, error)
 }

@@ -11,28 +11,29 @@ import (
 
 // User is an internal panel user and softphone identity.
 type User struct {
-	ID                 uint    `gorm:"primarykey"`
-	Name               string  `gorm:"size:120;not null"`
-	Email              string  `gorm:"size:255;not null;uniqueIndex"`
-	Password           string  `gorm:"size:255;not null" json:"-"`
-	Active             bool    `gorm:"not null;default:true"`
-	MustChangePassword bool    `gorm:"not null;default:false"`
-	MFASecret          *string `gorm:"size:255" json:"-"`
-	MFAEnabled         bool    `gorm:"not null;default:false"`
-	MFAExempt          bool    `gorm:"not null;default:false"`
-	SIPExtension       *string `gorm:"column:sip_extension;size:32" json:"sipExtension,omitempty"`
-	SIPSecret          *string `gorm:"column:sip_secret;size:255" json:"-"`
-	SIPProvisioned     bool    `gorm:"column:sip_provisioned;not null;default:false"`
-	WhatsAppTemplate   string  `gorm:"column:whatsapp_template;type:text;not null;default:''" json:"-"`
-	LastLoginAt        *time.Time
-	OnboardedAt        *time.Time
-	LockedUntil        *time.Time
-	FailedCount        int    `gorm:"not null;default:0"`
-	CreatedBy          *uint  `gorm:"index"`
-	Roles              []Role `gorm:"many2many:user_roles"`
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	ID                   uint    `gorm:"primarykey"`
+	Name                 string  `gorm:"size:120;not null"`
+	Email                string  `gorm:"size:255;not null;uniqueIndex"`
+	Password             string  `gorm:"size:255;not null" json:"-"`
+	Active               bool    `gorm:"not null;default:true"`
+	MustChangePassword   bool    `gorm:"not null;default:false"`
+	MFASecret            *string `gorm:"size:255" json:"-"`
+	MFAEnabled           bool    `gorm:"not null;default:false"`
+	MFAExempt            bool    `gorm:"not null;default:false"`
+	SIPExtension         *string `gorm:"column:sip_extension;size:32" json:"sipExtension,omitempty"`
+	SIPSecret            *string `gorm:"column:sip_secret;size:255" json:"-"`
+	SIPProvisioned       bool    `gorm:"column:sip_provisioned;not null;default:false"`
+	WhatsAppTemplate     string  `gorm:"column:whatsapp_template;type:text;not null;default:''" json:"-"`
+	WhatsAppTemplateLive string  `gorm:"column:whatsapp_template_live;type:text;not null;default:''" json:"-"`
+	LastLoginAt          *time.Time
+	OnboardedAt          *time.Time
+	LockedUntil          *time.Time
+	FailedCount          int    `gorm:"not null;default:0"`
+	CreatedBy            *uint  `gorm:"index"`
+	Roles                []Role `gorm:"many2many:user_roles"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DeletedAt            gorm.DeletedAt `gorm:"index"`
 }
 
 // Permissions returns the deduplicated, sorted permissions across the user's roles.

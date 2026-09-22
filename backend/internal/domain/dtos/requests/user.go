@@ -16,9 +16,11 @@ type UserUpdate struct {
 	RoleIDs []uint `json:"roleIds" validate:"required,min=1,dive,gt=0"`
 }
 
-// WhatsAppTemplate is the actor's own follow-up message text.
+// WhatsAppTemplate carries the actor's own WhatsApp texts: Template for an
+// unreached customer, Live for a customer currently on the phone.
 type WhatsAppTemplate struct {
 	Template string `json:"template" validate:"max=1000"`
+	Live     string `json:"live" validate:"max=1000"`
 }
 
 // UserPassword is an admin password reset.

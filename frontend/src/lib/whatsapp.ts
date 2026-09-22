@@ -11,6 +11,29 @@ export const DEFAULT_WHATSAPP_TEMPLATE =
   "Merhaba, ben VatanSoft teknik destek uzmanınız {isim}. Sizi aradık ancak ulaşamadık. " +
   "Uygun olduğunuzda buradan bilgi verirseniz sizinle tekrar iletişime geçeceğiz.";
 
+// The text used while the customer is on the phone right now.
+export const DEFAULT_WHATSAPP_LIVE_TEMPLATE =
+  "Merhaba, ben VatanSoft teknik destek uzmanınız {isim}. Şu an telefonda görüştüğümüz konu için buradan da yazışabiliriz. " +
+  "Ekran görüntüsü veya dosya paylaşmanız gerekirse bu numaraya gönderebilirsiniz.";
+
+export type WhatsAppKind = "unreached" | "live";
+
+export const WHATSAPP_KINDS: { kind: WhatsAppKind; label: string; hint: string }[] = [
+  { kind: "unreached", label: "Ulaşamadığımda", hint: "Cevapsız veya meşgul çağrının ardından" },
+  { kind: "live", label: "Görüşme sırasında", hint: "Müşteri hatta iken" },
+];
+
+// whatsappTextFor renders the agent's text of the given kind for a customer.
+export function whatsappTextFor(
+  user: { name?: string; whatsappTemplate?: string; whatsappTemplateLive?: string } | null | undefined,
+  kind: WhatsAppKind,
+  number: string,
+): string {
+  const template = kind === "live" ? user?.whatsappTemplateLive ?? "" : user?.whatsappTemplate ?? "";
+  const fallback = kind === "live" ? DEFAULT_WHATSAPP_LIVE_TEMPLATE : DEFAULT_WHATSAPP_TEMPLATE;
+  return renderWhatsAppTemplate(template.trim() ? template : fallback, { name: user?.name ?? "", number });
+}
+
 export const WHATSAPP_TEMPLATE_MAX = 1000;
 
 // renderWhatsAppTemplate fills the placeholders. An empty template means the default.

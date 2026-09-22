@@ -9,20 +9,21 @@ import (
 
 // User is the public view of a user.
 type User struct {
-	ID                 uint       `json:"id"`
-	Name               string     `json:"name"`
-	Email              string     `json:"email"`
-	Active             bool       `json:"active"`
-	Roles              []string   `json:"roles"`
-	RoleIDs            []uint     `json:"roleIds"`
-	Permissions        []string   `json:"permissions"`
-	MFAEnabled         bool       `json:"mfaEnabled"`
-	MustChangePassword bool       `json:"mustChangePassword"`
-	SIPExtension       string     `json:"sipExtension,omitempty"`
-	WhatsAppTemplate   string     `json:"whatsappTemplate"`
-	OnboardedAt        *time.Time `json:"onboardedAt,omitempty"`
-	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
-	CreatedAt          time.Time  `json:"createdAt"`
+	ID                   uint       `json:"id"`
+	Name                 string     `json:"name"`
+	Email                string     `json:"email"`
+	Active               bool       `json:"active"`
+	Roles                []string   `json:"roles"`
+	RoleIDs              []uint     `json:"roleIds"`
+	Permissions          []string   `json:"permissions"`
+	MFAEnabled           bool       `json:"mfaEnabled"`
+	MustChangePassword   bool       `json:"mustChangePassword"`
+	SIPExtension         string     `json:"sipExtension,omitempty"`
+	WhatsAppTemplate     string     `json:"whatsappTemplate"`
+	WhatsAppTemplateLive string     `json:"whatsappTemplateLive"`
+	OnboardedAt          *time.Time `json:"onboardedAt,omitempty"`
+	LastLoginAt          *time.Time `json:"lastLoginAt,omitempty"`
+	CreatedAt            time.Time  `json:"createdAt"`
 }
 
 // UserList is a paginated page of users.
@@ -51,19 +52,20 @@ func NewUser(u *models.User) User {
 		ext = *u.SIPExtension
 	}
 	return User{
-		ID:                 u.ID,
-		Name:               u.Name,
-		Email:              u.Email,
-		Active:             u.Active,
-		Roles:              roles,
-		RoleIDs:            roleIDs,
-		Permissions:        permKeys,
-		MFAEnabled:         u.MFAEnabled,
-		WhatsAppTemplate:   u.WhatsAppTemplate,
-		MustChangePassword: u.MustChangePassword,
-		SIPExtension:       ext,
-		OnboardedAt:        u.OnboardedAt,
-		LastLoginAt:        u.LastLoginAt,
-		CreatedAt:          u.CreatedAt,
+		ID:                   u.ID,
+		Name:                 u.Name,
+		Email:                u.Email,
+		Active:               u.Active,
+		Roles:                roles,
+		RoleIDs:              roleIDs,
+		Permissions:          permKeys,
+		MFAEnabled:           u.MFAEnabled,
+		WhatsAppTemplate:     u.WhatsAppTemplate,
+		WhatsAppTemplateLive: u.WhatsAppTemplateLive,
+		MustChangePassword:   u.MustChangePassword,
+		SIPExtension:         ext,
+		OnboardedAt:          u.OnboardedAt,
+		LastLoginAt:          u.LastLoginAt,
+		CreatedAt:            u.CreatedAt,
 	}
 }

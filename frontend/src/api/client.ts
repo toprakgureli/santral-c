@@ -148,8 +148,8 @@ export const api = {
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
-  setMyWhatsAppTemplate: (template: string) =>
-    request<User>("/users/me/whatsapp-template", { method: "PUT", body: JSON.stringify({ template }) }),
+  setMyWhatsAppTemplates: (body: { template: string; live: string }) =>
+    request<User>("/users/me/whatsapp-template", { method: "PUT", body: JSON.stringify(body) }),
   syncUserSip: (id: number, extension: string) =>
     request<void>(`/users/${id}/sip/sync`, { method: "POST", body: JSON.stringify({ extension }) }),
   syncAllSip: () =>

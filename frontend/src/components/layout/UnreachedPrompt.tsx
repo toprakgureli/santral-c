@@ -12,7 +12,7 @@ import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import WhatsAppTemplateDialog from "@/components/WhatsAppTemplateDialog";
 import { Button } from "@/components/ui";
 import { setWhatsAppPromptOpen } from "@/lib/overlays";
-import { renderWhatsAppTemplate, whatsappLink, whatsappNumber } from "@/lib/whatsapp";
+import { whatsappLink, whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 
@@ -48,8 +48,7 @@ export default function UnreachedPrompt() {
   }
 
   function write() {
-    const text = renderWhatsAppTemplate(user?.whatsappTemplate ?? "", { name: user?.name ?? "", number: shown });
-    window.open(whatsappLink(number, text), "_blank", "noopener");
+    window.open(whatsappLink(number, whatsappTextFor(user, "unreached", shown)), "_blank", "noopener");
     dismiss();
   }
 
@@ -95,7 +94,7 @@ export default function UnreachedPrompt() {
           </div>
 
           <div className="mt-3 rounded-2xl rounded-tl-sm bg-[#25D366]/10 px-4 py-3 text-sm leading-relaxed ring-1 ring-[#25D366]/25">
-            {renderWhatsAppTemplate(user?.whatsappTemplate ?? "", { name: user?.name ?? "", number: shown })}
+            {whatsappTextFor(user, "unreached", shown)}
           </div>
         </div>
 

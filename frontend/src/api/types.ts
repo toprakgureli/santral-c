@@ -10,6 +10,7 @@ export interface User {
   mustChangePassword: boolean;
   sipExtension?: string;
   whatsappTemplate?: string;
+  whatsappTemplateLive?: string;
   lastLoginAt?: string;
   createdAt: string;
 }

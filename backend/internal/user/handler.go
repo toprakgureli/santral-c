@@ -174,7 +174,7 @@ func (h *Handler) SetMyWhatsAppTemplate(c *fiber.Ctx) error {
 	if err := validator.Struct(req); err != nil {
 		return err
 	}
-	res, err := h.service.SetWhatsAppTemplate(c.UserContext(), actorID, req.Template)
+	res, err := h.service.SetWhatsAppTemplate(c.UserContext(), actorID, req.Template, req.Live)
 	if err != nil {
 		return err
 	}

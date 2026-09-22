@@ -28,7 +28,7 @@ import { EscalationForm } from "../components/escalation/EscalationForm";
 import { markWrapUpDone } from "../components/layout/WrapUpCard";
 import WhatsAppTemplateDialog from "../components/WhatsAppTemplateDialog";
 import WhatsAppIcon from "../components/icons/WhatsAppIcon";
-import { renderWhatsAppTemplate, whatsappLink, whatsappNumber } from "../lib/whatsapp";
+import { whatsappLink, whatsappNumber, whatsappTextFor, type WhatsAppKind } from "../lib/whatsapp";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
@@ -385,13 +385,16 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
   const phone = useSoftphoneContext();
   const shift = useShift();
   const { user } = useAuth();
-  const [waOpen, setWaOpen] = useState(false);
-  // The WhatsApp follow-up targets the last real number (never an extension).
+  const [waOpen, setWaOpen] = useState<WhatsAppKind | null>(null);
+  // Idle: the follow-up targets the last real number (never an extension).
+  // In a call: the "we are on the phone" text goes to the customer on the line.
   const waNumber = whatsappNumber(phone.lastPeer ?? "");
-  function openWhatsApp() {
-    if (!waNumber) return;
-    const text = renderWhatsAppTemplate(user?.whatsappTemplate ?? "", { name: user?.name ?? "", number: displayNumber(phone.lastPeer ?? "") });
-    window.open(whatsappLink(waNumber, text), "_blank", "noopener");
+  const waLiveNumber = whatsappNumber(phone.peer ?? "");
+  function openWhatsApp(kind: WhatsAppKind) {
+    const raw = kind === "live" ? phone.peer : phone.lastPeer;
+    const num = kind === "live" ? waLiveNumber : waNumber;
+    if (!num) return;
+    window.open(whatsappLink(num, whatsappTextFor(user, kind, displayNumber(raw ?? ""))), "_blank", "noopener");
   }
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
@@ -427,7 +430,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 
   return (
     <Card title="Softphone">
-      <WhatsAppTemplateDialog open={waOpen} onClose={() => setWaOpen(false)} previewNumber={displayNumber(phone.lastPeer ?? "")} />
+      <WhatsAppTemplateDialog open={waOpen !== null} initialKind={waOpen ?? "unreached"} onClose={() => setWaOpen(null)} previewNumber={displayNumber((waOpen === "live" ? phone.peer : phone.lastPeer) ?? "")} />
       {!hasExtension ? (
         <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
       ) : phone.secondary ? (
@@ -491,7 +494,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                 <div className="flex items-stretch gap-2">
                   <button
                     type="button"
-                    onClick={openWhatsApp}
+                    onClick={() => openWhatsApp("unreached")}
                     title={`${displayNumber(phone.lastPeer ?? "")} numarasına WhatsApp'tan yaz`}
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#25D366]/10 px-3.5 py-2.5 text-left ring-1 ring-[#25D366]/30 transition-colors hover:bg-[#25D366]/18 hover:ring-[#25D366]/50"
                   >
@@ -507,7 +510,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                   </button>
                   <button
                     type="button"
-                    onClick={() => setWaOpen(true)}
+                    onClick={() => setWaOpen("unreached")}
                     aria-label="WhatsApp mesajını düzenle"
                     title="Mesajı düzenle"
                     className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -559,6 +562,35 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 
               {active && (
                 <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{formatDuration(dur)}</div>
+              )}
+
+              {/* Mid-call: open WhatsApp with the customer on the line, "we are talking right now" text. */}
+              {active && waLiveNumber && (
+                <div className="flex w-full max-w-[18rem] items-stretch gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openWhatsApp("live")}
+                    title="Görüşmekte olduğun müşteriye WhatsApp'tan yaz"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#25D366]/10 px-3.5 py-2 text-left ring-1 ring-[#25D366]/30 transition-colors hover:bg-[#25D366]/18 hover:ring-[#25D366]/50"
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#25D366] text-black">
+                      <WhatsAppIcon className="size-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold leading-tight">WhatsApp'tan yaz</span>
+                      <span className="block truncate text-xs text-muted-foreground">Görüşme sırasında mesajı</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWaOpen("live")}
+                    aria-label="Görüşme sırasında mesajını düzenle"
+                    title="Mesajı düzenle"
+                    className="flex w-11 shrink-0 items-center justify-center rounded-2xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Settings2 className="size-4" />
+                  </button>
+                </div>
               )}
 
               {phone.status === "incoming" && (
