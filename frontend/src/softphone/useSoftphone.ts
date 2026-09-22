@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Inviter, Invitation, Registerer, SessionState, UserAgent, type Session } from "sip.js";
 import { api } from "../api/client";
+import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue";
 import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
 import { tones } from "./tones";
@@ -183,15 +184,38 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
     if (!callIdRef.current) return;
-    api
-      .logCall({
+    sendCallLog({
+      callId: callIdRef.current,
+      phase,
+      direction: callDirRef.current,
+      peer: callPeerRef.current,
+      ...extra,
+    });
+  }, []);
+
+  // Ends left unsent by an earlier page (a deploy mid-call, a closed tab).
+  useEffect(() => {
+    flushPendingCallLogs();
+  }, []);
+
+  // A tab closing or reloading mid-call takes the SIP session with it, so
+  // report the hangup now; a beacon is all the browser still delivers.
+  useEffect(() => {
+    const onHide = () => {
+      const s = sessionRef.current;
+      if (!s || !callIdRef.current) return;
+      const established = s.state === SessionState.Established && establishedAtRef.current > 0;
+      beaconCallEnd({
         callId: callIdRef.current,
-        phase,
+        phase: "end",
         direction: callDirRef.current,
         peer: callPeerRef.current,
-        ...extra,
-      })
-      .catch(() => undefined);
+        disposition: established ? "answered" : "canceled",
+        durationSeconds: established ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0,
+      });
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
   }, []);
 
   const watchSession = useCallback(
