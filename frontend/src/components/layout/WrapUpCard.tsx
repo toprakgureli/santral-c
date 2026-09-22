@@ -4,7 +4,7 @@
 // needed. Only real conversations count: missed, cancelled and unanswered
 // calls never open it, and neither does a call the PBX "answered" only to
 // play a rejection or busy announcement, which is why answered calls under
-// MIN_SECONDS (the panel's own valid-call threshold) are skipped too.
+// MIN_SECONDS (the announcement threshold) are skipped too.
 // Pending wrap-ups survive a reload. A new call never closes the card: the
 // floating call bar sits above it, so the agent answers or rejects there and
 // keeps filling the form; a note in the header says a call is in progress.
@@ -24,8 +24,11 @@ import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext, type EndedCall } from "@/softphone/SoftphoneContext";
 
 const KEY = "santral.wrapup.pending";
-// A call shorter than this is not a conversation (same 30 s rule as Geçerli çağrı).
-const MIN_SECONDS = 30;
+// A connected call that ended within this many seconds was the PBX playing an
+// announcement (the WhatsApp prompt handles it); anything longer is a real
+// conversation and gets a wrap-up. Same threshold as the softphone's
+// unreached rule, so no call falls between the two cards.
+const MIN_SECONDS = 8;
 const DONE_KEY = "santral.wrapup.done";
 
 // markWrapUpDone records that an escalation was already entered for a call
@@ -167,7 +170,7 @@ export default function WrapUpCard() {
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="wrapup-title" className="text-lg font-semibold leading-tight">Görüşme bitti, eskalasyonu gir</h2>
-            <p className="text-xs text-muted-foreground">Her geçerli çağrının (30 sn ve üstü) sonucu kaydedilir. Kayıt olmadan bu kart kapanmaz.</p>
+            <p className="text-xs text-muted-foreground">Her gerçek görüşmenin sonucu kaydedilir. Kayıt olmadan bu kart kapanmaz.</p>
           </div>
           {busy && <Badge tone="green">Çağrı sürüyor, kart açık kalır</Badge>}
           {rest > 0 && <Badge tone="amber">+{rest} bekliyor</Badge>}
