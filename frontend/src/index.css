@@ -443,3 +443,32 @@ html.theme-switching *::after {
     stroke-dashoffset: 0;
   }
 }
+
+/* Cropper zoom slider: the track is drawn by the component, only the thumb here. */
+.avatar-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background: transparent;
+}
+.avatar-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2px solid var(--foreground);
+  cursor: pointer;
+}
+.avatar-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2px solid var(--foreground);
+  cursor: pointer;
+}
+.avatar-slider::-moz-range-track {
+  background: transparent;
+}

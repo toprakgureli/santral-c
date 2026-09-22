@@ -11,6 +11,8 @@ export interface User {
   sipExtension?: string;
   whatsappTemplate?: string;
   whatsappTemplateLive?: string;
+  hasAvatar?: boolean;
+  avatarVersion?: number;
   lastLoginAt?: string;
   createdAt: string;
 }

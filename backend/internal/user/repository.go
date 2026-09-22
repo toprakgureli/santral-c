@@ -129,6 +129,18 @@ func (r *Repository) EmailExistsExcept(ctx context.Context, email string, except
 	return count > 0, nil
 }
 
+// Avatar reads one user's stored photo (a data URI, or "").
+func (r *Repository) Avatar(ctx context.Context, id uint) (string, error) {
+	var rows []string
+	if err := r.db.WithContext(ctx).Model(&models.User{}).Where("id = ?", id).Limit(1).Pluck("avatar", &rows).Error; err != nil {
+		return "", fmt.Errorf("avatar could not be read: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", nil
+	}
+	return rows[0], nil
+}
+
 // UpdateCore updates a user's profile columns.
 func (r *Repository) UpdateCore(ctx context.Context, id uint, fields map[string]any) error {
 	if err := r.db.WithContext(ctx).

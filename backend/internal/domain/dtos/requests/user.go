@@ -23,6 +23,11 @@ type WhatsAppTemplate struct {
 	Live     string `json:"live" validate:"max=1000"`
 }
 
+// AvatarUpdate carries the actor's cropped photo as a webp data URI; empty removes it.
+type AvatarUpdate struct {
+	Avatar string `json:"avatar" validate:"max=130000"`
+}
+
 // UserPassword is an admin password reset.
 type UserPassword struct {
 	Password string `json:"password" validate:"required,min=8,max=16"`

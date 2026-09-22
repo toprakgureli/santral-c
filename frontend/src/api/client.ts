@@ -148,6 +148,7 @@ export const api = {
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
+  setMyAvatar: (avatar: string) => request<User>("/users/me/avatar", { method: "PUT", body: JSON.stringify({ avatar }) }),
   setMyWhatsAppTemplates: (body: { template: string; live: string }) =>
     request<User>("/users/me/whatsapp-template", { method: "PUT", body: JSON.stringify(body) }),
   syncUserSip: (id: number, extension: string) =>

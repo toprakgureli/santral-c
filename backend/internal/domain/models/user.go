@@ -25,6 +25,7 @@ type User struct {
 	SIPProvisioned       bool    `gorm:"column:sip_provisioned;not null;default:false"`
 	WhatsAppTemplate     string  `gorm:"column:whatsapp_template;type:text;not null;default:''" json:"-"`
 	WhatsAppTemplateLive string  `gorm:"column:whatsapp_template_live;type:text;not null;default:''" json:"-"`
+	Avatar               string  `gorm:"column:avatar;type:text;not null;default:''" json:"-"`
 	LastLoginAt          *time.Time
 	OnboardedAt          *time.Time
 	LockedUntil          *time.Time

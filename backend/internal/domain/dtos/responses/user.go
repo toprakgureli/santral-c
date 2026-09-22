@@ -21,6 +21,8 @@ type User struct {
 	SIPExtension         string     `json:"sipExtension,omitempty"`
 	WhatsAppTemplate     string     `json:"whatsappTemplate"`
 	WhatsAppTemplateLive string     `json:"whatsappTemplateLive"`
+	HasAvatar            bool       `json:"hasAvatar"`
+	AvatarVersion        int64      `json:"avatarVersion,omitempty"`
 	OnboardedAt          *time.Time `json:"onboardedAt,omitempty"`
 	LastLoginAt          *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt            time.Time  `json:"createdAt"`
@@ -62,10 +64,21 @@ func NewUser(u *models.User) User {
 		MFAEnabled:           u.MFAEnabled,
 		WhatsAppTemplate:     u.WhatsAppTemplate,
 		WhatsAppTemplateLive: u.WhatsAppTemplateLive,
+		HasAvatar:            u.Avatar != "",
+		AvatarVersion:        avatarVersion(u),
 		MustChangePassword:   u.MustChangePassword,
 		SIPExtension:         ext,
 		OnboardedAt:          u.OnboardedAt,
 		LastLoginAt:          u.LastLoginAt,
 		CreatedAt:            u.CreatedAt,
 	}
+}
+
+// avatarVersion is a cache key for the photo: it changes whenever the row
+// changes, which covers every photo change.
+func avatarVersion(u *models.User) int64 {
+	if u.Avatar == "" {
+		return 0
+	}
+	return u.UpdatedAt.Unix()
 }

@@ -21,6 +21,8 @@ func (r *Router) Routes(g fiber.Router) {
 
 	group.Get("/", r.handler.List)
 	group.Put("/me/whatsapp-template", r.handler.SetMyWhatsAppTemplate)
+	group.Put("/me/avatar", r.handler.SetMyAvatar)
+	group.Get("/:id/avatar", r.handler.Avatar)
 	group.Post("/", r.handler.Create)
 	group.Put("/:id", r.handler.Update)
 	group.Patch("/:id/active", r.handler.SetActive)

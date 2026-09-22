@@ -161,6 +161,47 @@ func (h *Handler) SetRoles(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// SetMyAvatar stores the caller's own profile photo (empty removes it).
+func (h *Handler) SetMyAvatar(c *fiber.Ctx) error {
+	actorID, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.AvatarUpdate
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	res, err := h.service.SetAvatar(c.UserContext(), actorID, req.Avatar)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// Avatar serves a user's photo as webp, or 204 when they have none.
+func (h *Handler) Avatar(c *fiber.Ctx) error {
+	if _, err := actor(c); err != nil {
+		return err
+	}
+	id, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	raw, err := h.service.Avatar(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	c.Set("Content-Type", "image/webp")
+	c.Set("Cache-Control", "private, max-age=300")
+	return c.Send(raw)
+}
+
 // SetMyWhatsAppTemplate stores the caller's own WhatsApp follow-up text.
 func (h *Handler) SetMyWhatsAppTemplate(c *fiber.Ctx) error {
 	actorID, err := actor(c)

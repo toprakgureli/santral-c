@@ -11,6 +11,7 @@ import { can } from "../lib/permissions";
 import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton } from "../components/ui";
 import UserForm from "../components/user/UserForm";
 import CredentialsHandoff, { type Handoff } from "../components/user/CredentialsHandoff";
+import UserAvatar from "../components/ui/UserAvatar";
 import { cn, formatDateTime } from "../lib/utils";
 
 const PER_PAGE = 25;
@@ -137,8 +138,13 @@ export function Users() {
                     className={cn("border-t border-border/60", canUpdate && "cursor-pointer transition-colors hover:bg-accent/50")}
                   >
                     <td className="py-2.5">
-                      <span className="block font-medium">{u.name}</span>
-                      <span className="block text-xs text-muted-foreground">{u.email}</span>
+                      <span className="flex items-center gap-2.5">
+                        <UserAvatar userId={u.id} name={u.name} hasAvatar={u.hasAvatar} version={u.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                        <span className="min-w-0">
+                          <span className="block font-medium">{u.name}</span>
+                          <span className="block text-xs text-muted-foreground">{u.email}</span>
+                        </span>
+                      </span>
                     </td>
                     <td className="py-2.5">
                       <div className="flex flex-wrap gap-1">

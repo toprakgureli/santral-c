@@ -14,7 +14,8 @@ import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
 import { Badge, Card, DateField, EmptyState, Select, Skeleton } from "../components/ui";
 import { displayNumber } from "../softphone/dial";
-import { cn, initials } from "../lib/utils";
+import { cn } from "../lib/utils";
+import UserAvatar from "../components/ui/UserAvatar";
 import { formatClock } from "./callFormat";
 
 const REFRESH_MS = 15000;
@@ -252,10 +253,9 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
       {/* Header: who, and what they are doing right now */}
       <header className="flex items-start justify-between gap-3 border-b border-border/60 px-5 py-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="relative flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-            {initials(r.name)}
+          <UserAvatar userId={r.userId} name={r.name} className="size-10" fallbackClassName="bg-primary/10 text-sm text-primary">
             <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "available" && "animate-pulse")} />
-          </span>
+          </UserAvatar>
           <div className="min-w-0">
             <div className="truncate font-semibold leading-tight">{r.name}</div>
             <div className="truncate text-xs text-muted-foreground">
