@@ -383,6 +383,22 @@ func (h *Handler) Read(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// Unread flags a room unread for the actor.
+func (h *Handler) Unread(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	if err := h.service.MarkUnread(c.UserContext(), id, gid); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // Messages pages a room's history.
 func (h *Handler) Messages(c *fiber.Ctx) error {
 	id, err := actor(c)
@@ -559,6 +575,7 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Post("/groups/:id/invites", r.handler.Invite)
 	group.Post("/groups/:id/mute", r.handler.Mute)
 	group.Post("/groups/:id/read", r.handler.Read)
+	group.Post("/groups/:id/unread", r.handler.Unread)
 	group.Get("/groups/:id/messages", r.handler.Messages)
 	group.Post("/groups/:id/messages", r.handler.Send)
 	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)

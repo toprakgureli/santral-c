@@ -90,6 +90,16 @@ export function Teams() {
   function roomMenu(e: React.MouseEvent, g: TeamsGroup) {
     e.preventDefault();
     const items: MenuItem[] = [
+      g.unread > 0
+        ? { label: "Okundu olarak işaretle", onClick: () => void api.teamsMarkRead(g.id, 0).then(() => teams.refresh()) }
+        : {
+            label: "Okunmadı olarak işaretle",
+            onClick: () =>
+              void api.teamsMarkUnread(g.id).then(() => {
+                if (groupId === g.id) navigate("/teams");
+                return teams.refresh();
+              }),
+          },
       { label: g.muted ? "Sesi aç" : "Sessize al", onClick: () => void api.teamsMute(g.id, !g.muted).then(() => teams.refresh()) },
     ];
     if (g.kind === "group" && g.myRole !== "owner") items.push({ label: "Gruptan ayrıl", danger: true, onClick: () => void api.teamsRemoveMember(g.id, selfId).then(() => { teams.refresh(); if (groupId === g.id) navigate("/teams"); }) });

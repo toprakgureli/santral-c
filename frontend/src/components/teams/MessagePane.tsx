@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CornerUpLeft, Paperclip, SendHorizontal, SmilePlus, Trash2, X } from "lucide-react";
+import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { api, ApiError } from "@/api/client";
 import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -37,6 +38,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<TeamsMessage | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   // Other seats' pointers, so ticks update live from receipts.
@@ -161,6 +163,18 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     }
   }
 
+  // Telegram-style right-click on a line.
+  function lineMenu(e: React.MouseEvent, m: TeamsMessage) {
+    if (m.deleted || m.kind === "system") return;
+    e.preventDefault();
+    const items: MenuItem[] = [];
+    if (group.canPost) items.push({ label: "Yanıtla", onClick: () => setReply(m) });
+    items.push({ label: "Tepki ver", onClick: () => setPicker(m.id) });
+    items.push({ label: "Metni kopyala", onClick: () => void navigator.clipboard?.writeText(m.body).catch(() => undefined) });
+    if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => void remove(m) });
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  }
+
   // Group consecutive lines by the same sender within five minutes.
   const rows = useMemo(() => {
     const out: { m: TeamsMessage; head: boolean; day: string | null }[] = [];
@@ -204,7 +218,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
             {m.kind === "system" ? (
               <p className="my-2 text-center text-xs text-muted-foreground">{m.body}</p>
             ) : (
-              <div className={cn("group relative flex gap-3 rounded-xl px-2 py-0.5 hover:bg-accent/40", head ? "mt-3" : "mt-0")}>
+              <div onContextMenu={(e) => lineMenu(e, m)} className={cn("group relative flex gap-3 rounded-xl px-2 py-0.5 hover:bg-accent/40", head ? "mt-3" : "mt-0")}>
                 <div className="w-9 shrink-0">
                   {head && m.sender && <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
                   {!head && <span className="hidden text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
@@ -272,6 +286,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
       </div>
 
       {error && <p className="px-5 pb-1 text-xs text-destructive">{error}</p>}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
 
       <Composer group={group} reply={reply} onCancelReply={() => setReply(null)} onSend={send} />
     </div>

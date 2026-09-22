@@ -464,14 +464,38 @@ func (r *Repository) ToggleReaction(ctx context.Context, messageID, userID uint,
 	return nil
 }
 
-// MarkRead advances the seat's read pointer, never backwards.
+// MarkRead advances the seat's read pointer, never backwards, and clears a
+// manual unread mark.
 func (r *Repository) MarkRead(ctx context.Context, groupID, userID, messageID uint) error {
 	if err := r.db.WithContext(ctx).Model(&models.ChatMember{}).
-		Where("group_id = ? AND user_id = ? AND last_read_id < ?", groupID, userID, messageID).
-		Updates(map[string]any{"last_read_id": messageID, "last_delivered_id": gorm.Expr("GREATEST(last_delivered_id, ?)", messageID)}).Error; err != nil {
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Updates(map[string]any{
+			"last_read_id":      gorm.Expr("GREATEST(last_read_id, ?)", messageID),
+			"last_delivered_id": gorm.Expr("GREATEST(last_delivered_id, ?)", messageID),
+			"marked_unread":     false,
+		}).Error; err != nil {
 		return fmt.Errorf("read pointer could not be moved: %w", err)
 	}
 	return nil
+}
+
+// MarkUnread raises the seat's manual unread flag.
+func (r *Repository) MarkUnread(ctx context.Context, groupID, userID uint) error {
+	if err := r.db.WithContext(ctx).Model(&models.ChatMember{}).
+		Where("group_id = ? AND user_id = ?", groupID, userID).
+		Update("marked_unread", true).Error; err != nil {
+		return fmt.Errorf("unread mark could not be set: %w", err)
+	}
+	return nil
+}
+
+// LastMessageID returns the newest line id of a room, or 0.
+func (r *Repository) LastMessageID(ctx context.Context, groupID uint) (uint, error) {
+	var id uint
+	if err := r.db.WithContext(ctx).Model(&models.ChatMessage{}).Where("group_id = ?", groupID).Select("COALESCE(MAX(id), 0)").Scan(&id).Error; err != nil {
+		return 0, fmt.Errorf("last message id could not be read: %w", err)
+	}
+	return id, nil
 }
 
 // Seats loads the seats of several rooms at once, keyed by room.

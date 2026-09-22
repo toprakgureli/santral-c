@@ -363,6 +363,9 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	for i := range groups {
 		g := groups[i]
 		seat := seats[g.ID]
+		if seat.MarkedUnread && unread[g.ID] == 0 {
+			unread[g.ID] = 1
+		}
 		view := s.groupView(actor, &g, &seat, unread[g.ID], counts[g.ID])
 		if g.Kind == "dm" {
 			if p, ok := people[peers[g.ID]]; ok {
@@ -549,6 +552,9 @@ func (s *Service) Detail(ctx context.Context, actorID, groupID uint) (*GroupDeta
 	unread, err := s.repo.Unread(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
+	}
+	if m != nil && m.MarkedUnread && unread[groupID] == 0 {
+		unread[groupID] = 1
 	}
 	d := &GroupDetail{GroupView: s.groupView(actor, g, m, unread[groupID], int64(len(seats))), Members: make([]MemberView, 0, len(seats)), Invited: []Person{}}
 	d.Editable = d.CanManage
@@ -890,12 +896,47 @@ func (s *Service) MarkRead(ctx context.Context, actorID, groupID, messageID uint
 	if m == nil {
 		return nil
 	}
+	explicit := messageID == 0
+	if explicit {
+		last, err := s.repo.LastMessageID(ctx, groupID)
+		if err != nil {
+			return errs.Internal(err)
+		}
+		messageID = last
+	}
 	if err := s.repo.MarkRead(ctx, groupID, actorID, messageID); err != nil {
 		return errs.Internal(err)
 	}
 	if m.LastReadID < messageID {
 		s.notifyGroup(ctx, groupID, Event{Type: "receipt", GroupID: groupID, UserID: actorID, DeliveredID: messageID, ReadID: messageID})
 	}
+	// An explicit "mark read" or a cleared manual flag: the person's other
+	// tabs drop the badge. Ordinary reading while the room is open is not
+	// worth a refresh on every line.
+	if explicit || m.MarkedUnread {
+		s.hub.Send([]uint{actorID}, Event{Type: "group", GroupID: groupID})
+	}
+	return nil
+}
+
+// MarkUnread flags the room unread for the actor until they read it again.
+// It does not touch read receipts: what the others saw stays seen.
+func (s *Service) MarkUnread(ctx context.Context, actorID, groupID uint) error {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	_, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return err
+	}
+	if m == nil {
+		return errs.Forbidden("Bu odada üye değilsiniz.")
+	}
+	if err := s.repo.MarkUnread(ctx, groupID, actorID); err != nil {
+		return errs.Internal(err)
+	}
+	s.hub.Send([]uint{actorID}, Event{Type: "group", GroupID: groupID})
 	return nil
 }
 

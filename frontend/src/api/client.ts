@@ -175,6 +175,8 @@ export const api = {
     request<TeamsGroupDetail>(`/teams/groups/${id}/members/${userId}`, { method: "PUT", body: JSON.stringify(body) }),
   teamsRemoveMember: (id: number, userId: number) => request<void>(`/teams/groups/${id}/members/${userId}`, { method: "DELETE" }),
   teamsMute: (id: number, muted: boolean) => request<void>(`/teams/groups/${id}/mute`, { method: "POST", body: JSON.stringify({ muted }) }),
+  teamsMarkUnread: (id: number) => request<void>(`/teams/groups/${id}/unread`, { method: "POST" }),
+  // messageId 0 marks everything read.
   teamsMarkRead: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
   teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
   teamsSend: (id: number, body: { body: string; replyToId?: number }) =>
