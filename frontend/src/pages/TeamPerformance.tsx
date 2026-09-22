@@ -16,6 +16,7 @@ import { Badge, Card, DateField, EmptyState, Select, Skeleton } from "../compone
 import { displayNumber } from "../softphone/dial";
 import { cn } from "../lib/utils";
 import UserAvatar from "../components/ui/UserAvatar";
+import { Link } from "react-router-dom";
 import { formatClock } from "./callFormat";
 
 const REFRESH_MS = 15000;
@@ -257,7 +258,7 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
             <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "available" && "animate-pulse")} />
           </UserAvatar>
           <div className="min-w-0">
-            <div className="truncate font-semibold leading-tight">{r.name}</div>
+            <Link to={`/profile/${r.userId}`} className="block truncate font-semibold leading-tight hover:underline" title="Profili aç">{r.name}</Link>
             <div className="truncate text-xs text-muted-foreground">
               {r.extension}
               {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}

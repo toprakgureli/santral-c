@@ -53,6 +53,8 @@ export function visibleMenu(can: (permission: string) => boolean): MenuGroup[] {
 }
 
 export function titleFor(pathname: string): string {
+  if (pathname === "/profile") return "Profilim";
+  if (pathname.startsWith("/profile/")) return "Profil";
   for (const group of MENU) {
     for (const item of group.items) {
       if (item.path === pathname) return item.label;

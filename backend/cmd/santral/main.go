@@ -24,6 +24,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/performance"
+	"github.com/toprakgureli/santral-c/backend/internal/profile"
 	"github.com/toprakgureli/santral-c/backend/internal/role"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
@@ -157,6 +158,7 @@ func run() error {
 	calllog.NewRouter(callLogHandler, guard).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
+	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

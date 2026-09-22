@@ -169,6 +169,31 @@ export interface TeamPerformance {
   items: TeamRow[];
 }
 
+export interface ProfileStats {
+  todayReal: number;
+  todayUnanswered: number;
+  monthReal: number;
+  monthTalkSeconds: number;
+  monthEscalations: number;
+  totalEscalations: number;
+}
+
+export interface Profile {
+  id: number;
+  name: string;
+  email: string;
+  headline: string;
+  bio: string;
+  hasAvatar: boolean;
+  avatarVersion?: number;
+  roles: string[];
+  extension?: string;
+  active: boolean;
+  joinedAt: string;
+  stats: ProfileStats;
+  editable: boolean;
+}
+
 export interface Paged<T> {
   items: T[];
   total: number;

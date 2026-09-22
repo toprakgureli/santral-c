@@ -12,6 +12,7 @@ import { Badge, Button, Card, EmptyState, Input, Pagination, Select, Skeleton } 
 import UserForm from "../components/user/UserForm";
 import CredentialsHandoff, { type Handoff } from "../components/user/CredentialsHandoff";
 import UserAvatar from "../components/ui/UserAvatar";
+import { Link } from "react-router-dom";
 import { cn, formatDateTime } from "../lib/utils";
 
 const PER_PAGE = 25;
@@ -141,7 +142,7 @@ export function Users() {
                       <span className="flex items-center gap-2.5">
                         <UserAvatar userId={u.id} name={u.name} hasAvatar={u.hasAvatar} version={u.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
                         <span className="min-w-0">
-                          <span className="block font-medium">{u.name}</span>
+                          <Link to={`/profile/${u.id}`} onClick={(e) => e.stopPropagation()} className="block font-medium hover:underline" title="Profili aç">{u.name}</Link>
                           <span className="block text-xs text-muted-foreground">{u.email}</span>
                         </span>
                       </span>

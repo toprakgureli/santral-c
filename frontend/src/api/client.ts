@@ -17,6 +17,7 @@ import type {
   PBXQueue,
   PBXStats,
   PermissionGroup,
+  Profile,
   Role,
   ShiftStatus,
   SipCredentials,
@@ -148,6 +149,9 @@ export const api = {
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
+  myProfile: () => request<Profile>("/profile/me"),
+  profileOf: (id: number) => request<Profile>(`/profile/${id}`),
+  updateMyProfile: (body: { headline: string; bio: string }) => request<Profile>("/profile/me", { method: "PUT", body: JSON.stringify(body) }),
   setMyAvatar: (avatar: string) => request<User>("/users/me/avatar", { method: "PUT", body: JSON.stringify({ avatar }) }),
   setMyWhatsAppTemplates: (body: { template: string; live: string }) =>
     request<User>("/users/me/whatsapp-template", { method: "PUT", body: JSON.stringify(body) }),

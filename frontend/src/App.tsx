@@ -9,6 +9,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { EscalationSearch } from "./pages/EscalationSearch";
 import { Escalations } from "./pages/Escalations";
 import { Login } from "./pages/Login";
+import { Profile } from "./pages/Profile";
 import { Roles } from "./pages/Roles";
 import { Settings } from "./pages/Settings";
 import { TeamPerformance } from "./pages/TeamPerformance";
@@ -46,6 +47,8 @@ export function App() {
         <Route path="/roles" element={<Roles />} />
         <Route path="/users" element={<Users />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile/:id" element={<Profile />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

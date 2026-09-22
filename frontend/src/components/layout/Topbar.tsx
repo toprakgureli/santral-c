@@ -6,7 +6,6 @@ import { useAuth } from "@/auth/AuthContext";
 import ShiftButton from "./ShiftButton";
 import ThemeMenu from "./ThemeMenu";
 import UserAvatar from "@/components/ui/UserAvatar";
-import ProfileDialog from "@/components/profile/ProfileDialog";
 
 type TopbarProps = {
   title: string;
@@ -17,7 +16,6 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,7 +29,6 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-md md:px-6">
-      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
       <button
         type="button"
         onClick={onMenuClick}
@@ -72,12 +69,12 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  setProfileOpen(true);
+                  navigate("/profile");
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-accent"
               >
                 <UserRound className="size-4" />
-                Profil fotoğrafı
+                Profilim
               </button>
               <button
                 type="button"

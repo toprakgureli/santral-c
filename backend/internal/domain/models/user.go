@@ -26,6 +26,8 @@ type User struct {
 	WhatsAppTemplate     string  `gorm:"column:whatsapp_template;type:text;not null;default:''" json:"-"`
 	WhatsAppTemplateLive string  `gorm:"column:whatsapp_template_live;type:text;not null;default:''" json:"-"`
 	Avatar               string  `gorm:"column:avatar;type:text;not null;default:''" json:"-"`
+	Headline             string  `gorm:"column:headline;size:120;not null;default:''" json:"-"`
+	Bio                  string  `gorm:"column:bio;type:text;not null;default:''" json:"-"`
 	LastLoginAt          *time.Time
 	OnboardedAt          *time.Time
 	LockedUntil          *time.Time
