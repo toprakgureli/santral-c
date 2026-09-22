@@ -161,6 +161,26 @@ func (h *Handler) SetRoles(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// SetMyWhatsAppTemplate stores the caller's own WhatsApp follow-up text.
+func (h *Handler) SetMyWhatsAppTemplate(c *fiber.Ctx) error {
+	actorID, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.WhatsAppTemplate
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	res, err := h.service.SetWhatsAppTemplate(c.UserContext(), actorID, req.Template)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {

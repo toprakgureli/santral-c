@@ -5,6 +5,7 @@ import {
   Copy,
   Delete,
   Grid3x3,
+  MessageCircle,
   Mic,
   MicOff,
   Pause,
@@ -14,6 +15,7 @@ import {
   PhoneOutgoing,
   Play,
   Search,
+  Settings2,
   TriangleAlert,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
@@ -25,6 +27,8 @@ import { useShift } from "../shift/ShiftContext";
 import { usePresence } from "../presence/PresenceContext";
 import { EscalationForm } from "../components/escalation/EscalationForm";
 import { markWrapUpDone } from "../components/layout/WrapUpCard";
+import WhatsAppTemplateDialog from "../components/WhatsAppTemplateDialog";
+import { renderWhatsAppTemplate, whatsappLink, whatsappNumber } from "../lib/whatsapp";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
@@ -380,6 +384,15 @@ function Round({ onClick, tone = "muted", title, disabled, size = "md", children
 function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: boolean }) {
   const phone = useSoftphoneContext();
   const shift = useShift();
+  const { user } = useAuth();
+  const [waOpen, setWaOpen] = useState(false);
+  // The WhatsApp follow-up targets the last real number (never an extension).
+  const waNumber = whatsappNumber(phone.lastPeer ?? "");
+  function openWhatsApp() {
+    if (!waNumber) return;
+    const text = renderWhatsAppTemplate(user?.whatsappTemplate ?? "", { name: user?.name ?? "", number: displayNumber(phone.lastPeer ?? "") });
+    window.open(whatsappLink(waNumber, text), "_blank", "noopener");
+  }
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
@@ -414,6 +427,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 
   return (
     <Card title="Softphone">
+      <WhatsAppTemplateDialog open={waOpen} onClose={() => setWaOpen(false)} previewNumber={displayNumber(phone.lastPeer ?? "")} />
       {!hasExtension ? (
         <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
       ) : phone.secondary ? (
@@ -471,6 +485,31 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                 />
                 <p className="h-4 text-center text-xs text-muted-foreground">{phone.endReason ? `Son çağrı: ${phone.endReason}` : ""}</p>
               </div>
+
+              {/* WhatsApp follow-up for the last number: one click opens the chat with the agent's own message. */}
+              {waNumber && (
+                <div className="mx-auto flex max-w-[15rem] items-stretch gap-1.5">
+                  <button
+                    type="button"
+                    onClick={openWhatsApp}
+                    title={`${displayNumber(phone.lastPeer ?? "")} numarasına WhatsApp'tan yaz`}
+                    className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366]/12 px-3 text-sm font-medium text-[#1da851] ring-1 ring-[#25D366]/35 transition-colors hover:bg-[#25D366]/20 dark:text-[#4fe08a]"
+                  >
+                    <MessageCircle className="size-4" />
+                    WhatsApp'tan yaz
+                    <span className="font-mono text-xs tabular-nums opacity-80">{displayNumber(phone.lastPeer ?? "")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWaOpen(true)}
+                    aria-label="WhatsApp mesajını düzenle"
+                    title="Mesajı düzenle"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Settings2 className="size-4" />
+                  </button>
+                </div>
+              )}
               <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-2">
                 {keypadKeys.map((k) => (
                   <button

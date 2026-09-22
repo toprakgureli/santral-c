@@ -23,6 +23,7 @@ type User struct {
 	SIPExtension       *string `gorm:"column:sip_extension;size:32" json:"sipExtension,omitempty"`
 	SIPSecret          *string `gorm:"column:sip_secret;size:255" json:"-"`
 	SIPProvisioned     bool    `gorm:"column:sip_provisioned;not null;default:false"`
+	WhatsAppTemplate   string  `gorm:"column:whatsapp_template;type:text;not null;default:''" json:"-"`
 	LastLoginAt        *time.Time
 	OnboardedAt        *time.Time
 	LockedUntil        *time.Time

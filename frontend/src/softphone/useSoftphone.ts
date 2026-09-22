@@ -68,6 +68,9 @@ export interface Phone {
   // The panel's call log id of the current call (null when idle or for
   // feature codes), so an escalation entered mid-call can be tied to it.
   callId: string | null;
+  // The other party of the most recent call (in or out, answered or not),
+  // kept after hangup so a follow-up (WhatsApp) can target it.
+  lastPeer: string | null;
   extension: string | null;
   error: string | null;
   muted: boolean;
@@ -138,6 +141,7 @@ export function useSoftphone(enabled: boolean): Phone {
   const [answeredAt, setAnsweredAt] = useState<number | null>(null);
   const [lastEnded, setLastEnded] = useState<EndedCall | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
+  const [lastPeer, setLastPeer] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const uaRef = useRef<UserAgent | null>(null);
@@ -286,6 +290,7 @@ export function useSoftphone(enabled: boolean): Phone {
               setCallId(callIdRef.current);
               callDirRef.current = "inbound";
               callPeerRef.current = from;
+              setLastPeer(from);
               setCallStartedAt(Date.now());
               logCall("start");
               setStatus("incoming");
@@ -348,6 +353,7 @@ export function useSoftphone(enabled: boolean): Phone {
       setCallId(callIdRef.current || null);
       callDirRef.current = "outbound";
       callPeerRef.current = target;
+      if (!featureCode) setLastPeer(target);
       setCallStartedAt(Date.now());
       setError(null);
       logCall("start");
@@ -480,6 +486,7 @@ export function useSoftphone(enabled: boolean): Phone {
     status,
     lastEnded,
     callId,
+    lastPeer,
     extension,
     error,
     muted,

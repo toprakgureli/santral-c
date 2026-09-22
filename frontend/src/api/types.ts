@@ -9,6 +9,7 @@ export interface User {
   mfaEnabled: boolean;
   mustChangePassword: boolean;
   sipExtension?: string;
+  whatsappTemplate?: string;
   lastLoginAt?: string;
   createdAt: string;
 }

@@ -19,6 +19,7 @@ type User struct {
 	MFAEnabled         bool       `json:"mfaEnabled"`
 	MustChangePassword bool       `json:"mustChangePassword"`
 	SIPExtension       string     `json:"sipExtension,omitempty"`
+	WhatsAppTemplate   string     `json:"whatsappTemplate"`
 	OnboardedAt        *time.Time `json:"onboardedAt,omitempty"`
 	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
@@ -58,6 +59,7 @@ func NewUser(u *models.User) User {
 		RoleIDs:            roleIDs,
 		Permissions:        permKeys,
 		MFAEnabled:         u.MFAEnabled,
+		WhatsAppTemplate:   u.WhatsAppTemplate,
 		MustChangePassword: u.MustChangePassword,
 		SIPExtension:       ext,
 		OnboardedAt:        u.OnboardedAt,

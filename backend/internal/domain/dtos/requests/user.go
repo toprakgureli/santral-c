@@ -16,6 +16,11 @@ type UserUpdate struct {
 	RoleIDs []uint `json:"roleIds" validate:"required,min=1,dive,gt=0"`
 }
 
+// WhatsAppTemplate is the actor's own follow-up message text.
+type WhatsAppTemplate struct {
+	Template string `json:"template" validate:"max=1000"`
+}
+
 // UserPassword is an admin password reset.
 type UserPassword struct {
 	Password string `json:"password" validate:"required,min=8,max=16"`
