@@ -17,7 +17,7 @@ import {
   type AvatarTransform,
 } from "@/lib/avatar";
 
-const PREVIEW = 288;
+const PREVIEW = 320;
 const ZOOM_STEP = 0.05;
 
 export default function AvatarCropper({ image, onCancel, onApply }: { image: AvatarSource; onCancel: () => void; onApply: (dataUrl: string) => void }) {
@@ -45,6 +45,9 @@ export default function AvatarCropper({ image, onCancel, onApply }: { image: Ava
   }
 
   const fill = ((t.zoom - AVATAR_ZOOM_MIN) / (AVATAR_ZOOM_MAX - AVATAR_ZOOM_MIN)) * 100;
+  // At zoom 1 the square already covers the image's short side, so that axis
+  // cannot move; say so instead of letting the drag feel broken.
+  const locked = clampTransform({ ...t, x: t.x + 1, y: t.y + 1 }, image).x === t.x || clampTransform({ ...t, x: t.x + 1, y: t.y + 1 }, image).y === t.y;
 
   return (
     <Modal
@@ -92,7 +95,8 @@ export default function AvatarCropper({ image, onCancel, onApply }: { image: Ava
               <span className="absolute inset-y-0 left-2/3 w-px bg-white/25" />
               <span className="absolute inset-x-0 top-1/3 h-px bg-white/25" />
               <span className="absolute inset-x-0 top-2/3 h-px bg-white/25" />
-              <span className="absolute inset-0 rounded-2xl ring-[999px] ring-inset ring-black/0 [mask:radial-gradient(circle_at_center,transparent_49%,black_50%)] bg-black/35" />
+              {/* Everything outside the circle is what gets cut away. */}
+              <span className="absolute inset-0" style={{ background: "radial-gradient(circle at center, transparent 49.5%, rgba(0,0,0,0.45) 50.5%)" }} />
             </div>
           </div>
         </div>
@@ -119,7 +123,9 @@ export default function AvatarCropper({ image, onCancel, onApply }: { image: Ava
           </Button>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground/70">Kaydedilen fotoğraf {AVATAR_SIZE}×{AVATAR_SIZE} boyutunda, yuvarlak alan görünen kısım.</p>
+        <p className="text-center text-xs text-muted-foreground/70">
+          {locked ? "Bu yönde kaydırmak için önce yakınlaştır, kare fotoğrafın tamamını kaplıyor." : "Sürükleyerek yüzü daireye ortala."} Kaydedilen fotoğraf {AVATAR_SIZE}×{AVATAR_SIZE}.
+        </p>
       </div>
     </Modal>
   );
