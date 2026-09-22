@@ -5,9 +5,9 @@
 // calls never open it, and neither does a call the PBX "answered" only to
 // play a rejection or busy announcement, which is why answered calls under
 // MIN_SECONDS (the panel's own valid-call threshold) are skipped too.
-// Pending wrap-ups survive a reload. While a new call rings or runs the card
-// steps aside as a small pill but stays mounted, so a half-filled form is
-// exactly where it was when the call is over.
+// Pending wrap-ups survive a reload. A new call never closes the card: the
+// floating call bar sits above it, so the agent answers or rejects there and
+// keeps filling the form; a note in the header says a call is in progress.
 
 import { useEffect, useState } from "react";
 import { PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
@@ -150,16 +150,7 @@ export default function WrapUpCard() {
   }
 
   return (
-    <div className={cn("fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md", busy && "invisible pointer-events-none")}>
-      {/* While a call rings or runs: a pill that says the entry is waiting. */}
-      {busy && (
-        <div className="visible pointer-events-auto fixed bottom-5 left-5 z-[56] flex items-center gap-2 rounded-full border border-violet-500/40 bg-card px-4 py-2 text-xs shadow-lg">
-          <TriangleAlert className="size-3.5 text-violet-500" />
-          <span>Eskalasyon girişi bekliyor</span>
-          <span className="font-mono tabular-nums text-muted-foreground">{number}</span>
-          <span className="text-muted-foreground">· çağrı bitince devam</span>
-        </div>
-      )}
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md">
       <div
         role="dialog"
         aria-modal="true"
@@ -175,6 +166,7 @@ export default function WrapUpCard() {
             <h2 id="wrapup-title" className="text-lg font-semibold leading-tight">Görüşme bitti, eskalasyonu gir</h2>
             <p className="text-xs text-muted-foreground">Her geçerli çağrının (30 sn ve üstü) sonucu kaydedilir. Kayıt olmadan bu kart kapanmaz.</p>
           </div>
+          {busy && <Badge tone="green">Çağrı sürüyor, kart açık kalır</Badge>}
           {rest > 0 && <Badge tone="amber">+{rest} bekliyor</Badge>}
         </div>
 

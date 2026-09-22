@@ -605,13 +605,30 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 function Escalation({ categories, activePeer, connected, callId, canSearch }: { categories: EscalationCategory[]; activePeer?: string; connected: boolean; callId: string | null; canSearch: boolean }) {
   const [customer, setCustomer] = useState("");
   const [historyCount, setHistoryCount] = useState(0);
+  const [dirty, setDirty] = useState(false);
+  // A call that arrived while an entry for the previous customer is half
+  // written; offered as a switch instead of wiping the form.
+  const [pendingPeer, setPendingPeer] = useState<string | null>(null);
   const onActiveCall = !!activePeer;
 
   // Follow the live call's number; keep it after the call ends so the agent can
-  // still wrap up. There is no manual number entry here anymore.
+  // still wrap up. A half-written entry is never replaced under the agent.
   useEffect(() => {
-    if (activePeer) setCustomer(displayNumber(activePeer));
-  }, [activePeer]);
+    if (!activePeer) return;
+    const next = displayNumber(activePeer);
+    if (next === customer) return;
+    if (dirty && customer) setPendingPeer(next);
+    else {
+      setCustomer(next);
+      setPendingPeer(null);
+    }
+  }, [activePeer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchToPending() {
+    if (!pendingPeer) return;
+    setCustomer(pendingPeer);
+    setPendingPeer(null);
+  }
 
   if (categories.length === 0) {
     return (
@@ -652,15 +669,25 @@ function Escalation({ categories, activePeer, connected, callId, canSearch }: { 
           )}
         </div>
 
+        {pendingPeer && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-warning/10 px-3.5 py-2 text-xs ring-1 ring-warning/30">
+            <span>
+              Yeni çağrı: <span className="font-mono font-semibold tabular-nums">{pendingPeer}</span>. Bu kayıt bitmeden müşteri değişmedi.
+            </span>
+            <button type="button" onClick={switchToPending} className="font-medium text-warning underline-offset-2 hover:underline">Yeni müşteriye geç</button>
+          </div>
+        )}
         <EscalationForm
           categories={categories}
           number={customer}
           canSearch={canSearch}
-          callUuid={connected && callId ? callId : undefined}
+          callUuid={connected && callId && !pendingPeer ? callId : undefined}
           onSaved={() => {
-            if (connected && callId) markWrapUpDone(callId);
+            if (connected && callId && !pendingPeer) markWrapUpDone(callId);
+            if (pendingPeer) switchToPending();
           }}
           onHistory={(items) => setHistoryCount(items.length)}
+          onDirtyChange={setDirty}
         />
       </div>
     </EscalationFrame>

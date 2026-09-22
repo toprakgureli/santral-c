@@ -21,6 +21,7 @@ export function EscalationForm({
   aside,
   showHistory = true,
   pickerHeight,
+  onDirtyChange,
 }: {
   categories: EscalationCategory[];
   number: string;
@@ -34,6 +35,8 @@ export function EscalationForm({
   // The parent may render the history itself (the wrap-up card does).
   showHistory?: boolean;
   pickerHeight?: number;
+  // Reports whether a reason or note is entered but not saved yet.
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [catId, setCatId] = useState<number | null>(null);
   const [reasonId, setReasonId] = useState<number | null>(null);
@@ -84,6 +87,11 @@ export function EscalationForm({
       }),
     [number, loadHistory],
   );
+
+  const dirty = reasonId !== null || note.trim() !== "";
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   // A new number starts a clean form.
   useEffect(() => {

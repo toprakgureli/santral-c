@@ -1,10 +1,11 @@
 // UnreachedPrompt appears the moment an outbound call ends without reaching
 // the customer (no answer, busy, cancelled while ringing, or "answered" by
 // the PBX only for a short announcement) and offers the WhatsApp follow-up
-// with the agent's own message. It never blocks anything: Şimdi değil closes
-// it, a new call hides it, and it shows once per unreached call.
+// with the agent's own message. Only Şimdi değil or writing closes it: a
+// call that arrives meanwhile rings in the floating call bar above the card
+// and never closes it. It shows once per unreached call.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PhoneMissed, Settings2, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
@@ -30,12 +31,7 @@ export default function UnreachedPrompt() {
   const call = phone.lastUnreached;
   const busy = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
   const number = call ? whatsappNumber(call.peer) : "";
-  const show = !!call && call.id !== seenId && !busy && number !== "";
-
-  // A new call while the prompt is up counts as handled.
-  useEffect(() => {
-    if (busy && call) setSeenId(call.id);
-  }, [busy, call]);
+  const show = !!call && call.id !== seenId && number !== "";
 
   if (!show || !call) return null;
 
@@ -73,6 +69,7 @@ export default function UnreachedPrompt() {
             <div className="min-w-0">
               <h2 id="unreached-title" className="text-lg font-semibold leading-tight">Ulaşamadın</h2>
               <p className="text-xs text-muted-foreground">{REASONS[call.reason] ?? "Görüşme olmadı"}. WhatsApp'tan yazmak ister misin?</p>
+              {busy && <p className="mt-0.5 text-xs font-medium text-success">Çağrı sürüyor, kart açık kalır.</p>}
             </div>
           </div>
 
