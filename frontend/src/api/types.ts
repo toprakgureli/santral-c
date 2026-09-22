@@ -194,6 +194,92 @@ export interface Profile {
   editable: boolean;
 }
 
+// Teams (in-house chat)
+export interface TeamsPerson {
+  id: number;
+  name: string;
+  hasAvatar: boolean;
+  avatarVersion?: number;
+}
+
+export interface TeamsReaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  names: string[];
+}
+
+export interface TeamsMessage {
+  id: number;
+  groupId: number;
+  kind: "text" | "system";
+  body: string;
+  sender?: TeamsPerson;
+  replyTo?: { id: number; body: string; sender: string; deleted: boolean };
+  deleted: boolean;
+  mine: boolean;
+  canDelete: boolean;
+  reactions: TeamsReaction[];
+  createdAt: string;
+}
+
+export interface TeamsGroup {
+  id: number;
+  kind: "group" | "dm";
+  name: string;
+  description: string;
+  hasAvatar: boolean;
+  avatarVersion?: number;
+  postPolicy: "everyone" | "admins";
+  myRole: "owner" | "admin" | "member" | "";
+  canPost: boolean;
+  canManage: boolean;
+  canAdd: boolean;
+  canInvite: boolean;
+  canDelete: boolean;
+  muted: boolean;
+  unread: number;
+  memberCount: number;
+  peer?: TeamsPerson;
+  lastMessage?: TeamsMessage;
+  updatedAt: string;
+}
+
+export interface TeamsMember extends TeamsPerson {
+  role: "owner" | "admin" | "member";
+  canPost: boolean;
+  joinedAt: string;
+}
+
+export interface TeamsGroupDetail extends TeamsGroup {
+  members: TeamsMember[];
+  invited: TeamsPerson[];
+  editable: boolean;
+}
+
+export interface TeamsInvite {
+  id: number;
+  groupId: number;
+  groupName: string;
+  hasAvatar: boolean;
+  avatarVersion?: number;
+  invitedBy?: TeamsPerson;
+  createdAt: string;
+}
+
+export interface TeamsOverview {
+  groups: TeamsGroup[];
+  invites: TeamsInvite[];
+  unread: number;
+}
+
+export interface TeamsEvent {
+  type: "hello" | "message" | "message.deleted" | "reaction" | "group" | "invite";
+  groupId?: number;
+  message?: TeamsMessage;
+  id?: number;
+}
+
 export interface Paged<T> {
   items: T[];
   total: number;

@@ -102,7 +102,47 @@ function beepBurst(count: number, freq: number, onMs: number, gapMs: number) {
   );
 }
 
+// A short two-note chime for a new message. It uses its own gain node so it
+// never interrupts a ringing or in-call tone.
+function chime() {
+  try {
+    const c = audio();
+    const g = c.createGain();
+    g.gain.value = 0;
+    g.connect(c.destination);
+    const notes: [number, number][] = [[660, 0], [880, 0.12]];
+    const oscs: OscillatorNode[] = [];
+    for (const [freq, at] of notes) {
+      const o = c.createOscillator();
+      o.type = "sine";
+      o.frequency.value = freq;
+      o.connect(g);
+      o.start(c.currentTime + at);
+      o.stop(c.currentTime + at + 0.18);
+      oscs.push(o);
+    }
+    const t = c.currentTime;
+    g.gain.setTargetAtTime(0.12, t, 0.005);
+    g.gain.setTargetAtTime(0, t + 0.27, 0.03);
+    window.setTimeout(() => {
+      try {
+        oscs.forEach((o) => o.disconnect());
+        g.disconnect();
+      } catch {
+        // ignore
+      }
+    }, 500);
+  } catch {
+    // audio unavailable
+  }
+}
+
 export const tones = {
+  // New chat message.
+  notify() {
+    chime();
+  },
+
   // Outbound ringback: 425 Hz, 2s on / 4s off (Turkish standard).
   ringback() {
     playCadence([425], 0.14, [

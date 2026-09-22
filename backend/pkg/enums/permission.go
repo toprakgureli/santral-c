@@ -21,6 +21,7 @@ const (
 	ModuleQuality     Module = "quality"
 	ModulePerformance Module = "performance"
 	ModuleSystem      Module = "system"
+	ModuleTeams       Module = "teams"
 )
 
 // Permission keys.
@@ -67,6 +68,12 @@ const (
 	PerformanceViewRole Permission = "performance.view_role"
 	PerformanceViewAll  Permission = "performance.view_all"
 
+	TeamsView         Permission = "teams.view"
+	TeamsGroupCreate  Permission = "teams.group_create"
+	TeamsMemberInvite Permission = "teams.member_invite"
+	TeamsMemberAdd    Permission = "teams.member_add"
+	TeamsAdmin        Permission = "teams.admin"
+
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
@@ -111,6 +118,11 @@ var permissions = []PermissionInfo{
 	{QualityView, "Çağrı kalite metriklerini görür"},
 	{PerformanceViewRole, "Ekip performansında kendi rolündekileri görür"},
 	{PerformanceViewAll, "Ekip performansında herkesi görür"},
+	{TeamsView, "Teams sekmesini görür, mesajlaşır"},
+	{TeamsGroupCreate, "Teams'te grup oluşturur"},
+	{TeamsMemberInvite, "Teams gruplarına davet gönderir"},
+	{TeamsMemberAdd, "Teams gruplarına doğrudan üye ekler"},
+	{TeamsAdmin, "Tüm Teams gruplarını yönetir"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
@@ -136,6 +148,7 @@ var moduleLabels = map[Module]string{
 	ModuleQuality:     "Kalite",
 	ModulePerformance: "Ekip Performansı",
 	ModuleSystem:      "Sistem",
+	ModuleTeams:       "Teams",
 }
 
 // ModuleLabel returns the human-facing title for a module.

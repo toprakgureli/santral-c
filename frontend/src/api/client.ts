@@ -18,6 +18,10 @@ import type {
   PBXStats,
   PermissionGroup,
   Profile,
+  TeamsGroupDetail,
+  TeamsMessage,
+  TeamsOverview,
+  TeamsPerson,
   Role,
   ShiftStatus,
   SipCredentials,
@@ -149,6 +153,36 @@ export const api = {
     request<void>(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ password }) }),
   setUserSip: (id: number, extension: string, password: string) =>
     request<void>(`/users/${id}/sip`, { method: "POST", body: JSON.stringify({ extension, password }) }),
+  // Teams
+  teamsPeople: () => request<{ items: TeamsPerson[] }>("/teams/people").then((r) => r.items),
+  teamsOverview: () => request<TeamsOverview>("/teams/overview"),
+  teamsCreateGroup: (body: { name: string; description: string; postPolicy: string; memberIds: number[] }) =>
+    request<TeamsGroupDetail>("/teams/groups", { method: "POST", body: JSON.stringify(body) }),
+  teamsOpenDM: (userId: number) => request<TeamsGroupDetail>(`/teams/dm/${userId}`, { method: "POST" }),
+  teamsGroup: (id: number) => request<TeamsGroupDetail>(`/teams/groups/${id}`),
+  teamsUpdateGroup: (id: number, body: { name: string; description: string; postPolicy: string }) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  teamsSetGroupAvatar: (id: number, avatar: string) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/avatar`, { method: "PUT", body: JSON.stringify({ avatar }) }),
+  teamsDeleteGroup: (id: number) => request<void>(`/teams/groups/${id}`, { method: "DELETE" }),
+  teamsAddMembers: (id: number, userIds: number[]) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/members`, { method: "POST", body: JSON.stringify({ userIds }) }),
+  teamsInvite: (id: number, userIds: number[]) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/invites`, { method: "POST", body: JSON.stringify({ userIds }) }),
+  teamsDecideInvite: (inviteId: number, decision: "accept" | "decline") =>
+    request<void>(`/teams/invites/${inviteId}/${decision}`, { method: "POST" }),
+  teamsUpdateMember: (id: number, userId: number, body: { role?: string; canPost?: boolean }) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/members/${userId}`, { method: "PUT", body: JSON.stringify(body) }),
+  teamsRemoveMember: (id: number, userId: number) => request<void>(`/teams/groups/${id}/members/${userId}`, { method: "DELETE" }),
+  teamsMute: (id: number, muted: boolean) => request<void>(`/teams/groups/${id}/mute`, { method: "POST", body: JSON.stringify({ muted }) }),
+  teamsMarkRead: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
+  teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
+  teamsSend: (id: number, body: { body: string; replyToId?: number }) =>
+    request<TeamsMessage>(`/teams/groups/${id}/messages`, { method: "POST", body: JSON.stringify(body) }),
+  teamsDeleteMessage: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/messages/${messageId}`, { method: "DELETE" }),
+  teamsReact: (id: number, messageId: number, emoji: string) =>
+    request<void>(`/teams/groups/${id}/messages/${messageId}/reactions`, { method: "POST", body: JSON.stringify({ emoji }) }),
+
   myProfile: () => request<Profile>("/profile/me"),
   profileOf: (id: number) => request<Profile>(`/profile/${id}`),
   updateMyProfile: (body: { headline: string; bio: string }) => request<Profile>("/profile/me", { method: "PUT", body: JSON.stringify(body) }),

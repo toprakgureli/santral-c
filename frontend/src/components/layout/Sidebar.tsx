@@ -6,6 +6,7 @@ import { visibleMenu } from "@/lib/menu";
 import { APP_NAME } from "@/lib/brand";
 import { useAuth } from "@/auth/AuthContext";
 import VersionInfo from "@/components/layout/VersionInfo";
+import { useTeams } from "@/teams/TeamsContext";
 
 type SidebarProps = {
   open: boolean;
@@ -18,6 +19,7 @@ type SidebarProps = {
 export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggleCollapse }: SidebarProps) {
   const { can } = useAuth();
   const groups = visibleMenu(can);
+  const teams = useTeams();
 
   return (
     <aside
@@ -61,12 +63,12 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  end
+                  end={item.path !== "/teams"}
                   onClick={onNavigate}
                   title={collapsed ? item.label : undefined}
                   className={({ isActive }) =>
                     cn(
-                      "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
+                      "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium",
                       "transition-[color,background-color] duration-200 ease-out",
                       collapsed && "lg:mx-auto lg:size-10 lg:justify-center lg:gap-0 lg:px-0 lg:py-0",
                       isActive
@@ -79,6 +81,11 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
                     <>
                       <item.icon className={cn("size-4 shrink-0", isActive ? "text-foreground" : "text-muted-foreground/70")} />
                       <span className={cn("truncate", collapsed && "lg:hidden")}>{item.label}</span>
+                      {item.path === "/teams" && teams.unread > 0 && (
+                        <span className={cn("ml-auto rounded-full bg-primary px-1.5 text-[0.65rem] font-semibold tabular-nums text-primary-foreground", collapsed && "lg:absolute lg:-top-1 lg:-right-1 lg:ml-0")}>
+                          {teams.unread > 99 ? "99+" : teams.unread}
+                        </span>
+                      )}
                     </>
                   )}
                 </NavLink>

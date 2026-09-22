@@ -11,6 +11,7 @@ import UnreachedPrompt from "./UnreachedPrompt";
 import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { ShiftProvider } from "@/shift/ShiftContext";
 import { PresenceProvider } from "@/presence/PresenceContext";
+import { TeamsProvider } from "@/teams/TeamsContext";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -45,6 +46,7 @@ export default function AppShell() {
     <ShiftProvider>
     <SoftphoneProvider>
     <PresenceProvider>
+    <TeamsProvider>
     <UnloadGuard />
     <BreakOverlay />
     <WelcomeCard />
@@ -79,6 +81,7 @@ export default function AppShell() {
       </div>
       <CallBar />
     </div>
+    </TeamsProvider>
     </PresenceProvider>
     </SoftphoneProvider>
     </ShiftProvider>

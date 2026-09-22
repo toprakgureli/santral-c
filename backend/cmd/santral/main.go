@@ -30,6 +30,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/internal/setup"
 	"github.com/toprakgureli/santral-c/backend/internal/shift"
+	"github.com/toprakgureli/santral-c/backend/internal/teams"
 	"github.com/toprakgureli/santral-c/backend/internal/user"
 	"github.com/toprakgureli/santral-c/backend/internal/verimor"
 	"github.com/toprakgureli/santral-c/backend/migrations"
@@ -159,6 +160,7 @@ func run() error {
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
+	teams.NewRouter(teams.NewHandler(teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub())), guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
