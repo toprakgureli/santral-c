@@ -7,7 +7,9 @@ import (
 
 // Hub fans room events out to every open tab of every member, keyed by
 // user id. A slow subscriber never blocks the sender: a full channel drops
-// the frame and the client's periodic refresh catches up.
+// the frame and the client's periodic refresh catches up. The set of
+// subscribed users doubles as chat presence: a person with at least one
+// open stream is online.
 type Hub struct {
 	mu   sync.Mutex
 	subs map[uint]map[chan []byte]struct{}
@@ -18,31 +20,51 @@ func NewHub() *Hub {
 	return &Hub{subs: make(map[uint]map[chan []byte]struct{})}
 }
 
-// Subscribe opens a channel for one user's tab.
-func (h *Hub) Subscribe(userID uint) chan []byte {
+// Subscribe opens a channel for one user's tab. The flag is true when this
+// is the user's first open tab, that is, when they just came online.
+func (h *Hub) Subscribe(userID uint) (chan []byte, bool) {
 	ch := make(chan []byte, 32)
 	h.mu.Lock()
-	if h.subs[userID] == nil {
+	first := h.subs[userID] == nil
+	if first {
 		h.subs[userID] = make(map[chan []byte]struct{})
 	}
 	h.subs[userID][ch] = struct{}{}
 	h.mu.Unlock()
-	return ch
+	return ch, first
 }
 
-// Unsubscribe closes the tab's channel.
-func (h *Hub) Unsubscribe(userID uint, ch chan []byte) {
+// Unsubscribe closes the tab's channel. The flag is true when it was the
+// user's last open tab, that is, when they just went offline.
+func (h *Hub) Unsubscribe(userID uint, ch chan []byte) bool {
 	h.mu.Lock()
-	if set, ok := h.subs[userID]; ok {
-		if _, ok := set[ch]; ok {
-			delete(set, ch)
-			close(ch)
-		}
-		if len(set) == 0 {
-			delete(h.subs, userID)
+	defer h.mu.Unlock()
+	set, ok := h.subs[userID]
+	if !ok {
+		return false
+	}
+	if _, ok := set[ch]; ok {
+		delete(set, ch)
+		close(ch)
+	}
+	if len(set) == 0 {
+		delete(h.subs, userID)
+		return true
+	}
+	return false
+}
+
+// Online reports which of the given users have an open stream.
+func (h *Hub) Online(ids []uint) map[uint]bool {
+	out := make(map[uint]bool, len(ids))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, id := range ids {
+		if len(h.subs[id]) > 0 {
+			out[id] = true
 		}
 	}
-	h.mu.Unlock()
+	return out
 }
 
 // Send delivers one event to every tab of the given users.
@@ -54,11 +76,28 @@ func (h *Hub) Send(userIDs []uint, event any) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, id := range userIDs {
-		for ch := range h.subs[id] {
-			select {
-			case ch <- data:
-			default:
-			}
+		h.push(id, data)
+	}
+}
+
+// Broadcast delivers one event to everyone with an open stream.
+func (h *Hub) Broadcast(event any) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for id := range h.subs {
+		h.push(id, data)
+	}
+}
+
+func (h *Hub) push(id uint, data []byte) {
+	for ch := range h.subs[id] {
+		select {
+		case ch <- data:
+		default:
 		}
 	}
 }

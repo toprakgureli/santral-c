@@ -27,6 +27,8 @@ type Person struct {
 	Name      string `json:"name"`
 	HasAvatar bool   `json:"hasAvatar"`
 	Version   int64  `json:"avatarVersion,omitempty"`
+	Online    bool   `json:"online"`
+	LastSeen  string `json:"lastSeen,omitempty"`
 	Active    bool   `json:"-"`
 }
 
@@ -466,8 +468,83 @@ func (r *Repository) ToggleReaction(ctx context.Context, messageID, userID uint,
 func (r *Repository) MarkRead(ctx context.Context, groupID, userID, messageID uint) error {
 	if err := r.db.WithContext(ctx).Model(&models.ChatMember{}).
 		Where("group_id = ? AND user_id = ? AND last_read_id < ?", groupID, userID, messageID).
-		Update("last_read_id", messageID).Error; err != nil {
+		Updates(map[string]any{"last_read_id": messageID, "last_delivered_id": gorm.Expr("GREATEST(last_delivered_id, ?)", messageID)}).Error; err != nil {
 		return fmt.Errorf("read pointer could not be moved: %w", err)
 	}
 	return nil
+}
+
+// Seats loads the seats of several rooms at once, keyed by room.
+func (r *Repository) Seats(ctx context.Context, groupIDs []uint) (map[uint][]models.ChatMember, error) {
+	out := map[uint][]models.ChatMember{}
+	if len(groupIDs) == 0 {
+		return out, nil
+	}
+	var rows []models.ChatMember
+	if err := r.db.WithContext(ctx).Where("group_id IN ?", groupIDs).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("seats could not be loaded: %w", err)
+	}
+	for _, st := range rows {
+		out[st.GroupID] = append(out[st.GroupID], st)
+	}
+	return out, nil
+}
+
+// MarkDelivered advances the seat's delivery pointer, never backwards, and
+// reports whether it moved.
+func (r *Repository) MarkDelivered(ctx context.Context, groupID, userID, messageID uint) (bool, error) {
+	res := r.db.WithContext(ctx).Model(&models.ChatMember{}).
+		Where("group_id = ? AND user_id = ? AND last_delivered_id < ?", groupID, userID, messageID).
+		Update("last_delivered_id", messageID)
+	if res.Error != nil {
+		return false, fmt.Errorf("delivery pointer could not be moved: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// Delivered is a room whose delivery pointer just moved.
+type Delivered struct {
+	GroupID     uint
+	DeliveredID uint
+	ReadID      uint
+}
+
+// MarkDeliveredAll moves every seat of the user up to its room's newest
+// line (the client has just fetched the room list, previews included) and
+// returns the rooms that moved.
+func (r *Repository) MarkDeliveredAll(ctx context.Context, userID uint) ([]Delivered, error) {
+	var out []Delivered
+	err := r.db.WithContext(ctx).Raw(
+		"UPDATE chat_members s SET last_delivered_id = x.max_id "+
+			"FROM (SELECT group_id, MAX(id) AS max_id FROM chat_messages GROUP BY group_id) x "+
+			"WHERE s.group_id = x.group_id AND s.user_id = ? AND s.last_delivered_id < x.max_id "+
+			"RETURNING s.group_id AS group_id, s.last_delivered_id AS delivered_id, s.last_read_id AS read_id", userID).
+		Scan(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("delivery pointers could not be moved: %w", err)
+	}
+	return out, nil
+}
+
+// TouchSeen records that the person has the chat open right now.
+func (r *Repository) TouchSeen(ctx context.Context, userID uint) error {
+	return r.db.WithContext(ctx).Exec(
+		"INSERT INTO chat_presence (user_id, last_seen_at) VALUES (?, now()) "+
+			"ON CONFLICT (user_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at", userID).Error
+}
+
+// LastSeen loads when each of the given people last had the chat open.
+func (r *Repository) LastSeen(ctx context.Context, ids []uint) (map[uint]time.Time, error) {
+	out := map[uint]time.Time{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []models.ChatPresence
+	if err := r.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("presence could not be loaded: %w", err)
+	}
+	for _, p := range rows {
+		out[p.UserID] = p.LastSeenAt
+	}
+	return out, nil
 }

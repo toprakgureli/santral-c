@@ -22,14 +22,15 @@ func (ChatGroup) TableName() string { return "chat_groups" }
 
 // ChatMember is one person's seat in a room, with their in-room role.
 type ChatMember struct {
-	GroupID    uint      `gorm:"column:group_id;primarykey"`
-	UserID     uint      `gorm:"column:user_id;primarykey"`
-	Role       string    `gorm:"column:role;size:8;not null;default:member"`
-	CanPost    bool      `gorm:"column:can_post;not null;default:true"`
-	Muted      bool      `gorm:"column:muted;not null;default:false"`
-	LastReadID uint      `gorm:"column:last_read_id;not null;default:0"`
-	InvitedBy  *uint     `gorm:"column:invited_by"`
-	JoinedAt   time.Time `gorm:"column:joined_at"`
+	GroupID         uint      `gorm:"column:group_id;primarykey"`
+	UserID          uint      `gorm:"column:user_id;primarykey"`
+	Role            string    `gorm:"column:role;size:8;not null;default:member"`
+	CanPost         bool      `gorm:"column:can_post;not null;default:true"`
+	Muted           bool      `gorm:"column:muted;not null;default:false"`
+	LastReadID      uint      `gorm:"column:last_read_id;not null;default:0"`
+	LastDeliveredID uint      `gorm:"column:last_delivered_id;not null;default:0"`
+	InvitedBy       *uint     `gorm:"column:invited_by"`
+	JoinedAt        time.Time `gorm:"column:joined_at"`
 }
 
 // TableName pins the table name.
@@ -51,17 +52,17 @@ func (ChatInvite) TableName() string { return "chat_invites" }
 
 // ChatMessage is one line in a room. Attachments is reserved for media.
 type ChatMessage struct {
-	ID          uint           `gorm:"column:id;primarykey"`
-	GroupID     uint           `gorm:"column:group_id;not null;index"`
-	SenderID    *uint          `gorm:"column:sender_id"`
-	Kind        string         `gorm:"column:kind;size:8;not null;default:text"`
-	Body        string         `gorm:"column:body;type:text;not null;default:''"`
-	ReplyToID   *uint          `gorm:"column:reply_to_id"`
-	Attachments *string        `gorm:"column:attachments;type:jsonb"`
-	CreatedAt   time.Time      `gorm:"column:created_at"`
-	EditedAt    *time.Time     `gorm:"column:edited_at"`
-	DeletedAt   *time.Time     `gorm:"column:deleted_at"`
-	DeletedBy   *uint          `gorm:"column:deleted_by"`
+	ID          uint       `gorm:"column:id;primarykey"`
+	GroupID     uint       `gorm:"column:group_id;not null;index"`
+	SenderID    *uint      `gorm:"column:sender_id"`
+	Kind        string     `gorm:"column:kind;size:8;not null;default:text"`
+	Body        string     `gorm:"column:body;type:text;not null;default:''"`
+	ReplyToID   *uint      `gorm:"column:reply_to_id"`
+	Attachments *string    `gorm:"column:attachments;type:jsonb"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
+	EditedAt    *time.Time `gorm:"column:edited_at"`
+	DeletedAt   *time.Time `gorm:"column:deleted_at"`
+	DeletedBy   *uint      `gorm:"column:deleted_by"`
 }
 
 // TableName pins the table name.
@@ -77,3 +78,12 @@ type ChatReaction struct {
 
 // TableName pins the table name.
 func (ChatReaction) TableName() string { return "chat_reactions" }
+
+// ChatPresence remembers when a person last had the chat open.
+type ChatPresence struct {
+	UserID     uint      `gorm:"column:user_id;primarykey"`
+	LastSeenAt time.Time `gorm:"column:last_seen_at"`
+}
+
+// TableName pins the table name.
+func (ChatPresence) TableName() string { return "chat_presence" }

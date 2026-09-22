@@ -27,6 +27,14 @@ interface TeamsState {
   clearUnread: (groupId: number) => void;
   notifications: NotificationPermission | "unsupported";
   askNotifications: () => Promise<void>;
+  // Live presence by user id; falls back to what the server sent with the card.
+  presence: Record<number, PresenceInfo>;
+  presenceOf: (p: { id: number; online?: boolean; lastSeen?: string } | undefined | null) => PresenceInfo;
+}
+
+export interface PresenceInfo {
+  online: boolean;
+  lastSeen?: string;
 }
 
 const Ctx = createContext<TeamsState | undefined>(undefined);
@@ -43,6 +51,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const groupsRef = useRef<TeamsGroup[]>([]);
   groupsRef.current = groups;
   const listeners = useRef(new Set<(e: TeamsEvent) => void>());
+  const [presence, setPresence] = useState<Record<number, PresenceInfo>>({});
+  const refreshTimer = useRef<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationPermission | "unsupported">(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission,
   );
@@ -53,6 +63,11 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       const o = await api.teamsOverview();
       setGroups(o.groups);
       setInvites(o.invites);
+      setPresence((cur) => {
+        const next = { ...cur };
+        for (const g of o.groups) if (g.peer) next[g.peer.id] = { online: !!g.peer.online, lastSeen: g.peer.lastSeen };
+        return next;
+      });
     } catch {
       // keep the last known state; the next poll retries
     }
@@ -129,6 +144,25 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           notify(m);
         } else if (e.type === "group" || e.type === "invite") {
           void refresh();
+        } else if (e.type === "presence" && e.userId) {
+          const uid = e.userId;
+          setPresence((cur) => ({ ...cur, [uid]: { online: !!e.online, lastSeen: e.lastSeen ?? cur[uid]?.lastSeen } }));
+        } else if (e.type === "receipt" && e.groupId) {
+          // A direct message has one reader, so its preview tick is exact;
+          // a group's needs every seat, so its list entry is refreshed lazily.
+          setGroups((list) =>
+            list.map((g) => {
+              if (g.id !== e.groupId || !g.lastMessage?.mine || g.lastMessage.status === "read") return g;
+              if (g.kind !== "dm") {
+                if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+                refreshTimer.current = window.setTimeout(() => void refresh(), 1500);
+                return g;
+              }
+              const id = g.lastMessage.id;
+              const status = (e.readId ?? 0) >= id ? "read" : (e.deliveredId ?? 0) >= id ? "delivered" : g.lastMessage.status;
+              return status === g.lastMessage.status ? g : { ...g, lastMessage: { ...g.lastMessage, status } };
+            }),
+          );
         }
         listeners.current.forEach((fn) => fn(e));
       };
@@ -179,9 +213,19 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
 
   const unread = useMemo(() => groups.reduce((n, g) => n + (g.muted ? 0 : g.unread), 0), [groups]);
 
+  const presenceOf = useCallback(
+    (p: { id: number; online?: boolean; lastSeen?: string } | undefined | null): PresenceInfo => {
+      if (!p) return { online: false };
+      const live = presence[p.id];
+      if (live) return live;
+      return { online: !!p.online, lastSeen: p.lastSeen };
+    },
+    [presence],
+  );
+
   const value = useMemo<TeamsState>(
-    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications }),
-    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications],
+    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf }),
+    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

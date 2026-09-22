@@ -7,6 +7,8 @@ import { Link } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMember } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { OnlineDot, seenLabel } from "@/components/teams/Presence";
+import { useTeams } from "@/teams/TeamsContext";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +18,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isOwner = group.myRole === "owner";
+  const { presenceOf } = useTeams();
 
   async function run(p: Promise<TeamsGroupDetail | void>) {
     try {
@@ -68,13 +71,17 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
               className={cn("flex items-center gap-2.5 rounded-lg px-2 py-1.5", group.canManage && m.id !== selfId && "cursor-context-menu hover:bg-accent")}
               title={group.canManage && m.id !== selfId ? "Sağ tık: rol ve yazma hakkı" : undefined}
             >
-              <UserAvatar userId={m.id} name={m.name} hasAvatar={m.hasAvatar} version={m.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
+              <span className="relative shrink-0">
+                <UserAvatar userId={m.id} name={m.name} hasAvatar={m.hasAvatar} version={m.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                <OnlineDot online={presenceOf(m).online} className="-right-0.5 -bottom-0.5 size-2.5" />
+              </span>
               <span className="min-w-0 flex-1">
                 <Link to={`/profile/${m.id}`} className="block truncate text-sm font-medium hover:underline">{m.name}{m.id === selfId && <span className="text-muted-foreground"> (sen)</span>}</Link>
-                <span className="flex items-center gap-1 text-[0.7rem] text-muted-foreground">
+                <span className="flex items-center gap-1 text-[0.7rem] text-muted-foreground" title={seenLabel(presenceOf(m).online, presenceOf(m).lastSeen)}>
                   {m.role === "owner" && <Crown className="size-3 text-warning" />}
                   {m.role === "admin" && <Shield className="size-3 text-primary" />}
                   {ROLE_LABEL[m.role]}
+                  <span className={cn("ml-1", presenceOf(m).online ? "text-success" : "")}>· {presenceOf(m).online ? "çevrimiçi" : "çevrimdışı"}</span>
                   {!m.canPost && <span className="ml-1 inline-flex items-center gap-0.5 text-destructive"><MicOff className="size-3" /> yazamaz</span>}
                 </span>
               </span>

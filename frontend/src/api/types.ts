@@ -200,6 +200,8 @@ export interface TeamsPerson {
   name: string;
   hasAvatar: boolean;
   avatarVersion?: number;
+  online?: boolean;
+  lastSeen?: string;
 }
 
 export interface TeamsReaction {
@@ -221,6 +223,9 @@ export interface TeamsMessage {
   canDelete: boolean;
   reactions: TeamsReaction[];
   createdAt: string;
+  // Only on the reader's own lines.
+  status?: "sent" | "delivered" | "read";
+  readBy?: string[];
 }
 
 export interface TeamsGroup {
@@ -249,6 +254,8 @@ export interface TeamsMember extends TeamsPerson {
   role: "owner" | "admin" | "member";
   canPost: boolean;
   joinedAt: string;
+  deliveredId: number;
+  readId: number;
 }
 
 export interface TeamsGroupDetail extends TeamsGroup {
@@ -274,10 +281,17 @@ export interface TeamsOverview {
 }
 
 export interface TeamsEvent {
-  type: "hello" | "message" | "message.deleted" | "reaction" | "group" | "invite";
+  type: "hello" | "message" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt";
   groupId?: number;
   message?: TeamsMessage;
   id?: number;
+  // presence
+  userId?: number;
+  online?: boolean;
+  lastSeen?: string;
+  // receipt
+  deliveredId?: number;
+  readId?: number;
 }
 
 export interface Paged<T> {

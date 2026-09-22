@@ -13,6 +13,7 @@ import GroupAvatar from "../components/teams/GroupAvatar";
 import { AddPeopleDialog, GroupSettingsDialog, NewDMDialog, NewGroupDialog } from "../components/teams/GroupDialogs";
 import MembersPanel from "../components/teams/MembersPanel";
 import MessagePane from "../components/teams/MessagePane";
+import { OnlineDot, seenLabel, Ticks } from "../components/teams/Presence";
 import { Badge, Button } from "../components/ui";
 import { can } from "../lib/permissions";
 import { cn } from "../lib/utils";
@@ -105,7 +106,10 @@ export function Teams() {
         onContextMenu={(e) => roomMenu(e, g)}
         className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors", active ? "bg-sidebar-accent" : "hover:bg-accent/60")}
       >
-        <GroupAvatar group={g} className="size-9 text-xs" />
+        <span className="relative shrink-0">
+          <GroupAvatar group={g} className="size-9 text-xs" />
+          {g.kind === "dm" && <OnlineDot online={teams.presenceOf(g.peer).online} />}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className={cn("min-w-0 flex-1 truncate text-sm", g.unread && !g.muted ? "font-semibold" : "font-medium")}>{g.name}</span>
@@ -113,6 +117,7 @@ export function Teams() {
             {last && <span className="shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">{when(last.createdAt)}</span>}
           </span>
           <span className="flex items-center gap-1.5">
+            {last?.mine && !last.deleted && <Ticks status={last.status} />}
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${last.body}`) : "Henüz mesaj yok"}
             </span>
@@ -199,7 +204,10 @@ export function Teams() {
         ) : (
           <>
             <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4">
-              <GroupAvatar group={detail} className="size-9 text-xs" />
+              <span className="relative shrink-0">
+                <GroupAvatar group={detail} className="size-9 text-xs" />
+                {detail.kind === "dm" && <OnlineDot online={teams.presenceOf(detail.peer).online} />}
+              </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {detail.kind === "group" && <Hash className="size-4 shrink-0 text-muted-foreground" />}
@@ -207,8 +215,10 @@ export function Teams() {
                   {detail.postPolicy === "admins" && <Badge tone="amber">Duyuru</Badge>}
                   {detail.muted && <VolumeX className="size-3.5 text-muted-foreground" />}
                 </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {detail.kind === "dm" ? "Özel mesaj" : detail.description || `${detail.memberCount} üye`}
+                <p className={cn("truncate text-xs", detail.kind === "dm" && teams.presenceOf(detail.peer).online ? "text-success" : "text-muted-foreground")}>
+                  {detail.kind === "dm"
+                    ? seenLabel(teams.presenceOf(detail.peer).online, teams.presenceOf(detail.peer).lastSeen)
+                    : detail.description || `${detail.memberCount} üye · ${detail.members.filter((m) => teams.presenceOf(m).online).length} çevrimiçi`}
                 </p>
               </div>
               {detail.kind === "group" && (

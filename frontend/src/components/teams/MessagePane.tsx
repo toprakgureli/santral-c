@@ -8,6 +8,7 @@ import { CornerUpLeft, Paperclip, SendHorizontal, SmilePlus, Trash2, X } from "l
 import { api, ApiError } from "@/api/client";
 import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { statusOf, Ticks } from "@/components/teams/Presence";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
 
@@ -38,6 +39,13 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const [picker, setPicker] = useState<number | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  // Other seats' pointers, so ticks update live from receipts.
+  const [seats, setSeats] = useState<Record<number, { deliveredId: number; readId: number; name: string }>>({});
+  useEffect(() => {
+    const next: Record<number, { deliveredId: number; readId: number; name: string }> = {};
+    for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name };
+    setSeats(next);
+  }, [group.members]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +99,16 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
           void api.teamsMarkRead(group.id, m.id).catch(() => undefined);
           teams.clearUnread(group.id);
         }
+      } else if (e.type === "receipt" && e.userId) {
+        const uid = e.userId;
+        setSeats((cur) => {
+          const s = cur[uid];
+          if (!s) return cur;
+          const deliveredId = Math.max(s.deliveredId, e.deliveredId ?? 0, e.readId ?? 0);
+          const readId = Math.max(s.readId, e.readId ?? 0);
+          if (deliveredId === s.deliveredId && readId === s.readId) return cur;
+          return { ...cur, [uid]: { ...s, deliveredId, readId } };
+        });
       } else if (e.type === "message.deleted" && e.id) {
         setItems((cur) => cur.map((x) => (x.id === e.id ? { ...x, deleted: true, body: "", canDelete: false, reactions: [] } : x)));
       } else if (e.type === "reaction" && e.id) {
@@ -208,7 +226,13 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   {m.deleted ? (
                     <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.body}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                      {m.body}
+                      {m.mine && (() => {
+                        const st = statusOf(m.id, selfId, seats);
+                        return <Ticks status={st.status} readBy={st.readBy} className="ml-1.5 align-text-bottom" />;
+                      })()}
+                    </p>
                   )}
                   {m.reactions.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">

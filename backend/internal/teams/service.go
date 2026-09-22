@@ -72,9 +72,11 @@ type GroupView struct {
 // MemberView is one seat with the person's card.
 type MemberView struct {
 	Person
-	Role     string `json:"role"`
-	CanPost  bool   `json:"canPost"`
-	JoinedAt string `json:"joinedAt"`
+	Role        string `json:"role"`
+	CanPost     bool   `json:"canPost"`
+	JoinedAt    string `json:"joinedAt"`
+	DeliveredID uint   `json:"deliveredId"`
+	ReadID      uint   `json:"readId"`
 }
 
 // GroupDetail is the open room: the list card plus its members.
@@ -117,6 +119,9 @@ type MessageView struct {
 	CanDelete bool           `json:"canDelete"`
 	Reactions []ReactionView `json:"reactions"`
 	CreatedAt string         `json:"createdAt"`
+	// Status is set on the reader's own lines: sent, delivered or read.
+	Status string   `json:"status,omitempty"`
+	ReadBy []string `json:"readBy,omitempty"`
 }
 
 // ReplyView is the quoted line above a reply.
@@ -140,6 +145,12 @@ type Event struct {
 	GroupID uint         `json:"groupId,omitempty"`
 	Message *MessageView `json:"message,omitempty"`
 	ID      uint         `json:"id,omitempty"`
+	// presence: userId, online, lastSeen. receipt: groupId, userId, deliveredId, readId.
+	UserID      uint   `json:"userId,omitempty"`
+	Online      *bool  `json:"online,omitempty"`
+	LastSeen    string `json:"lastSeen,omitempty"`
+	DeliveredID uint   `json:"deliveredId,omitempty"`
+	ReadID      uint   `json:"readId,omitempty"`
 }
 
 // ---------------------------------------------------------------- helpers
@@ -195,6 +206,73 @@ func canPost(g *models.ChatGroup, m *models.ChatMember) bool {
 	return g.PostPolicy == policyEveryone && m.CanPost
 }
 
+// presence fills the online flag and last-seen stamp of each card.
+func (s *Service) presence(ctx context.Context, people map[uint]Person) {
+	ids := make([]uint, 0, len(people))
+	for id := range people {
+		ids = append(ids, id)
+	}
+	online := s.hub.Online(ids)
+	seen, _ := s.repo.LastSeen(ctx, ids)
+	for id, p := range people {
+		p.Online = online[id]
+		if !p.Online {
+			if t, ok := seen[id]; ok {
+				p.LastSeen = stamp(t)
+			}
+		}
+		people[id] = p
+	}
+}
+
+// status grades one of the actor's own lines against the other seats:
+// read when everyone else read it, delivered when everyone else received
+// it, sent otherwise. ReadBy names who has read it so far.
+func (s *Service) status(actorID uint, msg *models.ChatMessage, seats []models.ChatMember, people map[uint]Person) (string, []string) {
+	if msg.SenderID == nil || *msg.SenderID != actorID || msg.Kind != "text" || msg.DeletedAt != nil {
+		return "", nil
+	}
+	others, delivered, read := 0, 0, 0
+	readBy := []string{}
+	for _, st := range seats {
+		if st.UserID == actorID {
+			continue
+		}
+		others++
+		if st.LastReadID >= msg.ID {
+			read++
+			delivered++
+			if p, ok := people[st.UserID]; ok {
+				readBy = append(readBy, p.Name)
+			}
+		} else if st.LastDeliveredID >= msg.ID {
+			delivered++
+		}
+	}
+	switch {
+	case others == 0:
+		return "sent", nil
+	case read == others:
+		return "read", readBy
+	case delivered == others:
+		return "delivered", readBy
+	default:
+		return "sent", readBy
+	}
+}
+
+// markDelivered moves the actor's delivery pointer and tells the room.
+func (s *Service) markDelivered(ctx context.Context, actorID uint, m *models.ChatMember, messageID uint) {
+	if m == nil || messageID == 0 || m.LastDeliveredID >= messageID {
+		return
+	}
+	moved, err := s.repo.MarkDelivered(ctx, m.GroupID, actorID, messageID)
+	if err != nil || !moved {
+		return
+	}
+	s.notifyGroup(ctx, m.GroupID, Event{Type: "receipt", GroupID: m.GroupID, UserID: actorID, DeliveredID: messageID, ReadID: m.LastReadID})
+}
+
 func stamp(t time.Time) string {
 	return t.In(istanbul).Format(time.RFC3339)
 }
@@ -217,6 +295,14 @@ func (s *Service) People(ctx context.Context, actorID uint) ([]Person, error) {
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	byID := make(map[uint]Person, len(out))
+	for _, p := range out {
+		byID[p.ID] = p
+	}
+	s.presence(ctx, byID)
+	for i := range out {
+		out[i] = byID[out[i].ID]
+	}
 	return out, nil
 }
 
@@ -228,6 +314,8 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	if err != nil {
 		return nil, err
 	}
+	// The room list carries previews, so everything newest is now delivered.
+	moved, _ := s.repo.MarkDeliveredAll(ctx, actorID)
 	groups, seats, err := s.repo.MyGroups(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -235,6 +323,10 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	ids := make([]uint, 0, len(groups))
 	for _, g := range groups {
 		ids = append(ids, g.ID)
+	}
+	allSeats, err := s.repo.Seats(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
 	}
 	last, err := s.repo.LastMessages(ctx, ids)
 	if err != nil {
@@ -266,6 +358,7 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.presence(ctx, people)
 	out := &Overview{Groups: make([]GroupView, 0, len(groups)), Invites: []InviteView{}}
 	for i := range groups {
 		g := groups[i]
@@ -279,12 +372,16 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 		}
 		if lm, ok := last[g.ID]; ok {
 			mv := s.messageView(actor, &g, &seat, &lm, people, nil)
+			mv.Status, _ = s.status(actor.ID, &lm, allSeats[g.ID], nil)
 			view.LastMessage = &mv
 		}
 		if !seat.Muted {
 			out.Unread += unread[g.ID]
 		}
 		out.Groups = append(out.Groups, view)
+	}
+	for _, d := range moved {
+		s.notifyGroup(ctx, d.GroupID, Event{Type: "receipt", GroupID: d.GroupID, UserID: actorID, DeliveredID: d.DeliveredID, ReadID: d.ReadID})
 	}
 	invites, err := s.repo.PendingInvites(ctx, actorID)
 	if err != nil {
@@ -448,6 +545,7 @@ func (s *Service) Detail(ctx context.Context, actorID, groupID uint) (*GroupDeta
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.presence(ctx, people)
 	unread, err := s.repo.Unread(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -456,7 +554,7 @@ func (s *Service) Detail(ctx context.Context, actorID, groupID uint) (*GroupDeta
 	d.Editable = d.CanManage
 	for _, st := range seats {
 		p := people[st.UserID]
-		d.Members = append(d.Members, MemberView{Person: p, Role: st.Role, CanPost: canPost(g, &st), JoinedAt: stamp(st.JoinedAt)})
+		d.Members = append(d.Members, MemberView{Person: p, Role: st.Role, CanPost: canPost(g, &st), JoinedAt: stamp(st.JoinedAt), DeliveredID: st.LastDeliveredID, ReadID: st.LastReadID})
 		if g.Kind == "dm" && st.UserID != actorID {
 			peer := p
 			d.Peer = &peer
@@ -785,13 +883,18 @@ func (s *Service) MarkRead(ctx context.Context, actorID, groupID, messageID uint
 	if err != nil {
 		return err
 	}
-	if _, m, err := s.seat(ctx, actor, groupID); err != nil {
+	_, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
 		return err
-	} else if m == nil {
+	}
+	if m == nil {
 		return nil
 	}
 	if err := s.repo.MarkRead(ctx, groupID, actorID, messageID); err != nil {
 		return errs.Internal(err)
+	}
+	if m.LastReadID < messageID {
+		s.notifyGroup(ctx, groupID, Event{Type: "receipt", GroupID: groupID, UserID: actorID, DeliveredID: messageID, ReadID: messageID})
 	}
 	return nil
 }
@@ -815,6 +918,9 @@ func (s *Service) Messages(ctx context.Context, actorID, groupID, beforeID uint)
 	more := len(rows) > pageSize
 	if more {
 		rows = rows[:pageSize]
+	}
+	if beforeID == 0 && len(rows) > 0 {
+		s.markDelivered(ctx, actorID, m, rows[0].ID)
 	}
 	views, err := s.views(ctx, actor, g, m, rows)
 	if err != nil {
@@ -856,6 +962,13 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 	for _, r := range reactions {
 		need = append(need, r.UserID)
 	}
+	seats, err := s.repo.Members(ctx, g.ID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	for _, st := range seats {
+		need = append(need, st.UserID)
+	}
 	people, err := s.repo.PeopleByID(ctx, need)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -867,6 +980,7 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 	out := make([]MessageView, 0, len(rows))
 	for i := range rows {
 		v := s.messageView(actor, g, m, &rows[i], people, byMsg[rows[i].ID])
+		v.Status, v.ReadBy = s.status(actor.ID, &rows[i], seats, people)
 		if rows[i].ReplyToID != nil {
 			if rm, ok := replies[*rows[i].ReplyToID]; ok {
 				rv := ReplyView{ID: rm.ID, Body: rm.Body, Deleted: rm.DeletedAt != nil}
@@ -962,6 +1076,9 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 	mine := *view
 	mine.Mine = true
 	mine.CanDelete = true
+	if seats, err := s.repo.Members(ctx, groupID); err == nil {
+		mine.Status, _ = s.status(actorID, msg, seats, nil)
+	}
 	return &mine, nil
 }
 
@@ -1005,11 +1122,25 @@ func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg
 			view.ReplyTo = &rv
 		}
 	}
-	ids, err := s.repo.MemberIDs(ctx, g.ID)
+	seats, err := s.repo.Members(ctx, g.ID)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	ids := make([]uint, 0, len(seats))
+	for _, st := range seats {
+		ids = append(ids, st.UserID)
+	}
 	s.hub.Send(ids, Event{Type: "message", GroupID: g.ID, Message: &view})
+	// Whoever has the chat open right now has received the line.
+	online := s.hub.Online(ids)
+	for _, st := range seats {
+		if !online[st.UserID] || (msg.SenderID != nil && st.UserID == *msg.SenderID) {
+			continue
+		}
+		if moved, err := s.repo.MarkDelivered(ctx, g.ID, st.UserID, msg.ID); err == nil && moved {
+			s.hub.Send(ids, Event{Type: "receipt", GroupID: g.ID, UserID: st.UserID, DeliveredID: msg.ID, ReadID: st.LastReadID})
+		}
+	}
 	return &view, nil
 }
 
@@ -1084,10 +1215,20 @@ func (s *Service) Subscribe(ctx context.Context, actorID uint) (chan []byte, err
 	if _, err := s.actor(ctx, actorID); err != nil {
 		return nil, err
 	}
-	return s.hub.Subscribe(actorID), nil
+	ch, first := s.hub.Subscribe(actorID)
+	if first {
+		_ = s.repo.TouchSeen(context.Background(), actorID)
+		on := true
+		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &on})
+	}
+	return ch, nil
 }
 
-// Unsubscribe closes a live stream.
+// Unsubscribe closes a live stream; the last tab going away means offline.
 func (s *Service) Unsubscribe(actorID uint, ch chan []byte) {
-	s.hub.Unsubscribe(actorID, ch)
+	if s.hub.Unsubscribe(actorID, ch) {
+		_ = s.repo.TouchSeen(context.Background(), actorID)
+		off := false
+		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &off, LastSeen: stamp(time.Now())})
+	}
 }

@@ -6,6 +6,8 @@ import { Check, Search } from "lucide-react";
 import { api } from "@/api/client";
 import type { TeamsPerson } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { OnlineDot } from "@/components/teams/Presence";
+import { useTeams } from "@/teams/TeamsContext";
 import { cn } from "@/lib/utils";
 
 export default function PeoplePicker({
@@ -23,6 +25,7 @@ export default function PeoplePicker({
 }) {
   const [people, setPeople] = useState<TeamsPerson[]>([]);
   const [q, setQ] = useState("");
+  const { presenceOf } = useTeams();
 
   useEffect(() => {
     api.teamsPeople().then(setPeople).catch(() => setPeople([]));
@@ -62,7 +65,10 @@ export default function PeoplePicker({
                 onClick={() => toggle(p.id)}
                 className={cn("flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent", on && "bg-primary/10")}
               >
-                <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                <span className="relative shrink-0">
+                  <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                  <OnlineDot online={presenceOf(p).online} className="-right-0.5 -bottom-0.5 size-2.5" />
+                </span>
                 <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
                 {on && <Check className="size-4 shrink-0 text-success" />}
               </button>
