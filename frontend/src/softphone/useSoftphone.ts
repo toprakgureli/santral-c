@@ -68,9 +68,10 @@ export interface UnreachedCall {
   reason: "no_answer" | "busy" | "canceled" | "short";
 }
 
-// A connected call shorter than this was an announcement, not a conversation
-// (the same 30 s rule as Geçerli çağrı).
-const CONVERSATION_SECONDS = 30;
+// A connected outbound call that ends within this many seconds was the PBX
+// playing a rejection or busy announcement, not the customer. Anything longer
+// counts as reached, whoever hung up.
+const ANNOUNCEMENT_SECONDS = 8;
 
 export interface Phone {
   status: PhoneStatus;
@@ -232,7 +233,7 @@ export function useSoftphone(enabled: boolean): Phone {
               : callDirRef.current === "inbound"
                 ? "missed"
                 : "no_answer";
-          if (callDirRef.current === "outbound" && callIdRef.current && (!wasEstablished || duration < CONVERSATION_SECONDS)) {
+          if (callDirRef.current === "outbound" && callIdRef.current && (!wasEstablished || duration < ANNOUNCEMENT_SECONDS)) {
             setLastUnreached({
               id: callIdRef.current,
               peer: callPeerRef.current,

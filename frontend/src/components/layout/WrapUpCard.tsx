@@ -17,6 +17,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
 import { emitEscalationSaved } from "@/components/escalation/events";
 import { Badge, Button } from "@/components/ui";
+import { useWhatsAppPromptOpen } from "@/lib/overlays";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { displayNumber } from "@/softphone/dial";
@@ -90,6 +91,8 @@ export default function WrapUpCard() {
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [skipError, setSkipError] = useState<string | null>(null);
+  // The WhatsApp prompt has priority; this card waits until it is closed.
+  const waPromptOpen = useWhatsAppPromptOpen();
 
   // Queue every answered call as it ends.
   useEffect(() => {
@@ -150,7 +153,7 @@ export default function WrapUpCard() {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md">
+    <div className={cn("fixed inset-0 z-[55] flex items-center justify-center bg-background/70 p-4 backdrop-blur-md", waPromptOpen && "invisible")}>
       <div
         role="dialog"
         aria-modal="true"

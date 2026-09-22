@@ -5,12 +5,13 @@
 // call that arrives meanwhile rings in the floating call bar above the card
 // and never closes it. It shows once per unreached call.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PhoneMissed, Settings2, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import WhatsAppTemplateDialog from "@/components/WhatsAppTemplateDialog";
 import { Button } from "@/components/ui";
+import { setWhatsAppPromptOpen } from "@/lib/overlays";
 import { renderWhatsAppTemplate, whatsappLink, whatsappNumber } from "@/lib/whatsapp";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
@@ -19,7 +20,7 @@ const REASONS: Record<string, string> = {
   no_answer: "Cevap vermedi",
   busy: "Meşgul",
   canceled: "Çalarken kapattın",
-  short: "Bağlandı ama görüşme olmadı",
+  short: "Santral anonsu, görüşme olmadı",
 };
 
 export default function UnreachedPrompt() {
@@ -32,6 +33,11 @@ export default function UnreachedPrompt() {
   const busy = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
   const number = call ? whatsappNumber(call.peer) : "";
   const show = !!call && call.id !== seenId && number !== "";
+
+  useEffect(() => {
+    setWhatsAppPromptOpen(show);
+    return () => setWhatsAppPromptOpen(false);
+  }, [show]);
 
   if (!show || !call) return null;
 
