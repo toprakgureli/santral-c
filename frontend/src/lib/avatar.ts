@@ -95,12 +95,35 @@ export function drawAvatar(canvas: HTMLCanvasElement, src: AvatarSource, size: n
   ctx.restore();
 }
 
+// The server accepts up to 90 KB; the browser aims well under that so the
+// limit is never hit. Like a phone app, it shrinks the photo itself: first
+// by lowering webp quality, then by reducing the side, until it fits.
+export const AVATAR_TARGET_BYTES = 60 * 1024;
+const QUALITIES = [AVATAR_QUALITY, 0.72, 0.62, 0.52, 0.42, 0.32];
+const SIDES = [AVATAR_SIZE, 224, 192, 160, 128];
+
+function dataUrlBytes(dataUrl: string): number {
+  const b64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
 export function encodeAvatar(src: AvatarSource, t: AvatarTransform): string {
   const canvas = document.createElement("canvas");
-  drawAvatar(canvas, src, AVATAR_SIZE, clampTransform(t, src));
-  const encoded = canvas.toDataURL("image/webp", AVATAR_QUALITY);
-  if (!encoded.startsWith("data:image/webp")) throw new Error("Tarayıcın webp desteklemiyor, başka bir tarayıcı dene.");
-  return encoded;
+  const clamped = clampTransform(t, src);
+  let smallest: string | null = null;
+  for (const side of SIDES) {
+    drawAvatar(canvas, src, side, clamped);
+    for (const quality of QUALITIES) {
+      const encoded = canvas.toDataURL("image/webp", quality);
+      if (!encoded.startsWith("data:image/webp")) throw new Error("Tarayıcın webp desteklemiyor, başka bir tarayıcı dene.");
+      if (dataUrlBytes(encoded) <= AVATAR_TARGET_BYTES) return encoded;
+      if (!smallest || encoded.length < smallest.length) smallest = encoded;
+    }
+  }
+  // 128px at the lowest quality is a few KB; this line is only reached on
+  // a pathological encoder, and the server still has its own ceiling.
+  return smallest as string;
 }
 
 // Photos are not carried in list responses (a 200-row list would be

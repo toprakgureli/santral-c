@@ -105,7 +105,7 @@ export default function ProfileDialog({ open, onClose }: { open: boolean; onClos
           <Button variant="secondary" onClick={() => picker.current?.click()} disabled={busy} className="h-10">
             <Camera className="size-4" /> {showing ? "Fotoğrafı değiştir" : "Fotoğraf seç"}
           </Button>
-          <p className="text-center text-xs text-muted-foreground">PNG, JPEG, WEBP veya GIF, en fazla 5 MB. Kırpıp 256×256 olarak kaydedilir.</p>
+          <p className="text-center text-xs text-muted-foreground">PNG, JPEG, WEBP veya GIF, en fazla 5 MB. Kırpılır, küçültülür ve sıkıştırılır, boyut derdi yok.</p>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </Modal>
