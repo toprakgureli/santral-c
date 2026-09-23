@@ -1,8 +1,9 @@
 // MentionToasts: the bottom-right cards that stay until dismissed when
 // someone tags you with @. They live in the shell, so they show on every
-// page, and survive a reload until you act on them.
+// page, and survive a reload until you act on them. The whole card is
+// the link to the message; the small cross dismisses it.
 
-import { AtSign, X } from "lucide-react";
+import { ArrowRight, AtSign, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { useTeams } from "@/teams/TeamsContext";
@@ -21,10 +22,15 @@ export default function MentionToasts() {
         <div
           key={t.id}
           role="status"
-          className="pointer-events-auto animate-in slide-in-from-right-4 fade-in overflow-hidden rounded-2xl border border-violet-500/40 bg-card shadow-2xl duration-300"
+          onClick={() => {
+            dismissMention(t.id);
+            navigate(`/teams/${t.groupId}`);
+          }}
+          className="group pointer-events-auto animate-in slide-in-from-right-4 fade-in relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-2xl transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-violet-500/60"
         >
-          <div className="flex items-start gap-3 p-3.5">
-            <span className="relative shrink-0">
+          <span className="absolute inset-y-0 left-0 w-1 bg-violet-500" />
+          <div className="flex items-start gap-3 py-3 pr-3 pl-4">
+            <span className="relative inline-flex shrink-0">
               <UserAvatar userId={t.sender.id} name={t.sender.name} hasAvatar={t.sender.hasAvatar} version={t.sender.avatarVersion} className="size-10" fallbackClassName="bg-violet-500/15 text-sm text-violet-500" />
               <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-violet-500 text-white ring-2 ring-card">
                 <AtSign className="size-3" />
@@ -36,21 +42,22 @@ export default function MentionToasts() {
               </p>
               <p className="truncate text-xs text-muted-foreground">{t.groupName}</p>
               <p className="mt-1 line-clamp-2 text-sm">{t.body}</p>
+              <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-violet-500 opacity-80 transition-opacity group-hover:opacity-100">
+                Mesaja git <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+              </p>
             </div>
-            <button type="button" onClick={() => dismissMention(t.id)} aria-label="Kapat" className="-mt-1 -mr-1 rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissMention(t.id);
+              }}
+              aria-label="Kapat"
+              className="-mt-1 -mr-1 rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
               <X className="size-4" />
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              dismissMention(t.id);
-              navigate(`/teams/${t.groupId}`);
-            }}
-            className="block w-full border-t border-border/60 bg-violet-500/10 px-3.5 py-2 text-left text-xs font-medium text-violet-500 hover:bg-violet-500/15"
-          >
-            Mesaja git
-          </button>
         </div>
       ))}
     </div>

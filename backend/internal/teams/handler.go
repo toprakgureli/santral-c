@@ -543,15 +543,36 @@ func (h *Handler) Presence(c *fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		State string `json:"state"`
+		Room uint `json:"room"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	if err := h.service.SetPresence(c.UserContext(), id, req.State); err != nil {
+	if err := h.service.SetPresence(c.UserContext(), id, req.Room); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Receipts lists who received and read a line, and when.
+func (h *Handler) Receipts(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	mid, err := param(c, "mid")
+	if err != nil {
+		return err
+	}
+	res, err := h.service.MessageReceipts(c.UserContext(), id, gid, mid)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": res})
 }
 
 // ---------------------------------------------------------------- attachments
@@ -843,6 +864,7 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Post("/groups/:id/messages", r.handler.Send)
 	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)
 	group.Put("/groups/:id/messages/:mid", r.handler.Edit)
+	group.Get("/groups/:id/messages/:mid/receipts", r.handler.Receipts)
 	group.Post("/groups/:id/typing", r.handler.Typing)
 	group.Post("/groups/:id/uploads", r.handler.BeginUpload)
 	group.Post("/uploads/:aid/finish", r.handler.FinishUpload)

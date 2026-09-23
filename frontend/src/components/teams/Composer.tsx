@@ -15,7 +15,7 @@ import VideoTrimmer from "@/components/teams/VideoTrimmer";
 import { VIDEO_MAX } from "@/lib/attachments";
 import type { UploadsApi } from "@/teams/useUploads";
 import UserAvatar from "@/components/ui/UserAvatar";
-import { applyStyle, MARKUP_HINT, renderMarkup, STYLES, type Style } from "@/lib/markup";
+import { applyStyle, MARKUP_HINT, renderMarkup, STYLES, stripMarkup, type Style } from "@/lib/markup";
 import { cn } from "@/lib/utils";
 
 export const EVERYONE = "herkes";
@@ -315,7 +315,7 @@ export default function Composer({
           {reply.sender && <UserAvatar userId={reply.sender.id} name={reply.sender.name} hasAvatar={reply.sender.hasAvatar} version={reply.sender.avatarVersion} className="size-5" fallbackClassName="bg-primary/10 text-[0.55rem] text-primary" />}
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium">{reply.sender?.name}</span>
-            <span className="text-muted-foreground"> kişisine yanıt: {reply.body.slice(0, 100)}</span>
+            <span className="text-muted-foreground"> kişisine yanıt: {stripMarkup(reply.body).slice(0, 100)}</span>
           </span>
           <button type="button" onClick={onCancelReply} aria-label="Yanıtı iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
         </div>

@@ -1,5 +1,9 @@
 // Presence bits shared by the chat: the online dot, the "son görülme"
 // label and the delivery ticks under a person's own line.
+//
+// "Sohbette" is room-scoped, like Instagram's "aynı sohbettesiniz": a
+// person shows as in the chat only inside the room they are looking at.
+// Everywhere else they are simply online.
 
 import { Check, CheckCheck } from "lucide-react";
 import type { TeamsMessage } from "@/api/types";
@@ -8,12 +12,12 @@ import { cn } from "@/lib/utils";
 export interface Presence {
   online: boolean;
   lastSeen?: string;
-  // "chat" while a room is open in front of the person.
-  state?: string;
+  // Looking at the room the card is shown in.
+  here?: boolean;
 }
 
 export function OnlineDot({ presence, className }: { presence: Presence; className?: string }) {
-  const chatting = presence.online && presence.state === "chat";
+  const chatting = presence.online && !!presence.here;
   return (
     <span
       className={cn(
@@ -27,7 +31,7 @@ export function OnlineDot({ presence, className }: { presence: Presence; classNa
 }
 
 export function seenLabel(p: Presence): string {
-  if (p.online && p.state === "chat") return "Sohbette";
+  if (p.online && p.here) return "Sohbette";
   if (p.online) return "Çevrimiçi";
   if (!p.lastSeen) return "Çevrimdışı";
   const d = new Date(p.lastSeen);
@@ -43,7 +47,7 @@ export function seenLabel(p: Presence): string {
 
 // presenceTone is the text colour that goes with the label.
 export function presenceTone(p: Presence): string {
-  if (p.online && p.state === "chat") return "text-violet-500";
+  if (p.online && p.here) return "text-violet-500";
   if (p.online) return "text-success";
   return "text-muted-foreground";
 }

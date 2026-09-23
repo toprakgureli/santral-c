@@ -158,8 +158,8 @@ type Event struct {
 	DeliveredID uint   `json:"deliveredId,omitempty"`
 	ReadID      uint   `json:"readId,omitempty"`
 	// typing: groupId, userId, name. presence also carries state ("chat" or "").
-	Name  string `json:"name,omitempty"`
-	State string `json:"state,omitempty"`
+	Name string `json:"name,omitempty"`
+	Room *uint  `json:"room,omitempty"`
 }
 
 // ---------------------------------------------------------------- helpers
@@ -215,18 +215,19 @@ func canPost(g *models.ChatGroup, m *models.ChatMember) bool {
 	return g.PostPolicy == policyEveryone && m.CanPost
 }
 
-// presence fills the online flag and last-seen stamp of each card.
-func (s *Service) presence(ctx context.Context, people map[uint]Person) {
+// presence fills the online flag and last-seen stamp of each card and
+// returns which room each person is looking at, for the caller to mark
+// "in this room" where it matters.
+func (s *Service) presence(ctx context.Context, people map[uint]Person) map[uint]uint {
 	ids := make([]uint, 0, len(people))
 	for id := range people {
 		ids = append(ids, id)
 	}
 	online := s.hub.Online(ids)
-	states := s.hub.States(ids)
+	rooms := s.hub.Rooms(ids)
 	seen, _ := s.repo.LastSeen(ctx, ids)
 	for id, p := range people {
 		p.Online = online[id]
-		p.State = states[id]
 		if !p.Online {
 			if t, ok := seen[id]; ok {
 				p.LastSeen = stamp(t)
@@ -234,6 +235,7 @@ func (s *Service) presence(ctx context.Context, people map[uint]Person) {
 		}
 		people[id] = p
 	}
+	return rooms
 }
 
 // status grades one of the actor's own lines against the other seats:
@@ -377,7 +379,7 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	s.presence(ctx, people)
+	rooms := s.presence(ctx, people)
 	out := &Overview{Groups: make([]GroupView, 0, len(groups)), Invites: []InviteView{}}
 	for i := range groups {
 		g := groups[i]
@@ -388,6 +390,7 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 		view := s.groupView(actor, &g, &seat, unread[g.ID], counts[g.ID])
 		if g.Kind == "dm" {
 			if p, ok := people[peers[g.ID]]; ok {
+				p.InRoom = p.Online && rooms[p.ID] == g.ID
 				view.Peer = &p
 				view.Name = p.Name
 			}
@@ -570,7 +573,11 @@ func (s *Service) Detail(ctx context.Context, actorID, groupID uint) (*GroupDeta
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	s.presence(ctx, people)
+	rooms := s.presence(ctx, people)
+	for id, p := range people {
+		p.InRoom = p.Online && rooms[id] == groupID
+		people[id] = p
+	}
 	unread, err := s.repo.Unread(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -1295,19 +1302,105 @@ func (s *Service) Typing(ctx context.Context, actorID, groupID uint) error {
 	return nil
 }
 
-// SetPresence records whether the actor is looking at a room right now.
-func (s *Service) SetPresence(ctx context.Context, actorID uint, state string) error {
-	if _, err := s.actor(ctx, actorID); err != nil {
+// SetPresence records which room the actor is looking at (0: none). The
+// rooms involved hear about it; nobody else needs to.
+func (s *Service) SetPresence(ctx context.Context, actorID uint, room uint) error {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
 		return err
 	}
-	if state != "chat" {
-		state = ""
+	if room != 0 {
+		if _, m, err := s.seat(ctx, actor, room); err != nil || m == nil {
+			room = 0
+		}
 	}
-	if s.hub.SetState(actorID, state) {
-		on := true
-		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &on, State: state})
+	changed, old := s.hub.SetRoom(actorID, room)
+	if !changed {
+		return nil
+	}
+	on := true
+	if old != 0 {
+		none := uint(0)
+		s.notifyGroup(ctx, old, Event{Type: "presence", GroupID: old, UserID: actorID, Online: &on, Room: &none})
+	}
+	if room != 0 {
+		r := room
+		s.notifyGroup(ctx, room, Event{Type: "presence", GroupID: room, UserID: actorID, Online: &on, Room: &r})
 	}
 	return nil
+}
+
+// ReceiptView is one person's delivery and read time for a line.
+type ReceiptView struct {
+	Person
+	DeliveredAt string `json:"deliveredAt,omitempty"`
+	ReadAt      string `json:"readAt,omitempty"`
+}
+
+// MessageReceipts lists, for a line, when each other seat received and
+// read it.
+func (s *Service) MessageReceipts(ctx context.Context, actorID, groupID, messageID uint) ([]ReceiptView, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, err := s.seat(ctx, actor, groupID); err != nil {
+		return nil, err
+	}
+	msg, err := s.repo.Message(ctx, messageID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if msg == nil || msg.GroupID != groupID {
+		return nil, errs.NotFound("Mesaj bulunamadı.")
+	}
+	seats, err := s.repo.Members(ctx, groupID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	logged, err := s.repo.Receipts(ctx, messageID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	byUser := map[uint]Receipt{}
+	for _, r := range logged {
+		byUser[r.UserID] = r
+	}
+	ids := make([]uint, 0, len(seats))
+	for _, st := range seats {
+		ids = append(ids, st.UserID)
+	}
+	people, err := s.repo.PeopleByID(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	out := []ReceiptView{}
+	for _, st := range seats {
+		if msg.SenderID != nil && st.UserID == *msg.SenderID {
+			continue
+		}
+		v := ReceiptView{Person: people[st.UserID]}
+		if r, ok := byUser[st.UserID]; ok {
+			if r.DeliveredAt != nil {
+				v.DeliveredAt = stamp(*r.DeliveredAt)
+			}
+			if r.ReadAt != nil {
+				v.ReadAt = stamp(*r.ReadAt)
+			}
+		}
+		// Pointers moved before the log existed still count, without a time.
+		if v.ReadAt == "" && st.LastReadID >= messageID {
+			v.ReadAt = stamp(msg.CreatedAt)
+		}
+		if v.DeliveredAt == "" && (st.LastDeliveredID >= messageID || v.ReadAt != "") {
+			v.DeliveredAt = v.ReadAt
+			if v.DeliveredAt == "" {
+				v.DeliveredAt = stamp(msg.CreatedAt)
+			}
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // system posts a grey line nobody wrote ("X joined").

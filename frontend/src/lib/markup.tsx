@@ -141,6 +141,24 @@ export function renderMarkup(text: string, opts: MarkupOptions = {}): ReactNode 
   return <>{blocks}</>;
 }
 
+// stripMarkup flattens a line to plain text for quotes, previews and
+// notifications: the markers go, the words stay.
+export function stripMarkup(text: string): string {
+  return text
+    .replace(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/~~(.+?)~~/g, "$1")
+    .replace(/\|\|(.+?)\|\|/g, "$1")
+    .replace(/(^|[^\p{L}\p{N}*])\*([^*\n]+?)\*(?![\p{L}\p{N}*])/gu, "$1$2")
+    .replace(/(?<![\p{L}\p{N}])_([^_\n]+?)_(?![\p{L}\p{N}])/gu, "$1")
+    .replace(/^>\s?/gm, "")
+    .replace(/^[-*]\s+/gm, "• ")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
 // Formatting the composer applies to a selection.
 export type Style = "bold" | "italic" | "underline" | "strike" | "code" | "block" | "spoiler" | "quote" | "list";
 

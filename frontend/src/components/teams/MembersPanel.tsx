@@ -24,10 +24,10 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
 
   const { online, offline } = useMemo(() => {
     const by = (a: TeamsMember, b: TeamsMember) => (RANK[a.role] - RANK[b.role]) || a.name.localeCompare(b.name, "tr");
-    const on = group.members.filter((m) => presenceOf(m).online).sort(by);
-    const off = group.members.filter((m) => !presenceOf(m).online).sort(by);
+    const on = group.members.filter((m) => presenceOf(m, group.id).online).sort(by);
+    const off = group.members.filter((m) => !presenceOf(m, group.id).online).sort(by);
     return { online: on, offline: off };
-  }, [group.members, presenceOf]);
+  }, [group.members, group.id, presenceOf]);
 
   async function run(p: Promise<TeamsGroupDetail | void>) {
     try {
@@ -56,7 +56,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
   }
 
   const Row = ({ m }: { m: TeamsMember }) => {
-    const p = presenceOf(m);
+    const p = presenceOf(m, group.id);
     const manageable = group.canManage && m.id !== selfId;
     return (
       <li>
@@ -70,7 +70,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
           )}
           title={manageable ? "Sağ tık: rol ve yazma hakkı" : undefined}
         >
-          <span className="relative shrink-0">
+          <span className="relative inline-flex shrink-0">
             <UserAvatar userId={m.id} name={m.name} hasAvatar={m.hasAvatar} version={m.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
             <OnlineDot presence={p} className="-right-0.5 -bottom-0.5 size-2.5" />
           </span>

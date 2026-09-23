@@ -202,8 +202,13 @@ export interface TeamsPerson {
   avatarVersion?: number;
   online?: boolean;
   lastSeen?: string;
-  // "chat" while a room is open in front of the person.
-  state?: string;
+  // Looking at the room this card is shown in.
+  inRoom?: boolean;
+}
+
+export interface TeamsReceipt extends TeamsPerson {
+  deliveredAt?: string;
+  readAt?: string;
 }
 
 export interface TeamsReaction {
@@ -321,9 +326,9 @@ export interface TeamsEvent {
   // receipt
   deliveredId?: number;
   readId?: number;
-  // typing (name), presence (state)
+  // typing (name), presence (room the person now looks at, 0 for none)
   name?: string;
-  state?: string;
+  room?: number;
 }
 
 export interface Paged<T> {

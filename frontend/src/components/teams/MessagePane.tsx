@@ -16,10 +16,11 @@ import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { Modal } from "@/components/ui";
 import { api, ApiError } from "@/api/client";
-import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
+import type { TeamsEvent, TeamsGroupDetail, TeamsMessage, TeamsReceipt } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { statusOf, Ticks } from "@/components/teams/Presence";
-import { renderMarkup } from "@/lib/markup";
+import { renderMarkup, stripMarkup } from "@/lib/markup";
+import { previewLabel } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
 
@@ -318,7 +319,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                     head ? "mt-3" : "mt-0",
                     flash === m.id ? "bg-primary/15" : "hover:bg-accent/40",
                     editing?.id === m.id && "bg-warning/10",
-                    mentionsMe && "border-l-2 border-violet-500 bg-violet-500/5 pl-1.5",
+                    mentionsMe && "bg-violet-500/[0.07] before:absolute before:top-1 before:bottom-1 before:left-0 before:w-[3px] before:rounded-full before:bg-violet-500 hover:bg-violet-500/10",
                   )}
                 >
                   <div className="w-9 shrink-0">
@@ -342,7 +343,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                         <CornerUpLeft className="mt-0.5 size-3 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1">
                           <span className="block font-medium text-foreground/90">{m.replyTo.sender}</span>
-                          <span className={cn("line-clamp-2 text-muted-foreground", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : m.replyTo.body}</span>
+                          <span className={cn("line-clamp-2 text-muted-foreground", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : stripMarkup(m.replyTo.body)}</span>
                         </span>
                       </button>
                     )}
@@ -420,7 +421,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
         ) : null}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
-      {info && <MessageInfo message={info} seats={seats} selfId={selfId} onClose={() => setInfo(null)} />}
+      {info && <MessageInfo message={info} group={group} onClose={() => setInfo(null)} />}
 
       <Composer
         group={group}
@@ -438,38 +439,75 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   );
 }
 
-// MessageInfo: who has read a line, who only received it, who has not yet.
-function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessage; seats: Seats; selfId: number; onClose: () => void }) {
-  const read: string[] = [];
-  const delivered: string[] = [];
-  const pending: string[] = [];
-  for (const [id, s] of Object.entries(seats)) {
-    const uid = Number(id);
-    if (uid === selfId || uid === message.sender?.id) continue;
-    if (s.readId >= message.id) read.push(s.name);
-    else if (s.deliveredId >= message.id) delivered.push(s.name);
-    else pending.push(s.name);
-  }
-  const when = new Date(message.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const Section = ({ title, names, status }: { title: string; names: string[]; status?: "sent" | "delivered" | "read" }) => (
-    <div>
-      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <Ticks status={status} size="size-4" /> {title} · {names.length}
-      </p>
-      {names.length ? (
-        <ul className="space-y-0.5 text-sm">{names.map((n) => <li key={n}>{n}</li>)}</ul>
-      ) : (
-        <p className="text-sm text-muted-foreground/70">Kimse yok</p>
-      )}
-    </div>
+// MessageInfo: when the line was sent, received and read. A direct message
+// reads as a short timeline; a group lists every seat with both times.
+function MessageInfo({ message, group, onClose }: { message: TeamsMessage; group: TeamsGroupDetail; onClose: () => void }) {
+  const [rows, setRows] = useState<TeamsReceipt[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .teamsReceipts(group.id, message.id)
+      .then(setRows)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Bilgi alınamadı."));
+  }, [group.id, message.id]);
+
+  const stamp = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    const today = d.toDateString() === new Date().toDateString();
+    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    return today ? time : `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${time}`;
+  };
+  const sent = new Date(message.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const peer = group.kind === "dm" ? rows?.[0] : undefined;
+  const sorted = (rows ?? []).slice().sort((a, b) => (b.readAt ? 2 : b.deliveredAt ? 1 : 0) - (a.readAt ? 2 : a.deliveredAt ? 1 : 0) || a.name.localeCompare(b.name, "tr"));
+
+  const Step = ({ status, title, when, hint }: { status: "sent" | "delivered" | "read"; title: string; when?: string | null; hint: string }) => (
+    <li className="flex items-center gap-3">
+      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", when ? "bg-success/15" : "bg-muted")}>
+        <Ticks status={status} size="size-4" className={cn(!when && "opacity-50")} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className={cn("block text-xs", when ? "text-muted-foreground" : "text-muted-foreground/60 italic")}>{when ?? hint}</span>
+      </span>
+    </li>
   );
+
   return (
-    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${when}${message.editedAt ? " · düzenlendi" : ""}`} size="md">
+    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${sent}${message.editedAt ? " · düzenlendi" : ""}`} size="md">
       <div className="space-y-4">
-        <div className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{renderMarkup(message.body)}</div>
-        <Section title="Okudu" names={read} status="read" />
-        <Section title="Teslim edildi" names={delivered} status="delivered" />
-        <Section title="Bekliyor" names={pending} status="sent" />
+        <div className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{message.body ? renderMarkup(message.body) : <span className="text-muted-foreground">{previewLabel("", message.attachments)}</span>}</div>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        {rows === null && !error && <p className="text-xs text-muted-foreground">Yükleniyor...</p>}
+        {rows && group.kind === "dm" && (
+          <ul className="space-y-3">
+            <Step status="sent" title="Gönderildi" when={stamp(message.createdAt)} hint="" />
+            <Step status="delivered" title="Teslim edildi" when={stamp(peer?.deliveredAt)} hint="Henüz teslim edilmedi" />
+            <Step status="read" title="Okundu" when={stamp(peer?.readAt)} hint="Henüz okunmadı" />
+          </ul>
+        )}
+        {rows && group.kind !== "dm" && (
+          <div className="overflow-hidden rounded-xl border border-border/60">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span>Kişi</span>
+              <span className="w-16 text-right">Teslim</span>
+              <span className="w-16 text-right">Okundu</span>
+            </div>
+            {sorted.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">Odada başka kimse yok.</p>}
+            {sorted.map((r) => (
+              <div key={r.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <UserAvatar userId={r.id} name={r.name} hasAvatar={r.hasAvatar} version={r.avatarVersion} className="size-6" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />
+                  <span className="truncate">{r.name}</span>
+                  <Ticks status={r.readAt ? "read" : r.deliveredAt ? "delivered" : "sent"} size="size-3.5" />
+                </span>
+                <span className={cn("w-16 text-right text-xs tabular-nums", r.deliveredAt ? "text-muted-foreground" : "text-muted-foreground/40")}>{stamp(r.deliveredAt) ?? "—"}</span>
+                <span className={cn("w-16 text-right text-xs tabular-nums", r.readAt ? "text-success" : "text-muted-foreground/40")}>{stamp(r.readAt) ?? "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   );

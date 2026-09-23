@@ -65,7 +65,7 @@ export default function PeoplePicker({
                 onClick={() => toggle(p.id)}
                 className={cn("flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent", on && "bg-primary/10")}
               >
-                <span className="relative shrink-0">
+                <span className="relative inline-flex shrink-0">
                   <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
                   <OnlineDot presence={presenceOf(p)} className="-right-0.5 -bottom-0.5 size-2.5" />
                 </span>

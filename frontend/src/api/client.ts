@@ -24,6 +24,7 @@ import type {
   TeamsMessage,
   TeamsOverview,
   TeamsPerson,
+  TeamsReceipt,
   Role,
   ShiftStatus,
   SipCredentials,
@@ -193,7 +194,8 @@ export const api = {
   driveStatus: () => request<DriveStatus>("/teams/drive/status"),
   driveDisconnect: () => request<void>("/teams/drive/disconnect", { method: "POST" }),
   teamsTyping: (id: number) => request<void>(`/teams/groups/${id}/typing`, { method: "POST" }),
-  teamsPresence: (state: "chat" | "") => request<void>("/teams/presence", { method: "POST", body: JSON.stringify({ state }) }),
+  teamsPresence: (room: number) => request<void>("/teams/presence", { method: "POST", body: JSON.stringify({ room }) }),
+  teamsReceipts: (id: number, messageId: number) => request<{ items: TeamsReceipt[] }>(`/teams/groups/${id}/messages/${messageId}/receipts`).then((r) => r.items),
   teamsDeleteMessage: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/messages/${messageId}`, { method: "DELETE" }),
   teamsReact: (id: number, messageId: number, emoji: string) =>
     request<void>(`/teams/groups/${id}/messages/${messageId}/reactions`, { method: "POST", body: JSON.stringify({ emoji }) }),

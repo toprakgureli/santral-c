@@ -10,6 +10,7 @@ import type { TeamsEvent, TeamsGroup, TeamsInvite, TeamsMessage } from "@/api/ty
 import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
 import { tones } from "@/softphone/tones";
+import type { Presence } from "@/components/teams/Presence";
 import { previewLabel } from "@/lib/attachments";
 
 interface TeamsState {
@@ -30,7 +31,8 @@ interface TeamsState {
   askNotifications: () => Promise<void>;
   // Live presence by user id; falls back to what the server sent with the card.
   presence: Record<number, PresenceInfo>;
-  presenceOf: (p: { id: number; online?: boolean; lastSeen?: string; state?: string } | undefined | null) => PresenceInfo;
+  // room: the room the card is shown in, so "here" means "looking at it".
+  presenceOf: (p: { id: number; online?: boolean; lastSeen?: string; inRoom?: boolean } | undefined | null, room?: number) => Presence;
   // Tags waiting to be noticed; they stay until dismissed.
   mentions: MentionToast[];
   dismissMention: (id: number) => void;
@@ -62,7 +64,8 @@ function loadMentions(): MentionToast[] {
 export interface PresenceInfo {
   online: boolean;
   lastSeen?: string;
-  state?: string;
+  // The room the person is looking at, 0 for none, undefined for unknown.
+  room?: number;
 }
 
 type Typing = Record<number, Record<number, { name: string; until: number }>>;
@@ -135,13 +138,13 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   );
 
   // Tell the server whether a room is open in front of us ("Sohbette").
-  const lastState = useRef<"chat" | "" | null>(null);
+  const lastState = useRef<number | null>(null);
   const sendState = useCallback((force = false) => {
     if (!enabled) return;
-    const state: "chat" | "" = openRef.current && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams") ? "chat" : "";
-    if (!force && lastState.current === state) return;
-    lastState.current = state;
-    void api.teamsPresence(state).catch(() => undefined);
+    const room = openRef.current && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams") ? openRef.current : 0;
+    if (!force && lastState.current === room) return;
+    lastState.current = room;
+    void api.teamsPresence(room).catch(() => undefined);
   }, [enabled]);
   useEffect(() => {
     sendState();
@@ -168,7 +171,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       setInvites(o.invites);
       setPresence((cur) => {
         const next = { ...cur };
-        for (const g of o.groups) if (g.peer) next[g.peer.id] = { online: !!g.peer.online, lastSeen: g.peer.lastSeen, state: g.peer.state };
+        for (const g of o.groups) if (g.peer) next[g.peer.id] = { online: !!g.peer.online, lastSeen: g.peer.lastSeen, room: g.peer.inRoom ? g.id : next[g.peer.id]?.room };
         return next;
       });
     } catch {
@@ -286,7 +289,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           void refresh();
         } else if (e.type === "presence" && e.userId) {
           const uid = e.userId;
-          setPresence((cur) => ({ ...cur, [uid]: { online: !!e.online, lastSeen: e.lastSeen ?? cur[uid]?.lastSeen, state: e.online ? e.state ?? "" : "" } }));
+          setPresence((cur) => ({ ...cur, [uid]: { online: !!e.online, lastSeen: e.lastSeen ?? cur[uid]?.lastSeen, room: !e.online ? 0 : e.room !== undefined ? e.room : cur[uid]?.room } }));
         } else if (e.type === "receipt" && e.groupId) {
           // A direct message has one reader, so its preview tick is exact;
           // a group's needs every seat, so its list entry is refreshed lazily.
@@ -354,11 +357,14 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const unread = useMemo(() => groups.reduce((n, g) => n + (g.muted ? 0 : g.unread), 0), [groups]);
 
   const presenceOf = useCallback(
-    (p: { id: number; online?: boolean; lastSeen?: string; state?: string } | undefined | null): PresenceInfo => {
+    (p: { id: number; online?: boolean; lastSeen?: string; inRoom?: boolean } | undefined | null, room?: number): Presence => {
       if (!p) return { online: false };
       const live = presence[p.id];
-      if (live) return live;
-      return { online: !!p.online, lastSeen: p.lastSeen, state: p.state };
+      const online = live ? live.online : !!p.online;
+      const lastSeen = live?.lastSeen ?? p.lastSeen;
+      // A live room wins; until one arrives, trust what the card said.
+      const here = !!room && online && (live?.room !== undefined ? live.room === room : !!p.inRoom);
+      return { online, lastSeen, here };
     },
     [presence],
   );

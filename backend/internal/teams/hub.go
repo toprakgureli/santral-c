@@ -11,42 +11,44 @@ import (
 // subscribed users doubles as chat presence: a person with at least one
 // open stream is online.
 type Hub struct {
-	mu     sync.Mutex
-	subs   map[uint]map[chan []byte]struct{}
-	states map[uint]string // "chat" while a room is open in front of the person
+	mu    sync.Mutex
+	subs  map[uint]map[chan []byte]struct{}
+	rooms map[uint]uint // the room open in front of the person, if any
 }
 
 // NewHub builds an empty hub.
 func NewHub() *Hub {
-	return &Hub{subs: make(map[uint]map[chan []byte]struct{}), states: make(map[uint]string)}
+	return &Hub{subs: make(map[uint]map[chan []byte]struct{}), rooms: make(map[uint]uint)}
 }
 
-// SetState records what the person is doing and reports whether it changed.
-func (h *Hub) SetState(userID uint, state string) bool {
+// SetRoom records which room the person is looking at (0: none) and
+// returns whether it changed and what it was before.
+func (h *Hub) SetRoom(userID uint, room uint) (bool, uint) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	old := h.rooms[userID]
 	if len(h.subs[userID]) == 0 {
-		return false
+		return false, old
 	}
-	if h.states[userID] == state {
-		return false
+	if old == room {
+		return false, old
 	}
-	if state == "" {
-		delete(h.states, userID)
+	if room == 0 {
+		delete(h.rooms, userID)
 	} else {
-		h.states[userID] = state
+		h.rooms[userID] = room
 	}
-	return true
+	return true, old
 }
 
-// States returns the recorded activity of the given users.
-func (h *Hub) States(ids []uint) map[uint]string {
-	out := make(map[uint]string, len(ids))
+// Rooms returns the room each of the given users is looking at.
+func (h *Hub) Rooms(ids []uint) map[uint]uint {
+	out := make(map[uint]uint, len(ids))
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, id := range ids {
-		if st, ok := h.states[id]; ok {
-			out[id] = st
+		if r, ok := h.rooms[id]; ok {
+			out[id] = r
 		}
 	}
 	return out
@@ -81,7 +83,7 @@ func (h *Hub) Unsubscribe(userID uint, ch chan []byte) bool {
 	}
 	if len(set) == 0 {
 		delete(h.subs, userID)
-		delete(h.states, userID)
+		delete(h.rooms, userID)
 		return true
 	}
 	return false

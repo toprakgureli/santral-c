@@ -30,8 +30,9 @@ type Person struct {
 	Version   int64  `json:"avatarVersion,omitempty"`
 	Online    bool   `json:"online"`
 	LastSeen  string `json:"lastSeen,omitempty"`
-	State     string `json:"state,omitempty"`
-	Active    bool   `json:"-"`
+	// InRoom: looking at the room this card is shown in right now.
+	InRoom bool `json:"inRoom,omitempty"`
+	Active bool `json:"-"`
 }
 
 // People lists active users as chat cards.
@@ -469,6 +470,18 @@ func (r *Repository) ToggleReaction(ctx context.Context, messageID, userID uint,
 // MarkRead advances the seat's read pointer, never backwards, and clears a
 // manual unread mark.
 func (r *Repository) MarkRead(ctx context.Context, groupID, userID, messageID uint) error {
+	// Log the lines this move passes over before the pointer forgets them.
+	if err := r.db.WithContext(ctx).Exec(
+		"INSERT INTO chat_receipts (message_id, user_id, delivered_at, read_at) "+
+			"SELECT m.id, s.user_id, now(), now() FROM chat_members s "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_read_id AND m.id <= ? "+
+			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
+			"ON CONFLICT (message_id, user_id) DO UPDATE SET "+
+			"read_at = COALESCE(chat_receipts.read_at, EXCLUDED.read_at), "+
+			"delivered_at = COALESCE(chat_receipts.delivered_at, EXCLUDED.delivered_at)",
+		messageID, groupID, userID).Error; err != nil {
+		return fmt.Errorf("read receipts could not be logged: %w", err)
+	}
 	if err := r.db.WithContext(ctx).Model(&models.ChatMember{}).
 		Where("group_id = ? AND user_id = ?", groupID, userID).
 		Updates(map[string]any{
@@ -519,6 +532,15 @@ func (r *Repository) Seats(ctx context.Context, groupIDs []uint) (map[uint][]mod
 // MarkDelivered advances the seat's delivery pointer, never backwards, and
 // reports whether it moved.
 func (r *Repository) MarkDelivered(ctx context.Context, groupID, userID, messageID uint) (bool, error) {
+	if err := r.db.WithContext(ctx).Exec(
+		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
+			"SELECT m.id, s.user_id, now() FROM chat_members s "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id AND m.id <= ? "+
+			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
+			"ON CONFLICT (message_id, user_id) DO NOTHING",
+		messageID, groupID, userID).Error; err != nil {
+		return false, fmt.Errorf("delivery receipts could not be logged: %w", err)
+	}
 	res := r.db.WithContext(ctx).Model(&models.ChatMember{}).
 		Where("group_id = ? AND user_id = ? AND last_delivered_id < ?", groupID, userID, messageID).
 		Update("last_delivered_id", messageID)
@@ -539,6 +561,14 @@ type Delivered struct {
 // line (the client has just fetched the room list, previews included) and
 // returns the rooms that moved.
 func (r *Repository) MarkDeliveredAll(ctx context.Context, userID uint) ([]Delivered, error) {
+	if err := r.db.WithContext(ctx).Exec(
+		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
+			"SELECT m.id, s.user_id, now() FROM chat_members s "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id "+
+			"WHERE s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
+			"ON CONFLICT (message_id, user_id) DO NOTHING", userID).Error; err != nil {
+		return nil, fmt.Errorf("delivery receipts could not be logged: %w", err)
+	}
 	var out []Delivered
 	err := r.db.WithContext(ctx).Raw(
 		"UPDATE chat_members s SET last_delivered_id = x.max_id "+
@@ -711,4 +741,20 @@ func (r *Repository) OrphanAttachments(ctx context.Context, before time.Time) ([
 		return nil, fmt.Errorf("orphan attachments could not be listed: %w", err)
 	}
 	return rows, nil
+}
+
+// Receipt is when one person received and read one line.
+type Receipt struct {
+	UserID      uint       `gorm:"column:user_id"`
+	DeliveredAt *time.Time `gorm:"column:delivered_at"`
+	ReadAt      *time.Time `gorm:"column:read_at"`
+}
+
+// Receipts lists the logged receipts of a line.
+func (r *Repository) Receipts(ctx context.Context, messageID uint) ([]Receipt, error) {
+	var out []Receipt
+	if err := r.db.WithContext(ctx).Raw("SELECT user_id, delivered_at, read_at FROM chat_receipts WHERE message_id = ?", messageID).Scan(&out).Error; err != nil {
+		return nil, fmt.Errorf("receipts could not be loaded: %w", err)
+	}
+	return out, nil
 }

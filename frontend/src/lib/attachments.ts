@@ -9,6 +9,7 @@
 
 import { api } from "@/api/client";
 import type { TeamsAttachment } from "@/api/types";
+import { stripMarkup } from "@/lib/markup";
 
 export type Kind = "image" | "video" | "file";
 
@@ -305,7 +306,7 @@ export function thumbUrl(a: TeamsAttachment): string | null {
 
 // previewLabel is what the room list shows for a line with files.
 export function previewLabel(body: string, attachments: TeamsAttachment[] | undefined): string {
-  if (body) return body;
+  if (body) return stripMarkup(body);
   if (!attachments?.length) return "";
   const a = attachments[0];
   const more = attachments.length > 1 ? ` +${attachments.length - 1}` : "";

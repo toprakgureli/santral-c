@@ -118,9 +118,9 @@ export function Teams() {
         onContextMenu={(e) => roomMenu(e, g)}
         className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors", active ? "bg-sidebar-accent" : "hover:bg-accent/60")}
       >
-        <span className="relative shrink-0">
+        <span className="relative inline-flex shrink-0">
           <GroupAvatar group={g} className="size-9 text-xs" />
-          {g.kind === "dm" && <OnlineDot presence={teams.presenceOf(g.peer)} />}
+          {g.kind === "dm" && <OnlineDot presence={teams.presenceOf(g.peer, g.id)} />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
@@ -222,9 +222,9 @@ export function Teams() {
         ) : (
           <>
             <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4">
-              <span className="relative shrink-0">
+              <span className="relative inline-flex shrink-0">
                 <GroupAvatar group={detail} className="size-9 text-xs" />
-                {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer)} />}
+                {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer, detail.id)} />}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -237,11 +237,11 @@ export function Teams() {
                   const typing = teams.typingLabel(detail.id);
                   if (typing) return <p className="truncate text-xs italic text-primary">{typing}</p>;
                   if (detail.kind === "dm") {
-                    const p = teams.presenceOf(detail.peer);
-                    return <p className={cn("truncate text-xs", presenceTone(p))}>{seenLabel(p)}</p>;
+                    const p = teams.presenceOf(detail.peer, detail.id);
+                    return <p className={cn("truncate text-xs", presenceTone(p))}>{p.here ? "Sohbette · aynı sohbettesiniz" : seenLabel(p)}</p>;
                   }
-                  const on = detail.members.filter((m) => teams.presenceOf(m).online).length;
-                  const here = detail.members.filter((m) => { const p = teams.presenceOf(m); return p.online && p.state === "chat"; }).length;
+                  const on = detail.members.filter((m) => teams.presenceOf(m, detail.id).online).length;
+                  const here = detail.members.filter((m) => teams.presenceOf(m, detail.id).here).length;
                   return <p className="truncate text-xs text-muted-foreground">{detail.description ? `${detail.description} · ` : ""}{detail.memberCount} üye · {on} çevrimiçi{here ? ` · ${here} sohbette` : ""}</p>;
                 })()}
               </div>
