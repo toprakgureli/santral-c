@@ -14,7 +14,7 @@ import { useUploads } from "@/teams/useUploads";
 import type { TeamsAttachment } from "@/api/types";
 import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
-import { Modal } from "@/components/ui";
+import { ConfirmDialog, Modal } from "@/components/ui";
 import { api, ApiError } from "@/api/client";
 import type { TeamsEvent, TeamsGroupDetail, TeamsMessage, TeamsReceipt } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -55,6 +55,8 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const [picker, setPicker] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [info, setInfo] = useState<TeamsMessage | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<TeamsMessage | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [flash, setFlash] = useState<number | null>(null);
   // Where the unread lines started when the room was opened.
   const [firstUnread, setFirstUnread] = useState<number | null>(null);
@@ -189,12 +191,16 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   }
 
   async function remove(m: TeamsMessage) {
+    setDeleting(true);
     try {
       await api.teamsDeleteMessage(group.id, m.id);
       setItems((cur) => cur.map((x) => (x.id === m.id ? { ...x, deleted: true, body: "", canDelete: false, reactions: [] } : x)));
       if (editing?.id === m.id) setEditing(null);
+      setConfirmDelete(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Silinemedi.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -227,7 +233,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     if (m.mine && group.canPost) items.push({ label: "Düzenle", onClick: () => { setReply(null); setEditing(m); } });
     items.push({ label: "Metni kopyala", onClick: () => void navigator.clipboard?.writeText(m.body).catch(() => undefined) });
     items.push({ label: "Bilgi", onClick: () => setInfo(m) });
-    if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => void remove(m) });
+    if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => setConfirmDelete(m) });
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
 
@@ -385,7 +391,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                       <span className="mx-0.5 h-4 w-px bg-border" />
                       {group.canPost && <button type="button" onClick={() => { setEditing(null); setReply(m); }} title="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
                       {m.mine && group.canPost && <button type="button" onClick={() => { setReply(null); setEditing(m); }} title="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
-                      {m.canDelete && <button type="button" onClick={() => void remove(m)} title="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
+                      {m.canDelete && <button type="button" onClick={() => setConfirmDelete(m)} title="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
                     </div>
                   )}
                   {picker === m.id && (
@@ -418,6 +424,21 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {info && <MessageInfo message={info} group={group} onClose={() => setInfo(null)} />}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Mesajı sil"
+        description={
+          <>
+            {confirmDelete?.mine ? "Mesajın" : `${confirmDelete?.sender?.name ?? "Bu kişinin"} mesajı`} herkes için silinecek; yerinde "Bu mesaj silindi." kalır
+            {confirmDelete?.attachments?.length ? ", ekleri de Drive'dan kaldırılır" : ""}.
+            {confirmDelete?.body && <span className="mt-2 block truncate rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs text-foreground/80">{previewLabel(confirmDelete.body, confirmDelete.attachments)}</span>}
+          </>
+        }
+        confirmLabel="Evet, sil"
+        busy={deleting}
+        onConfirm={() => confirmDelete && void remove(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       <Composer
         group={group}
