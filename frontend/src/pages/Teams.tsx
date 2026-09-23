@@ -331,7 +331,7 @@ export function Teams() {
       <NewGroupDialog open={newGroup} onClose={() => setNewGroup(false)} onCreated={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       {detail && <GroupSettingsDialog group={detail} open={settings} onClose={() => setSettings(false)} onSaved={(g) => { setDetail(g); void teams.refresh(); }} />}
-      {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={(g) => { teams.reloadGames(); setOpenGame(g.id); }} />}
+      {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={(g) => { teams.reloadGames(); setOpenGame(g.id); }} onOpen={setOpenGame} />}
       {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} onClose={() => setOpenGame(null)} />}
       {teams.games && <Leaderboard open={board} onClose={() => setBoard(false)} kinds={teams.games.kinds} selfId={selfId} />}
       {detail && people && <AddPeopleDialog group={detail} mode={people} open onClose={() => setPeople(null)} onDone={(g) => { setDetail(g); void teams.refresh(); }} />}

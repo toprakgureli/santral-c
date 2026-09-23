@@ -101,7 +101,14 @@ type Match struct {
 	pauseRemain time.Duration
 	// Strokes of the current drawing, kept in memory only.
 	Strokes []json.RawMessage
+	// touched is the last save; idle matches are closed by the clock.
+	touched time.Time
 }
+
+const (
+	lobbyTTL = 30 * time.Minute
+	idleTTL  = 2 * time.Hour
+)
 
 type persisted struct {
 	Deadline time.Time       `json:"deadline"`
@@ -592,6 +599,7 @@ func (s *Service) match(ctx context.Context, id uint) (*Match, error) {
 // save persists a match and bumps its version. Called with m.mu held.
 func (s *Service) save(ctx context.Context, m *Match) {
 	m.G.Version++
+	m.touched = time.Now()
 	data, _ := json.Marshal(m.Data)
 	p := persisted{Deadline: m.Deadline, Players: m.Players, Data: data}
 	if !m.Deadline.IsZero() {
@@ -667,7 +675,7 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 		return nil, errs.Internal(err)
 	}
 	if len(open) >= 3 {
-		return nil, errs.Invalid("Bu odada zaten açık üç oyun var; önce onları bitirin.", nil)
+		return nil, errs.Invalid("Bu odada zaten açık üç oyun var. Oyun başlat penceresindeki listeden birini kapatın; boş lobiler 30 dakika sonra kendiliğinden kapanır.", nil)
 	}
 	cfg := Config{Rounds: meta.DefaultRounds, Seconds: meta.DefaultSeconds}
 	if in.Rounds > 0 && in.Rounds <= 30 {
@@ -1069,6 +1077,36 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 	s.mu.Unlock()
 	for _, m := range list {
 		m.mu.Lock()
+		// Forgotten matches: a lobby nobody started, a game nobody touched
+		// for hours, a bingo from another day.
+		if m.touched.IsZero() {
+			m.touched = now
+		}
+		stale := false
+		switch m.G.Status {
+		case statusLobby:
+			stale = now.Sub(m.G.CreatedAt) > lobbyTTL
+		case statusPlaying:
+			if m.G.Kind == "bingo" {
+				stale = m.G.StartedAt != nil && m.G.StartedAt.In(istanbul).Format("2006-01-02") != now.In(istanbul).Format("2006-01-02")
+			} else {
+				stale = len(m.Paused) == 0 && now.Sub(m.touched) > idleTTL
+			}
+		}
+		if stale {
+			if m.G.Status == statusLobby {
+				m.G.Status = statusCancelled
+				t := now
+				m.G.FinishedAt = &t
+			} else {
+				s.finish(ctx, m, m.leaders(), "hareketsizlikten kapandı")
+			}
+			s.save(ctx, m)
+			m.mu.Unlock()
+			s.broadcast(ctx, m)
+			s.forget(m.G.ID)
+			continue
+		}
 		if m.G.Status == statusPlaying && len(m.Paused) == 0 && !m.Deadline.IsZero() && now.After(m.Deadline) {
 			m.Deadline = time.Time{}
 			m.Kind.Timeout(m, s, ctx)
@@ -1203,3 +1241,5 @@ func (s *Service) UserRecord(ctx context.Context, actorID, userID uint) (*Record
 }
 
 var errNotYourTurn = errors.New("sıra sizde değil")
+
+var istanbul = time.FixedZone("+03", 3*3600)

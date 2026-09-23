@@ -1,14 +1,27 @@
 // StartGameDialog: pick a game, set its two knobs, open the lobby.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "@/api/client";
 import { Button, Modal } from "@/components/ui";
 import { gamesApi } from "@/games/api";
 import type { GameMeta, GamesConfig, GameView } from "@/games/types";
 import { cn } from "@/lib/utils";
 
-export default function StartGameDialog({ groupId, config, open, onClose, onCreated }: { groupId: number; config: GamesConfig; open: boolean; onClose: () => void; onCreated: (g: GameView) => void }) {
+export default function StartGameDialog({ groupId, config, open, onClose, onCreated, onOpen }: { groupId: number; config: GamesConfig; open: boolean; onClose: () => void; onCreated: (g: GameView) => void; onOpen: (id: number) => void }) {
   const [kind, setKind] = useState<GameMeta | null>(null);
+  const [openGames, setOpenGames] = useState<GameView[]>([]);
+  const loadOpen = () => gamesApi.open(groupId).then(setOpenGames).catch(() => setOpenGames([]));
+  useEffect(() => {
+    if (open) void loadOpen();
+  }, [open, groupId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeGame = async (g: GameView) => {
+    try {
+      await gamesApi.cancel(g.id);
+      await loadOpen();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Kapatılamadı.");
+    }
+  };
   const [rounds, setRounds] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -54,6 +67,21 @@ export default function StartGameDialog({ groupId, config, open, onClose, onCrea
         </>
       }
     >
+      {!kind && openGames.length > 0 && (
+        <div className="mb-4 rounded-xl border border-warning/40 bg-warning/5 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-warning">Bu odada açık oyunlar ({openGames.length}/3)</p>
+          <ul className="space-y-1">
+            {openGames.map((g) => (
+              <li key={g.id} className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate">{ICONS[g.kind]} {g.kindName} <span className="text-xs text-muted-foreground">· {g.status === "lobby" ? "lobide" : "oynanıyor"} · {g.players.filter((p) => !p.left).length} kişi</span></span>
+                <Button variant="secondary" onClick={() => { onOpen(g.id); onClose(); }} className="h-7 px-2.5 text-xs">Aç</Button>
+                {(g.isHost || g.canManage) && <Button variant="ghost" onClick={() => void closeGame(g)} className="h-7 px-2.5 text-xs text-destructive">Kapat</Button>}
+              </li>
+            ))}
+          </ul>
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+        </div>
+      )}
       {!kind ? (
         <div className="grid gap-2 sm:grid-cols-2">
           {config.kinds.map((m) => {
