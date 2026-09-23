@@ -246,6 +246,29 @@ func (h *Handler) simple(fn func(c *fiber.Ctx, id, mid uint) (*GameView, error))
 	}
 }
 
+// Invite asks room members to take a seat.
+func (h *Handler) Invite(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	mid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req struct {
+		UserIDs []uint `json:"userIds"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	res, err := h.service.Invite(c.UserContext(), id, mid, req.UserIDs)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // Cancel scraps a match.
 func (h *Handler) Cancel(c *fiber.Ctx) error {
 	id, err := actor(c)
@@ -398,6 +421,7 @@ func (r *Router) Routes(api fiber.Router) {
 		return r.handler.service.Start(c.UserContext(), id, mid)
 	}))
 	g.Post("/:id/cancel", r.handler.Cancel)
+	g.Post("/:id/invite", r.handler.Invite)
 	g.Post("/:id/pause", r.handler.Pause)
 	g.Post("/:id/action", r.handler.Act)
 	g.Post("/:id/move", r.handler.Move)

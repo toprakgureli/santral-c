@@ -99,6 +99,8 @@ type Match struct {
 	// Paused by these people (a call on their side); the clock stops.
 	Paused      map[uint]bool
 	pauseRemain time.Duration
+	// Invited but not yet seated.
+	Invited map[uint]string
 	// Strokes of the current drawing, kept in memory only.
 	Strokes []json.RawMessage
 	// touched is the last save; idle matches are closed by the clock.
@@ -115,6 +117,7 @@ type persisted struct {
 	Remain   int64           `json:"remain"`
 	Paused   []uint          `json:"paused"`
 	Players  []Player        `json:"players"`
+	Invited  map[uint]string `json:"invited"`
 	Data     json.RawMessage `json:"data"`
 }
 
@@ -210,6 +213,7 @@ type GameView struct {
 	PausedBy    []string     `json:"pausedBy"`
 	SecondsLeft int          `json:"secondsLeft"`
 	Winners     []uint       `json:"winners"`
+	Invited     []PlayerView `json:"invited"`
 	Joined      bool         `json:"joined"`
 	IsHost      bool         `json:"isHost"`
 	CanManage   bool         `json:"canManage"`
@@ -236,6 +240,13 @@ func (s *Service) view(m *Match, viewer uint, canManage bool) *GameView {
 	if v.Players == nil {
 		v.Players = []PlayerView{}
 	}
+	v.Invited = []PlayerView{}
+	for uid, name := range m.Invited {
+		if p := m.player(uid); p == nil || p.Left {
+			v.Invited = append(v.Invited, PlayerView{ID: uid, Name: name})
+		}
+	}
+	sort.Slice(v.Invited, func(i, j int) bool { return v.Invited[i].Name < v.Invited[j].Name })
 	for uid := range m.Paused {
 		if p := m.player(uid); p != nil {
 			v.PausedBy = append(v.PausedBy, p.Name)
@@ -540,11 +551,14 @@ func (s *Service) load(ctx context.Context, g *models.Game) (*Match, error) {
 	if kind == nil {
 		return nil, fmt.Errorf("unknown kind %q", g.Kind)
 	}
-	m := &Match{G: g, Kind: kind, Paused: map[uint]bool{}, Data: kind.NewState()}
+	m := &Match{G: g, Kind: kind, Paused: map[uint]bool{}, Invited: map[uint]string{}, Data: kind.NewState()}
 	_ = json.Unmarshal([]byte(g.Config), &m.Config)
 	var p persisted
 	if err := json.Unmarshal([]byte(g.State), &p); err == nil {
 		m.Players = p.Players
+		if p.Invited != nil {
+			m.Invited = p.Invited
+		}
 		if len(p.Data) > 0 {
 			_ = json.Unmarshal(p.Data, m.Data)
 		}
@@ -601,7 +615,7 @@ func (s *Service) save(ctx context.Context, m *Match) {
 	m.G.Version++
 	m.touched = time.Now()
 	data, _ := json.Marshal(m.Data)
-	p := persisted{Deadline: m.Deadline, Players: m.Players, Data: data}
+	p := persisted{Deadline: m.Deadline, Players: m.Players, Invited: m.Invited, Data: data}
 	if !m.Deadline.IsZero() {
 		p.Remain = int64(time.Until(m.Deadline))
 		if len(m.Paused) > 0 {
@@ -692,7 +706,7 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 	if err := s.repo.AddPlayer(ctx, &models.GamePlayer{GameID: g.ID, UserID: actorID, JoinedAt: time.Now()}); err != nil {
 		return nil, errs.Internal(err)
 	}
-	m := &Match{G: g, Kind: kind, Config: cfg, Paused: map[uint]bool{}, Data: kind.NewState(), Players: []Player{{UserID: actorID, Name: actor.Name}}}
+	m := &Match{G: g, Kind: kind, Config: cfg, Paused: map[uint]bool{}, Invited: map[uint]string{}, Data: kind.NewState(), Players: []Player{{UserID: actorID, Name: actor.Name}}}
 	s.mu.Lock()
 	s.live[g.ID] = m
 	s.mu.Unlock()
@@ -787,6 +801,7 @@ func (s *Service) Join(ctx context.Context, actorID, gameID uint) (*GameView, er
 			return nil, errs.Invalid("Koltuklar dolu.", nil)
 		}
 		m.Players = append(m.Players, Player{UserID: actorID, Name: actor.Name})
+		delete(m.Invited, actorID)
 		_ = s.repo.AddPlayer(ctx, &models.GamePlayer{GameID: m.G.ID, UserID: actorID, JoinedAt: time.Now()})
 		if m.G.Status == statusPlaying {
 			if j, ok := m.Kind.(lateJoiner); ok {
@@ -845,6 +860,46 @@ func (s *Service) Leave(ctx context.Context, actorID, gameID uint) (*GameView, e
 		} else {
 			m.Kind.Left(m, s, ctx, actorID)
 		}
+	}
+	s.save(ctx, m)
+	s.broadcast(ctx, m)
+	return s.view(m, actorID, actor.Can(enums.GamesManage)), nil
+}
+
+// Invite asks people in the room to take a seat; each gets a card that
+// waits until they act on it.
+func (s *Service) Invite(ctx context.Context, actorID, gameID uint, userIDs []uint) (*GameView, error) {
+	actor, err := s.actor(ctx, actorID, "")
+	if err != nil {
+		return nil, err
+	}
+	m, err := s.match(ctx, gameID)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if p := m.player(actorID); p == nil || p.Left {
+		return nil, errs.Forbidden("Davet için oyunda oturuyor olmalısınız.")
+	}
+	if m.G.Status != statusLobby && !(m.G.Status == statusPlaying && m.Kind.Meta().JoinLate) {
+		return nil, errs.Invalid("Oyun başladı, davet gönderilemez.", nil)
+	}
+	names, _ := s.repo.Names(ctx, userIDs)
+	targets := []uint{}
+	for _, uid := range userIDs {
+		if uid == actorID || !s.rooms.IsMember(ctx, uid, m.G.GroupID) {
+			continue
+		}
+		if p := m.player(uid); p != nil && !p.Left {
+			continue
+		}
+		m.Invited[uid] = names[uid]
+		targets = append(targets, uid)
+	}
+	if len(targets) > 0 {
+		payload, _ := json.Marshal(map[string]any{"kindName": m.Kind.Meta().Name, "kind": m.G.Kind})
+		s.rooms.Push(targets, teams.Event{Type: "game.invite", GroupID: m.G.GroupID, GameID: m.G.ID, UserID: actorID, Name: actor.Name, Payload: payload})
 	}
 	s.save(ctx, m)
 	s.broadcast(ctx, m)

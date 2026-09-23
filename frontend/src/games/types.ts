@@ -65,6 +65,7 @@ export interface GameView {
   pausedBy: string[];
   secondsLeft: number;
   winners: number[];
+  invited: GamePlayer[];
   joined: boolean;
   isHost: boolean;
   canManage: boolean;

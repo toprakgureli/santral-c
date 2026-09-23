@@ -21,6 +21,7 @@ export const gamesApi = {
   join: (id: number) => request<GameView>(`/games/${id}/join`, { method: "POST" }),
   leave: (id: number) => request<GameView>(`/games/${id}/leave`, { method: "POST" }),
   start: (id: number) => request<GameView>(`/games/${id}/start`, { method: "POST" }),
+  invite: (id: number, userIds: number[]) => request<GameView>(`/games/${id}/invite`, { method: "POST", body: JSON.stringify({ userIds }) }),
   cancel: (id: number) => request<void>(`/games/${id}/cancel`, { method: "POST" }),
   pause: (id: number, paused: boolean) => request<GameView>(`/games/${id}/pause`, { method: "POST", body: JSON.stringify({ paused }) }),
   move: (id: number, x: number, y: number) => request<void>(`/games/${id}/move`, { method: "POST", body: JSON.stringify({ x, y }) }),

@@ -63,7 +63,7 @@ export default function MentionToasts() {
           role="status"
           onClick={() => {
             dismissMention(t.id);
-            navigate(`/teams/${t.groupId}`);
+            navigate(t.gameId ? `/teams/${t.groupId}?game=${t.gameId}` : `/teams/${t.groupId}`);
           }}
           className="group pointer-events-auto animate-in slide-in-from-right-4 fade-in relative cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-2xl transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-violet-500/60"
         >
@@ -77,12 +77,12 @@ export default function MentionToasts() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-tight">
-                {t.sender.name} <span className="font-normal text-muted-foreground">seni etiketledi</span>
+                {t.sender.name} <span className="font-normal text-muted-foreground">{t.gameId ? "seni oyuna çağırdı" : "seni etiketledi"}</span>
               </p>
               <p className="truncate text-xs text-muted-foreground">{t.groupName}</p>
               <p className="mt-1 line-clamp-2 text-sm">{t.body}</p>
               <p className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-violet-500 opacity-80 transition-opacity group-hover:opacity-100">
-                Mesaja git <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+                {t.gameId ? "Lobiye git" : "Mesaja git"} <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
               </p>
             </div>
             <button

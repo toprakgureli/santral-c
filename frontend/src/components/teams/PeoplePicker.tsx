@@ -14,12 +14,14 @@ export default function PeoplePicker({
   selected,
   onChange,
   exclude = [],
+  only,
   single = false,
   height = 240,
 }: {
   selected: number[];
   onChange: (ids: number[]) => void;
   exclude?: number[];
+  only?: number[];
   single?: boolean;
   height?: number;
 }) {
@@ -33,8 +35,8 @@ export default function PeoplePicker({
 
   const visible = useMemo(() => {
     const needle = q.trim().toLocaleLowerCase("tr");
-    return people.filter((p) => !exclude.includes(p.id) && (!needle || p.name.toLocaleLowerCase("tr").includes(needle)));
-  }, [people, q, exclude]);
+    return people.filter((p) => !exclude.includes(p.id) && (!only || only.includes(p.id)) && (!needle || p.name.toLocaleLowerCase("tr").includes(needle)));
+  }, [people, q, exclude, only]);
 
   function toggle(id: number) {
     if (single) {

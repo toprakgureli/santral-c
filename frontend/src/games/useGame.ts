@@ -22,6 +22,7 @@ export interface GameHandle {
   leave: () => Promise<void>;
   start: () => Promise<void>;
   cancel: () => Promise<void>;
+  invite: (userIds: number[]) => Promise<void>;
   onStroke: (fn: (payload: unknown) => void) => () => void;
   onFrame: (fn: (payload: unknown) => void) => () => void;
   busy: boolean;
@@ -136,6 +137,7 @@ export function useGame(id: number | null, pauseOnCall: boolean): GameHandle {
     leave: wrap(() => gamesApi.leave(id!)),
     start: wrap(() => gamesApi.start(id!)),
     cancel: wrap(() => gamesApi.cancel(id!).then(() => refresh())),
+    invite: (userIds) => wrap(() => gamesApi.invite(id!, userIds))(),
     onStroke: (fn) => {
       strokeFns.current.add(fn);
       return () => {

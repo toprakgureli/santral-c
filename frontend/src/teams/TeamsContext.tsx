@@ -55,6 +55,8 @@ export interface MentionToast {
   sender: { id: number; name: string; hasAvatar: boolean; avatarVersion?: number };
   body: string;
   at: string;
+  // A game invite: the card leads to the lobby.
+  gameId?: number;
 }
 
 const MENTIONS_KEY = "teams.mentions";
@@ -358,6 +360,12 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
             return [next, ...list.slice(0, idx), ...list.slice(idx + 1)];
           });
           notify(m);
+        } else if (e.type === "game.invite" && e.gameId && e.groupId && e.userId) {
+          const g = groupsRef.current.find((x) => x.id === e.groupId);
+          const kindName = ((e.payload as { kindName?: string } | undefined)?.kindName) ?? "oyun";
+          const gid = e.gameId;
+          tones.mention();
+          setMentions((cur) => [...cur.filter((t) => t.id !== -gid), { id: -gid, groupId: e.groupId!, groupName: g?.name ?? "Teams", sender: { id: e.userId!, name: e.name ?? "Biri", hasAvatar: true }, body: `🎮 ${kindName} oyununa davet etti. Lobi seni bekliyor.`, at: new Date().toISOString(), gameId: gid }].slice(-20));
         } else if (e.type === "reaction") {
           notifyReaction(e);
         } else if (e.type === "message.deleted" && e.groupId) {

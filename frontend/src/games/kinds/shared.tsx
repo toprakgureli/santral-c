@@ -10,11 +10,25 @@ import { cn } from "@/lib/utils";
 export type KindProps = { h: GameHandle; selfId: number };
 
 export function Round({ n, total, label = "Tur" }: { n: number; total: number; label?: string }) {
-  return <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">{label} {n} / {total}</p>;
+  return (
+    <p className="inline-flex w-fit items-center gap-2 rounded-full bg-violet-500/15 px-3 py-1 text-[0.7rem] font-bold uppercase tracking-widest text-violet-500">
+      {label} {n} / {total}
+      <span className="flex gap-0.5">
+        {Array.from({ length: Math.min(total, 12) }).map((_, i) => (
+          <span key={i} className={cn("size-1.5 rounded-full", i < n ? "bg-violet-500" : "bg-violet-500/30")} />
+        ))}
+      </span>
+    </p>
+  );
 }
 
 export function Prompt({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-2xl border border-border/60 bg-card px-5 py-4 text-base leading-relaxed", className)}>{children}</div>;
+  return (
+    <div className={cn("relative overflow-hidden rounded-2xl border border-border/60 bg-card/95 px-5 py-4 text-base leading-relaxed shadow-sm backdrop-blur", className)}>
+      <span className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b from-violet-500 to-primary" />
+      <div className="pl-2">{children}</div>
+    </div>
+  );
 }
 
 export function Note({ children }: { children: ReactNode }) {
@@ -33,7 +47,7 @@ export function PeoplePick({ players, selfId, exclude = [], picked, disabled, on
           onClick={() => onPick(p.id)}
           className={cn(
             "flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
-            picked === p.id ? "border-primary bg-primary/10" : "border-border/60 bg-card hover:bg-accent",
+            picked === p.id ? "border-violet-500 bg-violet-500/10 shadow-md shadow-violet-500/10" : "border-border/60 bg-card/95 backdrop-blur hover:border-violet-500/40 hover:bg-accent",
             disabled && picked !== p.id && "opacity-70",
           )}
         >

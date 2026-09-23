@@ -3,7 +3,7 @@
 // members. Laid out like Discord and Microsoft Teams, kept plain.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BellOff, BellRing, Gamepad2, Hash, Images, Plus, Search, Settings2, Trophy, Users, VolumeX } from "lucide-react";
 import StartGameDialog from "../games/StartGameDialog";
 import Leaderboard from "../games/Leaderboard";
@@ -33,6 +33,7 @@ function when(iso: string) {
 
 export function Teams() {
   const { id } = useParams();
+  const [search, setSearch] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const teams = useTeams();
@@ -56,6 +57,13 @@ export function Teams() {
   const canPlay = can(user, "games.play") && !!teams.games?.enabled;
   const [startGame, setStartGame] = useState(false);
   const [openGame, setOpenGame] = useState<number | null>(null);
+  useEffect(() => {
+    const q = Number(search.get("game"));
+    if (q > 0) {
+      setOpenGame(q);
+      setSearch({}, { replace: true });
+    }
+  }, [search, setSearch]);
   const [board, setBoard] = useState(false);
 
   // Tell the context which room is open so its messages do not notify.
@@ -332,7 +340,7 @@ export function Teams() {
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       {detail && <GroupSettingsDialog group={detail} open={settings} onClose={() => setSettings(false)} onSaved={(g) => { setDetail(g); void teams.refresh(); }} />}
       {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={(g) => { teams.reloadGames(); setOpenGame(g.id); }} onOpen={setOpenGame} />}
-      {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} onClose={() => setOpenGame(null)} />}
+      {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} members={detail?.members.map((m) => m.id) ?? []} onClose={() => setOpenGame(null)} />}
       {teams.games && <Leaderboard open={board} onClose={() => setBoard(false)} kinds={teams.games.kinds} selfId={selfId} />}
       {detail && people && <AddPeopleDialog group={detail} mode={people} open onClose={() => setPeople(null)} onDone={(g) => { setDetail(g); void teams.refresh(); }} />}
     </div>

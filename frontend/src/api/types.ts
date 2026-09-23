@@ -328,7 +328,7 @@ export interface TeamsOverview {
 }
 
 export interface TeamsEvent {
-  type: "hello" | "message" | "message.edited" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt" | "typing" | "game" | "game.stroke" | "game.frame";
+  type: "hello" | "message" | "message.edited" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt" | "typing" | "game" | "game.stroke" | "game.frame" | "game.invite";
   groupId?: number;
   message?: TeamsMessage;
   id?: number;
