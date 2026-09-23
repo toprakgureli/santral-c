@@ -146,7 +146,7 @@ func (r *Repository) LastMessages(ctx context.Context, groupIDs []uint) (map[uin
 	}
 	var rows []models.ChatMessage
 	err := r.db.WithContext(ctx).Raw(
-		"SELECT DISTINCT ON (group_id) * FROM chat_messages WHERE group_id IN ? ORDER BY group_id, id DESC", groupIDs,
+		"SELECT DISTINCT ON (group_id) * FROM chat_messages WHERE group_id IN ? AND deleted_at IS NULL ORDER BY group_id, id DESC", groupIDs,
 	).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("last messages could not be loaded: %w", err)

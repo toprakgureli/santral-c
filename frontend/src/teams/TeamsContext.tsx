@@ -303,6 +303,11 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
             return [next, ...list.slice(0, idx), ...list.slice(idx + 1)];
           });
           notify(m);
+        } else if (e.type === "message.deleted" && e.groupId) {
+          // The preview falls back to the previous line; the server knows it.
+          setGroups((list) => list.map((g) => (g.id === e.groupId && g.lastMessage && g.lastMessage.id === e.id ? { ...g, lastMessage: { ...g.lastMessage, deleted: true, body: "", attachments: [] } } : g)));
+          if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
+          refreshTimer.current = window.setTimeout(() => void refresh(), 800);
         } else if (e.type === "group" || e.type === "invite") {
           void refresh();
         } else if (e.type === "presence" && e.userId) {
