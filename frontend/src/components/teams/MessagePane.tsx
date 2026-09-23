@@ -319,11 +319,24 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                     mentionsMe && "bg-violet-500/[0.07] before:absolute before:top-1 before:bottom-1 before:left-0 before:w-[3px] before:rounded-full before:bg-violet-500 hover:bg-violet-500/10",
                   )}
                 >
-                  <div className="w-9 shrink-0">
+                  <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
                     {head && m.sender && <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
                     {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
                   </div>
                   <div className="min-w-0 flex-1">
+                    {m.replyTo && (
+                      <button
+                        type="button"
+                        onClick={() => jump(m.replyTo!.id)}
+                        title="Yanıtlanan mesaja git"
+                        className="group/reply relative mb-1 flex h-5 w-fit max-w-[75%] items-center gap-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <span className="pointer-events-none absolute top-1/2 -left-[30px] h-[14px] w-[24px] rounded-tl-lg border-t-2 border-l-2 border-border" />
+                        <UserAvatar name={m.replyTo.sender} hasAvatar={false} className="size-4" fallbackClassName="bg-primary/10 text-[0.5rem] text-primary" />
+                        <span className="shrink-0 font-medium text-foreground/80">{m.replyTo.sender}</span>
+                        <span className={cn("truncate", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : stripMarkup(m.replyTo.body) || "Ek"}</span>
+                      </button>
+                    )}
                     {head && m.sender && (
                       <div className="flex items-center gap-2">
                         <span className={cn("text-sm font-semibold leading-tight", m.mine && "text-primary")}>{m.sender.name}</span>
@@ -333,20 +346,6 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                           return <Ticks status={st.status} readBy={st.readBy} size="size-3.5" className="-ml-0.5" />;
                         })()}
                       </div>
-                    )}
-                    {m.replyTo && (
-                      <button
-                        type="button"
-                        onClick={() => jump(m.replyTo!.id)}
-                        title="Yanıtlanan mesaja git"
-                        className="mt-1 mb-1 flex w-full max-w-lg items-start gap-2 rounded-lg border border-border/60 border-l-2 border-l-primary bg-muted/40 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/70"
-                      >
-                        <CornerUpLeft className="mt-0.5 size-3 shrink-0 text-primary" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-medium text-foreground/90">{m.replyTo.sender}</span>
-                          <span className={cn("line-clamp-2 text-muted-foreground", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : stripMarkup(m.replyTo.body)}</span>
-                        </span>
-                      </button>
                     )}
                     {m.deleted ? (
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
