@@ -139,5 +139,6 @@ export const ICONS: Record<string, string> = {
   whosaid: "💬",
   connect4: "🔴",
   hockey: "🏒",
-  bingo: "🎯",
+  telephone: "☎️",
+  voice: "🎤",
 };

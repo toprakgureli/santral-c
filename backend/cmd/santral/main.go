@@ -165,7 +165,6 @@ func run() error {
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
-	escalationSvc.OnLogged = gamesSvc.OnEscalation
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

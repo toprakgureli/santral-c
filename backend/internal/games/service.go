@@ -1164,7 +1164,7 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 	for _, m := range list {
 		m.mu.Lock()
 		// Forgotten matches: a lobby nobody started, a game nobody touched
-		// for hours, a bingo from another day.
+		// for hours.
 		if m.touched.IsZero() {
 			m.touched = now
 		}
@@ -1173,11 +1173,7 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 		case statusLobby:
 			stale = now.Sub(m.G.CreatedAt) > lobbyTTL
 		case statusPlaying:
-			if m.G.Kind == "bingo" {
-				stale = m.G.StartedAt != nil && m.G.StartedAt.In(istanbul).Format("2006-01-02") != now.In(istanbul).Format("2006-01-02")
-			} else {
-				stale = len(m.Paused) == 0 && now.Sub(m.touched) > idleTTL
-			}
+			stale = len(m.Paused) == 0 && now.Sub(m.touched) > idleTTL
 		}
 		if stale {
 			if m.G.Status == statusLobby {
@@ -1235,30 +1231,6 @@ func (s *Service) frame(ctx context.Context) {
 		if done {
 			s.broadcast(ctx, m)
 		}
-	}
-}
-
-// OnEscalation marks bingo cards when a matching category is logged.
-func (s *Service) OnEscalation(userID uint, category string) {
-	s.mu.Lock()
-	list := make([]*Match, 0)
-	for _, m := range s.live {
-		if m.G.Kind == "bingo" && m.G.Status == statusPlaying {
-			list = append(list, m)
-		}
-	}
-	s.mu.Unlock()
-	ctx := context.Background()
-	for _, m := range list {
-		m.mu.Lock()
-		b, ok := m.Kind.(*bingoKind)
-		if ok && m.player(userID) != nil && b.autoMark(m, s, ctx, userID, category) {
-			s.save(ctx, m)
-			m.mu.Unlock()
-			s.broadcast(ctx, m)
-			continue
-		}
-		m.mu.Unlock()
 	}
 }
 
@@ -1327,5 +1299,3 @@ func (s *Service) UserRecord(ctx context.Context, actorID, userID uint) (*Record
 }
 
 var errNotYourTurn = errors.New("sıra sizde değil")
-
-var istanbul = time.FixedZone("+03", 3*3600)

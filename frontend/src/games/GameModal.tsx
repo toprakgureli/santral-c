@@ -18,7 +18,8 @@ import Story from "@/games/kinds/Story";
 import WhoSaid from "@/games/kinds/WhoSaid";
 import Connect4 from "@/games/kinds/Connect4";
 import Hockey from "@/games/kinds/Hockey";
-import Bingo from "@/games/kinds/Bingo";
+import Telephone from "@/games/kinds/Telephone";
+import Voice from "@/games/kinds/Voice";
 import type { GameMeta } from "@/games/types";
 import { cn } from "@/lib/utils";
 
@@ -143,7 +144,8 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
                   {g.kind === "whosaid" && <WhoSaid h={h} selfId={selfId} />}
                   {g.kind === "connect4" && <Connect4 h={h} selfId={selfId} />}
                   {g.kind === "hockey" && <Hockey h={h} selfId={selfId} />}
-                  {g.kind === "bingo" && <Bingo h={h} selfId={selfId} />}
+                  {g.kind === "telephone" && <Telephone h={h} selfId={selfId} />}
+                  {g.kind === "voice" && <Voice h={h} selfId={selfId} />}
                 </>
               )}
 

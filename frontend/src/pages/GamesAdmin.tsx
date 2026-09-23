@@ -67,14 +67,14 @@ export function GamesAdmin() {
 
       <Card title="İçerikler" actions={config && kind ? <Badge tone={(config.itemCounts[kind.itemKind] ?? 0) >= kind.minItems ? "green" : "amber"}>{config.itemCounts[kind.itemKind] ?? 0} aktif · en az {kind.minItems}</Badge> : null}>
         <div className="flex flex-wrap gap-1.5">
-          {config?.kinds.filter((m) => m.itemKind).map((m) => (
+          {config?.kinds.filter((m, i, all) => m.itemKind && all.findIndex((o) => o.itemKind === m.itemKind) === i).map((m) => (
             <button key={m.key} type="button" onClick={() => setKind(m)} className={cn("rounded-full px-3 py-1.5 text-xs font-medium", kind?.key === m.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent")}>
               {ICONS[m.key]} {m.name} <span className="opacity-70">({config.itemCounts[m.itemKind] ?? 0})</span>
             </button>
           ))}
         </div>
         {kind && <Pool key={kind.key} meta={kind} onChanged={load} />}
-        <p className="mt-4 text-xs text-muted-foreground">İçeriği olmayan oyunlar (Yalan mı Gerçek mi, Kim Söyledi, Bağlantı Dört, Masa Hokeyi) oyuncuların kendi yazdıklarıyla ya da odadaki mesajlarla oynanır.</p>
+        <p className="mt-4 text-xs text-muted-foreground">Kulaktan Kulağa Çizim, Çiz & Bil ile aynı kelime havuzunu kullanır. İçeriği olmayan oyunlar (Yalan mı Gerçek mi, Kim Söyledi, Bağlantı Dört, Masa Hokeyi) oyuncuların kendi yazdıklarıyla ya da odadaki mesajlarla oynanır.</p>
       </Card>
     </div>
   );

@@ -71,7 +71,7 @@ export function Settings() {
             <Gamepad2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-medium">Ekibin Teams içinde oynadığı oyunlar: açma kapama, çağrıda duraklatma, sadece molada kuralı ve oyun içerikleri</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">Kelimeler, sorular, senaryolar ve bingo kutuları koda gömülü değildir; buradan elle ya da Excel ile girilir.</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">Kelimeler, sorular, senaryolar ve cümleler koda gömülü değildir; buradan elle ya da Excel ile girilir.</p>
               <Link to="/games/admin" className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Mini oyunları yönet</Link>
             </div>
           </div>

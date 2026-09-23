@@ -54,7 +54,7 @@ type lateJoiner interface {
 	Joined(m *Match, s *Service, ctx context.Context, userID uint)
 }
 
-var kinds = []Kind{&drawKind{}, &pollKind{}, &truthKind{}, &solveKind{}, &storyKind{}, &whosaidKind{}, &connect4Kind{}, &hockeyKind{}, &bingoKind{}}
+var kinds = []Kind{&drawKind{}, &telephoneKind{}, &pollKind{}, &truthKind{}, &solveKind{}, &storyKind{}, &whosaidKind{}, &voiceKind{}, &connect4Kind{}, &hockeyKind{}}
 
 func kindOf(key string) Kind {
 	for _, k := range kinds {
@@ -128,6 +128,44 @@ type drawGuess struct {
 	Name    string `json:"name"`
 	Text    string `json:"text"`
 	Correct bool   `json:"correct"`
+	Close   bool   `json:"close"`
+}
+
+// levenshtein is the edit distance between two words.
+func levenshtein(a, b string) int {
+	ra, rb := []rune(a), []rune(b)
+	prev := make([]int, len(rb)+1)
+	cur := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			cost := 1
+			if ra[i-1] == rb[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(rb)]
+}
+
+// closeGuess is true when a wrong guess is nearly right: a letter or two
+// off, or the word hiding inside a longer phrase.
+func closeGuess(guess, word string) bool {
+	g, w := norm(guess), norm(word)
+	if g == "" || w == "" || g == w {
+		return false
+	}
+	if len([]rune(w)) >= 4 && (strings.Contains(g, w) || strings.Contains(w, g) && len([]rune(g)) >= 3) {
+		return true
+	}
+	d := levenshtein(g, w)
+	n := len([]rune(w))
+	return (n >= 5 && d <= 2) || (n >= 3 && d <= 1)
 }
 
 type drawKind struct{}
@@ -294,7 +332,13 @@ func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 			}
 			return true, nil
 		}
-		st.Guesses = append(st.Guesses, drawGuess{UserID: uid, Name: name, Text: text})
+		// A near miss is announced without the text, like Gartic: the room
+		// learns someone is close, not what they wrote.
+		if closeGuess(text, st.Word) {
+			st.Guesses = append(st.Guesses, drawGuess{UserID: uid, Name: name, Close: true})
+		} else {
+			st.Guesses = append(st.Guesses, drawGuess{UserID: uid, Name: name, Text: text})
+		}
 		if len(st.Guesses) > 60 {
 			st.Guesses = st.Guesses[len(st.Guesses)-60:]
 		}
@@ -1603,149 +1647,419 @@ func (k *hockeyKind) View(m *Match, viewer uint) any {
 	return map[string]any{"puck": st.Puck, "pads": st.Pads, "score": st.Score, "target": st.Target, "phase": st.Phase, "mySeat": k.seat(m, viewer), "width": hkW, "height": hkH, "pad": hkPad, "puckR": hkPuck, "goal": hkGoal}
 }
 
-// ================================================================ Eskalasyon Bingo
+// ================================================================ Kulaktan Kulağa Çizim
 
-type bingoState struct {
-	Cards map[uint][]string `json:"cards"`
-	Marks map[uint][]bool   `json:"marks"`
-	Pool  []string          `json:"pool"`
+type tStep struct {
+	Kind  string `json:"kind"` // word | draw | guess
+	By    uint   `json:"by"`
+	Text  string `json:"text,omitempty"`
+	Image string `json:"image,omitempty"`
 }
 
-type bingoKind struct{}
-
-func (bingoKind) Meta() Meta {
-	return Meta{Key: "bingo", Name: "Eskalasyon Bingo", Tagline: "Günün kendisi oyun.", Icon: "layout-grid",
-		How:        "Herkese 5x5 bir kart: 'modem ışığı', 'şifre unuttum', 'diğer operatör'... Gün içinde başına gelen kutuyu işaretlersin; eskalasyon kategorisiyle aynı adlı kutular kayıt girince kendiliğinden işaretlenir. Bir satırı, sütunu ya da çaprazı ilk dolduran BINGO der ve kazanır. Sonradan katılan da kart alır.",
-		MinPlayers: 1, MaxPlayers: 0, ItemKind: "bingo", ItemLabel: "Kutu metni", ItemHint: "Metin: karttaki ifade. Eskalasyon kategori adıyla birebir aynıysa kayıt girildiğinde kendiliğinden işaretlenir.", MinItems: 24,
-		DefaultRounds: 1, DefaultSeconds: 0, JoinLate: true}
+type telephoneState struct {
+	Order       []uint        `json:"order"`
+	Chains      [][]tStep     `json:"chains"`
+	Step        int           `json:"step"`
+	Phase       string        `json:"phase"` // work | reveal
+	Done        map[uint]bool `json:"done"`
+	RevealChain int           `json:"revealChain"`
+	RevealStep  int           `json:"revealStep"`
+	Seconds     int           `json:"seconds"`
 }
-func (bingoKind) NewState() any { return &bingoState{} }
 
-func (k *bingoKind) Start(m *Match, s *Service, ctx context.Context) error {
-	st := m.Data.(*bingoState)
-	items := s.pickItems(ctx, "bingo", 0)
-	if len(items) < 24 {
-		return errs.Invalid("Bingo için en az 24 kutu metni gerekli.", nil)
-	}
-	st.Pool = nil
-	for _, it := range items {
-		st.Pool = append(st.Pool, it.Text)
-	}
-	st.Cards = map[uint][]string{}
-	st.Marks = map[uint][]bool{}
+type telephoneKind struct{}
+
+func (telephoneKind) Meta() Meta {
+	return Meta{Key: "telephone", Name: "Kulaktan Kulağa Çizim", Tagline: "Kelime çizime, çizim kelimeye, sonunda bambaşka bir şey.", Icon: "phone",
+		How:        "Herkese bir kelime gelir ve onu çizer. Çizimin elden ele geçer: sıradaki kişi çizime bakıp ne olduğunu yazar, ondan sonraki o yazıyı yeniden çizer. Zincir herkesi dolaşınca albüm açılır ve ilk kelimenin neye dönüştüğünü hep birlikte izlersiniz. Kazanan yok, gülen kazanır.",
+		MinPlayers: 3, MaxPlayers: 12, ItemKind: "draw", ItemLabel: "Kelime", ItemHint: "Çiz & Bil ile aynı kelime havuzu.", MinItems: 3,
+		DefaultRounds: 1, DefaultSeconds: 60, SecondsLabel: "Çizim süresi (sn), yazma süresi bunun yarısı"}
+}
+func (telephoneKind) NewState() any { return &telephoneState{} }
+
+func (k *telephoneKind) Start(m *Match, s *Service, ctx context.Context) error {
+	st := m.Data.(*telephoneState)
+	st.Order = nil
 	for _, p := range m.active() {
-		k.deal(m, s, p.UserID)
+		st.Order = append(st.Order, p.UserID)
 	}
+	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	items := s.pickItems(ctx, "draw", len(st.Order))
+	if len(items) == 0 {
+		return errs.Invalid("Kelime havuzu boş.", nil)
+	}
+	st.Chains = nil
+	for i, uid := range st.Order {
+		st.Chains = append(st.Chains, []tStep{{Kind: "word", By: uid, Text: items[i%len(items)].Text}})
+	}
+	st.Seconds = m.Config.Seconds
+	st.Step = 0
+	st.Phase = "work"
+	k.open(m)
 	return nil
 }
 
-func (k *bingoKind) deal(m *Match, s *Service, uid uint) {
-	st := m.Data.(*bingoState)
-	pool := append([]string(nil), st.Pool...)
-	s.rnd.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
-	card := make([]string, 25)
-	marks := make([]bool, 25)
-	n := 0
-	for i := 0; i < 25; i++ {
-		if i == 12 {
-			card[i] = "SERBEST"
-			marks[i] = true
+// worker is who handles chain c at the current step.
+func (k *telephoneKind) worker(st *telephoneState, c int) uint {
+	n := len(st.Order)
+	if n == 0 {
+		return 0
+	}
+	return st.Order[(c+st.Step)%n]
+}
+
+func (k *telephoneKind) stepKind(st *telephoneState) string {
+	if st.Step%2 == 1 {
+		return "draw"
+	}
+	return "guess"
+}
+
+func (k *telephoneKind) open(m *Match) {
+	st := m.Data.(*telephoneState)
+	st.Step++
+	if st.Step >= len(st.Order) {
+		st.Phase = "reveal"
+		st.RevealChain = 0
+		st.RevealStep = 1
+		m.setDeadline(5)
+		return
+	}
+	st.Done = map[uint]bool{}
+	if k.stepKind(st) == "draw" {
+		m.setDeadline(st.Seconds)
+	} else {
+		m.setDeadline(max(20, st.Seconds/2))
+	}
+}
+
+// fill closes the step: anyone who did not deliver gets a placeholder.
+func (k *telephoneKind) fill(st *telephoneState) {
+	for c := range st.Chains {
+		uid := k.worker(st, c)
+		if len(st.Chains[c]) > st.Step {
 			continue
 		}
-		card[i] = pool[n%len(pool)]
-		n++
-	}
-	st.Cards[uid] = card
-	st.Marks[uid] = marks
-}
-
-func (k *bingoKind) Joined(m *Match, s *Service, ctx context.Context, uid uint) {
-	st := m.Data.(*bingoState)
-	if _, ok := st.Cards[uid]; !ok {
-		k.deal(m, s, uid)
-	}
-}
-
-func (k *bingoKind) complete(marks []bool) bool {
-	at := func(r, c int) bool { return marks[r*5+c] }
-	for i := 0; i < 5; i++ {
-		row, col := true, true
-		for j := 0; j < 5; j++ {
-			row = row && at(i, j)
-			col = col && at(j, i)
-		}
-		if row || col {
-			return true
+		if k.stepKind(st) == "draw" {
+			st.Chains[c] = append(st.Chains[c], tStep{Kind: "draw", By: uid})
+		} else {
+			st.Chains[c] = append(st.Chains[c], tStep{Kind: "guess", By: uid, Text: "..."})
 		}
 	}
-	d1, d2 := true, true
-	for i := 0; i < 5; i++ {
-		d1 = d1 && at(i, i)
-		d2 = d2 && at(i, 4-i)
-	}
-	return d1 || d2
 }
 
-func (k *bingoKind) check(m *Match, s *Service, ctx context.Context, uid uint) {
-	st := m.Data.(*bingoState)
-	if k.complete(st.Marks[uid]) {
-		m.addScore(uid, 5)
-		s.finish(ctx, m, []uint{uid}, "BINGO")
-	}
-}
-
-func (k *bingoKind) autoMark(m *Match, s *Service, ctx context.Context, uid uint, category string) bool {
-	st := m.Data.(*bingoState)
-	card, ok := st.Cards[uid]
-	if !ok {
-		return false
-	}
-	changed := false
-	for i, text := range card {
-		if !st.Marks[uid][i] && norm(text) == norm(category) {
-			st.Marks[uid][i] = true
-			changed = true
+func (k *telephoneKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+	st := m.Data.(*telephoneState)
+	switch action {
+	case "submit":
+		if st.Phase != "work" {
+			return false, errs.Invalid("Bu aşamada gönderilemez.", nil)
 		}
-	}
-	if changed {
-		k.check(m, s, ctx, uid)
-	}
-	return changed
-}
-
-func (k *bingoKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
-	st := m.Data.(*bingoState)
-	if action != "mark" {
-		return false, errs.Invalid("Bilinmeyen hamle.", nil)
-	}
-	var in struct{ Index int }
-	if err := decode(payload, &in); err != nil {
-		return false, err
-	}
-	marks, ok := st.Marks[uid]
-	if !ok || in.Index < 0 || in.Index >= 25 || in.Index == 12 {
-		return false, errs.Invalid("Geçersiz kutu.", nil)
-	}
-	marks[in.Index] = !marks[in.Index]
-	k.check(m, s, ctx, uid)
-	return true, nil
-}
-
-func (k *bingoKind) Timeout(m *Match, s *Service, ctx context.Context) {}
-
-func (k *bingoKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
-
-func (k *bingoKind) View(m *Match, viewer uint) any {
-	st := m.Data.(*bingoState)
-	counts := map[uint]int{}
-	for uid, marks := range st.Marks {
-		n := 0
-		for _, b := range marks {
-			if b {
-				n++
+		chain := -1
+		for c := range st.Chains {
+			if k.worker(st, c) == uid {
+				chain = c
 			}
 		}
-		counts[uid] = n
+		if chain < 0 || len(st.Chains[chain]) > st.Step {
+			return false, errs.Invalid("Bu adımda sana düşen iş yok ya da zaten gönderdin.", nil)
+		}
+		var in struct {
+			Text  string
+			Image string
+		}
+		if err := decode(payload, &in); err != nil {
+			return false, err
+		}
+		if k.stepKind(st) == "draw" {
+			if !strings.HasPrefix(in.Image, "data:image/") || len(in.Image) > 220000 {
+				return false, errs.Invalid("Çizim okunamadı ya da çok büyük.", nil)
+			}
+			st.Chains[chain] = append(st.Chains[chain], tStep{Kind: "draw", By: uid, Image: in.Image})
+		} else {
+			text := strings.TrimSpace(in.Text)
+			if text == "" || len([]rune(text)) > 80 {
+				return false, errs.Invalid("Tahmin 1 ile 80 karakter arasında olmalı.", nil)
+			}
+			st.Chains[chain] = append(st.Chains[chain], tStep{Kind: "guess", By: uid, Text: text})
+		}
+		st.Done[uid] = true
+		if len(st.Done) >= len(m.active()) {
+			k.fill(st)
+			k.open(m)
+		}
+		return true, nil
+	case "next":
+		if st.Phase != "reveal" {
+			return false, errs.Invalid("Albüm henüz açılmadı.", nil)
+		}
+		if uid != m.G.HostID {
+			return false, errs.Forbidden("Albümü kurucu çevirir.")
+		}
+		k.advance(m, s, ctx)
+		return true, nil
 	}
-	return map[string]any{"card": st.Cards[viewer], "marks": st.Marks[viewer], "counts": counts}
+	return false, errs.Invalid("Bilinmeyen hamle.", nil)
+}
+
+// advance turns one page of the album.
+func (k *telephoneKind) advance(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*telephoneState)
+	st.RevealStep++
+	if st.RevealStep >= len(st.Chains[st.RevealChain]) {
+		st.RevealChain++
+		st.RevealStep = 1
+		if st.RevealChain >= len(st.Chains) {
+			for _, p := range m.active() {
+				m.addScore(p.UserID, 1)
+			}
+			var all []uint
+			for _, p := range m.active() {
+				all = append(all, p.UserID)
+			}
+			s.finish(ctx, m, all, "")
+			return
+		}
+		m.setDeadline(8)
+		return
+	}
+	m.setDeadline(5)
+}
+
+func (k *telephoneKind) Timeout(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*telephoneState)
+	if st.Phase == "work" {
+		k.fill(st)
+		k.open(m)
+		return
+	}
+	k.advance(m, s, ctx)
+}
+
+// Left: if the one everyone was waiting for walks out, the step closes.
+func (k *telephoneKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+	st := m.Data.(*telephoneState)
+	if st.Phase == "work" && len(st.Done) >= len(m.active()) {
+		k.fill(st)
+		k.open(m)
+	}
+}
+
+func (k *telephoneKind) View(m *Match, viewer uint) any {
+	st := m.Data.(*telephoneState)
+	out := map[string]any{"phase": st.Phase, "step": st.Step, "steps": len(st.Order), "done": len(st.Done), "seconds": st.Seconds}
+	if st.Phase == "work" {
+		out["kind"] = k.stepKind(st)
+		for c := range st.Chains {
+			if k.worker(st, c) == viewer {
+				prev := st.Chains[c][len(st.Chains[c])-1]
+				out["chain"] = c
+				out["submitted"] = len(st.Chains[c]) > st.Step
+				if st.Step == 1 || prev.Kind == "word" || prev.Kind == "guess" {
+					out["promptText"] = prev.Text
+				}
+				if prev.Kind == "draw" {
+					out["promptImage"] = prev.Image
+				}
+			}
+		}
+		return out
+	}
+	// The album, opened page by page so everyone reads it together.
+	album := make([][]tStep, 0, len(st.Chains))
+	for c, chain := range st.Chains {
+		if c < st.RevealChain || m.G.Status == statusFinished {
+			album = append(album, chain)
+		} else if c == st.RevealChain {
+			album = append(album, chain[:min(len(chain), st.RevealStep+1)])
+		} else {
+			album = append(album, chain[:1])
+		}
+	}
+	out["album"] = album
+	out["revealChain"] = st.RevealChain
+	out["revealStep"] = st.RevealStep
+	out["host"] = m.G.HostID
+	return out
+}
+
+// ================================================================ Ses Tahmini
+
+type voiceState struct {
+	Phrase string          `json:"phrase"`
+	Clips  map[uint]string `json:"clips"`
+	Order  []uint          `json:"order"`
+	Round  int             `json:"round"`
+	Phase  string          `json:"phase"` // record | guess | reveal
+	Votes  map[uint]uint   `json:"votes"`
+	Rates  []float64       `json:"rates"`
+}
+
+type voiceKind struct{}
+
+func (voiceKind) Meta() Meta {
+	return Meta{Key: "voice", Name: "Ses Tahmini", Tagline: "Alo, teknik destek... kim bu?", Icon: "mic",
+		How:        "Herkes aynı cümleyi üç saniyeliğine mikrofona söyler. Sonra kayıtlar biraz inceltilip kalınlaştırılarak sırayla çalınır; kimin sesi olduğunu tahmin edersiniz. Doğru tahmin 10 puan. Kaydı olmayan yalnızca tahmin eder.",
+		MinPlayers: 3, MaxPlayers: 0, ItemKind: "voice", ItemLabel: "Söylenecek cümle", ItemHint: "Metin: herkesin okuyacağı kısa cümle. Boşsa 'Alo, teknik destek, nasıl yardımcı olabilirim?' kullanılır.", MinItems: 0,
+		DefaultRounds: 1, DefaultSeconds: 25, SecondsLabel: "Tahmin süresi (sn)"}
+}
+func (voiceKind) NewState() any { return &voiceState{} }
+
+func (k *voiceKind) Start(m *Match, s *Service, ctx context.Context) error {
+	st := m.Data.(*voiceState)
+	st.Phrase = "Alo, teknik destek, nasıl yardımcı olabilirim?"
+	if items := s.pickItems(ctx, "voice", 1); len(items) > 0 {
+		st.Phrase = items[0].Text
+	}
+	st.Clips = map[uint]string{}
+	st.Phase = "record"
+	m.setDeadline(90)
+	return nil
+}
+
+func (k *voiceKind) startGuessing(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*voiceState)
+	st.Order = nil
+	for uid := range st.Clips {
+		st.Order = append(st.Order, uid)
+	}
+	if len(st.Order) < 2 {
+		s.finish(ctx, m, nil, "yeterli kayıt yok")
+		return
+	}
+	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	st.Rates = nil
+	for range st.Order {
+		// A pitch shift the players hear; the same for everyone in a round.
+		st.Rates = append(st.Rates, []float64{0.78, 0.86, 1.15, 1.25}[s.rnd.Intn(4)])
+	}
+	st.Round = 0
+	k.open(m)
+}
+
+func (k *voiceKind) open(m *Match) {
+	st := m.Data.(*voiceState)
+	st.Phase = "guess"
+	st.Votes = map[uint]uint{}
+	m.setDeadline(m.Config.Seconds)
+}
+
+func (k *voiceKind) reveal(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*voiceState)
+	owner := st.Order[st.Round]
+	for uid, target := range st.Votes {
+		if target == owner {
+			m.addScore(uid, 10)
+		}
+	}
+	st.Phase = "reveal"
+	m.setDeadline(6)
+}
+
+func (k *voiceKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+	st := m.Data.(*voiceState)
+	switch action {
+	case "clip":
+		if st.Phase != "record" {
+			return false, errs.Invalid("Kayıt süresi bitti.", nil)
+		}
+		var in struct{ Data string }
+		if err := decode(payload, &in); err != nil {
+			return false, err
+		}
+		if !strings.HasPrefix(in.Data, "data:audio/") || len(in.Data) > 260000 {
+			return false, errs.Invalid("Ses kaydı okunamadı ya da çok uzun.", nil)
+		}
+		st.Clips[uid] = in.Data
+		if len(st.Clips) >= len(m.active()) {
+			k.startGuessing(m, s, ctx)
+		}
+		return true, nil
+	case "guess":
+		if st.Phase != "guess" {
+			return false, errs.Invalid("Şu an tahmin edilemez.", nil)
+		}
+		owner := st.Order[st.Round]
+		if uid == owner {
+			return false, errs.Invalid("Kendi sesini tahmin edemezsin.", nil)
+		}
+		var in struct{ Owner uint }
+		if err := decode(payload, &in); err != nil {
+			return false, err
+		}
+		if p := m.player(in.Owner); p == nil {
+			return false, errs.Invalid("Oyuncu bulunamadı.", nil)
+		}
+		st.Votes[uid] = in.Owner
+		voters := 0
+		for _, p := range m.active() {
+			if p.UserID != owner {
+				voters++
+			}
+		}
+		if len(st.Votes) >= voters {
+			k.reveal(m, s, ctx)
+		}
+		return true, nil
+	}
+	return false, errs.Invalid("Bilinmeyen hamle.", nil)
+}
+
+func (k *voiceKind) Timeout(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*voiceState)
+	switch st.Phase {
+	case "record":
+		k.startGuessing(m, s, ctx)
+	case "guess":
+		k.reveal(m, s, ctx)
+	case "reveal":
+		st.Round++
+		if st.Round >= len(st.Order) {
+			s.finish(ctx, m, m.leaders(), "")
+			return
+		}
+		k.open(m)
+	}
+}
+
+// Left: a walkout must not hold the room at a count it can no longer reach.
+func (k *voiceKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+	st := m.Data.(*voiceState)
+	switch st.Phase {
+	case "record":
+		if len(st.Clips) >= len(m.active()) {
+			k.startGuessing(m, s, ctx)
+		}
+	case "guess":
+		voters := 0
+		for _, p := range m.active() {
+			if p.UserID != st.Order[st.Round] {
+				voters++
+			}
+		}
+		if len(st.Votes) >= voters {
+			k.reveal(m, s, ctx)
+		}
+	}
+}
+
+func (k *voiceKind) View(m *Match, viewer uint) any {
+	st := m.Data.(*voiceState)
+	out := map[string]any{"phase": st.Phase, "phrase": st.Phrase, "recorded": len(st.Clips), "round": st.Round + 1, "total": len(st.Order)}
+	if _, ok := st.Clips[viewer]; ok {
+		out["mine"] = true
+	}
+	if (st.Phase == "guess" || st.Phase == "reveal") && st.Round < len(st.Order) {
+		owner := st.Order[st.Round]
+		out["clip"] = st.Clips[owner]
+		out["rate"] = st.Rates[st.Round]
+		out["isOwner"] = owner == viewer
+		out["voted"] = len(st.Votes)
+		out["myVote"] = st.Votes[viewer]
+		if st.Phase == "reveal" {
+			out["owner"] = owner
+			out["votes"] = st.Votes
+		}
+	}
+	return out
 }
