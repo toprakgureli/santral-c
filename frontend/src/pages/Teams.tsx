@@ -7,6 +7,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { BellOff, BellRing, Gamepad2, Hash, Images, Plus, Search, Settings2, Trophy, Users, VolumeX } from "lucide-react";
 import StartGameDialog from "../games/StartGameDialog";
 import Leaderboard from "../games/Leaderboard";
+import GameModal from "../games/GameModal";
 import { api, ApiError } from "../api/client";
 import type { TeamsGroup, TeamsGroupDetail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -54,6 +55,7 @@ export function Teams() {
   const canCreate = can(user, "teams.group_create");
   const canPlay = can(user, "games.play") && !!teams.games?.enabled;
   const [startGame, setStartGame] = useState(false);
+  const [openGame, setOpenGame] = useState<number | null>(null);
   const [board, setBoard] = useState(false);
 
   // Tell the context which room is open so its messages do not notify.
@@ -293,7 +295,7 @@ export function Teams() {
               )}
             </header>
             <div className="flex min-h-0 flex-1">
-              <MessagePane key={detail.id} group={detail} selfId={selfId} target={target} />
+              <MessagePane key={detail.id} group={detail} selfId={selfId} target={target} onOpenGame={setOpenGame} />
               {panel && (panel !== "members" || detail.kind === "group") && (
                 <RoomPanel
                   mode={panel}
@@ -329,7 +331,8 @@ export function Teams() {
       <NewGroupDialog open={newGroup} onClose={() => setNewGroup(false)} onCreated={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       {detail && <GroupSettingsDialog group={detail} open={settings} onClose={() => setSettings(false)} onSaved={(g) => { setDetail(g); void teams.refresh(); }} />}
-      {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={() => teams.reloadGames()} />}
+      {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={(g) => { teams.reloadGames(); setOpenGame(g.id); }} />}
+      {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} onClose={() => setOpenGame(null)} />}
       {teams.games && <Leaderboard open={board} onClose={() => setBoard(false)} kinds={teams.games.kinds} selfId={selfId} />}
       {detail && people && <AddPeopleDialog group={detail} mode={people} open onClose={() => setPeople(null)} onDone={(g) => { setDetail(g); void teams.refresh(); }} />}
     </div>

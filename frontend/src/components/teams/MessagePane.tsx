@@ -22,7 +22,6 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { statusOf, Ticks } from "@/components/teams/Presence";
 import { renderMarkup, stripMarkup } from "@/lib/markup";
 import GameCard from "@/games/GameCard";
-import GameModal from "@/games/GameModal";
 import { previewLabel } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
@@ -47,7 +46,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
 }
 
-export default function MessagePane({ group, selfId, target }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null }) {
+export default function MessagePane({ group, selfId, target, onOpenGame }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null; onOpenGame: (id: number) => void }) {
   const teams = useTeams();
   const [items, setItems] = useState<TeamsMessage[]>([]);
   const [more, setMore] = useState(false);
@@ -73,7 +72,6 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
   const [gallery, setGallery] = useState<{ items: TeamsAttachment[]; index: number } | null>(null);
   const [profile, setProfile] = useState<PopoverAnchor | null>(null);
   const [who, setWho] = useState<{ x: number; y: number; emoji: string; people: TeamsPerson[] } | null>(null);
-  const [openGame, setOpenGame] = useState<number | null>(null);
   const openProfile = (e: React.MouseEvent, userId: number) => {
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -333,7 +331,6 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
         </div>
       )}
       {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
-      {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} onClose={() => setOpenGame(null)} />}
       {who && (
         <ReactionPeople
           {...who}
@@ -431,7 +428,7 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
                     {m.deleted ? (
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                     ) : m.kind === "game" && m.gameId ? (
-                      <GameCard gameId={m.gameId} onOpen={() => setOpenGame(m.gameId!)} />
+                      <GameCard gameId={m.gameId} onOpen={() => onOpenGame(m.gameId!)} />
                     ) : (
                       <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                         {m.attachments?.length > 0 && (

@@ -24,7 +24,10 @@ export default function GameCard({ gameId, onOpen }: { gameId: number; onOpen: (
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{g.kindName}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {g.status === "lobby" && `Lobide · ${seats} oyuncu · en az ${g.minPlayers}`}
+            {g.status === "lobby" && (() => {
+              const n = g.players.filter((p) => !p.left).length;
+              return n < g.minPlayers ? `${n} kişi katıldı · başlamak için ${g.minPlayers - n} kişi daha gerekli` : `${n} kişi hazır · kurucu başlatabilir`;
+            })()}
             {g.status === "playing" && (g.paused ? `Duraklatıldı · ${g.pausedBy.join(", ")} çağrıda` : `Oynanıyor · ${seats} oyuncu`)}
             {g.status === "finished" && (winners.length ? `${winners.map((w) => w.name).join(", ")} kazandı` : "Bitti")}
             {g.status === "cancelled" && "İptal edildi"}
