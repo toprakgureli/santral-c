@@ -60,6 +60,7 @@ type ChatMessage struct {
 	Body        string     `gorm:"column:body;type:text;not null;default:''"`
 	ReplyToID   *uint      `gorm:"column:reply_to_id"`
 	Attachments *string    `gorm:"column:attachments;type:jsonb"`
+	MentionsAll bool       `gorm:"column:mentions_all;not null;default:false"`
 	CreatedAt   time.Time  `gorm:"column:created_at"`
 	EditedAt    *time.Time `gorm:"column:edited_at"`
 	DeletedAt   *time.Time `gorm:"column:deleted_at"`
@@ -88,3 +89,12 @@ type ChatPresence struct {
 
 // TableName pins the table name.
 func (ChatPresence) TableName() string { return "chat_presence" }
+
+// ChatMention is one person tagged with @ in a line.
+type ChatMention struct {
+	MessageID uint `gorm:"column:message_id;primarykey"`
+	UserID    uint `gorm:"column:user_id;primarykey"`
+}
+
+// TableName pins the table name.
+func (ChatMention) TableName() string { return "chat_mentions" }

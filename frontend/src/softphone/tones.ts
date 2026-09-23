@@ -104,13 +104,12 @@ function beepBurst(count: number, freq: number, onMs: number, gapMs: number) {
 
 // A short two-note chime for a new message. It uses its own gain node so it
 // never interrupts a ringing or in-call tone.
-function chime() {
+function chime(notes: [number, number][] = [[660, 0], [880, 0.12]], level = 0.12) {
   try {
     const c = audio();
     const g = c.createGain();
     g.gain.value = 0;
     g.connect(c.destination);
-    const notes: [number, number][] = [[660, 0], [880, 0.12]];
     const oscs: OscillatorNode[] = [];
     for (const [freq, at] of notes) {
       const o = c.createOscillator();
@@ -122,8 +121,9 @@ function chime() {
       oscs.push(o);
     }
     const t = c.currentTime;
-    g.gain.setTargetAtTime(0.12, t, 0.005);
-    g.gain.setTargetAtTime(0, t + 0.27, 0.03);
+    const last = notes[notes.length - 1][1];
+    g.gain.setTargetAtTime(level, t, 0.005);
+    g.gain.setTargetAtTime(0, t + last + 0.15, 0.03);
     window.setTimeout(() => {
       try {
         oscs.forEach((o) => o.disconnect());
@@ -131,7 +131,7 @@ function chime() {
       } catch {
         // ignore
       }
-    }, 500);
+    }, 900);
   } catch {
     // audio unavailable
   }
@@ -141,6 +141,10 @@ export const tones = {
   // New chat message.
   notify() {
     chime();
+  },
+  // Someone tagged you: three rising notes, a touch louder.
+  mention() {
+    chime([[523, 0], [659, 0.13], [784, 0.26]], 0.16);
   },
 
   // Outbound ringback: 425 Hz, 2s on / 4s off (Turkish standard).

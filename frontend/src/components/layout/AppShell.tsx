@@ -12,6 +12,7 @@ import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { ShiftProvider } from "@/shift/ShiftContext";
 import { PresenceProvider } from "@/presence/PresenceContext";
 import { TeamsProvider } from "@/teams/TeamsContext";
+import MentionToasts from "@/components/teams/MentionToasts";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -52,6 +53,7 @@ export default function AppShell() {
     <WelcomeCard />
     <WrapUpCard />
     <UnreachedPrompt />
+    <MentionToasts />
     <div className="min-h-svh bg-background">
       <Sidebar
         open={menuOpen}

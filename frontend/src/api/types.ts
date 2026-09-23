@@ -222,6 +222,8 @@ export interface TeamsMessage {
   mine: boolean;
   canDelete: boolean;
   reactions: TeamsReaction[];
+  mentions: number[];
+  mentionsAll: boolean;
   createdAt: string;
   // Only on the reader's own lines.
   status?: "sent" | "delivered" | "read";

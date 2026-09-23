@@ -179,7 +179,7 @@ export const api = {
   // messageId 0 marks everything read.
   teamsMarkRead: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
   teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
-  teamsSend: (id: number, body: { body: string; replyToId?: number }) =>
+  teamsSend: (id: number, body: { body: string; replyToId?: number; mentionIds?: number[]; mentionsAll?: boolean }) =>
     request<TeamsMessage>(`/teams/groups/${id}/messages`, { method: "POST", body: JSON.stringify(body) }),
   teamsDeleteMessage: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/messages/${messageId}`, { method: "DELETE" }),
   teamsReact: (id: number, messageId: number, emoji: string) =>

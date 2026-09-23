@@ -4,7 +4,8 @@
 // delete. Attachments are reserved: the paperclip is there, disabled.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, Paperclip, SendHorizontal, SmilePlus, Trash2, X } from "lucide-react";
+import { CornerUpLeft, SmilePlus, Trash2 } from "lucide-react";
+import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { Modal } from "@/components/ui";
 import { api, ApiError } from "@/api/client";
@@ -139,8 +140,8 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     if (el.scrollTop < 60 && more && !loading) void loadOlder();
   }
 
-  async function send(body: string) {
-    const m = await api.teamsSend(group.id, { body, replyToId: reply?.id });
+  async function send(out: Outgoing) {
+    const m = await api.teamsSend(group.id, { body: out.body, replyToId: reply?.id, mentionIds: out.mentionIds, mentionsAll: out.mentionsAll });
     setItems((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, m]));
     teams.bumpGroup(group.id, m);
     setReply(null);
@@ -243,8 +244,8 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   {m.deleted ? (
                     <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                      {m.body}
+                    <p className={cn("whitespace-pre-wrap break-words text-sm leading-relaxed", (m.mentions?.includes(selfId) || m.mentionsAll) && !m.mine && "-mx-2 rounded-lg border-l-2 border-violet-500 bg-violet-500/10 px-2 py-0.5")}>
+                      <Body text={m.body} names={m.mentions.map((id) => seats[id]?.name).filter((n): n is string => !!n)} all={m.mentionsAll} />
                       {m.mine && (() => {
                         const st = statusOf(m.id, selfId, seats);
                         return <Ticks status={st.status} readBy={st.readBy} className="ml-1.5 align-text-bottom" />;
@@ -292,93 +293,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {info && <MessageInfo message={info} seats={seats} selfId={selfId} onClose={() => setInfo(null)} />}
 
-      <Composer group={group} reply={reply} onCancelReply={() => setReply(null)} onSend={send} />
-    </div>
-  );
-}
-
-function Composer({ group, reply, onCancelReply, onSend }: { group: TeamsGroupDetail; reply: TeamsMessage | null; onCancelReply: () => void; onSend: (body: string) => Promise<void> }) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const area = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    setText("");
-    setError(null);
-  }, [group.id]);
-
-  useEffect(() => {
-    if (reply) area.current?.focus();
-  }, [reply]);
-
-  async function submit() {
-    const body = text.trim();
-    if (!body || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onSend(body);
-      setText("");
-      requestAnimationFrame(() => area.current?.focus());
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!group.canPost) {
-    return (
-      <div className="border-t border-border/60 px-5 py-3 text-center text-xs text-muted-foreground">
-        {group.postPolicy === "admins" ? "Bu bir duyuru grubu, yalnızca yöneticiler yazabilir." : "Bu grupta yazma yetkin kapatılmış."}
-      </div>
-    );
-  }
-
-  return (
-    <div className="border-t border-border/60 px-4 py-3">
-      {reply && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
-          <CornerUpLeft className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">{reply.sender?.name}</span>
-            <span className="text-muted-foreground">: {reply.body.slice(0, 100)}</span>
-          </span>
-          <button type="button" onClick={onCancelReply} aria-label="Yanıtı iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
-        </div>
-      )}
-      <div className="flex items-end gap-2 rounded-2xl border border-border/70 bg-muted/30 px-2 py-1.5 focus-within:border-ring/60 focus-within:ring-4 focus-within:ring-ring/15">
-        <button type="button" disabled title="Dosya ekleme yakında" className="mb-1 rounded-lg p-1.5 text-muted-foreground/50"><Paperclip className="size-4" /></button>
-        <textarea
-          ref={area}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-          rows={1}
-          maxLength={4000}
-          placeholder={group.kind === "dm" ? `${group.name} kişisine yaz...` : `#${group.name} grubuna yaz...`}
-          className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60"
-          style={{ height: "auto" }}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
-        />
-        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} aria-label="Gönder" className="mb-0.5 flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity disabled:opacity-40">
-          <SendHorizontal className="size-4" />
-        </button>
-      </div>
-      <div className="mt-1 flex items-center justify-between px-1 text-[0.65rem] text-muted-foreground/70">
-        <span>Enter gönderir, Shift+Enter yeni satır.</span>
-        {error ? <span className="text-destructive">{error}</span> : <span>{text.length} / 4000</span>}
-      </div>
+      <Composer group={group} selfId={selfId} reply={reply} onCancelReply={() => setReply(null)} onSend={send} />
     </div>
   );
 }
@@ -417,5 +332,28 @@ function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessag
         <Section title="Bekliyor" names={pending} status="sent" />
       </div>
     </Modal>
+  );
+}
+
+function escapeRe(v: string) {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Body renders a line with its @tags highlighted.
+function Body({ text, names, all }: { text: string; names: string[]; all: boolean }) {
+  const labels = [...names.map((n) => `@${n}`), ...(all ? [`@${EVERYONE}`] : [])];
+  if (labels.length === 0) return <>{text}</>;
+  const re = new RegExp(`(${labels.sort((a, b) => b.length - a.length).map(escapeRe).join("|")})`, "gu");
+  const parts = text.split(re);
+  return (
+    <>
+      {parts.map((part, i) =>
+        labels.includes(part) ? (
+          <span key={i} className="rounded bg-violet-500/20 px-1 font-medium text-violet-500">{part}</span>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
   );
 }

@@ -418,8 +418,10 @@ func (h *Handler) Messages(c *fiber.Ctx) error {
 }
 
 type sendBody struct {
-	Body      string `json:"body"`
-	ReplyToID uint   `json:"replyToId"`
+	Body        string `json:"body"`
+	ReplyToID   uint   `json:"replyToId"`
+	MentionIDs  []uint `json:"mentionIds"`
+	MentionsAll bool   `json:"mentionsAll"`
 }
 
 // Send posts a line.
@@ -436,7 +438,7 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.Send(c.UserContext(), id, gid, req.Body, req.ReplyToID)
+	res, err := h.service.Send(c.UserContext(), id, gid, req.Body, req.ReplyToID, req.MentionIDs, req.MentionsAll)
 	if err != nil {
 		return err
 	}

@@ -118,7 +118,10 @@ type MessageView struct {
 	Mine      bool           `json:"mine"`
 	CanDelete bool           `json:"canDelete"`
 	Reactions []ReactionView `json:"reactions"`
-	CreatedAt string         `json:"createdAt"`
+	// Mentions are the tagged people's ids; MentionsAll is "@herkes".
+	Mentions    []uint `json:"mentions"`
+	MentionsAll bool   `json:"mentionsAll"`
+	CreatedAt   string `json:"createdAt"`
 	// Status is set on the reader's own lines: sent, delivered or read.
 	Status string   `json:"status,omitempty"`
 	ReadBy []string `json:"readBy,omitempty"`
@@ -1010,6 +1013,10 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 	for _, st := range seats {
 		need = append(need, st.UserID)
 	}
+	mentions, err := s.repo.Mentions(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	people, err := s.repo.PeopleByID(ctx, need)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -1022,6 +1029,9 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 	for i := range rows {
 		v := s.messageView(actor, g, m, &rows[i], people, byMsg[rows[i].ID])
 		v.Status, v.ReadBy = s.status(actor.ID, &rows[i], seats, people)
+		if ids := mentions[rows[i].ID]; len(ids) > 0 {
+			v.Mentions = ids
+		}
 		if rows[i].ReplyToID != nil {
 			if rm, ok := replies[*rows[i].ReplyToID]; ok {
 				rv := ReplyView{ID: rm.ID, Body: rm.Body, Deleted: rm.DeletedAt != nil}
@@ -1040,7 +1050,7 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 }
 
 func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models.ChatMember, r *models.ChatMessage, people map[uint]Person, reactions []models.ChatReaction) MessageView {
-	v := MessageView{ID: r.ID, GroupID: r.GroupID, Kind: r.Kind, Body: r.Body, Deleted: r.DeletedAt != nil, Reactions: []ReactionView{}, CreatedAt: stamp(r.CreatedAt)}
+	v := MessageView{ID: r.ID, GroupID: r.GroupID, Kind: r.Kind, Body: r.Body, Deleted: r.DeletedAt != nil, Reactions: []ReactionView{}, Mentions: []uint{}, MentionsAll: r.MentionsAll, CreatedAt: stamp(r.CreatedAt)}
 	if r.SenderID != nil {
 		if p, ok := people[*r.SenderID]; ok {
 			sender := p
@@ -1077,7 +1087,7 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 }
 
 // Send posts a text line to a room the actor may write in.
-func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, replyTo uint) (*MessageView, error) {
+func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, replyTo uint, mentionIDs []uint, mentionsAll bool) (*MessageView, error) {
 	actor, err := s.actor(ctx, actorID)
 	if err != nil {
 		return nil, err
@@ -1096,7 +1106,7 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 	if len([]rune(body)) > maxBody {
 		return nil, errs.Invalid("Mesaj en fazla 4000 karakter olabilir.", nil)
 	}
-	msg := &models.ChatMessage{GroupID: groupID, SenderID: &actorID, Kind: "text", Body: body, CreatedAt: time.Now()}
+	msg := &models.ChatMessage{GroupID: groupID, SenderID: &actorID, Kind: "text", Body: body, MentionsAll: mentionsAll && g.Kind == "group", CreatedAt: time.Now()}
 	if replyTo > 0 {
 		rm, err := s.repo.Message(ctx, replyTo)
 		if err != nil {
@@ -1109,8 +1119,30 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return nil, errs.Internal(err)
 	}
+	// Only seated people can be tagged; the sender tagging themself is noise.
+	tagged := []uint{}
+	if len(mentionIDs) > 0 {
+		memberIDs, err := s.repo.MemberIDs(ctx, groupID)
+		if err != nil {
+			return nil, errs.Internal(err)
+		}
+		seated := map[uint]bool{}
+		for _, id := range memberIDs {
+			seated[id] = true
+		}
+		seen := map[uint]bool{}
+		for _, id := range mentionIDs {
+			if id != actorID && seated[id] && !seen[id] {
+				seen[id] = true
+				tagged = append(tagged, id)
+			}
+		}
+		if err := s.repo.CreateMentions(ctx, msg.ID, tagged); err != nil {
+			return nil, errs.Internal(err)
+		}
+	}
 	_ = s.repo.MarkRead(ctx, groupID, actorID, msg.ID)
-	view, err := s.broadcastMessage(ctx, g, msg)
+	view, err := s.broadcastMessage(ctx, g, msg, tagged)
 	if err != nil {
 		return nil, err
 	}
@@ -1133,11 +1165,11 @@ func (s *Service) system(ctx context.Context, groupID uint, text string) {
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return
 	}
-	_, _ = s.broadcastMessage(ctx, g, msg)
+	_, _ = s.broadcastMessage(ctx, g, msg, nil)
 }
 
 // broadcastMessage renders a fresh line neutrally and pushes it to members.
-func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg *models.ChatMessage) (*MessageView, error) {
+func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg *models.ChatMessage, mentions []uint) (*MessageView, error) {
 	need := []uint{}
 	if msg.SenderID != nil {
 		need = append(need, *msg.SenderID)
@@ -1148,6 +1180,9 @@ func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg
 	}
 	neutral := &models.User{}
 	view := s.messageView(neutral, g, nil, msg, people, nil)
+	if len(mentions) > 0 {
+		view.Mentions = mentions
+	}
 	view.CanDelete = false
 	if msg.ReplyToID != nil {
 		if rm, err := s.repo.Message(ctx, *msg.ReplyToID); err == nil && rm != nil {

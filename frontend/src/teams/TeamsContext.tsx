@@ -30,6 +30,30 @@ interface TeamsState {
   // Live presence by user id; falls back to what the server sent with the card.
   presence: Record<number, PresenceInfo>;
   presenceOf: (p: { id: number; online?: boolean; lastSeen?: string } | undefined | null) => PresenceInfo;
+  // Tags waiting to be noticed; they stay until dismissed.
+  mentions: MentionToast[];
+  dismissMention: (id: number) => void;
+}
+
+export interface MentionToast {
+  id: number;
+  groupId: number;
+  groupName: string;
+  sender: { id: number; name: string; hasAvatar: boolean; avatarVersion?: number };
+  body: string;
+  at: string;
+}
+
+const MENTIONS_KEY = "teams.mentions";
+
+function loadMentions(): MentionToast[] {
+  try {
+    const raw = localStorage.getItem(MENTIONS_KEY);
+    const list = raw ? (JSON.parse(raw) as MentionToast[]) : [];
+    return Array.isArray(list) ? list.slice(-20) : [];
+  } catch {
+    return [];
+  }
 }
 
 export interface PresenceInfo {
@@ -52,6 +76,16 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   groupsRef.current = groups;
   const listeners = useRef(new Set<(e: TeamsEvent) => void>());
   const [presence, setPresence] = useState<Record<number, PresenceInfo>>({});
+  const [mentions, setMentions] = useState<MentionToast[]>(loadMentions);
+  useEffect(() => {
+    try {
+      localStorage.setItem(MENTIONS_KEY, JSON.stringify(mentions));
+    } catch {
+      // storage unavailable
+    }
+  }, [mentions]);
+  const dismissMention = useCallback((id: number) => setMentions((cur) => cur.filter((t) => t.id !== id)), []);
+  const selfId = user?.id ?? 0;
   const refreshTimer = useRef<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationPermission | "unsupported">(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission,
@@ -83,14 +117,28 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const notify = useCallback(
     (m: TeamsMessage) => {
       const g = groupsRef.current.find((x) => x.id === m.groupId);
-      if (g?.muted || m.mine || m.kind === "system") return;
+      if (m.mine || m.kind === "system" || m.sender?.id === selfId) return;
+      // A direct @ reaches you even in a muted room; "@herkes" respects the mute.
+      const taggedMe = m.mentions?.includes(selfId) ?? false;
+      const tagged = taggedMe || (m.mentionsAll && !g?.muted);
+      if (g?.muted && !taggedMe) return;
       const roomOpen = openRef.current === m.groupId && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams");
       if (roomOpen) return;
-      tones.notify();
+      if (tagged) {
+        tones.mention();
+        if (m.sender) {
+          const sender = m.sender;
+          setMentions((cur) => [...cur.filter((t) => t.id !== m.id), { id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender, body: m.body, at: m.createdAt }].slice(-20));
+        }
+      } else {
+        tones.notify();
+      }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        const title = g ? (g.kind === "dm" ? g.name : `${g.name} · ${m.sender?.name ?? ""}`) : m.sender?.name ?? "Teams";
+        const title = tagged
+          ? `${m.sender?.name ?? "Biri"} seni etiketledi${g ? ` · ${g.name}` : ""}`
+          : g ? (g.kind === "dm" ? g.name : `${g.name} · ${m.sender?.name ?? ""}`) : m.sender?.name ?? "Teams";
         try {
-          const n = new Notification(title, { body: m.body.slice(0, 140), tag: `teams-${m.groupId}`, silent: true });
+          const n = new Notification(title, { body: m.body.slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
           n.onclick = () => {
             window.focus();
             window.location.assign(`/teams/${m.groupId}`);
@@ -101,7 +149,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [],
+    [selfId],
   );
 
   // Live stream with a polling fallback (a proxy may buffer SSE).
@@ -224,8 +272,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<TeamsState>(
-    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf }),
-    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf],
+    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention }),
+    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

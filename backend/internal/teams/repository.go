@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
@@ -569,6 +570,37 @@ func (r *Repository) LastSeen(ctx context.Context, ids []uint) (map[uint]time.Ti
 	}
 	for _, p := range rows {
 		out[p.UserID] = p.LastSeenAt
+	}
+	return out, nil
+}
+
+// CreateMentions records who a line tags.
+func (r *Repository) CreateMentions(ctx context.Context, messageID uint, userIDs []uint) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	rows := make([]models.ChatMention, 0, len(userIDs))
+	for _, id := range userIDs {
+		rows = append(rows, models.ChatMention{MessageID: messageID, UserID: id})
+	}
+	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error; err != nil {
+		return fmt.Errorf("mentions could not be saved: %w", err)
+	}
+	return nil
+}
+
+// Mentions loads the tagged people of several lines, keyed by line.
+func (r *Repository) Mentions(ctx context.Context, messageIDs []uint) (map[uint][]uint, error) {
+	out := map[uint][]uint{}
+	if len(messageIDs) == 0 {
+		return out, nil
+	}
+	var rows []models.ChatMention
+	if err := r.db.WithContext(ctx).Where("message_id IN ?", messageIDs).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("mentions could not be loaded: %w", err)
+	}
+	for _, m := range rows {
+		out[m.MessageID] = append(out[m.MessageID], m.UserID)
 	}
 	return out, nil
 }
