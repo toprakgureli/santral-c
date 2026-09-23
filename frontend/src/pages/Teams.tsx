@@ -12,6 +12,7 @@ import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import GroupAvatar from "../components/teams/GroupAvatar";
 import { AddPeopleDialog, GroupSettingsDialog, NewDMDialog, NewGroupDialog } from "../components/teams/GroupDialogs";
 import MembersPanel from "../components/teams/MembersPanel";
+import ProfilePopover, { type PopoverAnchor } from "../components/teams/ProfilePopover";
 import MessagePane from "../components/teams/MessagePane";
 import { OnlineDot, presenceTone, seenLabel, Ticks } from "../components/teams/Presence";
 import { previewLabel } from "../lib/attachments";
@@ -44,6 +45,7 @@ export function Teams() {
   const [newDM, setNewDM] = useState(false);
   const [settings, setSettings] = useState(false);
   const [people, setPeople] = useState<"add" | "invite" | null>(null);
+  const [profile, setProfile] = useState<PopoverAnchor | null>(null);
 
   const canCreate = can(user, "teams.group_create");
 
@@ -224,10 +226,20 @@ export function Teams() {
         ) : (
           <>
             <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4">
-              <span className="relative inline-flex shrink-0">
+              <button
+                type="button"
+                disabled={detail.kind !== "dm" || !detail.peer}
+                onClick={(e) => {
+                  if (!detail.peer) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setProfile({ userId: detail.peer.id, x: r.left, y: r.bottom, room: detail.id });
+                }}
+                className="relative inline-flex shrink-0 rounded-full disabled:cursor-default"
+                title={detail.kind === "dm" ? "Profili aç" : undefined}
+              >
                 <GroupAvatar group={detail} className="size-9 text-xs" />
                 {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer, detail.id)} />}
-              </span>
+              </button>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {detail.kind === "group" && <Hash className="size-4 shrink-0 text-muted-foreground" />}
@@ -269,6 +281,7 @@ export function Teams() {
       </section>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
       <NewGroupDialog open={newGroup} onClose={() => setNewGroup(false)} onCreated={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       {detail && <GroupSettingsDialog group={detail} open={settings} onClose={() => setSettings(false)} onSaved={(g) => { setDetail(g); void teams.refresh(); }} />}

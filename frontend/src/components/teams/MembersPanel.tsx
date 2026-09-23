@@ -5,11 +5,11 @@
 
 import { useMemo, useState } from "react";
 import { Crown, MailPlus, MicOff, Shield, UserPlus } from "lucide-react";
-import { Link } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMember } from "@/api/types";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { OnlineDot, presenceTone, seenLabel } from "@/components/teams/Presence";
+import ProfilePopover, { type PopoverAnchor } from "@/components/teams/ProfilePopover";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
@@ -19,6 +19,7 @@ const RANK: Record<string, number> = { owner: 0, admin: 1, member: 2 };
 export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite }: { group: TeamsGroupDetail; selfId: number; onChanged: (g: TeamsGroupDetail) => void; onAdd: () => void; onInvite: () => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<PopoverAnchor | null>(null);
   const { presenceOf } = useTeams();
   const isOwner = group.myRole === "owner";
 
@@ -62,8 +63,12 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
       <li>
         <div
           onContextMenu={(e) => open(e, m)}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setProfile({ userId: m.id, x: r.left - 308, y: r.top, room: group.id });
+          }}
           className={cn(
-            "group flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-[background-color,opacity] duration-200",
+            "group flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-[background-color,opacity] duration-200",
             "hover:bg-sidebar-accent/60",
             !p.online && "opacity-60 hover:opacity-100",
             manageable && "cursor-context-menu",
@@ -76,9 +81,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
-              <Link to={`/profile/${m.id}`} className="truncate text-sm font-medium hover:underline">
-                {m.name}
-              </Link>
+              <span className="truncate text-sm font-medium">{m.name}</span>
               {m.id === selfId && <span className="text-[0.65rem] text-muted-foreground">sen</span>}
               {m.role === "owner" && <Crown className="size-3 shrink-0 text-warning" aria-label="Sahip" />}
               {m.role === "admin" && <Shield className="size-3 shrink-0 text-primary" aria-label="Yönetici" />}
@@ -151,6 +154,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
 
       {error && <p className="px-4 pb-3 text-xs text-destructive">{error}</p>}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
     </aside>
   );
 }

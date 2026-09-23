@@ -10,6 +10,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { CornerUpLeft, ImagePlus, Pencil, SmilePlus, Trash2 } from "lucide-react";
 import AttachmentGrid, { mediaOf } from "@/components/teams/AttachmentGrid";
 import Lightbox from "@/components/teams/Lightbox";
+import ProfilePopover, { type PopoverAnchor } from "@/components/teams/ProfilePopover";
 import { useUploads } from "@/teams/useUploads";
 import type { TeamsAttachment } from "@/api/types";
 import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
@@ -66,6 +67,12 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const uploads = useUploads(group.id);
   const [over, setOver] = useState(false);
   const [gallery, setGallery] = useState<{ items: TeamsAttachment[]; index: number } | null>(null);
+  const [profile, setProfile] = useState<PopoverAnchor | null>(null);
+  const openProfile = (e: React.MouseEvent, userId: number) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setProfile({ userId, x: r.right, y: r.top, room: group.id });
+  };
   useEffect(() => {
     const next: Seats = {};
     for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name };
@@ -279,6 +286,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
           <p className="text-xs text-muted-foreground">Görsel 200 MB, video 1 GB, dosya 3 GB'a kadar</p>
         </div>
       )}
+      {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
       {gallery && <Lightbox items={gallery.items} index={gallery.index} onIndex={(i) => setGallery({ ...gallery, index: i })} onClose={() => setGallery(null)} />}
       <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {more && (
@@ -326,7 +334,11 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   )}
                 >
                   <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
-                    {head && m.sender && <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
+                    {head && m.sender && (
+                      <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" title="Profili aç">
+                        <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                      </button>
+                    )}
                     {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -345,7 +357,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                     )}
                     {head && m.sender && (
                       <div className="flex items-center gap-2">
-                        <span className={cn("text-sm font-semibold leading-tight", m.mine && "text-primary")}>{m.sender.name}</span>
+                        <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className={cn("text-sm font-semibold leading-tight hover:underline", m.mine && "text-primary")}>{m.sender.name}</button>
                         <span className="text-[0.7rem] text-muted-foreground">{hhmm(m.createdAt)}</span>
                         {m.mine && !m.deleted && (() => {
                           const st = statusOf(m.id, selfId, seats);
