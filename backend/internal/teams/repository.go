@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -401,6 +402,46 @@ func (r *Repository) Messages(ctx context.Context, groupID uint, beforeID uint, 
 	var out []models.ChatMessage
 	if err := q.Order("id DESC").Limit(limit).Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("messages could not be listed: %w", err)
+	}
+	return out, nil
+}
+
+// MessagesAfter lists lines newer than an id, oldest first.
+func (r *Repository) MessagesAfter(ctx context.Context, groupID uint, afterID uint, limit int) ([]models.ChatMessage, error) {
+	var out []models.ChatMessage
+	if err := r.db.WithContext(ctx).Where("group_id = ? AND id > ?", groupID, afterID).Order("id ASC").Limit(limit).Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("messages could not be listed: %w", err)
+	}
+	return out, nil
+}
+
+// SearchMessages finds live text lines containing the words, newest first.
+func (r *Repository) SearchMessages(ctx context.Context, groupID uint, q string, limit int) ([]models.ChatMessage, error) {
+	db := r.db.WithContext(ctx).Where("group_id = ? AND kind = 'text' AND deleted_at IS NULL", groupID)
+	for _, w := range strings.Fields(q) {
+		db = db.Where("body ILIKE ?", "%"+strings.NewReplacer("%", "\\%", "_", "\\_").Replace(w)+"%")
+	}
+	var out []models.ChatMessage
+	if err := db.Order("id DESC").Limit(limit).Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("messages could not be searched: %w", err)
+	}
+	return out, nil
+}
+
+// GroupAttachments pages a room's shared files of one kind, newest first.
+func (r *Repository) GroupAttachments(ctx context.Context, groupID uint, kind string, beforeID uint, limit int) ([]models.ChatAttachment, error) {
+	db := r.db.WithContext(ctx).
+		Where("chat_attachments.group_id = ? AND chat_attachments.deleted_at IS NULL AND chat_attachments.status = 'ready' AND chat_attachments.message_id IS NOT NULL", groupID).
+		Joins("JOIN chat_messages m ON m.id = chat_attachments.message_id AND m.deleted_at IS NULL")
+	if kind != "" {
+		db = db.Where("chat_attachments.kind = ?", kind)
+	}
+	if beforeID > 0 {
+		db = db.Where("chat_attachments.id < ?", beforeID)
+	}
+	var out []models.ChatAttachment
+	if err := db.Order("chat_attachments.id DESC").Limit(limit).Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("attachments could not be listed: %w", err)
 	}
 	return out, nil
 }

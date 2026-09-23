@@ -32,8 +32,11 @@ type Stats struct {
 	TodayUnanswered  int64 `json:"todayUnanswered"`
 	MonthReal        int64 `json:"monthReal"`
 	MonthTalkSeconds int64 `json:"monthTalkSeconds"`
-	MonthEscalations int64 `json:"monthEscalations"`
-	TotalEscalations int64 `json:"totalEscalations"`
+	// Last seven days: real conversations and their average length.
+	WeekReal           int64 `json:"weekReal"`
+	WeekAvgTalkSeconds int64 `json:"weekAvgTalkSeconds"`
+	MonthEscalations   int64 `json:"monthEscalations"`
+	TotalEscalations   int64 `json:"totalEscalations"`
 }
 
 // Profile is the page payload.
@@ -127,6 +130,17 @@ func (r *Repository) Stats(ctx context.Context, id uint) (Stats, error) {
 	}
 	s.TodayReal, s.TodayUnanswered = t.Real, t.Unanswered
 	s.MonthReal, s.MonthTalkSeconds = m.Real, m.Talk
+	var week struct {
+		Real int64
+		Avg  float64
+	}
+	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
+		Select("count(*) AS real, COALESCE(AVG(duration_seconds), 0) AS avg").
+		Where("user_id = ? AND started_at >= ? AND disposition = 'answered' AND duration_seconds >= ?", id, now.AddDate(0, 0, -7), realCallSeconds).
+		Scan(&week).Error; err != nil {
+		return s, fmt.Errorf("weekly average could not be computed: %w", err)
+	}
+	s.WeekReal, s.WeekAvgTalkSeconds = week.Real, int64(week.Avg+0.5)
 	if err := r.db.WithContext(ctx).Model(&models.CallEscalation{}).
 		Where("agent_id = ? AND created_at >= ?", id, month).Count(&s.MonthEscalations).Error; err != nil {
 		return s, fmt.Errorf("escalation count could not be computed: %w", err)

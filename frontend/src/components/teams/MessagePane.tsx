@@ -45,10 +45,12 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
 }
 
-export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail; selfId: number }) {
+export default function MessagePane({ group, selfId, target }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null }) {
   const teams = useTeams();
   const [items, setItems] = useState<TeamsMessage[]>([]);
   const [more, setMore] = useState(false);
+  // Inside the history (after a jump) newer lines exist below the window.
+  const [moreNewer, setMoreNewer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<TeamsMessage | null>(null);
@@ -85,6 +87,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
       const r = await api.teamsMessages(group.id);
       setItems(r.items);
       setMore(r.more);
+      setMoreNewer(false);
       setError(null);
       stickToBottom.current = true;
       const unread = group.unread;
@@ -112,7 +115,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     const el = list.current;
     const before = el ? el.scrollHeight - el.scrollTop : 0;
     try {
-      const r = await api.teamsMessages(group.id, items[0].id);
+      const r = await api.teamsMessages(group.id, { before: items[0].id });
       setItems((cur) => [...r.items, ...cur]);
       setMore(r.more);
       stickToBottom.current = false;
@@ -124,12 +127,50 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     }
   }
 
+  async function loadNewer() {
+    if (!items.length || !moreNewer) return;
+    try {
+      const r = await api.teamsMessages(group.id, { after: items[items.length - 1].id });
+      setItems((cur) => [...cur, ...r.items]);
+      setMoreNewer(r.moreNewer);
+      stickToBottom.current = false;
+      if (!r.moreNewer && r.items.length) void api.teamsMarkRead(group.id, r.items[r.items.length - 1].id).catch(() => undefined);
+    } catch {
+      // keep what we have
+    }
+  }
+
+  // A search result or a shared file: load the window around it and flash.
+  useEffect(() => {
+    if (!target) return;
+    const id = target.id;
+    if (list.current?.querySelector(`[data-mid="${id}"]`)) {
+      jump(id);
+      return;
+    }
+    setLoading(true);
+    api
+      .teamsMessages(group.id, { around: id })
+      .then((r) => {
+        setItems(r.items);
+        setMore(r.more);
+        setMoreNewer(r.moreNewer);
+        stickToBottom.current = false;
+        setFirstUnread(null);
+        window.setTimeout(() => jump(id), 60);
+      })
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Mesaja gidilemedi."))
+      .finally(() => setLoading(false));
+  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Live events for this room.
   useEffect(() => {
     return teams.subscribe((e: TeamsEvent) => {
       if (e.groupId !== group.id) return;
       if (e.type === "message" && e.message) {
         const m = e.message;
+        // Inside the history the new line belongs below the window, not to it.
+        if (moreNewer) return;
         setItems((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, { ...m, mine: m.sender?.id === selfId, canDelete: m.sender?.id === selfId || group.canManage }]));
         if (document.visibilityState === "visible") {
           void api.teamsMarkRead(group.id, m.id).catch(() => undefined);
@@ -158,7 +199,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
         })).catch(() => undefined);
       }
     });
-  }, [group.id, group.canManage, selfId, teams]);
+  }, [group.id, group.canManage, selfId, teams, moreNewer]);
 
   // Keep the view pinned to the newest line unless the reader scrolled up.
   useLayoutEffect(() => {
@@ -170,8 +211,9 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   function onScroll() {
     const el = list.current;
     if (!el) return;
-    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    stickToBottom.current = !moreNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     if (el.scrollTop < 60 && more && !loading) void loadOlder();
+    if (moreNewer && el.scrollHeight - el.scrollTop - el.clientHeight < 60 && !loading) void loadNewer();
   }
 
   async function send(out: Outgoing) {
@@ -295,6 +337,11 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
           </div>
         )}
         {loading && items.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">Yükleniyor...</p>}
+        {moreNewer && (
+          <div className="sticky top-0 z-10 mb-2 flex justify-center">
+            <button type="button" onClick={() => void load()} className="rounded-full border border-primary/40 bg-card px-3 py-1 text-xs font-medium text-primary shadow-sm hover:bg-primary/10">Geçmişteysin · en yeni mesajlara dön</button>
+          </div>
+        )}
         {!loading && items.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
             <p className="text-sm font-medium">Henüz mesaj yok</p>
@@ -420,6 +467,11 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
         })}
       </div>
 
+      {moreNewer && (
+        <div className="px-5 pb-1 text-center">
+          <button type="button" onClick={() => void loadNewer()} className="rounded-full border border-border/70 px-3 py-1 text-xs text-muted-foreground hover:bg-accent">Daha yeni mesajlar</button>
+        </div>
+      )}
       <div className="flex h-5 items-center px-5 text-xs">
         {typing ? (
           <span className="flex items-center gap-1.5 text-muted-foreground">

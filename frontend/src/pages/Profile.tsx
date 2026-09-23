@@ -4,8 +4,8 @@
 // record for today and this month.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Camera, Clock, Pencil, Trash2, UserRound } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Camera, Clock, Pencil, Trash2, UserRound } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Profile as ProfileData } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -23,6 +23,12 @@ function joined(iso: string) {
   return `${d}.${m}.${y}`;
 }
 
+function clock(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function hours(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -32,6 +38,7 @@ function hours(seconds: number) {
 
 export function Profile() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { setUser, user } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,9 +59,19 @@ export function Profile() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">{id ? (profile?.name ?? "Profil") : "Profilim"}</h1>
-        <p className="text-sm text-muted-foreground">{id ? "Ekip arkadaşının profili ve çağrı karnesi" : "Tanıtımını, fotoğrafını ve karneni gör"}</p>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))}
+          aria-label="Geri"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-semibold tracking-tight">{id ? (profile?.name ?? "Profil") : "Profilim"}</h1>
+          <p className="text-sm text-muted-foreground">{id ? "Ekip arkadaşının profili ve çağrı karnesi" : "Tanıtımını, fotoğrafını ve karneni gör"}</p>
+        </div>
       </div>
 
       {loading ? (
@@ -153,16 +170,18 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
 
       {error && <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{error}</p>}
 
-      <div className="flex flex-col gap-5 rounded-2xl border border-border/60 bg-card p-5 sm:flex-row sm:items-start">
-        <div className="relative shrink-0 self-center sm:self-start">
+      <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="h-24 bg-gradient-to-r from-primary/70 via-violet-500/60 to-primary/40" />
+      <div className="-mt-12 flex flex-col gap-5 p-5 sm:flex-row sm:items-start">
+        <div className="relative shrink-0 self-center rounded-2xl ring-4 ring-card sm:self-start">
           <UserAvatar
             userId={profile.id}
             name={profile.name}
             hasAvatar={showsPhoto && avatar === null}
             version={profile.avatarVersion}
             src={avatar || undefined}
-            className="size-24 rounded-2xl [&>*]:rounded-2xl"
-            fallbackClassName="bg-muted text-2xl text-muted-foreground"
+            className="size-28 rounded-2xl [&>*]:rounded-2xl"
+            fallbackClassName="bg-muted text-3xl text-muted-foreground"
           />
           {editing && (
             <>
@@ -189,10 +208,10 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
           )}
         </div>
 
-        <div className="min-w-0 flex-1 space-y-3">
+        <div className="min-w-0 flex-1 space-y-3 sm:pt-12">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold">{profile.name}</h2>
+              <h2 className="text-xl font-semibold tracking-tight">{profile.name}</h2>
               {!editing && profile.headline && <p className="text-sm text-muted-foreground">{profile.headline}</p>}
               {!editing && !profile.headline && <p className="text-sm text-muted-foreground">{profile.email}</p>}
             </div>
@@ -267,6 +286,7 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
           )}
         </div>
       </div>
+      </div>
 
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Çağrı karnesi</p>
@@ -276,7 +296,9 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
           <Stat label="Bu ay gerçek çağrı" value={String(stats.monthReal)} />
           <Stat label="Bu ay görüşme süresi" value={hours(stats.monthTalkSeconds)} hint="Cevaplanan çağrıların toplamı" />
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat label="Ortalama çağrı süresi" value={stats.weekAvgTalkSeconds > 0 ? clock(stats.weekAvgTalkSeconds) : "—"} hint={`Son 7 gün · ${stats.weekReal} gerçek çağrı`} tone={stats.weekAvgTalkSeconds > 0 ? "text-primary" : undefined} />
+          <Stat label="Son 7 gün gerçek çağrı" value={String(stats.weekReal)} />
           <Stat label="Bu ay eskalasyon" value={String(stats.monthEscalations)} hint="Kaydettiği eskalasyon sayısı" />
           <Stat label="Toplam eskalasyon" value={String(stats.totalEscalations)} />
         </div>

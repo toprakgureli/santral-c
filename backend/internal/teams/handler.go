@@ -417,8 +417,56 @@ func (h *Handler) Messages(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	if around := uint(c.QueryInt("around", 0)); around > 0 {
+		items, older, newer, err := h.service.MessagesAround(c.UserContext(), id, gid, around)
+		if err != nil {
+			return err
+		}
+		return c.JSON(fiber.Map{"items": items, "more": older, "moreNewer": newer})
+	}
+	if after := uint(c.QueryInt("after", 0)); after > 0 {
+		items, more, err := h.service.MessagesAfter(c.UserContext(), id, gid, after)
+		if err != nil {
+			return err
+		}
+		return c.JSON(fiber.Map{"items": items, "more": false, "moreNewer": more})
+	}
 	before := uint(c.QueryInt("before", 0))
 	items, more, err := h.service.Messages(c.UserContext(), id, gid, before)
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": items, "more": more, "moreNewer": false})
+}
+
+// Search finds lines in a room.
+func (h *Handler) Search(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	items, err := h.service.Search(c.UserContext(), id, gid, c.Query("q"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"items": items})
+}
+
+// Media lists a room's shared files.
+func (h *Handler) Media(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	items, more, err := h.service.Media(c.UserContext(), id, gid, c.Query("kind"), uint(c.QueryInt("before", 0)))
 	if err != nil {
 		return err
 	}
@@ -870,6 +918,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)
 	group.Put("/groups/:id/messages/:mid", r.handler.Edit)
 	group.Get("/groups/:id/messages/:mid/receipts", r.handler.Receipts)
+	group.Get("/groups/:id/search", r.handler.Search)
+	group.Get("/groups/:id/media", r.handler.Media)
 	group.Post("/groups/:id/typing", r.handler.Typing)
 	group.Post("/groups/:id/uploads", r.handler.BeginUpload)
 	group.Post("/uploads/:aid/finish", r.handler.FinishUpload)

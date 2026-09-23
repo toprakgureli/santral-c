@@ -340,6 +340,10 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
           <span>Toplam görüşme</span>
           <span className="font-mono font-semibold tabular-nums text-foreground">{formatClock(r.calls.talkSeconds)}</span>
         </div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Ortalama görüşme <span className="text-muted-foreground/60">(gerçek çağrı)</span></span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">{r.calls.avgTalkSeconds > 0 ? formatClock(r.calls.avgTalkSeconds) : "—"}</span>
+        </div>
       </div>
     </section>
   );

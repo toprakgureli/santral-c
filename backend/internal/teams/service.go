@@ -1026,6 +1026,138 @@ func (s *Service) Messages(ctx context.Context, actorID, groupID, beforeID uint)
 	return views, more, nil
 }
 
+// MessagesAround returns a window of lines around one id, oldest first,
+// with whether older and newer lines exist beyond it.
+func (s *Service) MessagesAround(ctx context.Context, actorID, groupID, aroundID uint) ([]MessageView, bool, bool, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, false, false, err
+	}
+	g, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return nil, false, false, err
+	}
+	half := pageSize / 2
+	older, err := s.repo.Messages(ctx, groupID, aroundID, half+1)
+	if err != nil {
+		return nil, false, false, errs.Internal(err)
+	}
+	moreOlder := len(older) > half
+	if moreOlder {
+		older = older[:half]
+	}
+	newer, err := s.repo.MessagesAfter(ctx, groupID, aroundID-1, half+1)
+	if err != nil {
+		return nil, false, false, errs.Internal(err)
+	}
+	moreNewer := len(newer) > half
+	if moreNewer {
+		newer = newer[:half]
+	}
+	rows := make([]models.ChatMessage, 0, len(older)+len(newer))
+	for i := len(older) - 1; i >= 0; i-- {
+		rows = append(rows, older[i])
+	}
+	rows = append(rows, newer...)
+	views, err := s.views(ctx, actor, g, m, rows)
+	if err != nil {
+		return nil, false, false, err
+	}
+	return views, moreOlder, moreNewer, nil
+}
+
+// MessagesAfter pages newer lines when the reader is inside the history.
+func (s *Service) MessagesAfter(ctx context.Context, actorID, groupID, afterID uint) ([]MessageView, bool, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, false, err
+	}
+	g, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return nil, false, err
+	}
+	rows, err := s.repo.MessagesAfter(ctx, groupID, afterID, pageSize+1)
+	if err != nil {
+		return nil, false, errs.Internal(err)
+	}
+	more := len(rows) > pageSize
+	if more {
+		rows = rows[:pageSize]
+	}
+	views, err := s.views(ctx, actor, g, m, rows)
+	if err != nil {
+		return nil, false, err
+	}
+	return views, more, nil
+}
+
+// Search finds lines in a room by words, newest first.
+func (s *Service) Search(ctx context.Context, actorID, groupID uint, q string) ([]MessageView, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	g, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return nil, err
+	}
+	q = strings.TrimSpace(q)
+	if len([]rune(q)) < 2 {
+		return []MessageView{}, nil
+	}
+	rows, err := s.repo.SearchMessages(ctx, groupID, q, 50)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	return s.views(ctx, actor, g, m, rows)
+}
+
+// MediaItem is a shared file with where it came from.
+type MediaItem struct {
+	AttachmentView
+	MessageID uint   `json:"messageId"`
+	Sender    string `json:"sender"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// Media pages a room's shared pictures, videos or files.
+func (s *Service) Media(ctx context.Context, actorID, groupID uint, kind string, beforeID uint) ([]MediaItem, bool, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, false, err
+	}
+	if _, _, err := s.seat(ctx, actor, groupID); err != nil {
+		return nil, false, err
+	}
+	if kind != "image" && kind != "video" && kind != "file" {
+		kind = ""
+	}
+	const limit = 60
+	rows, err := s.repo.GroupAttachments(ctx, groupID, kind, beforeID, limit+1)
+	if err != nil {
+		return nil, false, errs.Internal(err)
+	}
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
+	ids := make([]uint, 0, len(rows))
+	for _, a := range rows {
+		ids = append(ids, a.UploaderID)
+	}
+	people, _ := s.repo.PeopleByID(ctx, ids)
+	out := make([]MediaItem, 0, len(rows))
+	for i := range rows {
+		a := rows[i]
+		item := MediaItem{AttachmentView: attachmentView(&a), CreatedAt: stamp(a.CreatedAt), Sender: people[a.UploaderID].Name}
+		if a.MessageID != nil {
+			item.MessageID = *a.MessageID
+		}
+		out = append(out, item)
+	}
+	return out, more, nil
+}
+
 func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatGroup, m *models.ChatMember, rows []models.ChatMessage) ([]MessageView, error) {
 	ids := make([]uint, 0, len(rows))
 	need := make([]uint, 0)

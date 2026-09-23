@@ -4,14 +4,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BellOff, BellRing, Hash, Info, MessageSquarePlus, Plus, Search, Settings2, Users, VolumeX } from "lucide-react";
+import { BellOff, BellRing, Hash, Images, Plus, Search, Settings2, Users, VolumeX } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamsGroup, TeamsGroupDetail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import GroupAvatar from "../components/teams/GroupAvatar";
 import { AddPeopleDialog, GroupSettingsDialog, NewDMDialog, NewGroupDialog } from "../components/teams/GroupDialogs";
-import MembersPanel from "../components/teams/MembersPanel";
+import RoomPanel, { type PanelMode } from "../components/teams/RoomPanel";
 import ProfilePopover, { type PopoverAnchor } from "../components/teams/ProfilePopover";
 import MessagePane from "../components/teams/MessagePane";
 import { OnlineDot, presenceTone, seenLabel, Ticks } from "../components/teams/Presence";
@@ -38,7 +38,9 @@ export function Teams() {
 
   const [detail, setDetail] = useState<TeamsGroupDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [showMembers, setShowMembers] = useState(true);
+  const [panel, setPanel] = useState<PanelMode | null>("members");
+  const [target, setTarget] = useState<{ id: number; nonce: number } | null>(null);
+  const [plus, setPlus] = useState<{ x: number; y: number } | null>(null);
   const [q, setQ] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [newGroup, setNewGroup] = useState(false);
@@ -161,8 +163,17 @@ export function Teams() {
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara" className="h-8 w-full rounded-lg bg-muted/50 pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground/60 focus:bg-card focus:ring-2 focus:ring-ring/20" />
           </div>
-          <button type="button" onClick={() => setNewDM(true)} title="Yeni mesaj" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><MessageSquarePlus className="size-4" /></button>
-          {canCreate && <button type="button" onClick={() => setNewGroup(true)} title="Yeni grup" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="size-4" /></button>}
+          <button
+            type="button"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setPlus({ x: r.left - 150, y: r.bottom + 4 });
+            }}
+            title="Yeni"
+            className={cn("flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105", plus && "scale-95")}
+          >
+            <Plus className="size-4" />
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -259,21 +270,30 @@ export function Teams() {
                   return <p className="truncate text-xs text-muted-foreground">{detail.description ? `${detail.description} · ` : ""}{detail.memberCount} üye · {on} çevrimiçi{here ? ` · ${here} sohbette` : ""}</p>;
                 })()}
               </div>
+              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} title="Mesajlarda ara" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "search" && "bg-accent text-foreground")}><Search className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} title="Görseller, videolar ve dosyalar" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "media" && "bg-accent text-foreground")}><Images className="size-4" /></button>
               {detail.kind === "group" && (
                 <>
-                  <button type="button" onClick={() => setShowMembers((v) => !v)} title="Üyeler" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", showMembers && "bg-accent text-foreground")}><Users className="size-4" /></button>
-                  {detail.canManage ? (
+                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} title="Üyeler" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "members" && "bg-accent text-foreground")}><Users className="size-4" /></button>
+                  {detail.canManage && (
                     <button type="button" onClick={() => setSettings(true)} title="Grup ayarları" className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
-                  ) : (
-                    <span title={detail.description || "Açıklama yok"} className="rounded-lg p-2 text-muted-foreground"><Info className="size-4" /></span>
                   )}
                 </>
               )}
             </header>
             <div className="flex min-h-0 flex-1">
-              <MessagePane key={detail.id} group={detail} selfId={selfId} />
-              {detail.kind === "group" && showMembers && (
-                <MembersPanel group={detail} selfId={selfId} onChanged={setDetail} onAdd={() => setPeople("add")} onInvite={() => setPeople("invite")} />
+              <MessagePane key={detail.id} group={detail} selfId={selfId} target={target} />
+              {panel && (panel !== "members" || detail.kind === "group") && (
+                <RoomPanel
+                  mode={panel}
+                  group={detail}
+                  selfId={selfId}
+                  onChanged={setDetail}
+                  onAdd={() => setPeople("add")}
+                  onInvite={() => setPeople("invite")}
+                  onJump={(id) => setTarget({ id, nonce: Date.now() })}
+                  onClose={() => setPanel(null)}
+                />
               )}
             </div>
           </>
@@ -281,6 +301,17 @@ export function Teams() {
       </section>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {plus && (
+        <ContextMenu
+          x={plus.x}
+          y={plus.y}
+          items={[
+            ...(canCreate ? [{ label: "＋  Grup oluştur", onClick: () => setNewGroup(true) }] : []),
+            { label: "✉  Kişiye mesaj yaz", onClick: () => setNewDM(true) },
+          ]}
+          onClose={() => setPlus(null)}
+        />
+      )}
       {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
       <NewGroupDialog open={newGroup} onClose={() => setNewGroup(false)} onCreated={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />

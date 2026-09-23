@@ -163,6 +163,8 @@ export function useSoftphone(enabled: boolean): Phone {
   const audioRef = useRef<HTMLAudioElement>(null);
   const uaRef = useRef<UserAgent | null>(null);
   const sessionRef = useRef<Session | null>(null);
+  // Re-registers with the PBX; used when its offer arrives without DTLS.
+  const reregisterRef = useRef<(() => Promise<void>) | null>(null);
   const localEndRef = useRef(false);
   const domainRef = useRef("");
 
@@ -289,6 +291,15 @@ export function useSoftphone(enabled: boolean): Phone {
     let cancelled = false;
     let ua: UserAgent | null = null;
     let registerer: Registerer | null = null;
+    reregisterRef.current = async () => {
+      if (!registerer) return;
+      try {
+        await registerer.unregister();
+      } catch {
+        // already gone
+      }
+      await registerer.register();
+    };
 
     // Browsers block audio until a user gesture; unlock on the first one so the
     // incoming ring can play even when no call control was clicked yet.
@@ -465,6 +476,22 @@ export function useSoftphone(enabled: boolean): Phone {
     try {
       await s.accept({ sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } } });
     } catch (e) {
+      // The PBX sometimes offers plain RTP (no DTLS fingerprint) to a
+      // registration it does not treat as WebRTC. The browser cannot take
+      // that call; decline it and register afresh so the next one is right.
+      if (e instanceof Error && /DTLS fingerprint/i.test(e.message)) {
+        console.warn("softphone: offer without DTLS fingerprint, re-registering", e);
+        setError("Santral bu çağrıyı tarayıcıya uygun olmayan biçimde gönderdi; kayıt yenilendi, arayan tekrar aradığında düzelmiş olur.");
+        try {
+          await s.reject({ statusCode: 488 });
+        } catch {
+          // already ended
+        }
+        sessionRef.current = null;
+        setStatus("registered");
+        void reregisterRef.current?.().catch(() => undefined);
+        return;
+      }
       setError(mediaError(e));
       if (s.state === SessionState.Initial) tones.incoming();
     }

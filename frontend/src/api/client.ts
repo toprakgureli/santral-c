@@ -21,6 +21,7 @@ import type {
   DriveStatus,
   TeamsAttachment,
   TeamsGroupDetail,
+  TeamsMediaItem,
   TeamsMessage,
   TeamsOverview,
   TeamsPerson,
@@ -181,7 +182,11 @@ export const api = {
   teamsMarkUnread: (id: number) => request<void>(`/teams/groups/${id}/unread`, { method: "POST" }),
   // messageId 0 marks everything read.
   teamsMarkRead: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
-  teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
+  teamsMessages: (id: number, opts: { before?: number; around?: number; after?: number } = {}) =>
+    request<{ items: TeamsMessage[]; more: boolean; moreNewer: boolean }>(`/teams/groups/${id}/messages` + query(opts)),
+  teamsSearch: (id: number, q: string) => request<{ items: TeamsMessage[] }>(`/teams/groups/${id}/search` + query({ q })).then((r) => r.items),
+  teamsMedia: (id: number, kind: "image" | "video" | "file", before?: number) =>
+    request<{ items: TeamsMediaItem[]; more: boolean }>(`/teams/groups/${id}/media` + query({ kind, before })),
   teamsSend: (id: number, body: { body: string; replyToId?: number; mentionIds?: number[]; mentionsAll?: boolean; attachmentIds?: number[] }) =>
     request<TeamsMessage>(`/teams/groups/${id}/messages`, { method: "POST", body: JSON.stringify(body) }),
   teamsEditMessage: (id: number, messageId: number, body: { body: string; mentionIds?: number[]; mentionsAll?: boolean }) =>

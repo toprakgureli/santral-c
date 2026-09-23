@@ -148,6 +148,7 @@ export interface TeamCounts {
   inboundReal: number;
   outboundReal: number;
   talkSeconds: number;
+  avgTalkSeconds: number;
 }
 
 export interface TeamRow {
@@ -174,6 +175,8 @@ export interface ProfileStats {
   todayUnanswered: number;
   monthReal: number;
   monthTalkSeconds: number;
+  weekReal: number;
+  weekAvgTalkSeconds: number;
   monthEscalations: number;
   totalEscalations: number;
 }
@@ -229,6 +232,12 @@ export interface TeamsAttachment {
   durationMs?: number;
   hasThumb: boolean;
   ready: boolean;
+}
+
+export interface TeamsMediaItem extends TeamsAttachment {
+  messageId: number;
+  sender: string;
+  createdAt: string;
 }
 
 export interface DriveStatus {

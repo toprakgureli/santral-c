@@ -52,6 +52,8 @@ type Counts struct {
 	InboundReal    int64 `json:"inboundReal"`
 	OutboundReal   int64 `json:"outboundReal"`
 	TalkSeconds    int64 `json:"talkSeconds"`
+	// Mean length of real conversations (30 s and up) in the window.
+	AvgTalkSeconds int64 `json:"avgTalkSeconds"`
 }
 
 // CallCounts aggregates the call log per user for [from, to).
@@ -70,8 +72,9 @@ func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLo
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed, "+
 			"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
-			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds",
-			shortLong, shortLong, shortLong, shortLong).
+			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds, "+
+			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds",
+			shortLong, shortLong, shortLong, shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ? AND started_at < ?", from, to).
 		// A ring that a teammate answered is not this agent's call.
 		Where("NOT (" + calllog.NotMineSQL + ")").
