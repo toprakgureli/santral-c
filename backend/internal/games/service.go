@@ -983,6 +983,31 @@ func (s *Service) Act(ctx context.Context, actorID, gameID uint, action string, 
 	return s.view(m, actorID, actor.Can(enums.GamesManage)), nil
 }
 
+// Move is the hockey mallet's fast lane: no user lookup, no view built,
+// just the seat check and the physics. Called dozens of times a second.
+func (s *Service) Move(ctx context.Context, actorID, gameID uint, x, y float64) error {
+	s.mu.Lock()
+	m, ok := s.live[gameID]
+	s.mu.Unlock()
+	if !ok {
+		var err error
+		if m, err = s.match(ctx, gameID); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.G.Status != statusPlaying || len(m.Paused) > 0 {
+		return nil
+	}
+	if p := m.player(actorID); p == nil || p.Left {
+		return errs.Forbidden("Bu oyunda oturmuyorsunuz.")
+	}
+	raw, _ := json.Marshal(map[string]float64{"x": x, "y": y})
+	_, err := m.Kind.Act(m, s, ctx, actorID, "move", raw)
+	return err
+}
+
 // finish closes a match, records the outcome and tells the room. Called
 // with m.mu held.
 func (s *Service) finish(ctx context.Context, m *Match, winners []uint, note string) {

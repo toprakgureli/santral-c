@@ -23,6 +23,7 @@ export const gamesApi = {
   start: (id: number) => request<GameView>(`/games/${id}/start`, { method: "POST" }),
   cancel: (id: number) => request<void>(`/games/${id}/cancel`, { method: "POST" }),
   pause: (id: number, paused: boolean) => request<GameView>(`/games/${id}/pause`, { method: "POST", body: JSON.stringify({ paused }) }),
+  move: (id: number, x: number, y: number) => request<void>(`/games/${id}/move`, { method: "POST", body: JSON.stringify({ x, y }) }),
   act: (id: number, action: string, payload: unknown = {}) => request<GameView>(`/games/${id}/action`, { method: "POST", body: JSON.stringify({ action, payload }) }),
   leaderboard: (period: "month" | "all", kind = "") => request<{ items: LeaderRow[] }>(`/games/leaderboard?period=${period}&kind=${encodeURIComponent(kind)}`).then((r) => r.items),
   record: (userId: number) => request<GameRecord>(`/games/record/${userId}`),

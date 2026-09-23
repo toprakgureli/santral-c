@@ -309,6 +309,29 @@ func (h *Handler) Act(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// Move is the hockey mallet's fast lane.
+func (h *Handler) Move(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	mid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.Move(c.UserContext(), id, mid, req.X, req.Y); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // Leaderboard tallies a period.
 func (h *Handler) Leaderboard(c *fiber.Ctx) error {
 	id, err := actor(c)
@@ -377,4 +400,5 @@ func (r *Router) Routes(api fiber.Router) {
 	g.Post("/:id/cancel", r.handler.Cancel)
 	g.Post("/:id/pause", r.handler.Pause)
 	g.Post("/:id/action", r.handler.Act)
+	g.Post("/:id/move", r.handler.Move)
 }

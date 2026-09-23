@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from "react";
 import { tones } from "@/softphone/tones";
+import { gamesApi } from "@/games/api";
 import { Note, type KindProps } from "@/games/kinds/shared";
 
 type Frame = { puck: number[]; pads: number[][]; score: number[]; phase: string; scorer?: number };
@@ -21,6 +22,7 @@ export default function Hockey({ h }: KindProps) {
   const lastPhase = useRef<string>(cur.current.phase);
   const lastSent = useRef(0);
   const myPad = useRef<number[] | null>(null);
+  const predicted = useRef<{ frame: Frame; pos: number[]; vel: number[]; at: number } | null>(null);
   const W = d.width ?? 100;
   const H = d.height ?? 160;
   const seat = d.mySeat ?? -1;
@@ -51,11 +53,37 @@ export default function Hockey({ h }: KindProps) {
         const now = performance.now();
         const a = prev.current;
         const b = cur.current;
-        // Interpolate between the last two frames (33 ms apart).
-        const t = a ? Math.min(1, (now - arrivedAt.current) / 33) : 1;
+        // Dead reckoning: run the puck forward from the last frame with its
+        // own speed (one server tick is 33 ms), so nothing waits on the
+        // network; the next frame corrects any drift.
+        const dt = Math.min(2, (now - arrivedAt.current) / 33);
+        const t = a ? Math.min(1, dt) : 1;
         const lerp = (x: number, y: number) => x + (y - x) * t;
-        const puck = a ? [lerp(a.puck[0], b.puck[0]), lerp(a.puck[1], b.puck[1])] : b.puck;
         const pads = b.pads.map((pd, i) => (i === seat && myPad.current ? myPad.current : a ? [lerp(a.pads[i][0], pd[0]), lerp(a.pads[i][1], pd[1])] : pd));
+        const padU = d.pad ?? 6;
+        const puckU = d.puckR ?? 3;
+        if (!predicted.current || predicted.current.frame !== b) predicted.current = { frame: b, pos: [b.puck[0], b.puck[1]], vel: [b.puck[2] ?? 0, b.puck[3] ?? 0], at: arrivedAt.current };
+        const pr = predicted.current;
+        const step = Math.min(3, (now - pr.at) / 33);
+        pr.at = now;
+        pr.pos = [pr.pos[0] + pr.vel[0] * step, pr.pos[1] + pr.vel[1] * step];
+        if (pr.pos[0] < puckU || pr.pos[0] > W - puckU) pr.vel[0] = -pr.vel[0];
+        if (seat >= 0 && myPad.current) {
+          // My own mallet hits the predicted puck at once; the server's
+          // verdict arrives a frame later and takes over.
+          const [mx, my] = myPad.current;
+          const dx = pr.pos[0] - mx;
+          const dy = pr.pos[1] - my;
+          const dist = Math.hypot(dx, dy);
+          if (dist < padU + puckU && dist > 0) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const sp = Math.max(1.2, Math.hypot(pr.vel[0], pr.vel[1]));
+            pr.vel = [nx * sp, ny * sp];
+            pr.pos = [mx + nx * (padU + puckU + 0.1), my + ny * (padU + puckU + 0.1)];
+          }
+        }
+        const puck = pr.pos;
         const sx = el.width / W;
         const sy = el.height / H;
         const X = (x: number) => (flip ? W - x : x) * sx;
@@ -232,9 +260,9 @@ export default function Hockey({ h }: KindProps) {
     // Draw my own mallet at once; the server confirms with the next frame.
     myPad.current = [x, y];
     const now = performance.now();
-    if (now - lastSent.current < 40) return;
+    if (now - lastSent.current < 25) return;
     lastSent.current = now;
-    void h.act("move", { x, y }).catch(() => undefined);
+    void gamesApi.move(g.id, x, y).catch(() => undefined);
   };
 
   const me = seat >= 0 ? g.players[seat] : undefined;
