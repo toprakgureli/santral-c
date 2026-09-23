@@ -1308,13 +1308,16 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 	// The swing: how far the mallet moved since its last report. A jump
 	// across the table is capped, and the path it sweeps is checked against
 	// the puck, so a fast flick cannot pass through it between two frames.
+	// The mallet goes exactly where the hand is: holding it back made the
+	// screen's mallet run ahead of the server's and hits looked like misses.
+	// Only the swing carried into the puck is capped.
 	ox, oy := st.Pads[seat][0], st.Pads[seat][1]
 	vx, vy := x-ox, y-oy
-	if sp := math.Hypot(vx, vy); sp > 14 {
-		vx, vy = vx/sp*14, vy/sp*14
-		x, y = ox+vx, oy+vy
+	sx, sy := vx, vy
+	if sp := math.Hypot(sx, sy); sp > 14 {
+		sx, sy = sx/sp*14, sy/sp*14
 	}
-	st.PadV[seat] = [2]float64{vx * 0.7, vy * 0.7}
+	st.PadV[seat] = [2]float64{sx * 0.7, sy * 0.7}
 	if st.Phase == "play" {
 		p := &st.Puck
 		// Closest point of the puck to the mallet's path.
@@ -1332,8 +1335,8 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 				nx, ny, nd = vx, vy, math.Max(0.01, math.Hypot(vx, vy))
 			}
 			nx, ny = nx/nd, ny/nd
-			speed := math.Max(hkMinSpeed*1.5, math.Min(hkMaxSpeed, math.Hypot(vx, vy)*0.9))
-			p[2], p[3] = nx*speed+vx*0.2, ny*speed+vy*0.2
+			speed := math.Max(hkMinSpeed*1.5, math.Min(hkMaxSpeed, math.Hypot(sx, sy)*0.9))
+			p[2], p[3] = nx*speed+sx*0.2, ny*speed+sy*0.2
 			if sp := math.Hypot(p[2], p[3]); sp > hkMaxSpeed {
 				p[2], p[3] = p[2]/sp*hkMaxSpeed, p[3]/sp*hkMaxSpeed
 			}

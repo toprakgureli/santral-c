@@ -22,6 +22,7 @@ export default function Hockey({ h }: KindProps) {
   const lastPhase = useRef<string>(cur.current.phase);
   const lastSent = useRef(0);
   const myPad = useRef<number[] | null>(null);
+  const lastPad = useRef<number[] | null>(null);
   const predicted = useRef<{ frame: Frame; pos: number[]; vel: number[]; at: number } | null>(null);
   const W = d.width ?? 100;
   const H = d.height ?? 160;
@@ -69,19 +70,36 @@ export default function Hockey({ h }: KindProps) {
         pr.pos = [pr.pos[0] + pr.vel[0] * step, pr.pos[1] + pr.vel[1] * step];
         if (pr.pos[0] < puckU || pr.pos[0] > W - puckU) pr.vel[0] = -pr.vel[0];
         if (seat >= 0 && myPad.current) {
-          // My own mallet hits the predicted puck at once; the server's
-          // verdict arrives a frame later and takes over.
+          // My own mallet hits the predicted puck at once, along the whole
+          // path it swept since the last screen frame, so a flick never
+          // looks like it passed through; the server's verdict follows.
           const [mx, my] = myPad.current;
-          const dx = pr.pos[0] - mx;
-          const dy = pr.pos[1] - my;
-          const dist = Math.hypot(dx, dy);
-          if (dist < padU + puckU && dist > 0) {
-            const nx = dx / dist;
-            const ny = dy / dist;
-            const sp = Math.max(1.2, Math.hypot(pr.vel[0], pr.vel[1]));
+          const [lx, ly] = lastPad.current ?? [mx, my];
+          const vx = mx - lx;
+          const vy = my - ly;
+          const l2 = vx * vx + vy * vy;
+          const tt = l2 > 0 ? Math.max(0, Math.min(1, ((pr.pos[0] - lx) * vx + (pr.pos[1] - ly) * vy) / l2)) : 0;
+          const cx = lx + vx * tt;
+          const cy = ly + vy * tt;
+          let nx = pr.pos[0] - cx;
+          let ny = pr.pos[1] - cy;
+          let nd = Math.hypot(nx, ny);
+          if (nd < padU + puckU) {
+            if (nd < 0.01) {
+              nx = vx;
+              ny = vy;
+              nd = Math.max(0.01, Math.hypot(vx, vy));
+            }
+            nx /= nd;
+            ny /= nd;
+            const swing = Math.min(14, Math.hypot(vx, vy));
+            const sp = Math.max(1.3, Math.min(5, Math.max(Math.hypot(pr.vel[0], pr.vel[1]), swing * 0.9)));
             pr.vel = [nx * sp, ny * sp];
-            pr.pos = [mx + nx * (padU + puckU + 0.1), my + ny * (padU + puckU + 0.1)];
+            pr.pos = [mx + nx * (padU + puckU + 0.2), my + ny * (padU + puckU + 0.2)];
+            pr.pos[0] = Math.max(puckU, Math.min(W - puckU, pr.pos[0]));
+            pr.pos[1] = Math.max(puckU, Math.min(H - puckU, pr.pos[1]));
           }
+          lastPad.current = [mx, my];
         }
         const puck = pr.pos;
         const sx = el.width / W;
