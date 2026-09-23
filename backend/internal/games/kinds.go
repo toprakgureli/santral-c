@@ -1296,14 +1296,52 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 	} else {
 		y = math.Max(hkPad, math.Min(hkH/2-hkPad, in.Y))
 	}
-	// The swing: how far the paddle moved since its last report, capped so a
-	// jump across the table does not launch the puck into orbit.
-	vx := x - st.Pads[seat][0]
-	vy := y - st.Pads[seat][1]
-	if sp := math.Hypot(vx, vy); sp > 8 {
-		vx, vy = vx/sp*8, vy/sp*8
+	// The swing: how far the mallet moved since its last report. A jump
+	// across the table is capped, and the path it sweeps is checked against
+	// the puck, so a fast flick cannot pass through it between two frames.
+	ox, oy := st.Pads[seat][0], st.Pads[seat][1]
+	vx, vy := x-ox, y-oy
+	if sp := math.Hypot(vx, vy); sp > 14 {
+		vx, vy = vx/sp*14, vy/sp*14
+		x, y = ox+vx, oy+vy
 	}
-	st.PadV[seat] = [2]float64{vx, vy}
+	st.PadV[seat] = [2]float64{vx * 0.7, vy * 0.7}
+	if st.Phase == "play" {
+		p := &st.Puck
+		// Closest point of the puck to the mallet's path.
+		l2 := vx*vx + vy*vy
+		t := 0.0
+		if l2 > 0 {
+			t = math.Max(0, math.Min(1, ((p[0]-ox)*vx+(p[1]-oy)*vy)/l2))
+		}
+		cx, cy := ox+vx*t, oy+vy*t
+		nx, ny := p[0]-cx, p[1]-cy
+		nd := math.Hypot(nx, ny)
+		if nd < hkPad+hkPuck {
+			if nd < 0.01 {
+				// Dead centre: push along the swing.
+				nx, ny, nd = vx, vy, math.Max(0.01, math.Hypot(vx, vy))
+			}
+			nx, ny = nx/nd, ny/nd
+			speed := math.Max(hkMinSpeed*1.5, math.Min(hkMaxSpeed, math.Hypot(vx, vy)*0.9))
+			p[2], p[3] = nx*speed+vx*0.2, ny*speed+vy*0.2
+			if sp := math.Hypot(p[2], p[3]); sp > hkMaxSpeed {
+				p[2], p[3] = p[2]/sp*hkMaxSpeed, p[3]/sp*hkMaxSpeed
+			}
+			// Leave the puck just outside the mallet's final position.
+			fx, fy := p[0]-x, p[1]-y
+			fd := math.Hypot(fx, fy)
+			if fd < hkPad+hkPuck {
+				if fd < 0.01 {
+					fx, fy, fd = nx, ny, 1
+				}
+				p[0] = x + fx/fd*(hkPad+hkPuck+0.2)
+				p[1] = y + fy/fd*(hkPad+hkPuck+0.2)
+			}
+			p[0] = math.Max(hkPuck, math.Min(hkW-hkPuck, p[0]))
+			p[1] = math.Max(hkPuck, math.Min(hkH-hkPuck, p[1]))
+		}
+	}
 	st.Pads[seat] = [2]float64{x, y}
 	return false, nil
 }
