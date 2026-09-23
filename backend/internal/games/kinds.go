@@ -355,11 +355,13 @@ func (k *drawKind) View(m *Match, viewer uint) any {
 // ================================================================ Kalem Kâğıt Anketi
 
 type pollState struct {
-	Items   []pollQ       `json:"items"`
-	Round   int           `json:"round"`
-	Phase   string        `json:"phase"` // vote | reveal
-	Votes   map[uint]uint `json:"votes"`
-	Results []pollResult  `json:"results"`
+	Items      []pollQ       `json:"items"`
+	Round      int           `json:"round"`
+	Phase      string        `json:"phase"` // vote | reveal
+	Votes      map[uint]uint `json:"votes"`
+	Results    []pollResult  `json:"results"`
+	Candidates []Candidate   `json:"candidates"` // the ballot: everyone in the company
+	Crowns     map[uint]int  `json:"crowns"`     // crowns of people who are not seated
 }
 
 type pollQ struct {
@@ -377,7 +379,7 @@ type pollKind struct{}
 
 func (pollKind) Meta() Meta {
 	return Meta{Key: "poll", Name: "Kalem Kâğıt Anketi", Tagline: "Ekipte kim...?", Icon: "vote",
-		How:        "Her turda bir soru gelir: 'Ekipte kim bir müşteriye \"modemi kapatıp açtınız mı\" demeden günü bitiremez?' Herkes bir kişiye oy verir, süre bitince sonuç ve tacı alan görünür. En çok taç toplayan kazanır.",
+		How:        "Her turda bir soru gelir: 'Ekipte kim bir müşteriye \"modemi kapatıp açtınız mı\" demeden günü bitiremez?' Herkes şirketten birine oy verir; odada olmayanlar da seçilebilir. Süre bitince sonuç ve tacı alan görünür. Oyuncular arasında en çok taç toplayan kazanır.",
 		MinPlayers: 3, MaxPlayers: 0, ItemKind: "poll", ItemLabel: "Soru", ItemHint: "Metin: soru. Süre: o soruya özel saniye (boş: oyun ayarı).", MinItems: 5,
 		DefaultRounds: 6, RoundsLabel: "Soru sayısı", DefaultSeconds: 30, SecondsLabel: "Oylama süresi (sn)"}
 }
@@ -395,8 +397,23 @@ func (k *pollKind) Start(m *Match, s *Service, ctx context.Context) error {
 	}
 	st.Round = 0
 	st.Results = nil
+	st.Crowns = map[uint]int{}
+	people, err := s.repo.ActiveUsers(ctx)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	st.Candidates = people
 	k.open(m)
 	return nil
+}
+
+func (k *pollKind) candidate(st *pollState, id uint) bool {
+	for _, c := range st.Candidates {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func (k *pollKind) open(m *Match) {
@@ -420,7 +437,11 @@ func (k *pollKind) reveal(m *Match, s *Service, ctx context.Context) {
 	for uid, n := range counts {
 		if n == best && best > 0 {
 			top = append(top, uid)
-			m.addScore(uid, 1)
+			if p := m.player(uid); p != nil {
+				m.addScore(uid, 1)
+			} else {
+				st.Crowns[uid]++
+			}
 		}
 	}
 	st.Results = append(st.Results, pollResult{Question: st.Items[st.Round].Text, Counts: counts, Top: top})
@@ -437,8 +458,8 @@ func (k *pollKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 	if err := decode(payload, &in); err != nil {
 		return false, err
 	}
-	if p := m.player(in.Target); p == nil || p.Left {
-		return false, errs.Invalid("Oyuncu bulunamadı.", nil)
+	if !k.candidate(st, in.Target) {
+		return false, errs.Invalid("Kişi bulunamadı.", nil)
 	}
 	st.Votes[uid] = in.Target
 	if len(st.Votes) >= len(m.active()) {
@@ -469,7 +490,7 @@ func (k *pollKind) View(m *Match, viewer uint) any {
 	if st.Round < len(st.Items) {
 		q = st.Items[st.Round].Text
 	}
-	return map[string]any{"phase": st.Phase, "round": st.Round + 1, "total": len(st.Items), "question": q, "voted": len(st.Votes), "myVote": st.Votes[viewer], "results": st.Results}
+	return map[string]any{"phase": st.Phase, "round": st.Round + 1, "total": len(st.Items), "question": q, "voted": len(st.Votes), "myVote": st.Votes[viewer], "results": st.Results, "candidates": st.Candidates, "crowns": st.Crowns}
 }
 
 // ================================================================ Yalan mı Gerçek mi

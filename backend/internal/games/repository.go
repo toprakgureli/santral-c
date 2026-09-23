@@ -252,6 +252,30 @@ func (r *Repository) PresenceState(ctx context.Context, userID uint) string {
 	return state
 }
 
+// Candidate is a person on the poll's ballot.
+type Candidate struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	HasAvatar bool   `json:"hasAvatar"`
+}
+
+// ActiveUsers lists everyone active, for a ballot wider than the room.
+func (r *Repository) ActiveUsers(ctx context.Context) ([]Candidate, error) {
+	var rows []struct {
+		ID     uint
+		Name   string
+		Avatar string
+	}
+	if err := r.db.WithContext(ctx).Model(&models.User{}).Select("id, name, avatar").Where("active").Order("name").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("users could not be listed: %w", err)
+	}
+	out := make([]Candidate, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Candidate{ID: row.ID, Name: row.Name, HasAvatar: row.Avatar != ""})
+	}
+	return out, nil
+}
+
 // Names resolves display names.
 func (r *Repository) Names(ctx context.Context, ids []uint) (map[uint]string, error) {
 	out := map[uint]string{}
