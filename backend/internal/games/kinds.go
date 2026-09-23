@@ -1216,21 +1216,28 @@ func (k *connect4Kind) View(m *Match, viewer uint) any {
 type hockeyState struct {
 	Puck   [4]float64    `json:"puck"` // x, y, vx, vy
 	Pads   [2][2]float64 `json:"pads"`
+	PadV   [2][2]float64 `json:"padV"` // paddle speed, so a hit carries the swing
 	Score  [2]int        `json:"score"`
 	Target int           `json:"target"`
 	Phase  string        `json:"phase"` // play | goal
 	GoalAt time.Time     `json:"goalAt"`
 	Serve  int           `json:"serve"`
+	Scorer int           `json:"scorer"` // seat that just scored, for the banner
 }
 
+// Table in abstract units; the browser scales. Speeds are per tick at 30 Hz.
 const (
-	hkW, hkH    = 100.0, 160.0
-	hkPad       = 6.0
-	hkPuck      = 3.0
-	hkGoal      = 36.0
-	hkMaxSpeed  = 3.2
-	hkFriction  = 0.995
-	hkGoalPause = 1500 * time.Millisecond
+	hkW, hkH     = 100.0, 160.0
+	hkPad        = 6.0
+	hkPuck       = 3.0
+	hkGoal       = 34.0
+	hkMaxSpeed   = 5.0
+	hkMinSpeed   = 0.9
+	hkFriction   = 0.992
+	hkWallBounce = 0.94
+	hkSwing      = 0.55 // how much of the paddle's own speed the puck takes
+	hkGoalPause  = 1800 * time.Millisecond
+	hkSubSteps   = 3
 )
 
 type hockeyKind struct{}
@@ -1255,7 +1262,8 @@ func (k *hockeyKind) serve(st *hockeyState) {
 	if st.Serve == 2 {
 		dir = -1.0
 	}
-	st.Puck = [4]float64{hkW / 2, hkH / 2, 0, 1.2 * dir}
+	st.Puck = [4]float64{hkW / 2, hkH / 2, 0, 1.6 * dir}
+	st.PadV = [2][2]float64{}
 	st.Phase = "play"
 }
 
@@ -1288,6 +1296,14 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 	} else {
 		y = math.Max(hkPad, math.Min(hkH/2-hkPad, in.Y))
 	}
+	// The swing: how far the paddle moved since its last report, capped so a
+	// jump across the table does not launch the puck into orbit.
+	vx := x - st.Pads[seat][0]
+	vy := y - st.Pads[seat][1]
+	if sp := math.Hypot(vx, vy); sp > 8 {
+		vx, vy = vx/sp*8, vy/sp*8
+	}
+	st.PadV[seat] = [2]float64{vx, vy}
 	st.Pads[seat] = [2]float64{x, y}
 	return false, nil
 }
@@ -1313,58 +1329,82 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 		return false
 	}
 	p := &st.Puck
-	p[0] += p[2]
-	p[1] += p[3]
+	for sub := 0; sub < hkSubSteps; sub++ {
+		p[0] += p[2] / hkSubSteps
+		p[1] += p[3] / hkSubSteps
+		// Side boards.
+		if p[0] < hkPuck {
+			p[0] = hkPuck
+			p[2] = -p[2] * hkWallBounce
+		}
+		if p[0] > hkW-hkPuck {
+			p[0] = hkW - hkPuck
+			p[2] = -p[2] * hkWallBounce
+		}
+		inGoal := math.Abs(p[0]-hkW/2) < hkGoal/2
+		// End boards, with the goal mouth open.
+		if p[1] < hkPuck {
+			if inGoal {
+				st.Score[0]++
+				st.Scorer = 0
+				st.Phase = "goal"
+				st.GoalAt = time.Now()
+				st.Serve = 2
+				return false
+			}
+			p[1] = hkPuck
+			p[3] = -p[3] * hkWallBounce
+		}
+		if p[1] > hkH-hkPuck {
+			if inGoal {
+				st.Score[1]++
+				st.Scorer = 1
+				st.Phase = "goal"
+				st.GoalAt = time.Now()
+				st.Serve = 1
+				return false
+			}
+			p[1] = hkH - hkPuck
+			p[3] = -p[3] * hkWallBounce
+		}
+		// Paddles: reflect off the normal and add the swing.
+		for i := 0; i < 2; i++ {
+			dx, dy := p[0]-st.Pads[i][0], p[1]-st.Pads[i][1]
+			dist := math.Hypot(dx, dy)
+			if dist < hkPad+hkPuck && dist > 0 {
+				nx, ny := dx/dist, dy/dist
+				// Velocity of the puck relative to the paddle.
+				rvx, rvy := p[2]-st.PadV[i][0], p[3]-st.PadV[i][1]
+				dot := rvx*nx + rvy*ny
+				if dot < 0 {
+					rvx -= 2 * dot * nx
+					rvy -= 2 * dot * ny
+				}
+				p[2] = rvx + st.PadV[i][0]*hkSwing + nx*0.6
+				p[3] = rvy + st.PadV[i][1]*hkSwing + ny*0.6
+				sp := math.Hypot(p[2], p[3])
+				if sp > hkMaxSpeed {
+					p[2], p[3] = p[2]/sp*hkMaxSpeed, p[3]/sp*hkMaxSpeed
+				} else if sp < hkMinSpeed {
+					p[2], p[3] = nx*hkMinSpeed, ny*hkMinSpeed
+				}
+				p[0] = st.Pads[i][0] + nx*(hkPad+hkPuck+0.05)
+				p[1] = st.Pads[i][1] + ny*(hkPad+hkPuck+0.05)
+			}
+		}
+	}
 	p[2] *= hkFriction
 	p[3] *= hkFriction
-	if p[0] < hkPuck {
-		p[0] = hkPuck
-		p[2] = -p[2]
-	}
-	if p[0] > hkW-hkPuck {
-		p[0] = hkW - hkPuck
-		p[2] = -p[2]
-	}
-	inGoal := math.Abs(p[0]-hkW/2) < hkGoal/2
-	if p[1] < hkPuck {
-		if inGoal {
-			st.Score[0]++
-			st.Phase = "goal"
-			st.GoalAt = time.Now()
-			st.Serve = 2
-			return false
-		}
-		p[1] = hkPuck
-		p[3] = -p[3]
-	}
-	if p[1] > hkH-hkPuck {
-		if inGoal {
-			st.Score[1]++
-			st.Phase = "goal"
-			st.GoalAt = time.Now()
-			st.Serve = 1
-			return false
-		}
-		p[1] = hkH - hkPuck
-		p[3] = -p[3]
-	}
+	// The swing fades between reports.
 	for i := 0; i < 2; i++ {
-		dx, dy := p[0]-st.Pads[i][0], p[1]-st.Pads[i][1]
-		dist := math.Hypot(dx, dy)
-		if dist < hkPad+hkPuck && dist > 0 {
-			nx, ny := dx/dist, dy/dist
-			speed := math.Hypot(p[2], p[3])
-			speed = math.Min(hkMaxSpeed, math.Max(1.6, speed*1.05+0.4))
-			p[2], p[3] = nx*speed, ny*speed
-			p[0] = st.Pads[i][0] + nx*(hkPad+hkPuck+0.1)
-			p[1] = st.Pads[i][1] + ny*(hkPad+hkPuck+0.1)
-		}
+		st.PadV[i][0] *= 0.6
+		st.PadV[i][1] *= 0.6
 	}
-	if math.Hypot(p[2], p[3]) < 0.15 {
+	if math.Hypot(p[2], p[3]) < 0.25 {
 		// A dead puck drifts toward the side that has to serve.
-		p[3] = 0.15
+		p[3] = 0.25
 		if st.Serve == 2 {
-			p[3] = -0.15
+			p[3] = -0.25
 		}
 	}
 	return false
@@ -1372,7 +1412,7 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 
 func (k *hockeyKind) frame(m *Match) any {
 	st := m.Data.(*hockeyState)
-	return map[string]any{"puck": st.Puck, "pads": st.Pads, "score": st.Score, "phase": st.Phase}
+	return map[string]any{"puck": st.Puck, "pads": st.Pads, "score": st.Score, "phase": st.Phase, "scorer": st.Scorer}
 }
 
 func (k *hockeyKind) Timeout(m *Match, s *Service, ctx context.Context) {}
