@@ -208,6 +208,10 @@ func (s *Service) status(userID uint, ext string, onCall bool, presence map[uint
 		// not write it); treat as available so the agent is not hidden.
 		state = "available"
 	}
+	// Without a presence row the state has held since the shift began.
+	if since == nil {
+		since = shifts[userID].StartedAt
+	}
 	if state == "available" && live[ext] == "UNREGISTERED" {
 		return "unregistered", since
 	}

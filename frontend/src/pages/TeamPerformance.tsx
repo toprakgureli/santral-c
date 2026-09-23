@@ -78,6 +78,19 @@ function dmy(iso: string) {
   return `${d}.${m}.${y}`;
 }
 
+// forHow says how long a state has held: "12 dk", "1 sa 05 dk", "2 gün".
+function forHow(iso: string | undefined, now: number): string | null {
+  if (!iso) return null;
+  const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
+  if (Number.isNaN(s)) return null;
+  const m = Math.floor(s / 60);
+  if (m < 1) return "az önce";
+  if (m < 60) return `${m} dk`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} sa ${String(m % 60).padStart(2, "0")} dk`;
+  return `${Math.floor(h / 24)} gün`;
+}
+
 function hhmm(iso?: string) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
@@ -248,6 +261,10 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
   const [showMissed, setShowMissed] = useState(false);
   const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
   const unreached = r.calls.unanswered + r.calls.short;
+  // How long the current state has held: the call's start while talking,
+  // the last shift end when off, the presence change otherwise.
+  const stateSince = r.status === "talking" ? r.call?.startedAt : off ? r.shift.lastEnd : r.since;
+  const held = live ? forHow(stateSince, now) : null;
 
   return (
     <section className={cn("flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-border/60 transition", off && "opacity-60")}>
@@ -265,23 +282,22 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
             </div>
           </div>
         </div>
-        <Badge tone={s.tone}>{s.label}</Badge>
+        <span className="flex shrink-0 flex-col items-end gap-0.5">
+          <Badge tone={s.tone}>{s.label}{held ? ` · ${held}` : ""}</Badge>
+          {held && stateSince && <span className="text-[0.65rem] tabular-nums text-muted-foreground/70">{hhmm(stateSince)}&apos;den beri</span>}
+        </span>
       </header>
 
       <div className="space-y-3 px-5 py-4">
         {/* Live line: current call or how long in the current state */}
-        {(r.call || (r.since && !off && r.status !== "available")) && (
+        {r.call && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            {r.call ? (
-              <span className="flex min-w-0 items-center gap-1.5 text-foreground">
-                {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
-                <span className="truncate font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
-                {r.call.peerName && <span className="truncate text-muted-foreground">{r.call.peerName}</span>}
-                <span className="font-mono tabular-nums text-muted-foreground">{formatClock(callFor)}</span>
-              </span>
-            ) : (
-              <span>{hhmm(r.since)}&apos;den beri</span>
-            )}
+            <span className="flex min-w-0 items-center gap-1.5 text-foreground">
+              {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
+              <span className="truncate font-mono">{displayNumber(r.call.peer) || r.call.peer}</span>
+              {r.call.peerName && <span className="truncate text-muted-foreground">{r.call.peerName}</span>}
+              <span className="font-mono tabular-nums text-muted-foreground">{formatClock(callFor)}</span>
+            </span>
           </div>
         )}
 
