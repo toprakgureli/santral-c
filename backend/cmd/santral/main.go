@@ -160,13 +160,16 @@ func run() error {
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
-	teams.NewRouter(teams.NewHandler(teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub())), guard).Routes(api)
+	teamsSvc := teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub(), teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, db))
+	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	// Shifts left open past the evening cutoff are closed by the sweeper.
 	shiftSvc.StartSweeper(ctx)
+	// Chat uploads that never became a message are removed from Drive.
+	teamsSvc.StartSweeper(ctx)
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)

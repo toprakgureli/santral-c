@@ -14,6 +14,7 @@ import { AddPeopleDialog, GroupSettingsDialog, NewDMDialog, NewGroupDialog } fro
 import MembersPanel from "../components/teams/MembersPanel";
 import MessagePane from "../components/teams/MessagePane";
 import { OnlineDot, presenceTone, seenLabel, Ticks } from "../components/teams/Presence";
+import { previewLabel } from "../lib/attachments";
 import { Badge, Button } from "../components/ui";
 import { can } from "../lib/permissions";
 import { cn } from "../lib/utils";
@@ -134,7 +135,7 @@ export function Teams() {
             <>
             {last?.mine && !last.deleted && <Ticks status={last.status} size="size-4" />}
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${last.body}`) : "Henüz mesaj yok"}
+              {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${previewLabel(last.body, last.attachments)}`) : "Henüz mesaj yok"}
             </span>
             </>
             )}

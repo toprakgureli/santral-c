@@ -98,3 +98,27 @@ type ChatMention struct {
 
 // TableName pins the table name.
 func (ChatMention) TableName() string { return "chat_mentions" }
+
+// ChatAttachment is a file shared in a line. The bytes live in Google
+// Drive; this row is the card the chat shows.
+type ChatAttachment struct {
+	ID         uint       `gorm:"column:id;primarykey"`
+	GroupID    uint       `gorm:"column:group_id;not null"`
+	MessageID  *uint      `gorm:"column:message_id"`
+	UploaderID uint       `gorm:"column:uploader_id;not null"`
+	Kind       string     `gorm:"column:kind;size:8;not null;default:file"`
+	Name       string     `gorm:"column:name;size:255;not null"`
+	Mime       string     `gorm:"column:mime;size:120;not null;default:''"`
+	Size       int64      `gorm:"column:size;not null;default:0"`
+	DriveID    string     `gorm:"column:drive_id;size:128;not null;default:''"`
+	Status     string     `gorm:"column:status;size:10;not null;default:pending"`
+	Width      int        `gorm:"column:width;not null;default:0"`
+	Height     int        `gorm:"column:height;not null;default:0"`
+	DurationMs int        `gorm:"column:duration_ms;not null;default:0"`
+	Thumb      string     `gorm:"column:thumb;type:text;not null;default:''"`
+	CreatedAt  time.Time  `gorm:"column:created_at"`
+	DeletedAt  *time.Time `gorm:"column:deleted_at"`
+}
+
+// TableName pins the table name.
+func (ChatAttachment) TableName() string { return "chat_attachments" }

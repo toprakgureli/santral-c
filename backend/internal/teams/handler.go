@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	// webp decoder for the group photo check.
 	_ "golang.org/x/image/webp"
 
+	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -418,10 +421,11 @@ func (h *Handler) Messages(c *fiber.Ctx) error {
 }
 
 type sendBody struct {
-	Body        string `json:"body"`
-	ReplyToID   uint   `json:"replyToId"`
-	MentionIDs  []uint `json:"mentionIds"`
-	MentionsAll bool   `json:"mentionsAll"`
+	Body          string `json:"body"`
+	ReplyToID     uint   `json:"replyToId"`
+	MentionIDs    []uint `json:"mentionIds"`
+	MentionsAll   bool   `json:"mentionsAll"`
+	AttachmentIDs []uint `json:"attachmentIds"`
 }
 
 // Send posts a line.
@@ -438,7 +442,7 @@ func (h *Handler) Send(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.Send(c.UserContext(), id, gid, req.Body, req.ReplyToID, req.MentionIDs, req.MentionsAll)
+	res, err := h.service.Send(c.UserContext(), id, gid, req.Body, req.ReplyToID, req.MentionIDs, req.MentionsAll, req.AttachmentIDs)
 	if err != nil {
 		return err
 	}
@@ -550,6 +554,204 @@ func (h *Handler) Presence(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// ---------------------------------------------------------------- attachments
+
+// BeginUpload opens a Drive upload session for a file.
+func (h *Handler) BeginUpload(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	var req struct {
+		Name string `json:"name"`
+		Mime string `json:"mime"`
+		Size int64  `json:"size"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	origin := c.Get("Origin")
+	if origin == "" {
+		origin = strings.TrimRight(configs.Cnf.App.PublicURL, "/")
+	}
+	res, err := h.service.BeginUpload(c.UserContext(), id, gid, UploadInput{Name: req.Name, Mime: req.Mime, Size: req.Size}, origin)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// FinishUpload verifies the uploaded file and marks it ready.
+func (h *Handler) FinishUpload(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	aid, err := param(c, "aid")
+	if err != nil {
+		return err
+	}
+	var req struct {
+		DriveID    string `json:"driveId"`
+		Width      int    `json:"width"`
+		Height     int    `json:"height"`
+		DurationMs int    `json:"durationMs"`
+		Thumb      string `json:"thumb"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	res, err := h.service.FinishUpload(c.UserContext(), id, aid, FinishInput{DriveID: req.DriveID, Width: req.Width, Height: req.Height, DurationMs: req.DurationMs, Thumb: req.Thumb})
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// CancelUpload drops a pending upload.
+func (h *Handler) CancelUpload(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	aid, err := param(c, "aid")
+	if err != nil {
+		return err
+	}
+	if err := h.service.CancelUpload(c.UserContext(), id, aid); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Attachment streams a file from Drive to a seated reader. Range requests
+// pass through, so video can seek.
+func (h *Handler) Attachment(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	aid, err := param(c, "aid")
+	if err != nil {
+		return err
+	}
+	a, err := h.service.OpenAttachment(c.UserContext(), id, aid)
+	if err != nil {
+		return err
+	}
+	resp, err := h.service.StreamAttachment(c.UserContext(), a, c.Get("Range"))
+	if err != nil {
+		return err
+	}
+	c.Status(resp.StatusCode)
+	for _, k := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+		if v := resp.Header.Get(k); v != "" {
+			c.Set(k, v)
+		}
+	}
+	if resp.Header.Get("Content-Type") == "" {
+		c.Set("Content-Type", a.Mime)
+	}
+	c.Set("Accept-Ranges", "bytes")
+	c.Set("Cache-Control", "private, max-age=86400")
+	disposition := "inline"
+	if c.Query("download") == "1" || a.Kind == "file" {
+		disposition = "attachment"
+	}
+	c.Set("Content-Disposition", fmt.Sprintf("%s; filename*=UTF-8''%s", disposition, url.PathEscape(a.Name)))
+	size := -1
+	if resp.ContentLength >= 0 {
+		size = int(resp.ContentLength)
+	}
+	c.Context().SetBodyStream(resp.Body, size)
+	return nil
+}
+
+// Thumb serves the small preview kept in the database.
+func (h *Handler) Thumb(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	aid, err := param(c, "aid")
+	if err != nil {
+		return err
+	}
+	a, err := h.service.OpenAttachment(c.UserContext(), id, aid)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(a.Thumb, thumbPrefix) {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(a.Thumb, thumbPrefix))
+	if err != nil {
+		return c.SendStatus(fiber.StatusNoContent)
+	}
+	c.Set("Content-Type", "image/webp")
+	c.Set("Cache-Control", "private, max-age=86400")
+	return c.Send(raw)
+}
+
+// ---------------------------------------------------------------- drive admin
+
+// DriveStatus reports the storage connection to the settings card.
+func (h *Handler) DriveStatus(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.DriveState(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// DriveConnect sends the administrator to Google.
+func (h *Handler) DriveConnect(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	target, err := h.service.DriveConnectURL(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.Redirect(target, fiber.StatusFound)
+}
+
+// DriveCallback is where Google returns with the code.
+func (h *Handler) DriveCallback(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	if msg := c.Query("error"); msg != "" {
+		return c.Redirect("/settings?drive=error&reason="+url.QueryEscape(msg), fiber.StatusFound)
+	}
+	if _, err := h.service.DriveCallback(c.UserContext(), id, c.Query("state"), c.Query("code")); err != nil {
+		return c.Redirect("/settings?drive=error&reason="+url.QueryEscape(err.Error()), fiber.StatusFound)
+	}
+	return c.Redirect("/settings?drive=ok", fiber.StatusFound)
+}
+
+// DriveDisconnect forgets the linked account.
+func (h *Handler) DriveDisconnect(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	if err := h.service.DriveDisconnect(c.UserContext(), id); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // Stream pushes room events to the caller over Server-Sent Events.
 func (h *Handler) Stream(c *fiber.Ctx) error {
 	id, err := actor(c)
@@ -642,6 +844,15 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)
 	group.Put("/groups/:id/messages/:mid", r.handler.Edit)
 	group.Post("/groups/:id/typing", r.handler.Typing)
+	group.Post("/groups/:id/uploads", r.handler.BeginUpload)
+	group.Post("/uploads/:aid/finish", r.handler.FinishUpload)
+	group.Delete("/uploads/:aid", r.handler.CancelUpload)
+	group.Get("/attachments/:aid", r.handler.Attachment)
+	group.Get("/attachments/:aid/thumb", r.handler.Thumb)
+	group.Get("/drive/status", r.handler.DriveStatus)
+	group.Get("/drive/connect", r.handler.DriveConnect)
+	group.Get("/drive/callback", r.handler.DriveCallback)
+	group.Post("/drive/disconnect", r.handler.DriveDisconnect)
 	group.Post("/presence", r.handler.Presence)
 	group.Post("/groups/:id/messages/:mid/reactions", r.handler.React)
 }

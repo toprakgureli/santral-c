@@ -2,9 +2,10 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Coffee, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Coffee, HardDrive, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "../api/client";
-import type { IPBan, LoginAttempt, Paged } from "../api/types";
+import type { DriveStatus, IPBan, LoginAttempt, Paged } from "../api/types";
+import { formatSize } from "../lib/attachments";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { Badge, Button, Card, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
@@ -25,6 +26,7 @@ export function Settings() {
   const canSeeLogs = can(user, "system.logs");
   const canManage = can(user, "system.settings");
   const canBreakLimit = can(user, "agent.break_limit");
+  const canDrive = can(user, "teams.admin");
 
   const [attempts, setAttempts] = useState<Paged<LoginAttempt> | null>(null);
   const [bans, setBans] = useState<IPBan[]>([]);
@@ -60,6 +62,7 @@ export function Settings() {
     <div className="space-y-6">
       {canManage && <MfaRequiredCard />}
       {canBreakLimit && <BreakLimitCard />}
+      {canDrive && <DriveCard />}
 
       {canSeeLogs && (
         <>
@@ -332,6 +335,115 @@ function MfaRequiredCard() {
             {busy ? "Kaydediliyor..." : required ? "Zorunluluğu kaldır" : "Zorunlu yap"}
           </Button>
         )}
+      </div>
+    </Card>
+  );
+}
+
+// DriveCard links the Google account whose Drive keeps the chat files.
+// The OAuth client lives in config.yml; the account is connected here
+// once and the refresh token is kept encrypted on the server.
+function DriveCard() {
+  const [status, setStatus] = useState<DriveStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(() => {
+    const q = new URLSearchParams(window.location.search);
+    const r = q.get("drive");
+    if (r === "ok") return "Google Drive bağlandı.";
+    if (r === "error") return `Bağlantı kurulamadı: ${q.get("reason") ?? "bilinmeyen hata"}`;
+    return null;
+  });
+
+  const load = useCallback(() => {
+    api
+      .driveStatus()
+      .then(setStatus)
+      .catch((e) => setError(e instanceof ApiError ? e.message : "Durum okunamadı."));
+  }, []);
+
+  useEffect(() => {
+    load();
+    if (window.location.search.includes("drive=")) window.history.replaceState(null, "", window.location.pathname);
+  }, [load]);
+
+  const disconnect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.driveDisconnect();
+      setNotice("Bağlantı kesildi. Eski dosyalar Drive'da kalır, yenileri yüklenemez.");
+      load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Bağlantı kesilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pct = status && status.limit > 0 ? Math.min(100, Math.round((status.usage / status.limit) * 100)) : 0;
+
+  return (
+    <Card
+      title="Teams Dosya Depolama (Google Drive)"
+      actions={
+        status === null ? <Skeleton className="h-5 w-20" /> : status.connected ? <Badge tone="green">Bağlı</Badge> : status.configured ? <Badge tone="amber">Bağlı değil</Badge> : <Badge tone="red">Yapılandırılmamış</Badge>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
+          <HardDrive className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Sohbette paylaşılan görsel, video ve dosyalar bu Google hesabının Drive'ında saklanır</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Dosyalar sunucuya uğramadan doğrudan Drive'a yüklenir, indirilirken sunucu üzerinden yalnızca odadaki kişilere akar.
+              Hesabın kendi Drive kotası kullanılır. Bağlantı bir kez kurulur; kesilirse eski dosyalar Drive'da kalır ama yeni yükleme yapılamaz.
+            </p>
+          </div>
+        </div>
+
+        {status && !status.configured && (
+          <p className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+            config.yml içinde <code className="font-mono">drive.clientId</code>, <code className="font-mono">drive.clientSecret</code> ve <code className="font-mono">drive.redirectUrl</code> tanımlı değil.
+          </p>
+        )}
+
+        {status?.connected && (
+          <div className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-3.5 text-sm">
+            <p><span className="text-muted-foreground">Hesap:</span> <span className="font-medium">{status.account || "bilinmiyor"}</span></p>
+            <p><span className="text-muted-foreground">Klasör:</span> <span className="font-mono text-xs">{status.folder}</span> <span className="text-xs text-muted-foreground">(Drive kök dizininde)</span></p>
+            {status.limit > 0 ? (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Kota: {formatSize(status.usage)} / {formatSize(status.limit)} (%{pct})</p>
+                <span className="block h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <span className={cn("block h-full rounded-full", pct > 90 ? "bg-destructive" : "bg-primary")} style={{ width: `${pct}%` }} />
+                </span>
+              </div>
+            ) : status.error ? (
+              <p className="text-xs text-destructive">Kota okunamadı: {status.error}</p>
+            ) : null}
+          </div>
+        )}
+
+        {notice && <p className="text-xs text-success">{notice}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          {status?.configured && (
+            <Button
+              onClick={() => {
+                window.location.href = "/api/v1/teams/drive/connect";
+              }}
+              disabled={busy}
+              className="h-9"
+            >
+              {status.connected ? "Hesabı değiştir" : "Google Drive'ı bağla"}
+            </Button>
+          )}
+          {status?.connected && (
+            <Button variant="secondary" onClick={() => void disconnect()} disabled={busy} className="h-9">Bağlantıyı kes</Button>
+          )}
+        </div>
       </div>
     </Card>
   );

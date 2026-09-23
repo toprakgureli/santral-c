@@ -3,10 +3,15 @@
 // unread ones start, deleted lines read "Bu mesaj silindi.", reactions sit
 // under the line and the quick ones are one hover away. A reply quotes
 // the original and jumps to it on click. Lines can be edited by their
-// author. Attachments are reserved: the paperclip is there, disabled.
+// author. Files dropped, pasted or picked go to Google Drive and show as a
+// grid of previews with a lightbox.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, Pencil, SmilePlus, Trash2 } from "lucide-react";
+import { CornerUpLeft, ImagePlus, Pencil, SmilePlus, Trash2 } from "lucide-react";
+import AttachmentGrid, { mediaOf } from "@/components/teams/AttachmentGrid";
+import Lightbox from "@/components/teams/Lightbox";
+import { useUploads } from "@/teams/useUploads";
+import type { TeamsAttachment } from "@/api/types";
 import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { Modal } from "@/components/ui";
@@ -55,6 +60,9 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const [seats, setSeats] = useState<Seats>({});
+  const uploads = useUploads(group.id);
+  const [over, setOver] = useState(false);
+  const [gallery, setGallery] = useState<{ items: TeamsAttachment[]; index: number } | null>(null);
   useEffect(() => {
     const next: Seats = {};
     for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name };
@@ -157,10 +165,11 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   }
 
   async function send(out: Outgoing) {
-    const m = await api.teamsSend(group.id, { body: out.body, replyToId: reply?.id, mentionIds: out.mentionIds, mentionsAll: out.mentionsAll });
+    const m = await api.teamsSend(group.id, { body: out.body, replyToId: reply?.id, mentionIds: out.mentionIds, mentionsAll: out.mentionsAll, attachmentIds: out.attachmentIds });
     setItems((cur) => (cur.some((x) => x.id === m.id) ? cur : [...cur, m]));
     teams.bumpGroup(group.id, m);
     setReply(null);
+    uploads.clear();
     stickToBottom.current = true;
   }
 
@@ -240,7 +249,33 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const typing = teams.typingLabel(group.id);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col"
+      onDragOver={(e) => {
+        if (group.canPost && e.dataTransfer.types.includes("Files")) {
+          e.preventDefault();
+          setOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        if (!group.canPost) return;
+        const files = [...e.dataTransfer.files];
+        if (files.length) uploads.addFiles(files);
+      }}
+    >
+      {over && (
+        <div className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary bg-background/85 text-primary backdrop-blur-sm">
+          <ImagePlus className="size-8" />
+          <p className="text-sm font-medium">Bırak, ekleyelim</p>
+          <p className="text-xs text-muted-foreground">Görsel 200 MB, video 1 GB, dosya 3 GB'a kadar</p>
+        </div>
+      )}
+      {gallery && <Lightbox items={gallery.items} index={gallery.index} onIndex={(i) => setGallery({ ...gallery, index: i })} onClose={() => setGallery(null)} />}
       <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {more && (
           <div className="mb-3 text-center">
@@ -315,7 +350,10 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                     ) : (
                       <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {renderMarkup(m.body, { mentions: labels })}
+                        {m.body && renderMarkup(m.body, { mentions: labels })}
+                        {m.attachments?.length > 0 && (
+                          <AttachmentGrid attachments={m.attachments} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
+                        )}
                         {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" title={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
                         {m.mine && (() => {
                           const st = statusOf(m.id, selfId, seats);
@@ -394,6 +432,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
         onSend={send}
         onEdit={edit}
         onEditLast={editLast}
+        uploads={uploads}
       />
     </div>
   );

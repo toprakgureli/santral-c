@@ -472,3 +472,64 @@ html.theme-switching *::after {
 .avatar-slider::-moz-range-track {
   background: transparent;
 }
+
+/* Two range inputs stacked on one track (video trimmer). */
+.range-stack {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.range-stack::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+.range-stack::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2px solid var(--foreground);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  cursor: ew-resize;
+  transition: transform 150ms ease-out;
+}
+.range-stack:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.range-stack:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.range-stack::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+.range-stack::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2px solid var(--foreground);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+  cursor: ew-resize;
+}
+
+/* While a crop handle is dragged the cursor stays put over the video. */
+body[data-drag] * { cursor: inherit !important; }
+body[data-drag="move"] { cursor: move; }
+body[data-drag="nwse"] { cursor: nwse-resize; }
+body[data-drag="nesw"] { cursor: nesw-resize; }
+body[data-drag="ew"] { cursor: ew-resize; }
+body[data-drag="grab"] { cursor: grabbing; }

@@ -10,6 +10,7 @@ import type { TeamsEvent, TeamsGroup, TeamsInvite, TeamsMessage } from "@/api/ty
 import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
 import { tones } from "@/softphone/tones";
+import { previewLabel } from "@/lib/attachments";
 
 interface TeamsState {
   enabled: boolean;
@@ -196,7 +197,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         tones.mention();
         if (m.sender) {
           const sender = m.sender;
-          setMentions((cur) => [...cur.filter((t) => t.id !== m.id), { id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender, body: m.body, at: m.createdAt }].slice(-20));
+          setMentions((cur) => [...cur.filter((t) => t.id !== m.id), { id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender, body: previewLabel(m.body, m.attachments), at: m.createdAt }].slice(-20));
         }
       } else {
         tones.notify();
@@ -206,7 +207,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           ? `${m.sender?.name ?? "Biri"} seni etiketledi${g ? ` · ${g.name}` : ""}`
           : g ? (g.kind === "dm" ? g.name : `${g.name} · ${m.sender?.name ?? ""}`) : m.sender?.name ?? "Teams";
         try {
-          const n = new Notification(title, { body: m.body.slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
+          const n = new Notification(title, { body: previewLabel(m.body, m.attachments).slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
           n.onclick = () => {
             window.focus();
             window.location.assign(`/teams/${m.groupId}`);

@@ -213,6 +213,29 @@ export interface TeamsReaction {
   names: string[];
 }
 
+export interface TeamsAttachment {
+  id: number;
+  kind: "image" | "video" | "file";
+  name: string;
+  mime: string;
+  size: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  hasThumb: boolean;
+  ready: boolean;
+}
+
+export interface DriveStatus {
+  configured: boolean;
+  connected: boolean;
+  account: string;
+  folder: string;
+  limit: number;
+  usage: number;
+  error?: string;
+}
+
 export interface TeamsMessage {
   id: number;
   groupId: number;
@@ -226,6 +249,7 @@ export interface TeamsMessage {
   reactions: TeamsReaction[];
   mentions: number[];
   mentionsAll: boolean;
+  attachments: TeamsAttachment[];
   editedAt?: string;
   createdAt: string;
   // Only on the reader's own lines.

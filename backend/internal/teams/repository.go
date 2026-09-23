@@ -622,3 +622,93 @@ func (r *Repository) DeleteMentions(ctx context.Context, messageID uint) error {
 	}
 	return nil
 }
+
+// ---------------------------------------------------------------- attachments
+
+// CreateAttachment records a pending upload.
+func (r *Repository) CreateAttachment(ctx context.Context, a *models.ChatAttachment) error {
+	if err := r.db.WithContext(ctx).Create(a).Error; err != nil {
+		return fmt.Errorf("attachment could not be created: %w", err)
+	}
+	return nil
+}
+
+// Attachment loads one row, or nil.
+func (r *Repository) Attachment(ctx context.Context, id uint) (*models.ChatAttachment, error) {
+	var a models.ChatAttachment
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&a).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("attachment could not be loaded: %w", err)
+	}
+	return &a, nil
+}
+
+// UpdateAttachment changes the given columns.
+func (r *Repository) UpdateAttachment(ctx context.Context, id uint, fields map[string]any) error {
+	if err := r.db.WithContext(ctx).Model(&models.ChatAttachment{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+		return fmt.Errorf("attachment could not be updated: %w", err)
+	}
+	return nil
+}
+
+// DeleteAttachmentRow removes a row for good (pending or swept uploads).
+func (r *Repository) DeleteAttachmentRow(ctx context.Context, id uint) error {
+	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.ChatAttachment{}).Error; err != nil {
+		return fmt.Errorf("attachment could not be removed: %w", err)
+	}
+	return nil
+}
+
+// BindAttachments ties the uploader's ready, unbound files of a room to a
+// line. Anything else in the id list is silently left alone.
+func (r *Repository) BindAttachments(ctx context.Context, ids []uint, uploaderID, groupID, messageID uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := r.db.WithContext(ctx).Model(&models.ChatAttachment{}).
+		Where("id IN ? AND uploader_id = ? AND group_id = ? AND message_id IS NULL AND status = 'ready' AND deleted_at IS NULL", ids, uploaderID, groupID).
+		Update("message_id", messageID).Error; err != nil {
+		return fmt.Errorf("attachments could not be bound: %w", err)
+	}
+	return nil
+}
+
+// AttachmentsByMessage loads the live files of several lines.
+func (r *Repository) AttachmentsByMessage(ctx context.Context, messageIDs []uint) (map[uint][]models.ChatAttachment, error) {
+	out := map[uint][]models.ChatAttachment{}
+	if len(messageIDs) == 0 {
+		return out, nil
+	}
+	var rows []models.ChatAttachment
+	if err := r.db.WithContext(ctx).Where("message_id IN ? AND deleted_at IS NULL", messageIDs).Order("id").Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("attachments could not be loaded: %w", err)
+	}
+	for _, a := range rows {
+		if a.MessageID != nil {
+			out[*a.MessageID] = append(out[*a.MessageID], a)
+		}
+	}
+	return out, nil
+}
+
+// SoftDeleteAttachments hides a deleted line's files.
+func (r *Repository) SoftDeleteAttachments(ctx context.Context, messageID uint) error {
+	if err := r.db.WithContext(ctx).Model(&models.ChatAttachment{}).
+		Where("message_id = ? AND deleted_at IS NULL", messageID).
+		Update("deleted_at", time.Now()).Error; err != nil {
+		return fmt.Errorf("attachments could not be deleted: %w", err)
+	}
+	return nil
+}
+
+// OrphanAttachments lists uploads never bound to a line before the cutoff.
+func (r *Repository) OrphanAttachments(ctx context.Context, before time.Time) ([]models.ChatAttachment, error) {
+	var rows []models.ChatAttachment
+	if err := r.db.WithContext(ctx).Where("message_id IS NULL AND deleted_at IS NULL AND created_at < ?", before).Limit(200).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("orphan attachments could not be listed: %w", err)
+	}
+	return rows, nil
+}

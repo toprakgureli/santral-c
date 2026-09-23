@@ -109,6 +109,16 @@ type Bulutsantralim struct {
 	HistoryDays int `mapstructure:"historyDays"`
 }
 
+// Drive holds the Google Drive OAuth client used for chat attachments.
+// The account itself is connected from the Yönetim screen; only the
+// OAuth client lives in the file.
+type Drive struct {
+	ClientID     string `mapstructure:"clientId"`
+	ClientSecret string `mapstructure:"clientSecret"`
+	RedirectURL  string `mapstructure:"redirectUrl"` // https://<host>/api/v1/teams/drive/callback
+	FolderName   string `mapstructure:"folderName"`  // default "SantralC"
+}
+
 // Config is the aggregate configuration.
 type Config struct {
 	App            App            `mapstructure:"app"`
@@ -118,6 +128,7 @@ type Config struct {
 	Database       Database       `mapstructure:"database"`
 	Redis          Redis          `mapstructure:"redis"`
 	Bulutsantralim Bulutsantralim `mapstructure:"bulutsantralim"`
+	Drive          Drive          `mapstructure:"drive"`
 }
 
 // Cnf is the loaded configuration.

@@ -9,6 +9,11 @@ import { AtSign, CornerUpLeft, Paperclip, Pencil, SendHorizontal, Type, Users, X
 import { ApiError, api } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import ImageEditor from "@/components/teams/ImageEditor";
+import MediaTile from "@/components/teams/MediaTile";
+import VideoTrimmer from "@/components/teams/VideoTrimmer";
+import { VIDEO_MAX } from "@/lib/attachments";
+import type { UploadsApi } from "@/teams/useUploads";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { applyStyle, MARKUP_HINT, renderMarkup, STYLES, type Style } from "@/lib/markup";
 import { cn } from "@/lib/utils";
@@ -19,6 +24,7 @@ export interface Outgoing {
   body: string;
   mentionIds: number[];
   mentionsAll: boolean;
+  attachmentIds: number[];
 }
 
 type Suggestion = { id: number; name: string; hasAvatar: boolean; avatarVersion?: number };
@@ -35,6 +41,7 @@ export default function Composer({
   onSend,
   onEdit,
   onEditLast,
+  uploads,
 }: {
   group: TeamsGroupDetail;
   selfId: number;
@@ -45,7 +52,9 @@ export default function Composer({
   onSend: (m: Outgoing) => Promise<void>;
   onEdit: (id: number, m: Outgoing) => Promise<void>;
   onEditLast: () => void;
+  uploads: UploadsApi;
 }) {
+  const picker = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,7 +172,7 @@ export default function Composer({
       .filter(([, name]) => body.includes(`@${name}`))
       .map(([id]) => Number(id));
     const mentionsAll = group.kind === "group" && new RegExp(`(^|\\s)@${EVERYONE}(?=$|[\\s.,!?:;])`, "u").test(body);
-    return { body, mentionIds, mentionsAll };
+    return { body, mentionIds, mentionsAll, attachmentIds: editing ? [] : uploads.readyIds() };
   }
 
   function reset() {
@@ -180,7 +189,12 @@ export default function Composer({
 
   async function submit() {
     const body = text.trim();
-    if (!body || busy) return;
+    const files = editing ? 0 : uploads.readyIds().length;
+    if ((!body && files === 0) || busy) return;
+    if (!editing && uploads.busy) {
+      setError("Dosyalar yüklenmeyi bitirsin.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -307,6 +321,20 @@ export default function Composer({
         </div>
       ) : null}
 
+      {uploads.items.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-start gap-2 rounded-xl border border-border/60 bg-muted/20 p-2">
+          {uploads.items.map((item) => (
+            <MediaTile
+              key={item.key}
+              item={item}
+              onRemove={() => uploads.remove(item.key)}
+              onRetry={item.status === "hata" ? () => uploads.retry(item.key) : undefined}
+              onEdit={item.kind === "image" ? () => uploads.setEditing(item) : undefined}
+            />
+          ))}
+        </div>
+      )}
+
       {showPreview && (
         <div className="mb-2 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-sm">
           <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Önizleme</p>
@@ -356,13 +384,31 @@ export default function Composer({
       )}
 
       <div className={cn("flex items-end gap-2 rounded-2xl border bg-muted/30 px-2 py-1.5 focus-within:ring-4", editing ? "border-warning/60 focus-within:ring-warning/15" : "border-border/70 focus-within:border-ring/60 focus-within:ring-ring/15")}>
-        <button type="button" disabled title="Dosya ekleme yakında" className="mb-1 rounded-lg p-1.5 text-muted-foreground/50"><Paperclip className="size-4" /></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => picker.current?.click()} disabled={!!editing} title="Dosya ekle (görsel 200 MB, video 1 GB, dosya 3 GB)" className="mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"><Paperclip className="size-4" /></button>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          className="hidden"
+          aria-label="Dosya ekle"
+          onChange={(e) => {
+            uploads.addFiles([...(e.target.files ?? [])]);
+            e.target.value = "";
+          }}
+        />
         <textarea
           ref={area}
           value={text}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           onContextMenu={onContextMenu}
+          onPaste={(e) => {
+            const files = [...e.clipboardData.files];
+            if (files.length && !editing) {
+              e.preventDefault();
+              uploads.addFiles(files);
+            }
+          }}
           onClick={(e) => setQuery(detect(text, e.currentTarget.selectionStart))}
           rows={1}
           maxLength={4000}
@@ -401,15 +447,31 @@ export default function Composer({
         >
           <AtSign className="size-4" />
         </button>
-        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} aria-label={editing ? "Kaydet" : "Gönder"} className={cn("mb-0.5 flex size-9 items-center justify-center rounded-xl transition-opacity disabled:opacity-40", editing ? "bg-warning text-black" : "bg-primary text-primary-foreground")}>
+        <button type="button" onClick={() => void submit()} disabled={busy || (!text.trim() && (!!editing || uploads.items.filter((i) => i.status === "hazır").length === 0)) || (!editing && uploads.busy)} aria-label={editing ? "Kaydet" : "Gönder"} className={cn("mb-0.5 flex size-9 items-center justify-center rounded-xl transition-opacity disabled:opacity-40", editing ? "bg-warning text-black" : "bg-primary text-primary-foreground")}>
           {editing ? <Pencil className="size-4" /> : <SendHorizontal className="size-4" />}
         </button>
       </div>
       <div className="mt-1 flex items-center justify-between px-1 text-[0.65rem] text-muted-foreground/70">
-        <span>Enter gönderir, Shift+Enter yeni satır{!editing && ", ↑ son mesajını düzenler"}.</span>
-        {error ? <span className="text-destructive">{error}</span> : <span>{text.length} / 4000</span>}
+        <span>Enter gönderir, Shift+Enter yeni satır{!editing && ", ↑ son mesajını düzenler"}. Dosyayı sürükle ya da yapıştır.</span>
+        {error || uploads.error ? (
+          <button type="button" onClick={() => { setError(null); uploads.clearError(); }} className="text-destructive">{error ?? uploads.error}</button>
+        ) : (
+          <span>{text.length} / 4000</span>
+        )}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {uploads.trimming && <VideoTrimmer file={uploads.trimming} maxBytes={VIDEO_MAX} onCancel={uploads.onTrimCancel} onReady={uploads.onTrimReady} />}
+      {uploads.editing && (
+        <ImageEditor
+          file={uploads.editing.file}
+          onCancel={() => uploads.setEditing(null)}
+          onReady={(f) => {
+            const key = uploads.editing?.key;
+            uploads.setEditing(null);
+            if (key) uploads.replace(key, f);
+          }}
+        />
+      )}
     </div>
   );
 }

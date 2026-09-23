@@ -18,6 +18,8 @@ import type {
   PBXStats,
   PermissionGroup,
   Profile,
+  DriveStatus,
+  TeamsAttachment,
   TeamsGroupDetail,
   TeamsMessage,
   TeamsOverview,
@@ -179,10 +181,17 @@ export const api = {
   // messageId 0 marks everything read.
   teamsMarkRead: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/read`, { method: "POST", body: JSON.stringify({ messageId }) }),
   teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
-  teamsSend: (id: number, body: { body: string; replyToId?: number; mentionIds?: number[]; mentionsAll?: boolean }) =>
+  teamsSend: (id: number, body: { body: string; replyToId?: number; mentionIds?: number[]; mentionsAll?: boolean; attachmentIds?: number[] }) =>
     request<TeamsMessage>(`/teams/groups/${id}/messages`, { method: "POST", body: JSON.stringify(body) }),
   teamsEditMessage: (id: number, messageId: number, body: { body: string; mentionIds?: number[]; mentionsAll?: boolean }) =>
     request<TeamsMessage>(`/teams/groups/${id}/messages/${messageId}`, { method: "PUT", body: JSON.stringify(body) }),
+  teamsBeginUpload: (id: number, body: { name: string; mime: string; size: number }) =>
+    request<{ attachmentId: number; uploadUrl: string; chunkBytes: number }>(`/teams/groups/${id}/uploads`, { method: "POST", body: JSON.stringify(body) }),
+  teamsFinishUpload: (attachmentId: number, body: { driveId: string; width?: number; height?: number; durationMs?: number; thumb?: string }) =>
+    request<TeamsAttachment>(`/teams/uploads/${attachmentId}/finish`, { method: "POST", body: JSON.stringify(body) }),
+  teamsCancelUpload: (attachmentId: number) => request<void>(`/teams/uploads/${attachmentId}`, { method: "DELETE" }),
+  driveStatus: () => request<DriveStatus>("/teams/drive/status"),
+  driveDisconnect: () => request<void>("/teams/drive/disconnect", { method: "POST" }),
   teamsTyping: (id: number) => request<void>(`/teams/groups/${id}/typing`, { method: "POST" }),
   teamsPresence: (state: "chat" | "") => request<void>("/teams/presence", { method: "POST", body: JSON.stringify({ state }) }),
   teamsDeleteMessage: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/messages/${messageId}`, { method: "DELETE" }),

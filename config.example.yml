@@ -68,3 +68,15 @@ bulutsantralim:
   # Days of call history to mirror locally on first run (newer calls arrive
   # with the regular poll). Searching runs on this mirror.
   historyDays: 90
+
+# Google Drive for Teams attachments (pictures, videos, files). Only the
+# OAuth client goes here; the account itself is linked once from
+# Yönetim > Sistem Ayarları > Teams Dosya Depolama.
+#
+# Google Cloud Console > APIs & Services > Credentials > OAuth client ID
+# (Web application). Authorized redirect URI must be exactly redirectUrl.
+drive:
+  clientId: ""
+  clientSecret: ""
+  redirectUrl: "https://cm.example.com/api/v1/teams/drive/callback"
+  folderName: "SantralC"

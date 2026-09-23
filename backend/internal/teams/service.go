@@ -37,11 +37,12 @@ type Service struct {
 	repo  *Repository
 	users IActorResolver
 	hub   *Hub
+	drive *Drive
 }
 
 // NewService builds a chat service.
-func NewService(repo *Repository, users IActorResolver, hub *Hub) *Service {
-	return &Service{repo: repo, users: users, hub: hub}
+func NewService(repo *Repository, users IActorResolver, hub *Hub, drive *Drive) *Service {
+	return &Service{repo: repo, users: users, hub: hub, drive: drive}
 }
 
 // ---------------------------------------------------------------- views
@@ -119,10 +120,11 @@ type MessageView struct {
 	CanDelete bool           `json:"canDelete"`
 	Reactions []ReactionView `json:"reactions"`
 	// Mentions are the tagged people's ids; MentionsAll is "@herkes".
-	Mentions    []uint `json:"mentions"`
-	MentionsAll bool   `json:"mentionsAll"`
-	EditedAt    string `json:"editedAt,omitempty"`
-	CreatedAt   string `json:"createdAt"`
+	Mentions    []uint           `json:"mentions"`
+	MentionsAll bool             `json:"mentionsAll"`
+	EditedAt    string           `json:"editedAt,omitempty"`
+	Attachments []AttachmentView `json:"attachments"`
+	CreatedAt   string           `json:"createdAt"`
 	// Status is set on the reader's own lines: sent, delivered or read.
 	Status string   `json:"status,omitempty"`
 	ReadBy []string `json:"readBy,omitempty"`
@@ -341,6 +343,14 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	lastIDs := make([]uint, 0, len(last))
+	for _, lm := range last {
+		lastIDs = append(lastIDs, lm.ID)
+	}
+	lastFiles, err := s.repo.AttachmentsByMessage(ctx, lastIDs)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	unread, err := s.repo.Unread(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -385,6 +395,9 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 		if lm, ok := last[g.ID]; ok {
 			mv := s.messageView(actor, &g, &seat, &lm, people, nil)
 			mv.Status, _ = s.status(actor.ID, &lm, allSeats[g.ID], nil)
+			for _, a := range lastFiles[lm.ID] {
+				mv.Attachments = append(mv.Attachments, attachmentView(&a))
+			}
 			view.LastMessage = &mv
 		}
 		if !seat.Muted {
@@ -1023,6 +1036,10 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	files, err := s.repo.AttachmentsByMessage(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	people, err := s.repo.PeopleByID(ctx, need)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -1037,6 +1054,9 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 		v.Status, v.ReadBy = s.status(actor.ID, &rows[i], seats, people)
 		if ids := mentions[rows[i].ID]; len(ids) > 0 {
 			v.Mentions = ids
+		}
+		for _, a := range files[rows[i].ID] {
+			v.Attachments = append(v.Attachments, attachmentView(&a))
 		}
 		if rows[i].ReplyToID != nil {
 			if rm, ok := replies[*rows[i].ReplyToID]; ok {
@@ -1056,7 +1076,7 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 }
 
 func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models.ChatMember, r *models.ChatMessage, people map[uint]Person, reactions []models.ChatReaction) MessageView {
-	v := MessageView{ID: r.ID, GroupID: r.GroupID, Kind: r.Kind, Body: r.Body, Deleted: r.DeletedAt != nil, Reactions: []ReactionView{}, Mentions: []uint{}, MentionsAll: r.MentionsAll, CreatedAt: stamp(r.CreatedAt)}
+	v := MessageView{ID: r.ID, GroupID: r.GroupID, Kind: r.Kind, Body: r.Body, Deleted: r.DeletedAt != nil, Reactions: []ReactionView{}, Mentions: []uint{}, MentionsAll: r.MentionsAll, Attachments: []AttachmentView{}, CreatedAt: stamp(r.CreatedAt)}
 	if r.SenderID != nil {
 		if p, ok := people[*r.SenderID]; ok {
 			sender := p
@@ -1096,7 +1116,7 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 }
 
 // Send posts a text line to a room the actor may write in.
-func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, replyTo uint, mentionIDs []uint, mentionsAll bool) (*MessageView, error) {
+func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, replyTo uint, mentionIDs []uint, mentionsAll bool, attachmentIDs []uint) (*MessageView, error) {
 	actor, err := s.actor(ctx, actorID)
 	if err != nil {
 		return nil, err
@@ -1109,7 +1129,7 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		return nil, errs.Forbidden("Bu grupta yazma yetkiniz yok.")
 	}
 	body = strings.TrimSpace(body)
-	if body == "" {
+	if body == "" && len(attachmentIDs) == 0 {
 		return nil, errs.Invalid("Mesaj boş olamaz.", nil)
 	}
 	if len([]rune(body)) > maxBody {
@@ -1136,8 +1156,16 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 	if err := s.repo.CreateMentions(ctx, msg.ID, tagged); err != nil {
 		return nil, errs.Internal(err)
 	}
+	files, err := s.bindAttachments(ctx, actorID, groupID, msg.ID, attachmentIDs)
+	if err != nil {
+		return nil, err
+	}
+	if body == "" && len(files) == 0 {
+		_ = s.repo.SoftDeleteMessage(ctx, msg.ID, actorID)
+		return nil, errs.Invalid("Ekler hazır değil, mesaj gönderilmedi.", nil)
+	}
 	_ = s.repo.MarkRead(ctx, groupID, actorID, msg.ID)
-	view, err := s.broadcastMessage(ctx, g, msg, tagged)
+	view, err := s.broadcastMessage(ctx, g, msg, tagged, files)
 	if err != nil {
 		return nil, err
 	}
@@ -1199,7 +1227,10 @@ func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID u
 	}
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return nil, errs.Invalid("Mesaj boş olamaz.", nil)
+		existing, err := s.repo.AttachmentsByMessage(ctx, []uint{messageID})
+		if err != nil || len(existing[messageID]) == 0 {
+			return nil, errs.Invalid("Mesaj boş olamaz.", nil)
+		}
 	}
 	if len([]rune(body)) > maxBody {
 		return nil, errs.Invalid("Mesaj en fazla 4000 karakter olabilir.", nil)
@@ -1289,11 +1320,11 @@ func (s *Service) system(ctx context.Context, groupID uint, text string) {
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return
 	}
-	_, _ = s.broadcastMessage(ctx, g, msg, nil)
+	_, _ = s.broadcastMessage(ctx, g, msg, nil, nil)
 }
 
 // broadcastMessage renders a fresh line neutrally and pushes it to members.
-func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg *models.ChatMessage, mentions []uint) (*MessageView, error) {
+func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg *models.ChatMessage, mentions []uint, files []models.ChatAttachment) (*MessageView, error) {
 	need := []uint{}
 	if msg.SenderID != nil {
 		need = append(need, *msg.SenderID)
@@ -1306,6 +1337,9 @@ func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg
 	view := s.messageView(neutral, g, nil, msg, people, nil)
 	if len(mentions) > 0 {
 		view.Mentions = mentions
+	}
+	for i := range files {
+		view.Attachments = append(view.Attachments, attachmentView(&files[i]))
 	}
 	view.CanDelete = false
 	if msg.ReplyToID != nil {
@@ -1371,6 +1405,7 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 	if err := s.repo.SoftDeleteMessage(ctx, messageID, actorID); err != nil {
 		return errs.Internal(err)
 	}
+	s.dropAttachments(ctx, messageID)
 	s.notifyGroup(ctx, groupID, Event{Type: "message.deleted", GroupID: groupID, ID: messageID})
 	return nil
 }
