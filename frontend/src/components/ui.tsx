@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonBase =
@@ -321,6 +321,69 @@ export function Pagination({ page, perPage, total, onChange }: { page: number; p
         <Button variant="secondary" className="h-8 px-3 text-xs" disabled={page <= 1} onClick={() => onChange(page - 1)}>Önceki</Button>
         <span className="px-2 text-xs tabular-nums text-muted-foreground">{page} / {pages}</span>
         <Button variant="secondary" className="h-8 px-3 text-xs" disabled={page >= pages} onClick={() => onChange(page + 1)}>Sonraki</Button>
+      </div>
+    </div>
+  );
+}
+
+// ConfirmDialog asks before something that cannot be undone. It sits above
+// every other modal so it can be opened from inside one.
+export function ConfirmDialog({
+  open,
+  title = "Emin misin?",
+  description,
+  confirmLabel = "Evet",
+  cancelLabel = "Vazgeç",
+  tone = "danger",
+  busy = false,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title?: string;
+  description: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: "danger" | "warning";
+  busy?: boolean;
+  error?: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onCancel]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={() => !busy && onCancel()}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className="animate-in fade-in zoom-in-95 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl duration-200"
+      >
+        <div className="flex items-start gap-3">
+          <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", tone === "danger" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning")}>
+            <TriangleAlert className="size-5" />
+          </span>
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold leading-tight">{title}</h3>
+            <div className="text-sm leading-relaxed text-muted-foreground">{description}</div>
+          </div>
+        </div>
+        {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</Button>
+          <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={busy} className={tone === "warning" ? "bg-warning text-black hover:bg-warning/90" : undefined}>
+            {busy ? "Bekleyin..." : confirmLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );

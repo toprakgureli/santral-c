@@ -9,7 +9,7 @@ import type { TeamsGroupDetail } from "@/api/types";
 import AvatarCropper from "@/components/profile/AvatarCropper";
 import GroupAvatar from "@/components/teams/GroupAvatar";
 import PeoplePicker from "@/components/teams/PeoplePicker";
-import { Button, CharCount, Input, Modal } from "@/components/ui";
+import { Button, CharCount, ConfirmDialog, Input, Modal } from "@/components/ui";
 import { AVATAR_TYPES, loadAvatarFile, type AvatarSource } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
 
@@ -164,14 +164,17 @@ export function GroupSettingsDialog({ group, open, onClose, onSaved }: { group: 
     }
   }
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   async function remove() {
     setBusy(true);
+    setDeleteError(null);
     try {
       await api.teamsDeleteGroup(group.id);
+      setConfirmDelete(false);
       onClose();
       navigate("/teams");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Silinemedi.");
+      setDeleteError(e instanceof ApiError ? e.message : "Silinemedi.");
       setBusy(false);
     }
   }
@@ -198,17 +201,9 @@ export function GroupSettingsDialog({ group, open, onClose, onSaved }: { group: 
         footer={
           <>
             {group.canDelete && (
-              confirmDelete ? (
-                <span className="mr-auto flex items-center gap-2 text-xs">
-                  <span className="text-muted-foreground">Grup ve tüm mesajlar silinecek.</span>
-                  <button type="button" onClick={remove} disabled={busy} className="font-medium text-destructive hover:underline">Evet, sil</button>
-                  <button type="button" onClick={() => setConfirmDelete(false)} className="text-muted-foreground hover:underline">Vazgeç</button>
-                </span>
-              ) : (
-                <Button variant="ghost" onClick={() => setConfirmDelete(true)} disabled={busy} className="mr-auto h-9 px-3 text-xs text-destructive">
-                  <Trash2 className="size-3.5" /> Grubu sil
-                </Button>
-              )
+              <Button variant="ghost" onClick={() => setConfirmDelete(true)} disabled={busy} className="mr-auto h-9 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive">
+                <Trash2 className="size-3.5" /> Grubu sil
+              </Button>
             )}
             <Button variant="secondary" onClick={onClose} className="h-9" disabled={busy}>Vazgeç</Button>
             <Button onClick={save} className="h-9" disabled={busy || name.trim().length < 2}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>
@@ -255,6 +250,20 @@ export function GroupSettingsDialog({ group, open, onClose, onSaved }: { group: 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </Modal>
+      <ConfirmDialog
+        open={open && confirmDelete}
+        title="Grubu sil"
+        description={
+          <>
+            <span className="font-medium text-foreground">{group.name}</span> grubu, {group.memberCount} üyesi ve tüm mesajları silinecek. Bu işlem geri alınamaz.
+          </>
+        }
+        confirmLabel="Evet, grubu sil"
+        busy={busy}
+        error={deleteError}
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </>
   );
 }
