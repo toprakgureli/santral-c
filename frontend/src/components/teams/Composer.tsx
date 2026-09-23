@@ -5,7 +5,8 @@
 // result. The same box edits a line when `editing` is set.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, CornerUpLeft, Paperclip, Pencil, SendHorizontal, Type, Users, X } from "lucide-react";
+import { AtSign, CornerUpLeft, Paperclip, Pencil, SendHorizontal, SmilePlus, Type, Users, X } from "lucide-react";
+import EmojiPicker from "@/components/teams/EmojiPicker";
 import { ApiError, api } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
@@ -64,6 +65,22 @@ export default function Composer({
   const [cursor, setCursor] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [help, setHelp] = useState(false);
+  const [emoji, setEmoji] = useState(false);
+
+  function insertEmoji(e: string) {
+    const el = area.current;
+    const caret = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? caret;
+    const next = text.slice(0, caret) + e + text.slice(end);
+    setText(next);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = caret + e.length;
+      el.setSelectionRange(pos, pos);
+      grow(el);
+    });
+  }
   const area = useRef<HTMLTextAreaElement>(null);
   const lastTyping = useRef(0);
 
@@ -368,6 +385,7 @@ export default function Composer({
         </div>
       )}
 
+      {emoji && <EmojiPicker className="absolute right-4 bottom-full z-20 mb-1" onPick={insertEmoji} onClose={() => setEmoji(false)} />}
       {help && (
         <div className="absolute right-4 bottom-full z-20 mb-1 w-72 rounded-xl border border-border bg-popover p-3 shadow-lg">
           <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Biçimlendirme</p>
@@ -420,7 +438,16 @@ export default function Composer({
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setHelp((v) => !v)}
+          onClick={() => { setEmoji((v) => !v); setHelp(false); }}
+          title="Emoji"
+          className={cn("mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", emoji && "bg-accent text-foreground")}
+        >
+          <SmilePlus className="size-4" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { setHelp((v) => !v); setEmoji(false); }}
           title="Biçimlendirme"
           className={cn("mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", help && "bg-accent text-foreground")}
         >

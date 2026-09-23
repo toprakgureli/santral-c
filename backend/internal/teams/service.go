@@ -102,10 +102,11 @@ type InviteView struct {
 
 // ReactionView is one emoji on a message with who gave it.
 type ReactionView struct {
-	Emoji string   `json:"emoji"`
-	Count int      `json:"count"`
-	Mine  bool     `json:"mine"`
-	Names []string `json:"names"`
+	Emoji  string   `json:"emoji"`
+	Count  int      `json:"count"`
+	Mine   bool     `json:"mine"`
+	Names  []string `json:"names"`
+	People []Person `json:"people"`
 }
 
 // MessageView is one line as rendered.
@@ -161,6 +162,10 @@ type Event struct {
 	// typing: groupId, userId, name. presence also carries state ("chat" or "").
 	Name string `json:"name,omitempty"`
 	Room *uint  `json:"room,omitempty"`
+	// reaction: userId and name of who reacted, emoji, added, senderId of the line.
+	Emoji    string `json:"emoji,omitempty"`
+	Added    *bool  `json:"added,omitempty"`
+	SenderID uint   `json:"senderId,omitempty"`
 }
 
 // ---------------------------------------------------------------- helpers
@@ -1258,7 +1263,7 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 	for _, rx := range reactions {
 		rv, ok := grouped[rx.Emoji]
 		if !ok {
-			rv = &ReactionView{Emoji: rx.Emoji, Names: []string{}}
+			rv = &ReactionView{Emoji: rx.Emoji, Names: []string{}, People: []Person{}}
 			grouped[rx.Emoji] = rv
 			order = append(order, rx.Emoji)
 		}
@@ -1268,6 +1273,7 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 		}
 		if p, ok := people[rx.UserID]; ok {
 			rv.Names = append(rv.Names, p.Name)
+			rv.People = append(rv.People, p)
 		}
 	}
 	for _, e := range order {
@@ -1678,10 +1684,15 @@ func (s *Service) React(ctx context.Context, actorID, groupID, messageID uint, e
 	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil {
 		return errs.NotFound("Mesaj bulunamadı.")
 	}
-	if err := s.repo.ToggleReaction(ctx, messageID, actorID, emoji); err != nil {
+	added, err := s.repo.ToggleReaction(ctx, messageID, actorID, emoji)
+	if err != nil {
 		return errs.Internal(err)
 	}
-	s.notifyGroup(ctx, groupID, Event{Type: "reaction", GroupID: groupID, ID: messageID})
+	ev := Event{Type: "reaction", GroupID: groupID, ID: messageID, UserID: actorID, Name: actor.Name, Emoji: emoji, Added: &added}
+	if msg.SenderID != nil {
+		ev.SenderID = *msg.SenderID
+	}
+	s.notifyGroup(ctx, groupID, ev)
 	return nil
 }
 

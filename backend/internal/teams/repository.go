@@ -494,18 +494,18 @@ func (r *Repository) Reactions(ctx context.Context, messageIDs []uint) ([]models
 }
 
 // ToggleReaction adds the emoji for the user, or removes it if present.
-func (r *Repository) ToggleReaction(ctx context.Context, messageID, userID uint, emoji string) error {
+func (r *Repository) ToggleReaction(ctx context.Context, messageID, userID uint, emoji string) (bool, error) {
 	res := r.db.WithContext(ctx).Where("message_id = ? AND user_id = ? AND emoji = ?", messageID, userID, emoji).Delete(&models.ChatReaction{})
 	if res.Error != nil {
-		return fmt.Errorf("reaction could not be toggled: %w", res.Error)
+		return false, fmt.Errorf("reaction could not be toggled: %w", res.Error)
 	}
 	if res.RowsAffected > 0 {
-		return nil
+		return false, nil
 	}
 	if err := r.db.WithContext(ctx).Create(&models.ChatReaction{MessageID: messageID, UserID: userID, Emoji: emoji, CreatedAt: time.Now()}).Error; err != nil {
-		return fmt.Errorf("reaction could not be added: %w", err)
+		return false, fmt.Errorf("reaction could not be added: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 // MarkRead advances the seat's read pointer, never backwards, and clears a

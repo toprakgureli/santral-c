@@ -12,7 +12,7 @@ import AttachmentGrid, { mediaOf } from "@/components/teams/AttachmentGrid";
 import Lightbox from "@/components/teams/Lightbox";
 import ProfilePopover, { type PopoverAnchor } from "@/components/teams/ProfilePopover";
 import { useUploads } from "@/teams/useUploads";
-import type { TeamsAttachment } from "@/api/types";
+import type { TeamsAttachment, TeamsPerson } from "@/api/types";
 import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { ConfirmDialog, Modal } from "@/components/ui";
@@ -70,6 +70,7 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
   const [over, setOver] = useState(false);
   const [gallery, setGallery] = useState<{ items: TeamsAttachment[]; index: number } | null>(null);
   const [profile, setProfile] = useState<PopoverAnchor | null>(null);
+  const [who, setWho] = useState<{ x: number; y: number; emoji: string; people: TeamsPerson[] } | null>(null);
   const openProfile = (e: React.MouseEvent, userId: number) => {
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -329,6 +330,17 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
         </div>
       )}
       {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
+      {who && (
+        <ReactionPeople
+          {...who}
+          selfId={selfId}
+          onPerson={(p, x, y) => {
+            setWho(null);
+            setProfile({ userId: p.id, x, y, room: group.id });
+          }}
+          onClose={() => setWho(null)}
+        />
+      )}
       {gallery && <Lightbox items={gallery.items} index={gallery.index} onIndex={(i) => setGallery({ ...gallery, index: i })} onClose={() => setGallery(null)} />}
       <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {more && (
@@ -430,7 +442,13 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
                             key={r.emoji}
                             type="button"
                             onClick={() => void react(m, r.emoji)}
-                            title={r.names.join(", ")}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setWho({ x: e.clientX, y: e.clientY, emoji: r.emoji, people: r.people ?? [] });
+                            }}
+                            title={`${r.names.join(", ")}
+Sağ tık: kimler verdi`}
                             className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors", r.mine ? "border-primary/50 bg-primary/10" : "border-border/70 bg-muted/40 hover:bg-accent")}
                           >
                             <span>{r.emoji}</span>
@@ -591,5 +609,46 @@ function MessageInfo({ message, group, onClose }: { message: TeamsMessage; group
         )}
       </div>
     </Modal>
+  );
+}
+
+// ReactionPeople: who gave one emoji, opened by right-clicking the chip.
+function ReactionPeople({ x, y, emoji, people, selfId, onPerson, onClose }: { x: number; y: number; emoji: string; people: TeamsPerson[]; selfId: number; onPerson: (p: TeamsPerson, x: number, y: number) => void; onClose: () => void }) {
+  useEffect(() => {
+    const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const t = window.setTimeout(() => {
+      window.addEventListener("mousedown", close);
+      window.addEventListener("keydown", onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  const left = Math.min(x, window.innerWidth - 240);
+  const top = Math.min(y, window.innerHeight - 40 - people.length * 40);
+  return (
+    <div className="animate-in fade-in zoom-in-95 fixed z-[60] w-56 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg duration-100" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()}>
+      <p className="flex items-center gap-1.5 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-base leading-none">{emoji}</span> {people.length} kişi
+      </p>
+      {people.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            onPerson(p, r.right, r.top);
+          }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent"
+        >
+          <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-7" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />
+          <span className="min-w-0 flex-1 truncate">{p.name}{p.id === selfId && <span className="text-muted-foreground"> (sen)</span>}</span>
+        </button>
+      ))}
+      {people.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">Kimse yok</p>}
+    </div>
   );
 }

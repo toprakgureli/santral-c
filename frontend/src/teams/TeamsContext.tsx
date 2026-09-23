@@ -90,6 +90,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const [groups, setGroups] = useState<TeamsGroup[]>([]);
   const [invites, setInvites] = useState<TeamsInvite[]>([]);
   const [openGroupId, setOpenGroupId] = useState<number | null>(null);
+  const selfId = user?.id ?? 0;
   const openRef = useRef<number | null>(null);
   openRef.current = openGroupId;
   const groupsRef = useRef<TeamsGroup[]>([]);
@@ -109,6 +110,50 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     setToast(t);
     toastTimer.current = window.setTimeout(() => setToast(null), 8000);
   }, []);
+
+  // Reactions to your lines: one chime, then a quiet window in which further
+  // reactions only bump the card's count, so a burst never becomes spam.
+  const reactionBurst = useRef<{ at: number; count: number; names: string[]; emojis: string[]; groupId: number } | null>(null);
+  const REACTION_QUIET_MS = 10000;
+  const notifyReaction = useCallback(
+    (e: TeamsEvent) => {
+      if (!e.added || !e.userId || e.userId === selfId || e.senderId !== selfId || !e.groupId) return;
+      const g = groupsRef.current.find((x) => x.id === e.groupId);
+      const mute = g?.mute ?? (g?.muted ? "mentions" : "none");
+      if (mute !== "none") return;
+      const roomOpen = openRef.current === e.groupId && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams");
+      if (roomOpen) return;
+      const now = Date.now();
+      const b = reactionBurst.current;
+      const name = e.name ?? "Biri";
+      const emoji = e.emoji ?? "";
+      if (b && now - b.at < REACTION_QUIET_MS) {
+        b.count += 1;
+        if (!b.names.includes(name)) b.names.push(name);
+        if (emoji && !b.emojis.includes(emoji)) b.emojis.push(emoji);
+        const others = b.names.length - 1;
+        const who = others > 0 ? `${b.names[0]} ve ${others} kişi` : b.names[0];
+        showToast({ id: -e.groupId, groupId: e.groupId, groupName: g?.name ?? "Teams", sender: { id: e.userId, name, hasAvatar: false }, body: `${b.emojis.join(" ")} ${who} mesajlarına tepki verdi (${b.count})`, at: new Date().toISOString() });
+        return;
+      }
+      reactionBurst.current = { at: now, count: 1, names: [name], emojis: emoji ? [emoji] : [], groupId: e.groupId };
+      tones.notify();
+      showToast({ id: -e.groupId, groupId: e.groupId, groupName: g?.name ?? "Teams", sender: { id: e.userId, name, hasAvatar: false }, body: `${emoji} ${name} mesajına tepki verdi`, at: new Date().toISOString() });
+      if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState !== "visible") {
+        try {
+          const n = new Notification(`${name} tepki verdi${g ? ` · ${g.name}` : ""}`, { body: `${emoji} mesajına`, tag: `teams-react-${e.groupId}`, silent: true });
+          n.onclick = () => {
+            window.focus();
+            window.location.assign(`/teams/${e.groupId}`);
+            n.close();
+          };
+        } catch {
+          // notifications unavailable
+        }
+      }
+    },
+    [selfId, showToast],
+  );
   useEffect(() => {
     try {
       localStorage.setItem(MENTIONS_KEY, JSON.stringify(mentions));
@@ -117,7 +162,6 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     }
   }, [mentions]);
   const dismissMention = useCallback((id: number) => setMentions((cur) => cur.filter((t) => t.id !== id)), []);
-  const selfId = user?.id ?? 0;
   const [typing, setTyping] = useState<Typing>({});
 
   // Expire "yazıyor" entries a few seconds after the last keystroke.
@@ -303,6 +347,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
             return [next, ...list.slice(0, idx), ...list.slice(idx + 1)];
           });
           notify(m);
+        } else if (e.type === "reaction") {
+          notifyReaction(e);
         } else if (e.type === "message.deleted" && e.groupId) {
           // The preview falls back to the previous line; the server knows it.
           setGroups((list) => list.map((g) => (g.id === e.groupId && g.lastMessage && g.lastMessage.id === e.id ? { ...g, lastMessage: { ...g.lastMessage, deleted: true, body: "", attachments: [] } } : g)));
@@ -345,7 +391,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       closed = true;
       es?.close();
     };
-  }, [enabled, refresh, notify]);
+  }, [enabled, refresh, notify, notifyReaction]);
 
   const subscribe = useCallback((fn: (e: TeamsEvent) => void) => {
     listeners.current.add(fn);

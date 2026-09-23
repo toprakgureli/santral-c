@@ -219,6 +219,7 @@ export interface TeamsReaction {
   count: number;
   mine: boolean;
   names: string[];
+  people: TeamsPerson[];
 }
 
 export interface TeamsAttachment {
@@ -339,6 +340,10 @@ export interface TeamsEvent {
   // typing (name), presence (room the person now looks at, 0 for none)
   name?: string;
   room?: number;
+  // reaction
+  emoji?: string;
+  added?: boolean;
+  senderId?: number;
 }
 
 export interface Paged<T> {
