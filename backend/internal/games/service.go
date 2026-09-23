@@ -696,9 +696,15 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 	s.mu.Lock()
 	s.live[g.ID] = m
 	s.mu.Unlock()
-	if mid, err := s.rooms.PostGame(ctx, groupID, actorID, g.ID); err == nil {
-		g.MessageID = &mid
+	// Without its card in the room nobody can find the lobby: fail loudly.
+	mid, err := s.rooms.PostGame(ctx, groupID, actorID, g.ID)
+	if err != nil {
+		g.Status = statusCancelled
+		_ = s.repo.SaveGame(ctx, g)
+		s.forget(g.ID)
+		return nil, errs.Internal(fmt.Errorf("game card could not be posted: %w", err))
 	}
+	g.MessageID = &mid
 	m.mu.Lock()
 	s.save(ctx, m)
 	m.mu.Unlock()
