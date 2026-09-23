@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CornerUpLeft, Paperclip, SendHorizontal, SmilePlus, Trash2, X } from "lucide-react";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { Modal } from "@/components/ui";
 import { api, ApiError } from "@/api/client";
 import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -39,6 +40,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const [reply, setReply] = useState<TeamsMessage | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [info, setInfo] = useState<TeamsMessage | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   // Other seats' pointers, so ticks update live from receipts.
@@ -171,6 +173,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     if (group.canPost) items.push({ label: "Yanıtla", onClick: () => setReply(m) });
     items.push({ label: "Tepki ver", onClick: () => setPicker(m.id) });
     items.push({ label: "Metni kopyala", onClick: () => void navigator.clipboard?.writeText(m.body).catch(() => undefined) });
+    items.push({ label: "Bilgi", onClick: () => setInfo(m) });
     if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => void remove(m) });
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -287,6 +290,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
 
       {error && <p className="px-5 pb-1 text-xs text-destructive">{error}</p>}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {info && <MessageInfo message={info} seats={seats} selfId={selfId} onClose={() => setInfo(null)} />}
 
       <Composer group={group} reply={reply} onCancelReply={() => setReply(null)} onSend={send} />
     </div>
@@ -376,5 +380,42 @@ function Composer({ group, reply, onCancelReply, onSend }: { group: TeamsGroupDe
         {error ? <span className="text-destructive">{error}</span> : <span>{text.length} / 4000</span>}
       </div>
     </div>
+  );
+}
+
+// MessageInfo: who has read a line, who only received it, who has not yet.
+function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessage; seats: Record<number, { deliveredId: number; readId: number; name: string }>; selfId: number; onClose: () => void }) {
+  const read: string[] = [];
+  const delivered: string[] = [];
+  const pending: string[] = [];
+  for (const [id, s] of Object.entries(seats)) {
+    const uid = Number(id);
+    if (uid === selfId || uid === message.sender?.id) continue;
+    if (s.readId >= message.id) read.push(s.name);
+    else if (s.deliveredId >= message.id) delivered.push(s.name);
+    else pending.push(s.name);
+  }
+  const when = new Date(message.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const Section = ({ title, names, status }: { title: string; names: string[]; status?: "sent" | "delivered" | "read" }) => (
+    <div>
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <Ticks status={status} /> {title} · {names.length}
+      </p>
+      {names.length ? (
+        <ul className="space-y-0.5 text-sm">{names.map((n) => <li key={n}>{n}</li>)}</ul>
+      ) : (
+        <p className="text-sm text-muted-foreground/70">Kimse yok</p>
+      )}
+    </div>
+  );
+  return (
+    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${when}`} size="md">
+      <div className="space-y-4">
+        <p className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{message.body}</p>
+        <Section title="Okudu" names={read} status="read" />
+        <Section title="Teslim edildi" names={delivered} status="delivered" />
+        <Section title="Bekliyor" names={pending} status="sent" />
+      </div>
+    </Modal>
   );
 }

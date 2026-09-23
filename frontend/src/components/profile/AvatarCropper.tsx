@@ -96,7 +96,7 @@ export default function AvatarCropper({ image, onCancel, onApply }: { image: Ava
               <span className="absolute inset-x-0 top-1/3 h-px bg-white/25" />
               <span className="absolute inset-x-0 top-2/3 h-px bg-white/25" />
               {/* Everything outside the circle is what gets cut away. */}
-              <span className="absolute inset-0" style={{ background: "radial-gradient(circle at center, transparent 49.5%, rgba(0,0,0,0.45) 50.5%)" }} />
+              <span className="absolute inset-0" style={{ background: "radial-gradient(circle closest-side at center, transparent 99%, rgba(0,0,0,0.45) 100%)" }} />
             </div>
           </div>
         </div>

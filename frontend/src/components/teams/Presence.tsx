@@ -35,7 +35,7 @@ export function Ticks({ status, readBy, className }: { status?: Status; readBy?:
   const title = status === "read" ? (readBy && readBy.length ? `Okudu: ${readBy.join(", ")}` : "Okundu") : status === "delivered" ? "Teslim edildi" : "Gönderildi";
   const Icon = status === "sent" ? Check : CheckCheck;
   return (
-    <span title={title} className={cn("inline-flex shrink-0 items-center", status === "read" ? "text-primary" : "text-muted-foreground/70", className)}>
+    <span title={title} className={cn("inline-flex shrink-0 items-center", status === "read" ? "text-success" : "text-muted-foreground/70", className)}>
       <Icon className="size-3.5" />
     </span>
   );
