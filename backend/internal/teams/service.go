@@ -642,6 +642,14 @@ func (s *Service) Update(ctx context.Context, actorID, groupID uint, in UpdateIn
 	if err := s.repo.UpdateGroup(ctx, groupID, map[string]any{"name": name, "description": strings.TrimSpace(in.Description), "post_policy": policy}); err != nil {
 		return nil, errs.Internal(err)
 	}
+	// The Drive folder follows the group's name.
+	if g.DriveFolder != "" && name != g.Name {
+		renamed := *g
+		renamed.Name = name
+		go func(id, label string) {
+			_ = s.drive.Rename(context.Background(), id, label)
+		}(g.DriveFolder, s.roomFolderName(ctx, &renamed))
+	}
 	s.notifyGroup(ctx, groupID, Event{Type: "group", GroupID: groupID})
 	return s.Detail(ctx, actorID, groupID)
 }
@@ -695,6 +703,12 @@ func (s *Service) Delete(ctx context.Context, actorID, groupID uint) error {
 	ids, _ := s.repo.MemberIDs(ctx, groupID)
 	if err := s.repo.DeleteGroup(ctx, groupID); err != nil {
 		return errs.Internal(err)
+	}
+	// The room's folder and everything in it go with the room.
+	if g.DriveFolder != "" {
+		go func(id string) {
+			_ = s.drive.Delete(context.Background(), id)
+		}(g.DriveFolder)
 	}
 	s.hub.Send(ids, Event{Type: "group", GroupID: groupID})
 	return nil

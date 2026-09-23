@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -147,12 +148,82 @@ func (s *Service) BeginUpload(ctx context.Context, actorID, groupID uint, in Upl
 	// The Drive name carries our id so the finish step can prove the file
 	// came from this very session.
 	driveName := fmt.Sprintf("att-%d-%s", row.ID, name)
-	loc, err := s.drive.StartUpload(ctx, driveName, mime, in.Size, origin)
+	folder, err := s.roomFolder(ctx, g)
+	if err != nil {
+		_ = s.repo.DeleteAttachmentRow(ctx, row.ID)
+		return nil, errs.Invalid("Drive klasörü hazırlanamadı: "+err.Error(), nil)
+	}
+	loc, err := s.drive.StartUpload(ctx, folder, driveName, mime, in.Size, origin)
+	if err != nil && g.DriveFolder != "" {
+		// The room folder may have been removed by hand in Drive: forget it,
+		// make it again and try once more.
+		_ = s.repo.UpdateGroup(ctx, g.ID, map[string]any{"drive_folder": ""})
+		g.DriveFolder = ""
+		if folder, err = s.roomFolder(ctx, g); err == nil {
+			loc, err = s.drive.StartUpload(ctx, folder, driveName, mime, in.Size, origin)
+		}
+	}
 	if err != nil {
 		_ = s.repo.DeleteAttachmentRow(ctx, row.ID)
 		return nil, errs.Invalid("Yükleme başlatılamadı: "+err.Error(), nil)
 	}
 	return &UploadSession{AttachmentID: row.ID, UploadURL: loc, ChunkBytes: 8 << 20}, nil
+}
+
+// roomFolderName is the Drive folder name of a room: the group's name
+// with its id (two groups may share a name), or the two people of a
+// direct message.
+func (s *Service) roomFolderName(ctx context.Context, g *models.ChatGroup) string {
+	clean := func(v string) string {
+		v = strings.NewReplacer("/", "-", "\\", "-").Replace(strings.TrimSpace(v))
+		if v == "" {
+			v = "oda"
+		}
+		return v
+	}
+	if g.Kind != "dm" {
+		return fmt.Sprintf("%s (#%d)", clean(g.Name), g.ID)
+	}
+	ids, _ := s.repo.MemberIDs(ctx, g.ID)
+	people, _ := s.repo.PeopleByID(ctx, ids)
+	names := make([]string, 0, len(people))
+	for _, p := range people {
+		names = append(names, clean(p.Name))
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return fmt.Sprintf("Sohbet (#%d)", g.ID)
+	}
+	return strings.Join(names, " - ")
+}
+
+// roomFolder returns the room's Drive folder, building the tree on first
+// use: SantralC / Gruplar / <ad (#id)> or SantralC / Özel Mesajlar / <a - b>.
+func (s *Service) roomFolder(ctx context.Context, g *models.ChatGroup) (string, error) {
+	if g.DriveFolder != "" {
+		return g.DriveFolder, nil
+	}
+	root, err := s.drive.Folder(ctx)
+	if err != nil {
+		return "", err
+	}
+	branch := "Gruplar"
+	if g.Kind == "dm" {
+		branch = "Özel Mesajlar"
+	}
+	parent, err := s.drive.EnsureFolder(ctx, branch, root)
+	if err != nil {
+		return "", err
+	}
+	id, err := s.drive.EnsureFolder(ctx, s.roomFolderName(ctx, g), parent)
+	if err != nil {
+		return "", err
+	}
+	if err := s.repo.UpdateGroup(ctx, g.ID, map[string]any{"drive_folder": id}); err != nil {
+		return "", err
+	}
+	g.DriveFolder = id
+	return id, nil
 }
 
 // FinishInput is what the browser reports once Drive has the bytes.
@@ -418,7 +489,9 @@ func (s *Service) DriveCallback(ctx context.Context, actorID uint, state, code s
 	if err != nil {
 		return "", errs.Invalid("Google bağlantısı tamamlanamadı: "+err.Error(), nil)
 	}
-	// Warm the folder so the first upload does not pay for it.
+	// A new account means new folders: the old ids point into the old Drive.
+	_ = s.repo.ClearDriveFolders(ctx)
+	// Warm the root so the first upload does not pay for it.
 	if _, err := s.drive.Folder(ctx); err != nil {
 		return "", errs.Invalid("Drive klasörü oluşturulamadı: "+err.Error(), nil)
 	}

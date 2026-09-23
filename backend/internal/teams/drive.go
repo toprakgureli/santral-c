@@ -321,12 +321,10 @@ func (d *Drive) doJSON(ctx context.Context, method, endpoint string, payload any
 
 // ---------------------------------------------------------------- folder
 
-// Folder finds or creates the app folder in the account's Drive.
-func (d *Drive) Folder(ctx context.Context) (string, error) {
-	if id := d.setting(ctx, keyDriveFolder); id != "" {
-		return id, nil
-	}
-	q := fmt.Sprintf("name = '%s' and mimeType = '%s' and trashed = false and 'root' in parents", strings.ReplaceAll(d.cfg.FolderName, "'", "\\'"), folderMime)
+// EnsureFolder finds a folder by name under a parent, or creates it.
+func (d *Drive) EnsureFolder(ctx context.Context, name, parent string) (string, error) {
+	esc := strings.NewReplacer("\\", "\\\\", "'", "\\'").Replace(name)
+	q := fmt.Sprintf("name = '%s' and mimeType = '%s' and trashed = false and '%s' in parents", esc, folderMime, parent)
 	var list struct {
 		Files []struct {
 			ID string `json:"id"`
@@ -335,20 +333,34 @@ func (d *Drive) Folder(ctx context.Context) (string, error) {
 	if err := d.doJSON(ctx, http.MethodGet, driveAPI+"/files?fields=files(id)&q="+url.QueryEscape(q), nil, &list); err != nil {
 		return "", err
 	}
-	id := ""
 	if len(list.Files) > 0 {
-		id = list.Files[0].ID
-	} else {
-		var created struct {
-			ID string `json:"id"`
-		}
-		if err := d.doJSON(ctx, http.MethodPost, driveAPI+"/files?fields=id", map[string]any{"name": d.cfg.FolderName, "mimeType": folderMime}, &created); err != nil {
-			return "", err
-		}
-		id = created.ID
+		return list.Files[0].ID, nil
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := d.doJSON(ctx, http.MethodPost, driveAPI+"/files?fields=id", map[string]any{"name": name, "mimeType": folderMime, "parents": []string{parent}}, &created); err != nil {
+		return "", err
+	}
+	return created.ID, nil
+}
+
+// Folder finds or creates the app's root folder in the account's Drive.
+func (d *Drive) Folder(ctx context.Context) (string, error) {
+	if id := d.setting(ctx, keyDriveFolder); id != "" {
+		return id, nil
+	}
+	id, err := d.EnsureFolder(ctx, d.cfg.FolderName, "root")
+	if err != nil {
+		return "", err
 	}
 	_ = d.store(ctx, keyDriveFolder, id)
 	return id, nil
+}
+
+// Rename changes a file or folder's name.
+func (d *Drive) Rename(ctx context.Context, id, name string) error {
+	return d.doJSON(ctx, http.MethodPatch, driveAPI+"/files/"+url.PathEscape(id)+"?fields=id", map[string]any{"name": name}, nil)
 }
 
 // ---------------------------------------------------------------- files
@@ -363,11 +375,7 @@ type DriveFile struct {
 
 // StartUpload opens a resumable session the browser will fill. The Origin
 // is what Google will allow to PUT into the session.
-func (d *Drive) StartUpload(ctx context.Context, name, mime string, size int64, origin string) (string, error) {
-	folder, err := d.Folder(ctx)
-	if err != nil {
-		return "", err
-	}
+func (d *Drive) StartUpload(ctx context.Context, folder, name, mime string, size int64, origin string) (string, error) {
 	raw, _ := json.Marshal(map[string]any{"name": name, "parents": []string{folder}, "mimeType": mime})
 	headers := map[string]string{
 		"Content-Type":            "application/json; charset=UTF-8",

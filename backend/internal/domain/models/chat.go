@@ -11,6 +11,7 @@ type ChatGroup struct {
 	Avatar      string     `gorm:"column:avatar;type:text;not null;default:''"`
 	PostPolicy  string     `gorm:"column:post_policy;size:12;not null;default:everyone"`
 	DMKey       *string    `gorm:"column:dm_key;size:41"`
+	DriveFolder string     `gorm:"column:drive_folder;size:128;not null;default:''"`
 	CreatedBy   *uint      `gorm:"column:created_by"`
 	CreatedAt   time.Time  `gorm:"column:created_at"`
 	UpdatedAt   time.Time  `gorm:"column:updated_at"`

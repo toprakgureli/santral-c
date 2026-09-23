@@ -758,3 +758,11 @@ func (r *Repository) Receipts(ctx context.Context, messageID uint) ([]Receipt, e
 	}
 	return out, nil
 }
+
+// ClearDriveFolders forgets every room folder, after the account changed.
+func (r *Repository) ClearDriveFolders(ctx context.Context) error {
+	if err := r.db.WithContext(ctx).Exec("UPDATE chat_groups SET drive_folder = '' WHERE drive_folder <> ''").Error; err != nil {
+		return fmt.Errorf("room folders could not be cleared: %w", err)
+	}
+	return nil
+}
