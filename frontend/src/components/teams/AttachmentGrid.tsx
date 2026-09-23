@@ -12,16 +12,16 @@ export function mediaOf(list: TeamsAttachment[]): TeamsAttachment[] {
   return list.filter((a) => a.kind === "image" || a.kind === "video");
 }
 
-export default function AttachmentGrid({ attachments, onOpen }: { attachments: TeamsAttachment[]; onOpen: (index: number) => void }) {
+export default function AttachmentGrid({ attachments, onOpen, className }: { attachments: TeamsAttachment[]; onOpen: (index: number) => void; className?: string }) {
   const media = mediaOf(attachments);
   const files = attachments.filter((a) => a.kind === "file");
   const shown = media.slice(0, 4);
   const extra = media.length - shown.length;
 
   return (
-    <div className="mt-1.5 space-y-1.5">
+    <div className={cn("space-y-1.5", className ?? "mt-1.5")}>
       {shown.length > 0 && (
-        <div className={cn("grid gap-1 overflow-hidden rounded-xl", shown.length === 1 ? "max-w-md grid-cols-1" : "max-w-lg grid-cols-2", shown.length === 3 && "grid-rows-2")}>
+        <div className={cn("grid gap-1 overflow-hidden rounded-xl", shown.length === 1 ? "max-w-[18rem] grid-cols-1" : "max-w-[22rem] grid-cols-2", shown.length === 3 && "grid-rows-2")}>
           {shown.map((a, i) => {
             const url = thumbUrl(a);
             const single = shown.length === 1;
@@ -33,7 +33,7 @@ export default function AttachmentGrid({ attachments, onOpen }: { attachments: T
                 onClick={() => onOpen(i)}
                 title={`${a.name} · ${formatSize(a.size)}`}
                 className={cn("group relative block overflow-hidden bg-muted/60 text-left", single ? "" : "aspect-[4/3]", shown.length === 3 && i === 0 && "row-span-2 aspect-auto")}
-                style={single ? { aspectRatio: `${Math.max(0.6, Math.min(2.2, ratio))}`, maxHeight: 340 } : undefined}
+                style={single ? { aspectRatio: `${Math.max(0.6, Math.min(2.2, ratio))}`, maxHeight: 220 } : undefined}
               >
                 {url ? (
                   <img src={url} alt={a.name} loading="lazy" className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
@@ -61,7 +61,7 @@ export default function AttachmentGrid({ attachments, onOpen }: { attachments: T
           key={a.id}
           href={attachmentUrl(a.id, true)}
           download={a.name}
-          className="flex w-full max-w-md items-center gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 transition-colors hover:bg-muted/60"
+          className="flex w-full max-w-[22rem] items-center gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 transition-colors hover:bg-muted/60"
         >
           <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-lg bg-primary/10 text-primary">
             <FileText className="size-4" />

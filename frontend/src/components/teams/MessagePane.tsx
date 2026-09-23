@@ -316,6 +316,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   onContextMenu={(e) => lineMenu(e, m)}
                   className={cn(
                     "group relative flex gap-3 rounded-xl px-2 py-0.5 transition-colors duration-700",
+                    m.mine && !m.deleted && "pr-1",
                     head ? "mt-3" : "mt-0",
                     flash === m.id ? "bg-primary/15" : "hover:bg-accent/40",
                     editing?.id === m.id && "bg-warning/10",
@@ -350,16 +351,12 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                     {m.deleted ? (
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                     ) : (
-                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {m.body && renderMarkup(m.body, { mentions: labels })}
+                      <div className={cn("whitespace-pre-wrap break-words text-sm leading-relaxed", m.mine && "pr-6")}>
                         {m.attachments?.length > 0 && (
-                          <AttachmentGrid attachments={m.attachments} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
+                          <AttachmentGrid attachments={m.attachments} className={m.body ? "mt-1 mb-1.5" : "mt-1"} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
                         )}
+                        {m.body && renderMarkup(m.body, { mentions: labels })}
                         {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" title={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
-                        {m.mine && (() => {
-                          const st = statusOf(m.id, selfId, seats);
-                          return <Ticks status={st.status} readBy={st.readBy} className="ml-1.5 -mt-0.5" />;
-                        })()}
                       </div>
                     )}
                     {m.reactions.length > 0 && (
@@ -380,6 +377,14 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                       </div>
                     )}
                   </div>
+                  {m.mine && !m.deleted && (() => {
+                    const st = statusOf(m.id, selfId, seats);
+                    return (
+                      <span className="pointer-events-auto absolute right-2 bottom-1 flex items-center">
+                        <Ticks status={st.status} readBy={st.readBy} size="size-4" />
+                      </span>
+                    );
+                  })()}
                   {!m.deleted && (
                     <div className={cn("absolute -top-3.5 right-3 items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex", picker === m.id ? "flex" : "hidden")}>
                       {QUICK.map((e) => (
