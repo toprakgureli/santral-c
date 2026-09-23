@@ -231,18 +231,15 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
 
-  // Group consecutive lines by the same sender within five minutes.
+  // Every line carries its own avatar, name and time; days are separated.
   const rows = useMemo(() => {
     const out: { m: TeamsMessage; head: boolean; day: string | null }[] = [];
     let lastDay = "";
-    let prev: TeamsMessage | null = null;
     for (const m of items) {
       const day = new Date(m.createdAt).toDateString();
       const newDay = day !== lastDay;
       lastDay = day;
-      const head = newDay || !prev || m.kind === "system" || prev.kind === "system" || prev.sender?.id !== m.sender?.id || new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() > 5 * 60 * 1000;
-      out.push({ m, head, day: newDay ? dayLabel(m.createdAt) : null });
-      prev = m;
+      out.push({ m, head: true, day: newDay ? dayLabel(m.createdAt) : null });
     }
     return out;
   }, [items]);
@@ -316,8 +313,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   onContextMenu={(e) => lineMenu(e, m)}
                   className={cn(
                     "group relative flex gap-3 rounded-xl px-2 py-0.5 transition-colors duration-700",
-                    m.mine && !m.deleted && "pr-1",
-                    head ? "mt-3" : "mt-0",
+                    head ? "mt-2" : "mt-0",
                     flash === m.id ? "bg-primary/15" : "hover:bg-accent/40",
                     editing?.id === m.id && "bg-warning/10",
                     mentionsMe && "bg-violet-500/[0.07] before:absolute before:top-1 before:bottom-1 before:left-0 before:w-[3px] before:rounded-full before:bg-violet-500 hover:bg-violet-500/10",
@@ -329,9 +325,13 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                   </div>
                   <div className="min-w-0 flex-1">
                     {head && m.sender && (
-                      <div className="flex items-baseline gap-2">
-                        <span className={cn("text-sm font-semibold", m.mine && "text-primary")}>{m.sender.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-sm font-semibold leading-tight", m.mine && "text-primary")}>{m.sender.name}</span>
                         <span className="text-[0.7rem] text-muted-foreground">{hhmm(m.createdAt)}</span>
+                        {m.mine && !m.deleted && (() => {
+                          const st = statusOf(m.id, selfId, seats);
+                          return <Ticks status={st.status} readBy={st.readBy} size="size-3.5" className="-ml-0.5" />;
+                        })()}
                       </div>
                     )}
                     {m.replyTo && (
@@ -351,7 +351,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                     {m.deleted ? (
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
                     ) : (
-                      <div className={cn("whitespace-pre-wrap break-words text-sm leading-relaxed", m.mine && "pr-6")}>
+                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                         {m.attachments?.length > 0 && (
                           <AttachmentGrid attachments={m.attachments} className={m.body ? "mt-1 mb-1.5" : "mt-1"} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
                         )}
@@ -377,14 +377,6 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
                       </div>
                     )}
                   </div>
-                  {m.mine && !m.deleted && (() => {
-                    const st = statusOf(m.id, selfId, seats);
-                    return (
-                      <span className="pointer-events-auto absolute right-2 bottom-1 flex items-center">
-                        <Ticks status={st.status} readBy={st.readBy} size="size-4" />
-                      </span>
-                    );
-                  })()}
                   {!m.deleted && (
                     <div className={cn("absolute -top-3.5 right-3 items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex", picker === m.id ? "flex" : "hidden")}>
                       {QUICK.map((e) => (

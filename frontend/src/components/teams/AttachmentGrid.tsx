@@ -3,6 +3,7 @@
 // other files as download rows underneath. Clicking a picture or video
 // opens the lightbox.
 
+import { useEffect, useState } from "react";
 import { Download, FileText, Play } from "lucide-react";
 import type { TeamsAttachment } from "@/api/types";
 import { attachmentUrl, extensionOf, formatDuration, formatSize, thumbUrl } from "@/lib/attachments";
@@ -35,11 +36,7 @@ export default function AttachmentGrid({ attachments, onOpen, className }: { att
                 className={cn("group relative block overflow-hidden bg-muted/60 text-left", single ? "" : "aspect-[4/3]", shown.length === 3 && i === 0 && "row-span-2 aspect-auto")}
                 style={single ? { aspectRatio: `${Math.max(0.6, Math.min(2.2, ratio))}`, maxHeight: 220 } : undefined}
               >
-                {url ? (
-                  <img src={url} alt={a.name} loading="lazy" className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
-                ) : (
-                  <span className="flex size-full items-center justify-center text-muted-foreground"><FileText className="size-6" /></span>
-                )}
+                <Thumb primary={url} fallback={a.kind === "image" ? attachmentUrl(a.id) : null} alt={a.name} />
                 {a.kind === "video" && (
                   <>
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -74,5 +71,22 @@ export default function AttachmentGrid({ attachments, onOpen, className }: { att
         </a>
       ))}
     </div>
+  );
+}
+
+// Thumb shows the small preview, falls back to the file itself when the
+// preview cannot load, and to an icon when nothing can.
+function Thumb({ primary, fallback, alt }: { primary: string | null; fallback: string | null; alt: string }) {
+  const [src, setSrc] = useState<string | null>(primary);
+  useEffect(() => setSrc(primary), [primary]);
+  if (!src) return <span className="flex size-full items-center justify-center text-muted-foreground"><FileText className="size-6" /></span>;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setSrc(src === primary && fallback && fallback !== primary ? fallback : null)}
+      className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+    />
   );
 }
