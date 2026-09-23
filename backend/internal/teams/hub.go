@@ -11,13 +11,45 @@ import (
 // subscribed users doubles as chat presence: a person with at least one
 // open stream is online.
 type Hub struct {
-	mu   sync.Mutex
-	subs map[uint]map[chan []byte]struct{}
+	mu     sync.Mutex
+	subs   map[uint]map[chan []byte]struct{}
+	states map[uint]string // "chat" while a room is open in front of the person
 }
 
 // NewHub builds an empty hub.
 func NewHub() *Hub {
-	return &Hub{subs: make(map[uint]map[chan []byte]struct{})}
+	return &Hub{subs: make(map[uint]map[chan []byte]struct{}), states: make(map[uint]string)}
+}
+
+// SetState records what the person is doing and reports whether it changed.
+func (h *Hub) SetState(userID uint, state string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.subs[userID]) == 0 {
+		return false
+	}
+	if h.states[userID] == state {
+		return false
+	}
+	if state == "" {
+		delete(h.states, userID)
+	} else {
+		h.states[userID] = state
+	}
+	return true
+}
+
+// States returns the recorded activity of the given users.
+func (h *Hub) States(ids []uint) map[uint]string {
+	out := make(map[uint]string, len(ids))
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, id := range ids {
+		if st, ok := h.states[id]; ok {
+			out[id] = st
+		}
+	}
+	return out
 }
 
 // Subscribe opens a channel for one user's tab. The flag is true when this
@@ -49,6 +81,7 @@ func (h *Hub) Unsubscribe(userID uint, ch chan []byte) bool {
 	}
 	if len(set) == 0 {
 		delete(h.subs, userID)
+		delete(h.states, userID)
 		return true
 	}
 	return false

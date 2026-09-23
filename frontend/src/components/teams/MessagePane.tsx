@@ -1,10 +1,12 @@
 // MessagePane: the room's history and composer. Messages group by sender
-// and minute, days are separated, deleted lines read "Bu mesaj silindi.",
-// reactions sit under the line, hovering a line shows react, reply and
-// delete. Attachments are reserved: the paperclip is there, disabled.
+// and minute, days are separated, a "Yeni mesajlar" line marks where the
+// unread ones start, deleted lines read "Bu mesaj silindi.", reactions sit
+// under the line and the quick ones are one hover away. A reply quotes
+// the original and jumps to it on click. Lines can be edited by their
+// author. Attachments are reserved: the paperclip is there, disabled.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, SmilePlus, Trash2 } from "lucide-react";
+import { CornerUpLeft, Pencil, SmilePlus, Trash2 } from "lucide-react";
 import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { Modal } from "@/components/ui";
@@ -12,10 +14,14 @@ import { api, ApiError } from "@/api/client";
 import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { statusOf, Ticks } from "@/components/teams/Presence";
+import { renderMarkup } from "@/lib/markup";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
 
-const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅"];
+const QUICK = ["👍", "❤️", "😂", "😮", "🔥", "✅"];
+const ALL = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅", "👏", "🎉", "👀", "💯"];
+
+type Seats = Record<number, { deliveredId: number; readId: number; name: string }>;
 
 function hhmm(iso: string) {
   return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
@@ -39,15 +45,18 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reply, setReply] = useState<TeamsMessage | null>(null);
+  const [editing, setEditing] = useState<TeamsMessage | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [info, setInfo] = useState<TeamsMessage | null>(null);
+  const [flash, setFlash] = useState<number | null>(null);
+  // Where the unread lines started when the room was opened.
+  const [firstUnread, setFirstUnread] = useState<number | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
-  // Other seats' pointers, so ticks update live from receipts.
-  const [seats, setSeats] = useState<Record<number, { deliveredId: number; readId: number; name: string }>>({});
+  const [seats, setSeats] = useState<Seats>({});
   useEffect(() => {
-    const next: Record<number, { deliveredId: number; readId: number; name: string }> = {};
+    const next: Seats = {};
     for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name };
     setSeats(next);
   }, [group.members]);
@@ -60,6 +69,9 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
       setMore(r.more);
       setError(null);
       stickToBottom.current = true;
+      const unread = group.unread;
+      const fresh = r.items.filter((m) => !m.mine && m.kind !== "system");
+      setFirstUnread(unread > 0 && fresh.length ? fresh[Math.max(0, fresh.length - unread)].id : null);
       if (r.items.length) void api.teamsMarkRead(group.id, r.items[r.items.length - 1].id).catch(() => undefined);
       teams.clearUnread(group.id);
     } catch (e) {
@@ -72,6 +84,7 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
   useEffect(() => {
     setItems([]);
     setReply(null);
+    setEditing(null);
     setPicker(null);
     void load();
   }, [load]);
@@ -104,6 +117,9 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
           void api.teamsMarkRead(group.id, m.id).catch(() => undefined);
           teams.clearUnread(group.id);
         }
+      } else if (e.type === "message.edited" && e.message) {
+        const m = e.message;
+        setItems((cur) => cur.map((x) => (x.id === m.id ? { ...x, body: m.body, mentions: m.mentions, mentionsAll: m.mentionsAll, editedAt: m.editedAt, replyTo: m.replyTo } : x)));
       } else if (e.type === "receipt" && e.userId) {
         const uid = e.userId;
         setSeats((cur) => {
@@ -116,8 +132,8 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
         });
       } else if (e.type === "message.deleted" && e.id) {
         setItems((cur) => cur.map((x) => (x.id === e.id ? { ...x, deleted: true, body: "", canDelete: false, reactions: [] } : x)));
+        setEditing((cur) => (cur?.id === e.id ? null : cur));
       } else if (e.type === "reaction" && e.id) {
-        // Re-read the page around the message: simplest correct refresh.
         api.teamsMessages(group.id).then((r) => setItems((cur) => {
           const fresh = new Map(r.items.map((m) => [m.id, m]));
           return cur.map((x) => fresh.get(x.id) ?? x);
@@ -148,10 +164,25 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     stickToBottom.current = true;
   }
 
+  async function edit(id: number, out: Outgoing) {
+    const m = await api.teamsEditMessage(group.id, id, { body: out.body, mentionIds: out.mentionIds, mentionsAll: out.mentionsAll });
+    setItems((cur) => cur.map((x) => (x.id === id ? { ...x, body: m.body, mentions: m.mentions, mentionsAll: m.mentionsAll, editedAt: m.editedAt } : x)));
+    setEditing(null);
+  }
+
+  function editLast() {
+    const last = [...items].reverse().find((m) => m.mine && !m.deleted && m.kind === "text");
+    if (last) {
+      setReply(null);
+      setEditing(last);
+    }
+  }
+
   async function remove(m: TeamsMessage) {
     try {
       await api.teamsDeleteMessage(group.id, m.id);
       setItems((cur) => cur.map((x) => (x.id === m.id ? { ...x, deleted: true, body: "", canDelete: false, reactions: [] } : x)));
+      if (editing?.id === m.id) setEditing(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Silinemedi.");
     }
@@ -166,13 +197,24 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     }
   }
 
-  // Telegram-style right-click on a line.
+  // Scroll to a quoted line and flash it.
+  function jump(id: number) {
+    const el = list.current?.querySelector<HTMLElement>(`[data-mid="${id}"]`);
+    if (!el) {
+      setError("Mesaj bu sayfada değil, daha eski mesajları yükle.");
+      return;
+    }
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    setFlash(id);
+    window.setTimeout(() => setFlash((cur) => (cur === id ? null : cur)), 1600);
+  }
+
   function lineMenu(e: React.MouseEvent, m: TeamsMessage) {
     if (m.deleted || m.kind === "system") return;
     e.preventDefault();
     const items: MenuItem[] = [];
-    if (group.canPost) items.push({ label: "Yanıtla", onClick: () => setReply(m) });
-    items.push({ label: "Tepki ver", onClick: () => setPicker(m.id) });
+    if (group.canPost) items.push({ label: "Yanıtla", onClick: () => { setEditing(null); setReply(m); } });
+    if (m.mine && group.canPost) items.push({ label: "Düzenle", onClick: () => { setReply(null); setEditing(m); } });
     items.push({ label: "Metni kopyala", onClick: () => void navigator.clipboard?.writeText(m.body).catch(() => undefined) });
     items.push({ label: "Bilgi", onClick: () => setInfo(m) });
     if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => void remove(m) });
@@ -195,6 +237,8 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
     return out;
   }, [items]);
 
+  const typing = teams.typingLabel(group.id);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -210,96 +254,153 @@ export default function MessagePane({ group, selfId }: { group: TeamsGroupDetail
             <p className="text-xs text-muted-foreground">{group.canPost ? "İlk mesajı sen yaz." : "Bu grupta yazma yetkin yok."}</p>
           </div>
         )}
-        {rows.map(({ m, head, day }) => (
-          <div key={m.id}>
-            {day && (
-              <div className="my-4 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border/60" />
-                <span className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">{day}</span>
-                <span className="h-px flex-1 bg-border/60" />
-              </div>
-            )}
-            {m.kind === "system" ? (
-              <p className="my-2 text-center text-xs text-muted-foreground">{m.body}</p>
-            ) : (
-              <div onContextMenu={(e) => lineMenu(e, m)} className={cn("group relative flex gap-3 rounded-xl px-2 py-0.5 hover:bg-accent/40", head ? "mt-3" : "mt-0")}>
-                <div className="w-9 shrink-0">
-                  {head && m.sender && <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
-                  {!head && <span className="hidden text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
+        {rows.map(({ m, head, day }) => {
+          const mentionsMe = (m.mentions?.includes(selfId) || m.mentionsAll) && !m.mine;
+          const labels = [...(m.mentions ?? []).map((id) => seats[id]?.name).filter((n): n is string => !!n).map((n) => `@${n}`), ...(m.mentionsAll ? [`@${EVERYONE}`] : [])];
+          return (
+            <div key={m.id} data-mid={m.id}>
+              {day && (
+                <div className="my-4 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border/60" />
+                  <span className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">{day}</span>
+                  <span className="h-px flex-1 bg-border/60" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  {head && m.sender && (
-                    <div className="flex items-baseline gap-2">
-                      <span className={cn("text-sm font-semibold", m.mine && "text-primary")}>{m.sender.name}</span>
-                      <span className="text-[0.7rem] text-muted-foreground">{hhmm(m.createdAt)}</span>
+              )}
+              {firstUnread === m.id && (
+                <div className="my-3 flex items-center gap-3">
+                  <span className="h-px flex-1 bg-destructive/50" />
+                  <span className="rounded-full border border-destructive/40 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-destructive">Yeni mesajlar</span>
+                  <span className="h-px flex-1 bg-destructive/50" />
+                </div>
+              )}
+              {m.kind === "system" ? (
+                <p className="my-2 text-center text-xs text-muted-foreground">{m.body}</p>
+              ) : (
+                <div
+                  onContextMenu={(e) => lineMenu(e, m)}
+                  className={cn(
+                    "group relative flex gap-3 rounded-xl px-2 py-0.5 transition-colors duration-700",
+                    head ? "mt-3" : "mt-0",
+                    flash === m.id ? "bg-primary/15" : "hover:bg-accent/40",
+                    editing?.id === m.id && "bg-warning/10",
+                    mentionsMe && "border-l-2 border-violet-500 bg-violet-500/5 pl-1.5",
+                  )}
+                >
+                  <div className="w-9 shrink-0">
+                    {head && m.sender && <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
+                    {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {head && m.sender && (
+                      <div className="flex items-baseline gap-2">
+                        <span className={cn("text-sm font-semibold", m.mine && "text-primary")}>{m.sender.name}</span>
+                        <span className="text-[0.7rem] text-muted-foreground">{hhmm(m.createdAt)}</span>
+                      </div>
+                    )}
+                    {m.replyTo && (
+                      <button
+                        type="button"
+                        onClick={() => jump(m.replyTo!.id)}
+                        title="Yanıtlanan mesaja git"
+                        className="mt-1 mb-1 flex w-full max-w-lg items-start gap-2 rounded-lg border border-border/60 border-l-2 border-l-primary bg-muted/40 px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-muted/70"
+                      >
+                        <CornerUpLeft className="mt-0.5 size-3 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium text-foreground/90">{m.replyTo.sender}</span>
+                          <span className={cn("line-clamp-2 text-muted-foreground", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : m.replyTo.body}</span>
+                        </span>
+                      </button>
+                    )}
+                    {m.deleted ? (
+                      <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                        {renderMarkup(m.body, { mentions: labels })}
+                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" title={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
+                        {m.mine && (() => {
+                          const st = statusOf(m.id, selfId, seats);
+                          return <Ticks status={st.status} readBy={st.readBy} className="ml-1.5 -mt-0.5" />;
+                        })()}
+                      </div>
+                    )}
+                    {m.reactions.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {m.reactions.map((r) => (
+                          <button
+                            key={r.emoji}
+                            type="button"
+                            onClick={() => void react(m, r.emoji)}
+                            title={r.names.join(", ")}
+                            className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors", r.mine ? "border-primary/50 bg-primary/10" : "border-border/70 bg-muted/40 hover:bg-accent")}
+                          >
+                            <span>{r.emoji}</span>
+                            <span className="tabular-nums">{r.count}</span>
+                          </button>
+                        ))}
+                        <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} title="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
+                      </div>
+                    )}
+                  </div>
+                  {!m.deleted && (
+                    <div className={cn("absolute -top-3.5 right-3 items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex", picker === m.id ? "flex" : "hidden")}>
+                      {QUICK.map((e) => (
+                        <button key={e} type="button" onClick={() => void react(m, e)} title="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
+                      ))}
+                      <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} title="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
+                      <span className="mx-0.5 h-4 w-px bg-border" />
+                      {group.canPost && <button type="button" onClick={() => { setEditing(null); setReply(m); }} title="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
+                      {m.mine && group.canPost && <button type="button" onClick={() => { setReply(null); setEditing(m); }} title="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
+                      {m.canDelete && <button type="button" onClick={() => void remove(m)} title="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
                     </div>
                   )}
-                  {m.replyTo && (
-                    <div className="mt-0.5 mb-1 border-l-2 border-primary/50 pl-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground/80">{m.replyTo.sender}</span>
-                      {": "}
-                      <span className="italic">{m.replyTo.deleted ? "Bu mesaj silindi." : m.replyTo.body.slice(0, 120)}</span>
-                    </div>
-                  )}
-                  {m.deleted ? (
-                    <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
-                  ) : (
-                    <p className={cn("whitespace-pre-wrap break-words text-sm leading-relaxed", (m.mentions?.includes(selfId) || m.mentionsAll) && !m.mine && "-mx-2 rounded-lg border-l-2 border-violet-500 bg-violet-500/10 px-2 py-0.5")}>
-                      <Body text={m.body} names={m.mentions.map((id) => seats[id]?.name).filter((n): n is string => !!n)} all={m.mentionsAll} />
-                      {m.mine && (() => {
-                        const st = statusOf(m.id, selfId, seats);
-                        return <Ticks status={st.status} readBy={st.readBy} className="ml-1.5 align-text-bottom" />;
-                      })()}
-                    </p>
-                  )}
-                  {m.reactions.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {m.reactions.map((r) => (
-                        <button
-                          key={r.emoji}
-                          type="button"
-                          onClick={() => void react(m, r.emoji)}
-                          title={r.names.join(", ")}
-                          className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors", r.mine ? "border-primary/50 bg-primary/10" : "border-border/70 bg-muted/40 hover:bg-accent")}
-                        >
-                          <span>{r.emoji}</span>
-                          <span className="tabular-nums">{r.count}</span>
-                        </button>
+                  {picker === m.id && (
+                    <div className="absolute top-5 right-3 z-10 grid grid-cols-6 gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-lg">
+                      {ALL.map((e) => (
+                        <button key={e} type="button" onClick={() => void react(m, e)} className="rounded-lg px-1.5 py-1 text-lg hover:bg-accent">{e}</button>
                       ))}
                     </div>
                   )}
                 </div>
-                {!m.deleted && (
-                  <div className="absolute -top-3 right-3 hidden items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex">
-                    <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} title="Tepki ver" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
-                    {group.canPost && <button type="button" onClick={() => setReply(m)} title="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
-                    {m.canDelete && <button type="button" onClick={() => void remove(m)} title="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
-                  </div>
-                )}
-                {picker === m.id && (
-                  <div className="absolute top-5 right-3 z-10 flex gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-lg">
-                    {EMOJIS.map((e) => (
-                      <button key={e} type="button" onClick={() => void react(m, e)} className="rounded-lg px-1.5 py-1 text-lg hover:bg-accent">{e}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {error && <p className="px-5 pb-1 text-xs text-destructive">{error}</p>}
+      <div className="flex h-5 items-center px-5 text-xs">
+        {typing ? (
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="flex gap-0.5">
+              <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+              <span className="size-1 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
+              <span className="size-1 animate-bounce rounded-full bg-primary" />
+            </span>
+            <span className="italic">{typing}</span>
+          </span>
+        ) : error ? (
+          <span className="text-destructive">{error}</span>
+        ) : null}
+      </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {info && <MessageInfo message={info} seats={seats} selfId={selfId} onClose={() => setInfo(null)} />}
 
-      <Composer group={group} selfId={selfId} reply={reply} onCancelReply={() => setReply(null)} onSend={send} />
+      <Composer
+        group={group}
+        selfId={selfId}
+        reply={reply}
+        editing={editing}
+        onCancelReply={() => setReply(null)}
+        onCancelEdit={() => setEditing(null)}
+        onSend={send}
+        onEdit={edit}
+        onEditLast={editLast}
+      />
     </div>
   );
 }
 
 // MessageInfo: who has read a line, who only received it, who has not yet.
-function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessage; seats: Record<number, { deliveredId: number; readId: number; name: string }>; selfId: number; onClose: () => void }) {
+function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessage; seats: Seats; selfId: number; onClose: () => void }) {
   const read: string[] = [];
   const delivered: string[] = [];
   const pending: string[] = [];
@@ -314,7 +415,7 @@ function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessag
   const Section = ({ title, names, status }: { title: string; names: string[]; status?: "sent" | "delivered" | "read" }) => (
     <div>
       <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        <Ticks status={status} /> {title} · {names.length}
+        <Ticks status={status} size="size-4" /> {title} · {names.length}
       </p>
       {names.length ? (
         <ul className="space-y-0.5 text-sm">{names.map((n) => <li key={n}>{n}</li>)}</ul>
@@ -324,36 +425,13 @@ function MessageInfo({ message, seats, selfId, onClose }: { message: TeamsMessag
     </div>
   );
   return (
-    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${when}`} size="md">
+    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${when}${message.editedAt ? " · düzenlendi" : ""}`} size="md">
       <div className="space-y-4">
-        <p className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{message.body}</p>
+        <div className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{renderMarkup(message.body)}</div>
         <Section title="Okudu" names={read} status="read" />
         <Section title="Teslim edildi" names={delivered} status="delivered" />
         <Section title="Bekliyor" names={pending} status="sent" />
       </div>
     </Modal>
-  );
-}
-
-function escapeRe(v: string) {
-  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Body renders a line with its @tags highlighted.
-function Body({ text, names, all }: { text: string; names: string[]; all: boolean }) {
-  const labels = [...names.map((n) => `@${n}`), ...(all ? [`@${EVERYONE}`] : [])];
-  if (labels.length === 0) return <>{text}</>;
-  const re = new RegExp(`(${labels.sort((a, b) => b.length - a.length).map(escapeRe).join("|")})`, "gu");
-  const parts = text.split(re);
-  return (
-    <>
-      {parts.map((part, i) =>
-        labels.includes(part) ? (
-          <span key={i} className="rounded bg-violet-500/20 px-1 font-medium text-violet-500">{part}</span>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </>
   );
 }

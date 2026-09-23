@@ -67,7 +67,7 @@ export default function PeoplePicker({
               >
                 <span className="relative shrink-0">
                   <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
-                  <OnlineDot online={presenceOf(p).online} className="-right-0.5 -bottom-0.5 size-2.5" />
+                  <OnlineDot presence={presenceOf(p)} className="-right-0.5 -bottom-0.5 size-2.5" />
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
                 {on && <Check className="size-4 shrink-0 text-success" />}

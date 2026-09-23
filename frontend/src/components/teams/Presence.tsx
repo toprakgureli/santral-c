@@ -5,19 +5,32 @@ import { Check, CheckCheck } from "lucide-react";
 import type { TeamsMessage } from "@/api/types";
 import { cn } from "@/lib/utils";
 
-export function OnlineDot({ online, className }: { online: boolean; className?: string }) {
+export interface Presence {
+  online: boolean;
+  lastSeen?: string;
+  // "chat" while a room is open in front of the person.
+  state?: string;
+}
+
+export function OnlineDot({ presence, className }: { presence: Presence; className?: string }) {
+  const chatting = presence.online && presence.state === "chat";
   return (
     <span
-      className={cn("absolute rounded-full border-2 border-card", online ? "bg-success" : "bg-muted-foreground/40", className ?? "-right-0.5 -bottom-0.5 size-3")}
-      title={online ? "Çevrimiçi" : "Çevrimdışı"}
+      className={cn(
+        "absolute rounded-full border-2 border-card",
+        chatting ? "bg-violet-500" : presence.online ? "bg-success" : "bg-muted-foreground/40",
+        className ?? "-right-0.5 -bottom-0.5 size-3",
+      )}
+      title={seenLabel(presence)}
     />
   );
 }
 
-export function seenLabel(online: boolean, lastSeen?: string): string {
-  if (online) return "Çevrimiçi";
-  if (!lastSeen) return "Çevrimdışı";
-  const d = new Date(lastSeen);
+export function seenLabel(p: Presence): string {
+  if (p.online && p.state === "chat") return "Sohbette";
+  if (p.online) return "Çevrimiçi";
+  if (!p.lastSeen) return "Çevrimdışı";
+  const d = new Date(p.lastSeen);
   if (Number.isNaN(d.getTime())) return "Çevrimdışı";
   const now = new Date();
   const y = new Date(now);
@@ -28,15 +41,22 @@ export function seenLabel(online: boolean, lastSeen?: string): string {
   return `Son görülme ${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" })} ${time}`;
 }
 
+// presenceTone is the text colour that goes with the label.
+export function presenceTone(p: Presence): string {
+  if (p.online && p.state === "chat") return "text-violet-500";
+  if (p.online) return "text-success";
+  return "text-muted-foreground";
+}
+
 export type Status = NonNullable<TeamsMessage["status"]>;
 
-export function Ticks({ status, readBy, className }: { status?: Status; readBy?: string[]; className?: string }) {
+export function Ticks({ status, readBy, className, size = "size-[1.05rem]" }: { status?: Status; readBy?: string[]; className?: string; size?: string }) {
   if (!status) return null;
   const title = status === "read" ? (readBy && readBy.length ? `Okudu: ${readBy.join(", ")}` : "Okundu") : status === "delivered" ? "Teslim edildi" : "Gönderildi";
   const Icon = status === "sent" ? Check : CheckCheck;
   return (
-    <span title={title} className={cn("inline-flex shrink-0 items-center", status === "read" ? "text-success" : "text-muted-foreground/70", className)}>
-      <Icon className="size-3.5" />
+    <span title={title} className={cn("inline-flex shrink-0 items-center align-middle", status === "read" ? "text-success" : "text-muted-foreground/70", className)}>
+      <Icon className={cn(size, "stroke-[2.25]")} />
     </span>
   );
 }

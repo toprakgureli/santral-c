@@ -121,6 +121,7 @@ type MessageView struct {
 	// Mentions are the tagged people's ids; MentionsAll is "@herkes".
 	Mentions    []uint `json:"mentions"`
 	MentionsAll bool   `json:"mentionsAll"`
+	EditedAt    string `json:"editedAt,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 	// Status is set on the reader's own lines: sent, delivered or read.
 	Status string   `json:"status,omitempty"`
@@ -154,6 +155,9 @@ type Event struct {
 	LastSeen    string `json:"lastSeen,omitempty"`
 	DeliveredID uint   `json:"deliveredId,omitempty"`
 	ReadID      uint   `json:"readId,omitempty"`
+	// typing: groupId, userId, name. presence also carries state ("chat" or "").
+	Name  string `json:"name,omitempty"`
+	State string `json:"state,omitempty"`
 }
 
 // ---------------------------------------------------------------- helpers
@@ -216,9 +220,11 @@ func (s *Service) presence(ctx context.Context, people map[uint]Person) {
 		ids = append(ids, id)
 	}
 	online := s.hub.Online(ids)
+	states := s.hub.States(ids)
 	seen, _ := s.repo.LastSeen(ctx, ids)
 	for id, p := range people {
 		p.Online = online[id]
+		p.State = states[id]
 		if !p.Online {
 			if t, ok := seen[id]; ok {
 				p.LastSeen = stamp(t)
@@ -1061,6 +1067,9 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 	if v.Deleted {
 		v.Body = ""
 	}
+	if r.EditedAt != nil {
+		v.EditedAt = stamp(*r.EditedAt)
+	}
 	v.CanDelete = !v.Deleted && r.Kind == "text" && (v.Mine || isAdmin(m) || actor.Can(enums.TeamsAdmin))
 	grouped := map[string]*ReactionView{}
 	order := []string{}
@@ -1120,26 +1129,12 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		return nil, errs.Internal(err)
 	}
 	// Only seated people can be tagged; the sender tagging themself is noise.
-	tagged := []uint{}
-	if len(mentionIDs) > 0 {
-		memberIDs, err := s.repo.MemberIDs(ctx, groupID)
-		if err != nil {
-			return nil, errs.Internal(err)
-		}
-		seated := map[uint]bool{}
-		for _, id := range memberIDs {
-			seated[id] = true
-		}
-		seen := map[uint]bool{}
-		for _, id := range mentionIDs {
-			if id != actorID && seated[id] && !seen[id] {
-				seen[id] = true
-				tagged = append(tagged, id)
-			}
-		}
-		if err := s.repo.CreateMentions(ctx, msg.ID, tagged); err != nil {
-			return nil, errs.Internal(err)
-		}
+	tagged, err := s.tagged(ctx, actorID, groupID, mentionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateMentions(ctx, msg.ID, tagged); err != nil {
+		return nil, errs.Internal(err)
 	}
 	_ = s.repo.MarkRead(ctx, groupID, actorID, msg.ID)
 	view, err := s.broadcastMessage(ctx, g, msg, tagged)
@@ -1153,6 +1148,135 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		mine.Status, _ = s.status(actorID, msg, seats, nil)
 	}
 	return &mine, nil
+}
+
+// tagged keeps the seated, distinct, non-self ids of a mention list.
+func (s *Service) tagged(ctx context.Context, actorID, groupID uint, mentionIDs []uint) ([]uint, error) {
+	out := []uint{}
+	if len(mentionIDs) == 0 {
+		return out, nil
+	}
+	memberIDs, err := s.repo.MemberIDs(ctx, groupID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	seated := map[uint]bool{}
+	for _, id := range memberIDs {
+		seated[id] = true
+	}
+	seen := map[uint]bool{}
+	for _, id := range mentionIDs {
+		if id != actorID && seated[id] && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// EditMessage rewrites the author's own line and tells the room.
+func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID uint, body string, mentionIDs []uint, mentionsAll bool) (*MessageView, error) {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	g, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if !canPost(g, m) {
+		return nil, errs.Forbidden("Bu grupta yazma yetkiniz yok.")
+	}
+	msg, err := s.repo.Message(ctx, messageID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil {
+		return nil, errs.NotFound("Mesaj bulunamadı.")
+	}
+	if msg.Kind != "text" || msg.SenderID == nil || *msg.SenderID != actorID {
+		return nil, errs.Forbidden("Yalnızca kendi mesajınızı düzenleyebilirsiniz.")
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, errs.Invalid("Mesaj boş olamaz.", nil)
+	}
+	if len([]rune(body)) > maxBody {
+		return nil, errs.Invalid("Mesaj en fazla 4000 karakter olabilir.", nil)
+	}
+	mentionsAll = mentionsAll && g.Kind == "group"
+	if err := s.repo.UpdateMessage(ctx, messageID, body, mentionsAll); err != nil {
+		return nil, errs.Internal(err)
+	}
+	tags, err := s.tagged(ctx, actorID, groupID, mentionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.DeleteMentions(ctx, messageID); err != nil {
+		return nil, errs.Internal(err)
+	}
+	if err := s.repo.CreateMentions(ctx, messageID, tags); err != nil {
+		return nil, errs.Internal(err)
+	}
+	fresh, err := s.repo.Message(ctx, messageID)
+	if err != nil || fresh == nil {
+		return nil, errs.Internal(err)
+	}
+	views, err := s.views(ctx, actor, g, m, []models.ChatMessage{*fresh})
+	if err != nil || len(views) == 0 {
+		return nil, errs.Internal(err)
+	}
+	mine := views[0]
+	// The room gets a neutral copy: no "mine", no delete right baked in.
+	shared := mine
+	shared.Mine = false
+	shared.CanDelete = false
+	shared.Status = ""
+	shared.ReadBy = nil
+	s.notifyGroup(ctx, groupID, Event{Type: "message.edited", GroupID: groupID, ID: messageID, Message: &shared})
+	return &mine, nil
+}
+
+// Typing tells the other seats the actor is writing. Nothing is stored.
+func (s *Service) Typing(ctx context.Context, actorID, groupID uint) error {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	g, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
+		return err
+	}
+	if !canPost(g, m) {
+		return nil
+	}
+	ids, err := s.repo.MemberIDs(ctx, groupID)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	others := ids[:0]
+	for _, id := range ids {
+		if id != actorID {
+			others = append(others, id)
+		}
+	}
+	s.hub.Send(others, Event{Type: "typing", GroupID: groupID, UserID: actorID, Name: actor.Name})
+	return nil
+}
+
+// SetPresence records whether the actor is looking at a room right now.
+func (s *Service) SetPresence(ctx context.Context, actorID uint, state string) error {
+	if _, err := s.actor(ctx, actorID); err != nil {
+		return err
+	}
+	if state != "chat" {
+		state = ""
+	}
+	if s.hub.SetState(actorID, state) {
+		on := true
+		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &on, State: state})
+	}
+	return nil
 }
 
 // system posts a grey line nobody wrote ("X joined").

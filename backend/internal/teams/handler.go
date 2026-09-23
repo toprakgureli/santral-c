@@ -491,6 +491,65 @@ func (h *Handler) React(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// Edit rewrites one of the caller's own lines.
+func (h *Handler) Edit(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	mid, err := param(c, "mid")
+	if err != nil {
+		return err
+	}
+	var req sendBody
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	res, err := h.service.EditMessage(c.UserContext(), id, gid, mid, req.Body, req.MentionIDs, req.MentionsAll)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
+// Typing relays "X is writing" to the room.
+func (h *Handler) Typing(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	gid, err := param(c, "id")
+	if err != nil {
+		return err
+	}
+	if err := h.service.Typing(c.UserContext(), id, gid); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Presence records whether the caller is looking at a room.
+func (h *Handler) Presence(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req struct {
+		State string `json:"state"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.SetPresence(c.UserContext(), id, req.State); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 // Stream pushes room events to the caller over Server-Sent Events.
 func (h *Handler) Stream(c *fiber.Ctx) error {
 	id, err := actor(c)
@@ -581,6 +640,9 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Get("/groups/:id/messages", r.handler.Messages)
 	group.Post("/groups/:id/messages", r.handler.Send)
 	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)
+	group.Put("/groups/:id/messages/:mid", r.handler.Edit)
+	group.Post("/groups/:id/typing", r.handler.Typing)
+	group.Post("/presence", r.handler.Presence)
 	group.Post("/groups/:id/messages/:mid/reactions", r.handler.React)
 }
 

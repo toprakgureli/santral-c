@@ -181,6 +181,10 @@ export const api = {
   teamsMessages: (id: number, before?: number) => request<{ items: TeamsMessage[]; more: boolean }>(`/teams/groups/${id}/messages` + query({ before })),
   teamsSend: (id: number, body: { body: string; replyToId?: number; mentionIds?: number[]; mentionsAll?: boolean }) =>
     request<TeamsMessage>(`/teams/groups/${id}/messages`, { method: "POST", body: JSON.stringify(body) }),
+  teamsEditMessage: (id: number, messageId: number, body: { body: string; mentionIds?: number[]; mentionsAll?: boolean }) =>
+    request<TeamsMessage>(`/teams/groups/${id}/messages/${messageId}`, { method: "PUT", body: JSON.stringify(body) }),
+  teamsTyping: (id: number) => request<void>(`/teams/groups/${id}/typing`, { method: "POST" }),
+  teamsPresence: (state: "chat" | "") => request<void>("/teams/presence", { method: "POST", body: JSON.stringify({ state }) }),
   teamsDeleteMessage: (id: number, messageId: number) => request<void>(`/teams/groups/${id}/messages/${messageId}`, { method: "DELETE" }),
   teamsReact: (id: number, messageId: number, emoji: string) =>
     request<void>(`/teams/groups/${id}/messages/${messageId}/reactions`, { method: "POST", body: JSON.stringify({ emoji }) }),

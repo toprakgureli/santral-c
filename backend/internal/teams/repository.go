@@ -30,6 +30,7 @@ type Person struct {
 	Version   int64  `json:"avatarVersion,omitempty"`
 	Online    bool   `json:"online"`
 	LastSeen  string `json:"lastSeen,omitempty"`
+	State     string `json:"state,omitempty"`
 	Active    bool   `json:"-"`
 }
 
@@ -603,4 +604,21 @@ func (r *Repository) Mentions(ctx context.Context, messageIDs []uint) (map[uint]
 		out[m.MessageID] = append(out[m.MessageID], m.UserID)
 	}
 	return out, nil
+}
+
+// UpdateMessage rewrites a line's text and stamps it edited.
+func (r *Repository) UpdateMessage(ctx context.Context, id uint, body string, mentionsAll bool) error {
+	if err := r.db.WithContext(ctx).Model(&models.ChatMessage{}).Where("id = ? AND deleted_at IS NULL", id).
+		Updates(map[string]any{"body": body, "mentions_all": mentionsAll, "edited_at": time.Now()}).Error; err != nil {
+		return fmt.Errorf("message could not be edited: %w", err)
+	}
+	return nil
+}
+
+// DeleteMentions drops a line's tags before they are written again.
+func (r *Repository) DeleteMentions(ctx context.Context, messageID uint) error {
+	if err := r.db.WithContext(ctx).Where("message_id = ?", messageID).Delete(&models.ChatMention{}).Error; err != nil {
+		return fmt.Errorf("mentions could not be cleared: %w", err)
+	}
+	return nil
 }

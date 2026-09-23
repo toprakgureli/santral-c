@@ -1,12 +1,16 @@
 // Composer: the message box. Enter sends, Shift+Enter breaks the line.
 // Typing @ opens a member list; picking one writes "@Ad Soyad" and tags
-// them, "@herkes" tags the whole room.
+// them, "@herkes" tags the whole room. Selected text can be styled from
+// the right-click menu or with shortcuts, and a live preview shows the
+// result. The same box edits a line when `editing` is set.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, CornerUpLeft, Paperclip, SendHorizontal, Users, X } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { AtSign, CornerUpLeft, Paperclip, Pencil, SendHorizontal, Type, Users, X } from "lucide-react";
+import { ApiError, api } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMessage } from "@/api/types";
+import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { applyStyle, MARKUP_HINT, renderMarkup, STYLES, type Style } from "@/lib/markup";
 import { cn } from "@/lib/utils";
 
 export const EVERYONE = "herkes";
@@ -19,7 +23,29 @@ export interface Outgoing {
 
 type Suggestion = { id: number; name: string; hasAvatar: boolean; avatarVersion?: number };
 
-export default function Composer({ group, selfId, reply, onCancelReply, onSend }: { group: TeamsGroupDetail; selfId: number; reply: TeamsMessage | null; onCancelReply: () => void; onSend: (m: Outgoing) => Promise<void> }) {
+const TYPING_EVERY_MS = 2500;
+
+export default function Composer({
+  group,
+  selfId,
+  reply,
+  editing,
+  onCancelReply,
+  onCancelEdit,
+  onSend,
+  onEdit,
+  onEditLast,
+}: {
+  group: TeamsGroupDetail;
+  selfId: number;
+  reply: TeamsMessage | null;
+  editing: TeamsMessage | null;
+  onCancelReply: () => void;
+  onCancelEdit: () => void;
+  onSend: (m: Outgoing) => Promise<void>;
+  onEdit: (id: number, m: Outgoing) => Promise<void>;
+  onEditLast: () => void;
+}) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +53,10 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
   const [tagged, setTagged] = useState<Record<number, string>>({});
   const [query, setQuery] = useState<{ start: number; text: string } | null>(null);
   const [cursor, setCursor] = useState(0);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [help, setHelp] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const lastTyping = useRef(0);
 
   useEffect(() => {
     setText("");
@@ -39,6 +68,30 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
   useEffect(() => {
     if (reply) area.current?.focus();
   }, [reply]);
+
+  // Entering edit mode loads the line; leaving it clears the box.
+  useEffect(() => {
+    if (!editing) return;
+    setText(editing.body);
+    const names: Record<number, string> = {};
+    for (const id of editing.mentions ?? []) {
+      const m = group.members.find((x) => x.id === id);
+      if (m) names[id] = m.name;
+    }
+    setTagged(names);
+    requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      grow(el);
+    });
+  }, [editing, group.members]);
+
+  function grow(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }
 
   const suggestions = useMemo<Suggestion[]>(() => {
     if (!query) return [];
@@ -68,6 +121,11 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
     setText(value);
     const caret = area.current?.selectionStart ?? value.length;
     setQuery(detect(value, caret));
+    // "yazıyor..." for the others, at most once every few seconds.
+    if (value.trim() && !editing && Date.now() - lastTyping.current > TYPING_EVERY_MS) {
+      lastTyping.current = Date.now();
+      void api.teamsTyping(group.id).catch(() => undefined);
+    }
   }
 
   function pick(s: Suggestion) {
@@ -84,8 +142,19 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
       el.focus();
       const pos = query.start + label.length + 1;
       el.setSelectionRange(pos, pos);
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      grow(el);
+    });
+  }
+
+  function style(kind: Style) {
+    const el = area.current;
+    if (!el) return;
+    const r = applyStyle(text, el.selectionStart, el.selectionEnd, kind);
+    setText(r.text);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(r.start, r.end);
+      grow(el);
     });
   }
 
@@ -97,22 +166,34 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
     return { body, mentionIds, mentionsAll };
   }
 
+  function reset() {
+    setText("");
+    setTagged({});
+    setQuery(null);
+    requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.style.height = "auto";
+      el.focus();
+    });
+  }
+
   async function submit() {
     const body = text.trim();
     if (!body || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await onSend(outgoing(body));
-      setText("");
-      setTagged({});
-      setQuery(null);
-      requestAnimationFrame(() => {
-        const el = area.current;
-        if (!el) return;
-        el.style.height = "auto";
-        el.focus();
-      });
+      if (editing) {
+        if (body === editing.body.trim()) {
+          onCancelEdit();
+        } else {
+          await onEdit(editing.id, outgoing(body));
+        }
+      } else {
+        await onSend(outgoing(body));
+      }
+      reset();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
     } finally {
@@ -143,11 +224,60 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
         return;
       }
     }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      const map: Record<string, Style | undefined> = {
+        b: "bold",
+        i: "italic",
+        u: "underline",
+        e: e.shiftKey ? "block" : "code",
+        x: e.shiftKey ? "strike" : undefined,
+      };
+      const s = map[k];
+      if (s) {
+        e.preventDefault();
+        style(s);
+        return;
+      }
+    }
+    if (e.key === "Escape") {
+      if (editing) {
+        e.preventDefault();
+        onCancelEdit();
+        reset();
+        return;
+      }
+      if (reply) {
+        e.preventDefault();
+        onCancelReply();
+        return;
+      }
+    }
+    if (e.key === "ArrowUp" && !text && !editing) {
+      e.preventDefault();
+      onEditLast();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();
     }
   }
+
+  // Right-click on a selection: the style menu. Without one, the browser's.
+  function onContextMenu(e: React.MouseEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget;
+    if (el.selectionStart === el.selectionEnd) return;
+    e.preventDefault();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: STYLES.map((s) => ({ label: `${s.label}  ${s.shortcut ? `(${s.shortcut})` : ""}`.trim(), onClick: () => style(s.key) })),
+    });
+  }
+
+  const showPreview = text.length > 0 && MARKUP_HINT.test(text);
+  const mentionLabels = [...Object.values(tagged).map((n) => `@${n}`), `@${EVERYONE}`];
 
   if (!group.canPost) {
     return (
@@ -159,14 +289,28 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
 
   return (
     <div className="relative border-t border-border/60 px-4 py-3">
-      {reply && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
-          <CornerUpLeft className="size-3.5 shrink-0 text-muted-foreground" />
+      {editing ? (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-1.5 text-xs">
+          <Pencil className="size-3.5 shrink-0 text-warning" />
+          <span className="min-w-0 flex-1 truncate">Mesaj düzenleniyor <span className="text-muted-foreground">· Esc ile vazgeç, Enter ile kaydet</span></span>
+          <button type="button" onClick={() => { onCancelEdit(); reset(); }} aria-label="Düzenlemeyi iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
+        </div>
+      ) : reply ? (
+        <div className="mb-2 flex items-center gap-2.5 rounded-lg border-l-2 border-primary bg-muted/40 py-1.5 pr-2 pl-3 text-xs">
+          <CornerUpLeft className="size-3.5 shrink-0 text-primary" />
+          {reply.sender && <UserAvatar userId={reply.sender.id} name={reply.sender.name} hasAvatar={reply.sender.hasAvatar} version={reply.sender.avatarVersion} className="size-5" fallbackClassName="bg-primary/10 text-[0.55rem] text-primary" />}
           <span className="min-w-0 flex-1 truncate">
             <span className="font-medium">{reply.sender?.name}</span>
-            <span className="text-muted-foreground">: {reply.body.slice(0, 100)}</span>
+            <span className="text-muted-foreground"> kişisine yanıt: {reply.body.slice(0, 100)}</span>
           </span>
           <button type="button" onClick={onCancelReply} aria-label="Yanıtı iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
+        </div>
+      ) : null}
+
+      {showPreview && (
+        <div className="mb-2 rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-2 text-sm">
+          <p className="mb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Önizleme</p>
+          <div className="whitespace-pre-wrap break-words leading-relaxed">{renderMarkup(text, { mentions: mentionLabels })}</div>
         </div>
       )}
 
@@ -196,25 +340,46 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
         </div>
       )}
 
-      <div className="flex items-end gap-2 rounded-2xl border border-border/70 bg-muted/30 px-2 py-1.5 focus-within:border-ring/60 focus-within:ring-4 focus-within:ring-ring/15">
+      {help && (
+        <div className="absolute right-4 bottom-full z-20 mb-1 w-72 rounded-xl border border-border bg-popover p-3 shadow-lg">
+          <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Biçimlendirme</p>
+          <ul className="space-y-1 text-xs">
+            {STYLES.map((s) => (
+              <li key={s.key} className="flex items-center justify-between gap-3">
+                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { style(s.key); setHelp(false); }} className="font-medium hover:underline">{s.label}</button>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.7rem] text-muted-foreground">{s.sample.replace(/\n/g, "⏎")}</code>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[0.65rem] text-muted-foreground">Metni seçip sağ tıklayarak da stil seçebilirsin.</p>
+        </div>
+      )}
+
+      <div className={cn("flex items-end gap-2 rounded-2xl border bg-muted/30 px-2 py-1.5 focus-within:ring-4", editing ? "border-warning/60 focus-within:ring-warning/15" : "border-border/70 focus-within:border-ring/60 focus-within:ring-ring/15")}>
         <button type="button" disabled title="Dosya ekleme yakında" className="mb-1 rounded-lg p-1.5 text-muted-foreground/50"><Paperclip className="size-4" /></button>
         <textarea
           ref={area}
           value={text}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onContextMenu={onContextMenu}
           onClick={(e) => setQuery(detect(text, e.currentTarget.selectionStart))}
           rows={1}
           maxLength={4000}
           placeholder={group.kind === "dm" ? `${group.name} kişisine yaz...` : `#${group.name} grubuna yaz... (@ ile etiketle)`}
           className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60"
           style={{ height: "auto" }}
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-          }}
+          onInput={(e) => grow(e.currentTarget)}
         />
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setHelp((v) => !v)}
+          title="Biçimlendirme"
+          className={cn("mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", help && "bg-accent text-foreground")}
+        >
+          <Type className="size-4" />
+        </button>
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
@@ -236,14 +401,15 @@ export default function Composer({ group, selfId, reply, onCancelReply, onSend }
         >
           <AtSign className="size-4" />
         </button>
-        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} aria-label="Gönder" className="mb-0.5 flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity disabled:opacity-40">
-          <SendHorizontal className="size-4" />
+        <button type="button" onClick={() => void submit()} disabled={busy || !text.trim()} aria-label={editing ? "Kaydet" : "Gönder"} className={cn("mb-0.5 flex size-9 items-center justify-center rounded-xl transition-opacity disabled:opacity-40", editing ? "bg-warning text-black" : "bg-primary text-primary-foreground")}>
+          {editing ? <Pencil className="size-4" /> : <SendHorizontal className="size-4" />}
         </button>
       </div>
       <div className="mt-1 flex items-center justify-between px-1 text-[0.65rem] text-muted-foreground/70">
-        <span>Enter gönderir, Shift+Enter yeni satır.</span>
+        <span>Enter gönderir, Shift+Enter yeni satır{!editing && ", ↑ son mesajını düzenler"}.</span>
         {error ? <span className="text-destructive">{error}</span> : <span>{text.length} / 4000</span>}
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }

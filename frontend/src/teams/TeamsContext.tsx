@@ -29,10 +29,12 @@ interface TeamsState {
   askNotifications: () => Promise<void>;
   // Live presence by user id; falls back to what the server sent with the card.
   presence: Record<number, PresenceInfo>;
-  presenceOf: (p: { id: number; online?: boolean; lastSeen?: string } | undefined | null) => PresenceInfo;
+  presenceOf: (p: { id: number; online?: boolean; lastSeen?: string; state?: string } | undefined | null) => PresenceInfo;
   // Tags waiting to be noticed; they stay until dismissed.
   mentions: MentionToast[];
   dismissMention: (id: number) => void;
+  // "Toprak yazıyor..." for a room, or null.
+  typingLabel: (groupId: number) => string | null;
 }
 
 export interface MentionToast {
@@ -59,6 +61,17 @@ function loadMentions(): MentionToast[] {
 export interface PresenceInfo {
   online: boolean;
   lastSeen?: string;
+  state?: string;
+}
+
+type Typing = Record<number, Record<number, { name: string; until: number }>>;
+const TYPING_TTL_MS = 4500;
+
+export function typingText(names: string[]): string | null {
+  if (names.length === 0) return null;
+  if (names.length === 1) return `${names[0]} yazıyor...`;
+  if (names.length <= 3) return `${names.slice(0, -1).join(", ")} ve ${names[names.length - 1]} yazıyor...`;
+  return `${names[0]} ve ${names.length - 1} kişi yazıyor...`;
 }
 
 const Ctx = createContext<TeamsState | undefined>(undefined);
@@ -86,6 +99,61 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   }, [mentions]);
   const dismissMention = useCallback((id: number) => setMentions((cur) => cur.filter((t) => t.id !== id)), []);
   const selfId = user?.id ?? 0;
+  const [typing, setTyping] = useState<Typing>({});
+
+  // Expire "yazıyor" entries a few seconds after the last keystroke.
+  useEffect(() => {
+    if (Object.keys(typing).length === 0) return;
+    const t = window.setInterval(() => {
+      const now = Date.now();
+      setTyping((cur) => {
+        let changed = false;
+        const next: Typing = {};
+        for (const [gid, users] of Object.entries(cur)) {
+          const live: Record<number, { name: string; until: number }> = {};
+          for (const [uid, v] of Object.entries(users)) {
+            if (v.until > now) live[Number(uid)] = v;
+            else changed = true;
+          }
+          if (Object.keys(live).length) next[Number(gid)] = live;
+        }
+        return changed ? next : cur;
+      });
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [typing]);
+
+  const typingLabel = useCallback(
+    (groupId: number) => {
+      const users = typing[groupId];
+      if (!users) return null;
+      const names = Object.values(users).map((v) => v.name.split(" ")[0]);
+      return typingText(names);
+    },
+    [typing],
+  );
+
+  // Tell the server whether a room is open in front of us ("Sohbette").
+  const lastState = useRef<"chat" | "" | null>(null);
+  const sendState = useCallback((force = false) => {
+    if (!enabled) return;
+    const state: "chat" | "" = openRef.current && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams") ? "chat" : "";
+    if (!force && lastState.current === state) return;
+    lastState.current = state;
+    void api.teamsPresence(state).catch(() => undefined);
+  }, [enabled]);
+  useEffect(() => {
+    sendState();
+    const onVis = () => sendState();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    window.addEventListener("blur", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+      window.removeEventListener("blur", onVis);
+    };
+  }, [openGroupId, sendState]);
   const refreshTimer = useRef<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationPermission | "unsupported">(() =>
     typeof Notification === "undefined" ? "unsupported" : Notification.permission,
@@ -99,7 +167,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       setInvites(o.invites);
       setPresence((cur) => {
         const next = { ...cur };
-        for (const g of o.groups) if (g.peer) next[g.peer.id] = { online: !!g.peer.online, lastSeen: g.peer.lastSeen };
+        for (const g of o.groups) if (g.peer) next[g.peer.id] = { online: !!g.peer.online, lastSeen: g.peer.lastSeen, state: g.peer.state };
         return next;
       });
     } catch {
@@ -168,6 +236,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
       es.onopen = () => {
         retry = 0;
         void refresh();
+        // The server forgets activity across restarts; say it again.
+        sendState(true);
       };
       es.onmessage = (ev) => {
         let e: TeamsEvent;
@@ -176,8 +246,29 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         } catch {
           return;
         }
-        if (e.type === "message" && e.message) {
+        if (e.type === "typing" && e.groupId && e.userId && e.userId !== selfId) {
+          const gid = e.groupId;
+          const uid = e.userId;
+          const name = e.name ?? "Biri";
+          setTyping((cur) => ({ ...cur, [gid]: { ...(cur[gid] ?? {}), [uid]: { name, until: Date.now() + TYPING_TTL_MS } } }));
+        } else if (e.type === "message.edited" && e.message) {
           const m = e.message;
+          setGroups((list) => list.map((g) => (g.id === m.groupId && g.lastMessage?.id === m.id ? { ...g, lastMessage: { ...g.lastMessage, body: m.body, editedAt: m.editedAt } } : g)));
+        } else if (e.type === "message" && e.message) {
+          const m = e.message;
+          if (m.sender) {
+            const gid = m.groupId;
+            const uid = m.sender.id;
+            setTyping((cur) => {
+              if (!cur[gid]?.[uid]) return cur;
+              const users = { ...cur[gid] };
+              delete users[uid];
+              const next = { ...cur };
+              if (Object.keys(users).length) next[gid] = users;
+              else delete next[gid];
+              return next;
+            });
+          }
           setGroups((list) => {
             const idx = list.findIndex((g) => g.id === m.groupId);
             if (idx === -1) {
@@ -194,7 +285,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           void refresh();
         } else if (e.type === "presence" && e.userId) {
           const uid = e.userId;
-          setPresence((cur) => ({ ...cur, [uid]: { online: !!e.online, lastSeen: e.lastSeen ?? cur[uid]?.lastSeen } }));
+          setPresence((cur) => ({ ...cur, [uid]: { online: !!e.online, lastSeen: e.lastSeen ?? cur[uid]?.lastSeen, state: e.online ? e.state ?? "" : "" } }));
         } else if (e.type === "receipt" && e.groupId) {
           // A direct message has one reader, so its preview tick is exact;
           // a group's needs every seat, so its list entry is refreshed lazily.
@@ -262,18 +353,18 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const unread = useMemo(() => groups.reduce((n, g) => n + (g.muted ? 0 : g.unread), 0), [groups]);
 
   const presenceOf = useCallback(
-    (p: { id: number; online?: boolean; lastSeen?: string } | undefined | null): PresenceInfo => {
+    (p: { id: number; online?: boolean; lastSeen?: string; state?: string } | undefined | null): PresenceInfo => {
       if (!p) return { online: false };
       const live = presence[p.id];
       if (live) return live;
-      return { online: !!p.online, lastSeen: p.lastSeen };
+      return { online: !!p.online, lastSeen: p.lastSeen, state: p.state };
     },
     [presence],
   );
 
   const value = useMemo<TeamsState>(
-    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention }),
-    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention],
+    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, typingLabel }),
+    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, typingLabel],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

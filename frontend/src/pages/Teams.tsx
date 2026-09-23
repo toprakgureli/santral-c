@@ -13,7 +13,7 @@ import GroupAvatar from "../components/teams/GroupAvatar";
 import { AddPeopleDialog, GroupSettingsDialog, NewDMDialog, NewGroupDialog } from "../components/teams/GroupDialogs";
 import MembersPanel from "../components/teams/MembersPanel";
 import MessagePane from "../components/teams/MessagePane";
-import { OnlineDot, seenLabel, Ticks } from "../components/teams/Presence";
+import { OnlineDot, presenceTone, seenLabel, Ticks } from "../components/teams/Presence";
 import { Badge, Button } from "../components/ui";
 import { can } from "../lib/permissions";
 import { cn } from "../lib/utils";
@@ -109,6 +109,7 @@ export function Teams() {
   const Room = ({ g }: { g: TeamsGroup }) => {
     const active = g.id === groupId;
     const last = g.lastMessage;
+    const typing = teams.typingLabel(g.id);
     return (
       <button
         type="button"
@@ -118,7 +119,7 @@ export function Teams() {
       >
         <span className="relative shrink-0">
           <GroupAvatar group={g} className="size-9 text-xs" />
-          {g.kind === "dm" && <OnlineDot online={teams.presenceOf(g.peer).online} />}
+          {g.kind === "dm" && <OnlineDot presence={teams.presenceOf(g.peer)} />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
@@ -127,10 +128,16 @@ export function Teams() {
             {last && <span className="shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">{when(last.createdAt)}</span>}
           </span>
           <span className="flex items-center gap-1.5">
-            {last?.mine && !last.deleted && <Ticks status={last.status} />}
+            {typing ? (
+              <span className="min-w-0 flex-1 truncate text-xs italic text-primary">{typing}</span>
+            ) : (
+            <>
+            {last?.mine && !last.deleted && <Ticks status={last.status} size="size-4" />}
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
               {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${last.body}`) : "Henüz mesaj yok"}
             </span>
+            </>
+            )}
             {g.unread > 0 && (
               <span className={cn("shrink-0 rounded-full px-1.5 text-[0.65rem] font-semibold tabular-nums", g.muted ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground")}>{g.unread > 99 ? "99+" : g.unread}</span>
             )}
@@ -216,7 +223,7 @@ export function Teams() {
             <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4">
               <span className="relative shrink-0">
                 <GroupAvatar group={detail} className="size-9 text-xs" />
-                {detail.kind === "dm" && <OnlineDot online={teams.presenceOf(detail.peer).online} />}
+                {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer)} />}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -225,11 +232,17 @@ export function Teams() {
                   {detail.postPolicy === "admins" && <Badge tone="amber">Duyuru</Badge>}
                   {detail.muted && <VolumeX className="size-3.5 text-muted-foreground" />}
                 </div>
-                <p className={cn("truncate text-xs", detail.kind === "dm" && teams.presenceOf(detail.peer).online ? "text-success" : "text-muted-foreground")}>
-                  {detail.kind === "dm"
-                    ? seenLabel(teams.presenceOf(detail.peer).online, teams.presenceOf(detail.peer).lastSeen)
-                    : detail.description || `${detail.memberCount} üye · ${detail.members.filter((m) => teams.presenceOf(m).online).length} çevrimiçi`}
-                </p>
+                {(() => {
+                  const typing = teams.typingLabel(detail.id);
+                  if (typing) return <p className="truncate text-xs italic text-primary">{typing}</p>;
+                  if (detail.kind === "dm") {
+                    const p = teams.presenceOf(detail.peer);
+                    return <p className={cn("truncate text-xs", presenceTone(p))}>{seenLabel(p)}</p>;
+                  }
+                  const on = detail.members.filter((m) => teams.presenceOf(m).online).length;
+                  const here = detail.members.filter((m) => { const p = teams.presenceOf(m); return p.online && p.state === "chat"; }).length;
+                  return <p className="truncate text-xs text-muted-foreground">{detail.description ? `${detail.description} · ` : ""}{detail.memberCount} üye · {on} çevrimiçi{here ? ` · ${here} sohbette` : ""}</p>;
+                })()}
               </div>
               {detail.kind === "group" && (
                 <>

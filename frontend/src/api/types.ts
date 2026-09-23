@@ -202,6 +202,8 @@ export interface TeamsPerson {
   avatarVersion?: number;
   online?: boolean;
   lastSeen?: string;
+  // "chat" while a room is open in front of the person.
+  state?: string;
 }
 
 export interface TeamsReaction {
@@ -224,6 +226,7 @@ export interface TeamsMessage {
   reactions: TeamsReaction[];
   mentions: number[];
   mentionsAll: boolean;
+  editedAt?: string;
   createdAt: string;
   // Only on the reader's own lines.
   status?: "sent" | "delivered" | "read";
@@ -283,7 +286,7 @@ export interface TeamsOverview {
 }
 
 export interface TeamsEvent {
-  type: "hello" | "message" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt";
+  type: "hello" | "message" | "message.edited" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt" | "typing";
   groupId?: number;
   message?: TeamsMessage;
   id?: number;
@@ -294,6 +297,9 @@ export interface TeamsEvent {
   // receipt
   deliveredId?: number;
   readId?: number;
+  // typing (name), presence (state)
+  name?: string;
+  state?: string;
 }
 
 export interface Paged<T> {
