@@ -46,7 +46,7 @@ export default function Telephone({ h, selfId }: KindProps) {
     return (
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Round n={d.step} total={Math.max(1, d.steps - 1)} label="Adım" />
+          <Round n={d.step + 1} total={d.steps} label="Adım" />
           <Note>{d.done} / {active} gönderdi</Note>
         </div>
         {!mine ? (
@@ -57,6 +57,21 @@ export default function Telephone({ h, selfId }: KindProps) {
             <p className="text-sm font-medium">Gönderdin, elden ele geçiyor.</p>
             <Note>Diğerleri bitirince sıradaki adım açılır.</Note>
           </div>
+        ) : d.kind === "write" ? (
+          <>
+            <Prompt className="text-base"><span className="mr-2 inline-flex size-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-500 align-middle"><Type className="size-4" /></span>Aklına gelen bir cümle yaz; sıradaki kişi bunu çizecek. Ne kadar saçma, o kadar iyi.</Prompt>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (text.trim()) void send();
+              }}
+              className="flex gap-2"
+            >
+              <input value={text} onChange={(e) => setText(e.target.value)} maxLength={80} placeholder="Örn. müşteri faturayı yiyen kediyi şikâyet ediyor" autoFocus className="h-11 flex-1 rounded-xl border border-border/70 bg-muted/40 px-4 text-sm outline-none focus:border-ring/60 focus:ring-4 focus:ring-ring/20" />
+              <Button type="submit" disabled={busy || !text.trim()} className="h-11">Gönder</Button>
+            </form>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </>
         ) : d.kind === "draw" ? (
           <>
             <Prompt className="text-lg font-medium"><span className="mr-2 inline-flex size-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-500 align-middle"><Pencil className="size-4" /></span>Bunu çiz: <strong>{d.promptText}</strong></Prompt>
@@ -105,12 +120,8 @@ export default function Telephone({ h, selfId }: KindProps) {
           {steps.map((s, i) => (
             <li key={i} className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="flex w-28 shrink-0 flex-col items-center gap-1 pt-1 text-center">
-                {s.kind === "word" ? (
-                  <span className="flex size-9 items-center justify-center rounded-full bg-violet-500/15 text-lg">📜</span>
-                ) : (
-                  <UserAvatar userId={s.by} name={nameOf(g.players, s.by)} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />
-                )}
-                <span className="text-[0.7rem] font-medium leading-tight text-muted-foreground">{s.kind === "word" ? "Başlangıç" : s.kind === "draw" ? `${nameOf(g.players, s.by).split(" ")[0]} çizdi` : `${nameOf(g.players, s.by).split(" ")[0]} yazdı`}</span>
+                <UserAvatar userId={s.by} name={nameOf(g.players, s.by)} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                <span className="text-[0.7rem] font-medium leading-tight text-muted-foreground">{nameOf(g.players, s.by).split(" ")[0]} {s.kind === "word" ? "başlattı" : s.kind === "draw" ? "çizdi" : "yazdı"}</span>
               </div>
               {s.kind === "draw" ? (
                 <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-border/60 bg-white shadow-sm" style={{ aspectRatio: "8 / 5" }}>

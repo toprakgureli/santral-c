@@ -74,7 +74,7 @@ export function GamesAdmin() {
           ))}
         </div>
         {kind && <Pool key={kind.key} meta={kind} onChanged={load} />}
-        <p className="mt-4 text-xs text-muted-foreground">Kulaktan Kulağa Çizim, Çiz & Bil ile aynı kelime havuzunu kullanır. İçeriği olmayan oyunlar (Yalan mı Gerçek mi, Kim Söyledi, Bağlantı Dört, Masa Hokeyi) oyuncuların kendi yazdıklarıyla ya da odadaki mesajlarla oynanır.</p>
+        <p className="mt-4 text-xs text-muted-foreground">Kulaktan Kulağa Çizim'de cümleleri oyuncular yazar; süresinde yazmayana Çiz & Bil havuzundan kelime düşer. İçeriği olmayan oyunlar (Yalan mı Gerçek mi, Kim Söyledi, Bağlantı Dört, Masa Hokeyi) oyuncuların kendi yazdıklarıyla ya da odadaki mesajlarla oynanır.</p>
       </Card>
     </div>
   );

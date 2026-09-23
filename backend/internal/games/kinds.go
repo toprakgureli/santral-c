@@ -1671,8 +1671,8 @@ type telephoneKind struct{}
 
 func (telephoneKind) Meta() Meta {
 	return Meta{Key: "telephone", Name: "Kulaktan Kulağa Çizim", Tagline: "Kelime çizime, çizim kelimeye, sonunda bambaşka bir şey.", Icon: "phone",
-		How:        "Herkese bir kelime gelir ve onu çizer. Çizimin elden ele geçer: sıradaki kişi çizime bakıp ne olduğunu yazar, ondan sonraki o yazıyı yeniden çizer. Zincir herkesi dolaşınca albüm açılır ve ilk kelimenin neye dönüştüğünü hep birlikte izlersiniz. Kazanan yok, gülen kazanır.",
-		MinPlayers: 3, MaxPlayers: 12, ItemKind: "draw", ItemLabel: "Kelime", ItemHint: "Çiz & Bil ile aynı kelime havuzu.", MinItems: 3,
+		How:        "Herkes aklına gelen bir cümleyi yazar; ne kadar saçma, o kadar iyi. Cümlen sıradaki kişiye gider, o çizer. Çizim ondan sonrakine gider, o ne gördüğünü yazar. Sonraki o yazıyı yeniden çizer. Zincir herkesi dolaşınca albüm açılır ve ilk cümlenin neye dönüştüğünü hep birlikte izlersiniz. Kazanan yok, gülen kazanır.",
+		MinPlayers: 3, MaxPlayers: 12, ItemKind: "draw", ItemLabel: "Kelime", ItemHint: "Yedek: süresinde cümle yazmayana Çiz & Bil havuzundan kelime düşer.", MinItems: 0,
 		DefaultRounds: 1, DefaultSeconds: 60, SecondsLabel: "Çizim süresi (sn), yazma süresi bunun yarısı"}
 }
 func (telephoneKind) NewState() any { return &telephoneState{} }
@@ -1684,16 +1684,9 @@ func (k *telephoneKind) Start(m *Match, s *Service, ctx context.Context) error {
 		st.Order = append(st.Order, p.UserID)
 	}
 	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
-	items := s.pickItems(ctx, "draw", len(st.Order))
-	if len(items) == 0 {
-		return errs.Invalid("Kelime havuzu boş.", nil)
-	}
-	st.Chains = nil
-	for i, uid := range st.Order {
-		st.Chains = append(st.Chains, []tStep{{Kind: "word", By: uid, Text: items[i%len(items)].Text}})
-	}
+	st.Chains = make([][]tStep, len(st.Order))
 	st.Seconds = m.Config.Seconds
-	st.Step = 0
+	st.Step = -1
 	st.Phase = "work"
 	k.open(m)
 	return nil
@@ -1708,8 +1701,12 @@ func (k *telephoneKind) worker(st *telephoneState, c int) uint {
 	return st.Order[(c+st.Step)%n]
 }
 
+// stepKind: everyone writes first, then drawing and describing alternate.
 func (k *telephoneKind) stepKind(st *telephoneState) string {
-	if st.Step%2 == 1 {
+	switch {
+	case st.Step == 0:
+		return "write"
+	case st.Step%2 == 1:
 		return "draw"
 	}
 	return "guess"
@@ -1726,23 +1723,39 @@ func (k *telephoneKind) open(m *Match) {
 		return
 	}
 	st.Done = map[uint]bool{}
-	if k.stepKind(st) == "draw" {
+	switch k.stepKind(st) {
+	case "draw":
 		m.setDeadline(st.Seconds)
-	} else {
+	case "write":
+		m.setDeadline(max(30, st.Seconds/2))
+	default:
 		m.setDeadline(max(20, st.Seconds/2))
 	}
 }
 
-// fill closes the step: anyone who did not deliver gets a placeholder.
-func (k *telephoneKind) fill(st *telephoneState) {
+// fill closes the step: anyone who did not deliver gets a placeholder. A
+// missing opening line is taken from the word pool so the chain can still run.
+func (k *telephoneKind) fill(m *Match, s *Service, ctx context.Context) {
+	st := m.Data.(*telephoneState)
+	var spare []models.GameItem
 	for c := range st.Chains {
 		uid := k.worker(st, c)
 		if len(st.Chains[c]) > st.Step {
 			continue
 		}
-		if k.stepKind(st) == "draw" {
+		switch k.stepKind(st) {
+		case "write":
+			if spare == nil {
+				spare = s.pickItems(ctx, "draw", len(st.Chains))
+			}
+			text := "Boş kâğıt"
+			if len(spare) > 0 {
+				text = spare[c%len(spare)].Text
+			}
+			st.Chains[c] = append(st.Chains[c], tStep{Kind: "word", By: uid, Text: text})
+		case "draw":
 			st.Chains[c] = append(st.Chains[c], tStep{Kind: "draw", By: uid})
-		} else {
+		default:
 			st.Chains[c] = append(st.Chains[c], tStep{Kind: "guess", By: uid, Text: "..."})
 		}
 	}
@@ -1771,21 +1784,26 @@ func (k *telephoneKind) Act(m *Match, s *Service, ctx context.Context, uid uint,
 		if err := decode(payload, &in); err != nil {
 			return false, err
 		}
-		if k.stepKind(st) == "draw" {
+		switch k.stepKind(st) {
+		case "draw":
 			if !strings.HasPrefix(in.Image, "data:image/") || len(in.Image) > 220000 {
 				return false, errs.Invalid("Çizim okunamadı ya da çok büyük.", nil)
 			}
 			st.Chains[chain] = append(st.Chains[chain], tStep{Kind: "draw", By: uid, Image: in.Image})
-		} else {
+		default:
 			text := strings.TrimSpace(in.Text)
 			if text == "" || len([]rune(text)) > 80 {
-				return false, errs.Invalid("Tahmin 1 ile 80 karakter arasında olmalı.", nil)
+				return false, errs.Invalid("Yazı 1 ile 80 karakter arasında olmalı.", nil)
 			}
-			st.Chains[chain] = append(st.Chains[chain], tStep{Kind: "guess", By: uid, Text: text})
+			kind := "guess"
+			if st.Step == 0 {
+				kind = "word"
+			}
+			st.Chains[chain] = append(st.Chains[chain], tStep{Kind: kind, By: uid, Text: text})
 		}
 		st.Done[uid] = true
 		if len(st.Done) >= len(m.active()) {
-			k.fill(st)
+			k.fill(m, s, ctx)
 			k.open(m)
 		}
 		return true, nil
@@ -1829,7 +1847,7 @@ func (k *telephoneKind) advance(m *Match, s *Service, ctx context.Context) {
 func (k *telephoneKind) Timeout(m *Match, s *Service, ctx context.Context) {
 	st := m.Data.(*telephoneState)
 	if st.Phase == "work" {
-		k.fill(st)
+		k.fill(m, s, ctx)
 		k.open(m)
 		return
 	}
@@ -1840,7 +1858,7 @@ func (k *telephoneKind) Timeout(m *Match, s *Service, ctx context.Context) {
 func (k *telephoneKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
 	st := m.Data.(*telephoneState)
 	if st.Phase == "work" && len(st.Done) >= len(m.active()) {
-		k.fill(st)
+		k.fill(m, s, ctx)
 		k.open(m)
 	}
 }
@@ -1852,14 +1870,15 @@ func (k *telephoneKind) View(m *Match, viewer uint) any {
 		out["kind"] = k.stepKind(st)
 		for c := range st.Chains {
 			if k.worker(st, c) == viewer {
-				prev := st.Chains[c][len(st.Chains[c])-1]
 				out["chain"] = c
 				out["submitted"] = len(st.Chains[c]) > st.Step
-				if st.Step == 1 || prev.Kind == "word" || prev.Kind == "guess" {
-					out["promptText"] = prev.Text
-				}
-				if prev.Kind == "draw" {
-					out["promptImage"] = prev.Image
+				if st.Step > 0 {
+					prev := st.Chains[c][st.Step-1]
+					if prev.Kind == "draw" {
+						out["promptImage"] = prev.Image
+					} else {
+						out["promptText"] = prev.Text
+					}
 				}
 			}
 		}
