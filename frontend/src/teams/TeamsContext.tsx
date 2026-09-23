@@ -36,6 +36,9 @@ interface TeamsState {
   // Tags waiting to be noticed; they stay until dismissed.
   mentions: MentionToast[];
   dismissMention: (id: number) => void;
+  // The latest ordinary message, shown briefly; only one at a time.
+  toast: MentionToast | null;
+  dismissToast: () => void;
   // "Toprak yazıyor..." for a room, or null.
   typingLabel: (groupId: number) => string | null;
 }
@@ -94,6 +97,18 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const listeners = useRef(new Set<(e: TeamsEvent) => void>());
   const [presence, setPresence] = useState<Record<number, PresenceInfo>>({});
   const [mentions, setMentions] = useState<MentionToast[]>(loadMentions);
+  const [toast, setToast] = useState<MentionToast | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const dismissToast = useCallback(() => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = null;
+    setToast(null);
+  }, []);
+  const showToast = useCallback((t: MentionToast) => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    setToast(t);
+    toastTimer.current = window.setTimeout(() => setToast(null), 8000);
+  }, []);
   useEffect(() => {
     try {
       localStorage.setItem(MENTIONS_KEY, JSON.stringify(mentions));
@@ -190,10 +205,12 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     (m: TeamsMessage) => {
       const g = groupsRef.current.find((x) => x.id === m.groupId);
       if (m.mine || m.kind === "system" || m.sender?.id === selfId) return;
-      // A direct @ reaches you even in a muted room; "@herkes" respects the mute.
+      // "all" silences everything; "mentions" lets only @ tags through.
+      const mute = g?.mute ?? (g?.muted ? "mentions" : "none");
+      if (mute === "all") return;
       const taggedMe = m.mentions?.includes(selfId) ?? false;
-      const tagged = taggedMe || (m.mentionsAll && !g?.muted);
-      if (g?.muted && !taggedMe) return;
+      const tagged = taggedMe || m.mentionsAll;
+      if (mute === "mentions" && !tagged) return;
       const roomOpen = openRef.current === m.groupId && document.visibilityState === "visible" && window.location.pathname.startsWith("/teams");
       if (roomOpen) return;
       if (tagged) {
@@ -204,6 +221,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         }
       } else {
         tones.notify();
+        if (m.sender) showToast({ id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender: m.sender, body: previewLabel(m.body, m.attachments), at: m.createdAt });
       }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         const title = tagged
@@ -221,7 +239,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [selfId],
+    [selfId, showToast],
   );
 
   // Live stream with a polling fallback (a proxy may buffer SSE).
@@ -370,8 +388,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<TeamsState>(
-    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, typingLabel }),
-    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, typingLabel],
+    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel }),
+    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

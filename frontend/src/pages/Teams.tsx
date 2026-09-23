@@ -101,7 +101,9 @@ export function Teams() {
                 return teams.refresh();
               }),
           },
-      { label: g.muted ? "Sesi aç" : "Sessize al", onClick: () => void api.teamsMute(g.id, !g.muted).then(() => teams.refresh()) },
+      ...(g.mute !== "none" ? [{ label: "Sesi aç", onClick: () => void api.teamsMute(g.id, "none").then(() => teams.refresh()) }] : []),
+      ...(g.mute !== "mentions" ? [{ label: "Sessize al (yalnızca etiketler bildirir)", onClick: () => void api.teamsMute(g.id, "mentions").then(() => teams.refresh()) }] : []),
+      ...(g.mute !== "all" ? [{ label: "Tamamen sessize al", onClick: () => void api.teamsMute(g.id, "all").then(() => teams.refresh()) }] : []),
     ];
     if (g.kind === "group" && g.myRole !== "owner") items.push({ label: "Gruptan ayrıl", danger: true, onClick: () => void api.teamsRemoveMember(g.id, selfId).then(() => { teams.refresh(); if (groupId === g.id) navigate("/teams"); }) });
     setMenu({ x: e.clientX, y: e.clientY, items });
@@ -125,7 +127,7 @@ export function Teams() {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className={cn("min-w-0 flex-1 truncate text-sm", g.unread && !g.muted ? "font-semibold" : "font-medium")}>{g.name}</span>
-            {g.muted && <VolumeX className="size-3 shrink-0 text-muted-foreground" />}
+            {g.muted && <VolumeX className={cn("size-3 shrink-0", g.mute === "all" ? "text-destructive/70" : "text-muted-foreground")} aria-label={g.mute === "all" ? "Tamamen sessiz" : "Sessiz, etiketler bildirir"} />}
             {last && <span className="shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">{when(last.createdAt)}</span>}
           </span>
           <span className="flex items-center gap-1.5">

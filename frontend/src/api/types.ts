@@ -277,6 +277,7 @@ export interface TeamsGroup {
   canInvite: boolean;
   canDelete: boolean;
   muted: boolean;
+  mute: "none" | "mentions" | "all";
   unread: number;
   memberCount: number;
   peer?: TeamsPerson;

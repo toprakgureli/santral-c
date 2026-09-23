@@ -353,12 +353,17 @@ func (h *Handler) Mute(c *fiber.Ctx) error {
 		return err
 	}
 	var req struct {
-		Muted bool `json:"muted"`
+		Mute  string `json:"mute"`
+		Muted *bool  `json:"muted"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	if err := h.service.SetMuted(c.UserContext(), id, gid, req.Muted); err != nil {
+	level := req.Mute
+	if level == "" && req.Muted != nil {
+		level = map[bool]string{true: "mentions", false: "none"}[*req.Muted]
+	}
+	if err := h.service.SetMuted(c.UserContext(), id, gid, level); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)

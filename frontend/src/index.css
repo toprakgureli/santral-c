@@ -533,3 +533,9 @@ body[data-drag="nwse"] { cursor: nwse-resize; }
 body[data-drag="nesw"] { cursor: nesw-resize; }
 body[data-drag="ew"] { cursor: ew-resize; }
 body[data-drag="grab"] { cursor: grabbing; }
+
+/* The message toast's bottom line drains while it waits to close. */
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}

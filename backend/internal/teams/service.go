@@ -63,6 +63,7 @@ type GroupView struct {
 	CanInvite   bool         `json:"canInvite"`
 	CanDelete   bool         `json:"canDelete"`
 	Muted       bool         `json:"muted"`
+	Mute        string       `json:"mute"` // none | mentions | all
 	Unread      int64        `json:"unread"`
 	MemberCount int64        `json:"memberCount"`
 	Peer        *Person      `json:"peer,omitempty"`
@@ -459,6 +460,10 @@ func (s *Service) groupView(actor *models.User, g *models.ChatGroup, m *models.C
 	if m != nil {
 		v.MyRole = m.Role
 		v.Muted = m.Muted
+		v.Mute = m.Mute
+		if v.Mute == "" {
+			v.Mute = "none"
+		}
 	}
 	return v
 }
@@ -909,8 +914,12 @@ func (s *Service) UpdateMember(ctx context.Context, actorID, groupID, userID uin
 	return s.Detail(ctx, actorID, groupID)
 }
 
-// SetMuted silences or restores a room for the actor only.
-func (s *Service) SetMuted(ctx context.Context, actorID, groupID uint, muted bool) error {
+// SetMuted silences or restores a room for the actor only. Levels: none,
+// mentions (only @ tags notify), all (nothing notifies).
+func (s *Service) SetMuted(ctx context.Context, actorID, groupID uint, level string) error {
+	if level != "mentions" && level != "all" {
+		level = "none"
+	}
 	actor, err := s.actor(ctx, actorID)
 	if err != nil {
 		return err
@@ -920,7 +929,7 @@ func (s *Service) SetMuted(ctx context.Context, actorID, groupID uint, muted boo
 	} else if m == nil {
 		return errs.NotFound("Grup bulunamadı.")
 	}
-	if err := s.repo.UpdateMember(ctx, groupID, actorID, map[string]any{"muted": muted}); err != nil {
+	if err := s.repo.UpdateMember(ctx, groupID, actorID, map[string]any{"muted": level != "none", "mute": level}); err != nil {
 		return errs.Internal(err)
 	}
 	return nil

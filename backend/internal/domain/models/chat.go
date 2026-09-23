@@ -28,6 +28,7 @@ type ChatMember struct {
 	Role            string    `gorm:"column:role;size:8;not null;default:member"`
 	CanPost         bool      `gorm:"column:can_post;not null;default:true"`
 	Muted           bool      `gorm:"column:muted;not null;default:false"`
+	Mute            string    `gorm:"column:mute;size:10;not null;default:none"`
 	MarkedUnread    bool      `gorm:"column:marked_unread;not null;default:false"`
 	LastReadID      uint      `gorm:"column:last_read_id;not null;default:0"`
 	LastDeliveredID uint      `gorm:"column:last_delivered_id;not null;default:0"`
