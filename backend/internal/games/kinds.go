@@ -1223,6 +1223,9 @@ type hockeyState struct {
 	GoalAt time.Time     `json:"goalAt"`
 	Serve  int           `json:"serve"`
 	Scorer int           `json:"scorer"` // seat that just scored, for the banner
+	Still  int           `json:"-"`      // ticks the puck has barely moved
+	LastX  float64       `json:"-"`
+	LastY  float64       `json:"-"`
 }
 
 // Table in abstract units; the browser scales. Speeds are per tick at 30 Hz.
@@ -1265,6 +1268,12 @@ func (k *hockeyKind) serve(st *hockeyState) {
 	st.Puck = [4]float64{hkW / 2, hkH / 2, 0, 1.6 * dir}
 	st.PadV = [2][2]float64{}
 	st.Phase = "play"
+	// A mallet parked on the centre spot must not swallow the serve.
+	for i := 0; i < 2; i++ {
+		if math.Hypot(st.Puck[0]-st.Pads[i][0], st.Puck[1]-st.Pads[i][1]) < hkPad+hkPuck {
+			k.separate(st, i, i)
+		}
+	}
 }
 
 func (k *hockeyKind) seat(m *Match, uid uint) int {
@@ -1328,18 +1337,16 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 			if sp := math.Hypot(p[2], p[3]); sp > hkMaxSpeed {
 				p[2], p[3] = p[2]/sp*hkMaxSpeed, p[3]/sp*hkMaxSpeed
 			}
-			// Leave the puck just outside the mallet's final position.
-			fx, fy := p[0]-x, p[1]-y
-			fd := math.Hypot(fx, fy)
-			if fd < hkPad+hkPuck {
-				if fd < 0.01 {
-					fx, fy, fd = nx, ny, 1
+			// Leave the puck just outside the mallet's final position, sliding
+			// along a board if it is pinned there.
+			st.Pads[seat] = [2]float64{x, y}
+			if math.Hypot(p[0]-x, p[1]-y) < hkPad+hkPuck {
+				ox2, oy2 := k.separate(st, seat, seat)
+				if p[2]*ox2+p[3]*oy2 < 0.2 {
+					p[2] += ox2 * 0.6
+					p[3] += oy2 * 0.6
 				}
-				p[0] = x + fx/fd*(hkPad+hkPuck+0.2)
-				p[1] = y + fy/fd*(hkPad+hkPuck+0.2)
 			}
-			p[0] = math.Max(hkPuck, math.Min(hkW-hkPuck, p[0]))
-			p[1] = math.Max(hkPuck, math.Min(hkH-hkPuck, p[1]))
 		}
 	}
 	st.Pads[seat] = [2]float64{x, y}
@@ -1405,13 +1412,25 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 			p[1] = hkH - hkPuck
 			p[3] = -p[3] * hkWallBounce
 		}
-		// Paddles: reflect off the normal and add the swing.
-		for i := 0; i < 2; i++ {
-			dx, dy := p[0]-st.Pads[i][0], p[1]-st.Pads[i][1]
-			dist := math.Hypot(dx, dy)
-			if dist < hkPad+hkPuck && dist > 0 {
-				nx, ny := dx/dist, dy/dist
-				// Velocity of the puck relative to the paddle.
+		// Mallets: reflect off the normal and add the swing. Both are checked
+		// twice so a puck squeezed between them still comes out.
+		for pass := 0; pass < 2; pass++ {
+			for i := 0; i < 2; i++ {
+				dx, dy := p[0]-st.Pads[i][0], p[1]-st.Pads[i][1]
+				if math.Hypot(dx, dy) >= hkPad+hkPuck {
+					continue
+				}
+				nx, ny := k.separate(st, i, i)
+				if pass > 0 {
+					// Second contact in the same step: just glance off.
+					if p[2]*nx+p[3]*ny < 0 {
+						dot := p[2]*nx + p[3]*ny
+						p[2] -= 2 * dot * nx
+						p[3] -= 2 * dot * ny
+					}
+					continue
+				}
+				// Velocity of the puck relative to the mallet.
 				rvx, rvy := p[2]-st.PadV[i][0], p[3]-st.PadV[i][1]
 				dot := rvx*nx + rvy*ny
 				if dot < 0 {
@@ -1426,10 +1445,20 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 				} else if sp < hkMinSpeed {
 					p[2], p[3] = nx*hkMinSpeed, ny*hkMinSpeed
 				}
-				p[0] = st.Pads[i][0] + nx*(hkPad+hkPuck+0.05)
-				p[1] = st.Pads[i][1] + ny*(hkPad+hkPuck+0.05)
+				// Never leave the puck moving into the mallet.
+				if p[2]*nx+p[3]*ny < 0.2 {
+					p[2] += nx * 0.4
+					p[3] += ny * 0.4
+				}
 			}
 		}
+		// Belt and braces: the puck stays on the table whatever happened.
+		if math.IsNaN(p[0]) || math.IsNaN(p[1]) || math.IsNaN(p[2]) || math.IsNaN(p[3]) {
+			k.serve(st)
+			return false
+		}
+		p[0] = math.Max(hkPuck, math.Min(hkW-hkPuck, p[0]))
+		p[1] = math.Max(hkPuck, math.Min(hkH-hkPuck, p[1]))
 	}
 	p[2] *= hkFriction
 	p[3] *= hkFriction
@@ -1438,6 +1467,19 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 		st.PadV[i][0] *= 0.6
 		st.PadV[i][1] *= 0.6
 	}
+	// Watchdog: a puck that cannot get anywhere for two seconds (pinned in
+	// a corner, wedged between mallets) is dropped back at the centre.
+	if math.Hypot(p[0]-st.LastX, p[1]-st.LastY) < 0.4 {
+		st.Still++
+		if st.Still > 60 {
+			st.Still = 0
+			k.serve(st)
+			return false
+		}
+	} else {
+		st.Still = 0
+	}
+	st.LastX, st.LastY = p[0], p[1]
 	if math.Hypot(p[2], p[3]) < 0.25 {
 		// A dead puck drifts toward the side that has to serve.
 		p[3] = 0.25
@@ -1446,6 +1488,81 @@ func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
 		}
 	}
 	return false
+}
+
+// separate moves the puck out of mallet i and returns the contact normal.
+// A puck pinned against a board slides along it instead of being pushed
+// into the wall and clamped back inside the mallet, which used to freeze
+// the game; a puck dead centre is pushed toward the far goal.
+func (k *hockeyKind) separate(st *hockeyState, i int, seat int) (float64, float64) {
+	p := &st.Puck
+	mx, my := st.Pads[i][0], st.Pads[i][1]
+	const R = hkPad + hkPuck + 0.2
+	inside := func(x, y float64) bool { return x >= hkPuck && x <= hkW-hkPuck && y >= hkPuck && y <= hkH-hkPuck }
+	dx, dy := p[0]-mx, p[1]-my
+	dist := math.Hypot(dx, dy)
+	if dist < 1e-6 {
+		dx, dy, dist = 0, -1, 1
+		if seat == 1 {
+			dy = 1
+		}
+	}
+	nx, ny := dx/dist, dy/dist
+	// Candidate spots on the circle around the mallet, best first: the
+	// contact normal, then the same edge with the other sign, then the
+	// other axis both ways, then straight toward the table centre. The
+	// first one on the table wins; in a corner that is never the wall.
+	cands := [][2]float64{{mx + nx*R, my + ny*R}}
+	if tx := mx + nx*R; tx < hkPuck || tx > hkW-hkPuck {
+		cx := math.Max(hkPuck, math.Min(hkW-hkPuck, tx))
+		if rest := R*R - (cx-mx)*(cx-mx); rest > 0 {
+			sy := math.Sqrt(rest)
+			if ny < 0 {
+				cands = append(cands, [2]float64{cx, my - sy}, [2]float64{cx, my + sy})
+			} else {
+				cands = append(cands, [2]float64{cx, my + sy}, [2]float64{cx, my - sy})
+			}
+		}
+	}
+	if ty := my + ny*R; ty < hkPuck || ty > hkH-hkPuck {
+		cy := math.Max(hkPuck, math.Min(hkH-hkPuck, ty))
+		if rest := R*R - (cy-my)*(cy-my); rest > 0 {
+			sx := math.Sqrt(rest)
+			if nx < 0 || (nx == 0 && mx > hkW/2) {
+				cands = append(cands, [2]float64{mx - sx, cy}, [2]float64{mx + sx, cy})
+			} else {
+				cands = append(cands, [2]float64{mx + sx, cy}, [2]float64{mx - sx, cy})
+			}
+		}
+	}
+	// Then sweep the whole circle, nearest angle to the contact first, so a
+	// puck squeezed between both mallets slips out sideways.
+	base := math.Atan2(ny, nx)
+	for step := 1; step <= 8; step++ {
+		for _, sign := range []float64{1, -1} {
+			a := base + sign*float64(step)*math.Pi/8
+			cands = append(cands, [2]float64{mx + math.Cos(a)*R, my + math.Sin(a)*R})
+		}
+	}
+	// A spot inside the other mallet is no escape either: a puck pinned
+	// between both mallets on a board must come out into the open ice.
+	ox, oy := st.Pads[1-i][0], st.Pads[1-i][1]
+	free := func(x, y float64) bool { return inside(x, y) && math.Hypot(x-ox, y-oy) >= R-0.1 }
+	chosen := cands[len(cands)-1]
+	for _, c := range cands {
+		if free(c[0], c[1]) {
+			chosen = c
+			break
+		}
+	}
+	p[0] = math.Max(hkPuck, math.Min(hkW-hkPuck, chosen[0]))
+	p[1] = math.Max(hkPuck, math.Min(hkH-hkPuck, chosen[1]))
+	dx, dy = p[0]-mx, p[1]-my
+	dist = math.Hypot(dx, dy)
+	if dist < 1e-6 {
+		return nx, ny
+	}
+	return dx / dist, dy / dist
 }
 
 func (k *hockeyKind) frame(m *Match) any {
