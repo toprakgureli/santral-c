@@ -22,6 +22,7 @@ const (
 	ModulePerformance Module = "performance"
 	ModuleSystem      Module = "system"
 	ModuleTeams       Module = "teams"
+	ModuleGames       Module = "games"
 )
 
 // Permission keys.
@@ -74,6 +75,9 @@ const (
 	TeamsMemberAdd    Permission = "teams.member_add"
 	TeamsAdmin        Permission = "teams.admin"
 
+	GamesPlay   Permission = "games.play"
+	GamesManage Permission = "games.manage"
+
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
@@ -123,6 +127,8 @@ var permissions = []PermissionInfo{
 	{TeamsMemberInvite, "Teams gruplarına davet gönderir"},
 	{TeamsMemberAdd, "Teams gruplarına doğrudan üye ekler"},
 	{TeamsAdmin, "Tüm Teams gruplarını yönetir"},
+	{GamesPlay, "Teams'teki mini oyunlara katılır"},
+	{GamesManage, "Mini oyun içeriklerini ve ayarlarını yönetir"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
@@ -149,6 +155,7 @@ var moduleLabels = map[Module]string{
 	ModulePerformance: "Ekip Performansı",
 	ModuleSystem:      "Sistem",
 	ModuleTeams:       "Teams",
+	ModuleGames:       "Mini Oyunlar",
 }
 
 // ModuleLabel returns the human-facing title for a module.

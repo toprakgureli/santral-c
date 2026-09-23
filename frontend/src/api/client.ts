@@ -60,7 +60,7 @@ function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
-async function request<T>(path: string, options: RequestInit = {}, allowRetry = true): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}, allowRetry = true): Promise<T> {
   // FormData bodies must keep the browser-set multipart Content-Type (with its
   // boundary); only default to JSON for the rest.
   const isForm = options.body instanceof FormData;

@@ -19,6 +19,8 @@ const historyLimit = 25
 type Service struct {
 	repo  *Repository
 	users IActorResolver
+	// OnLogged, when set, hears every recorded escalation (user, category).
+	OnLogged func(userID uint, category string)
 }
 
 // NewService builds an escalation service.
@@ -298,6 +300,9 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	}
 	if err := s.repo.CreateEscalation(ctx, e); err != nil {
 		return nil, errs.Internal(err)
+	}
+	if s.OnLogged != nil {
+		go s.OnLogged(actorID, cat.Name)
 	}
 	res := toRecord(e)
 	return &res, nil

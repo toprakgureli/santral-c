@@ -22,6 +22,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
+	"github.com/toprakgureli/santral-c/backend/internal/games"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/performance"
 	"github.com/toprakgureli/santral-c/backend/internal/profile"
@@ -162,6 +163,9 @@ func run() error {
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
 	teamsSvc := teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub(), teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, db))
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
+	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
+	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
+	escalationSvc.OnLogged = gamesSvc.OnEscalation
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -170,6 +174,8 @@ func run() error {
 	shiftSvc.StartSweeper(ctx)
 	// Chat uploads that never became a message are removed from Drive.
 	teamsSvc.StartSweeper(ctx)
+	// The games' referee clock and the hockey simulation.
+	gamesSvc.StartClock(ctx)
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)

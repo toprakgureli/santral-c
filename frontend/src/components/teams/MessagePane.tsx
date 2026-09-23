@@ -21,6 +21,8 @@ import type { TeamsEvent, TeamsGroupDetail, TeamsMessage, TeamsReceipt } from "@
 import UserAvatar from "@/components/ui/UserAvatar";
 import { statusOf, Ticks } from "@/components/teams/Presence";
 import { renderMarkup, stripMarkup } from "@/lib/markup";
+import GameCard from "@/games/GameCard";
+import GameModal from "@/games/GameModal";
 import { previewLabel } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
@@ -71,6 +73,7 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
   const [gallery, setGallery] = useState<{ items: TeamsAttachment[]; index: number } | null>(null);
   const [profile, setProfile] = useState<PopoverAnchor | null>(null);
   const [who, setWho] = useState<{ x: number; y: number; emoji: string; people: TeamsPerson[] } | null>(null);
+  const [openGame, setOpenGame] = useState<number | null>(null);
   const openProfile = (e: React.MouseEvent, userId: number) => {
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -280,7 +283,7 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
     e.preventDefault();
     const items: MenuItem[] = [];
     if (group.canPost) items.push({ label: "Yanıtla", onClick: () => { setEditing(null); setReply(m); } });
-    if (m.mine && group.canPost) items.push({ label: "Düzenle", onClick: () => { setReply(null); setEditing(m); } });
+    if (m.mine && group.canPost && m.kind === "text") items.push({ label: "Düzenle", onClick: () => { setReply(null); setEditing(m); } });
     items.push({ label: "Metni kopyala", onClick: () => void navigator.clipboard?.writeText(m.body).catch(() => undefined) });
     items.push({ label: "Bilgi", onClick: () => setInfo(m) });
     if (m.canDelete) items.push({ label: "Sil", danger: true, onClick: () => setConfirmDelete(m) });
@@ -330,6 +333,7 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
         </div>
       )}
       {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
+      {openGame && <GameModal gameId={openGame} selfId={selfId} metas={teams.games?.kinds ?? []} pauseOnCall={teams.games?.pauseOnCall ?? true} onClose={() => setOpenGame(null)} />}
       {who && (
         <ReactionPeople
           {...who}
@@ -426,6 +430,8 @@ export default function MessagePane({ group, selfId, target }: { group: TeamsGro
                     )}
                     {m.deleted ? (
                       <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
+                    ) : m.kind === "game" && m.gameId ? (
+                      <GameCard gameId={m.gameId} onOpen={() => setOpenGame(m.gameId!)} />
                     ) : (
                       <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
                         {m.attachments?.length > 0 && (

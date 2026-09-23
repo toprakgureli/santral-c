@@ -4,7 +4,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { BellOff, BellRing, Hash, Images, Plus, Search, Settings2, Users, VolumeX } from "lucide-react";
+import { BellOff, BellRing, Gamepad2, Hash, Images, Plus, Search, Settings2, Trophy, Users, VolumeX } from "lucide-react";
+import StartGameDialog from "../games/StartGameDialog";
+import Leaderboard from "../games/Leaderboard";
 import { api, ApiError } from "../api/client";
 import type { TeamsGroup, TeamsGroupDetail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -50,6 +52,9 @@ export function Teams() {
   const [profile, setProfile] = useState<PopoverAnchor | null>(null);
 
   const canCreate = can(user, "teams.group_create");
+  const canPlay = can(user, "games.play") && !!teams.games?.enabled;
+  const [startGame, setStartGame] = useState(false);
+  const [board, setBoard] = useState(false);
 
   // Tell the context which room is open so its messages do not notify.
   useEffect(() => {
@@ -141,7 +146,7 @@ export function Teams() {
             <>
             {last?.mine && !last.deleted && <Ticks status={last.status} size="size-4" />}
             <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${previewLabel(last.body, last.attachments)}`) : "Henüz mesaj yok"}
+              {last ? (last.deleted ? "Bu mesaj silindi." : last.kind === "system" ? last.body : `${g.kind === "dm" ? (last.mine ? "Sen" : "") : (last.sender?.name.split(" ")[0] ?? "")}${g.kind === "dm" && !last.mine ? "" : ": "}${previewLabel(last.body, last.attachments, last.kind)}`) : "Henüz mesaj yok"}
             </span>
             </>
             )}
@@ -211,7 +216,10 @@ export function Teams() {
           </div>
         </div>
 
-        <div className="border-t border-border/60 px-3 py-2 text-[0.65rem] text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-[0.65rem] text-muted-foreground">
+          {teams.games && (
+            <button type="button" onClick={() => setBoard(true)} className="inline-flex items-center gap-1 hover:text-foreground" title="Oyun sıralaması"><Trophy className="size-3 text-warning" /> Sıralama</button>
+          )}
           {teams.notifications === "granted" ? (
             <span className="inline-flex items-center gap-1"><BellRing className="size-3 text-success" /> Bildirimler açık</span>
           ) : teams.notifications === "denied" ? (
@@ -270,6 +278,9 @@ export function Teams() {
                   return <p className="truncate text-xs text-muted-foreground">{detail.description ? `${detail.description} · ` : ""}{detail.memberCount} üye · {on} çevrimiçi{here ? ` · ${here} sohbette` : ""}</p>;
                 })()}
               </div>
+              {canPlay && detail.canPost && (
+                <button type="button" onClick={() => setStartGame(true)} title="Oyun başlat" className="rounded-lg p-2 text-violet-500 hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
+              )}
               <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} title="Mesajlarda ara" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "search" && "bg-accent text-foreground")}><Search className="size-4" /></button>
               <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} title="Görseller, videolar ve dosyalar" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "media" && "bg-accent text-foreground")}><Images className="size-4" /></button>
               {detail.kind === "group" && (
@@ -308,6 +319,8 @@ export function Teams() {
           items={[
             ...(canCreate ? [{ label: "＋  Grup oluştur", onClick: () => setNewGroup(true) }] : []),
             { label: "✉  Kişiye mesaj yaz", onClick: () => setNewDM(true) },
+            ...(canPlay && detail ? [{ label: "🎮  Oyun başlat", onClick: () => setStartGame(true) }] : []),
+            ...(teams.games ? [{ label: "🏆  Oyun sıralaması", onClick: () => setBoard(true) }] : []),
           ]}
           onClose={() => setPlus(null)}
         />
@@ -316,6 +329,8 @@ export function Teams() {
       <NewGroupDialog open={newGroup} onClose={() => setNewGroup(false)} onCreated={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       <NewDMDialog open={newDM} onClose={() => setNewDM(false)} selfId={selfId} onOpened={(g) => { void teams.refresh(); navigate(`/teams/${g.id}`); }} />
       {detail && <GroupSettingsDialog group={detail} open={settings} onClose={() => setSettings(false)} onSaved={(g) => { setDetail(g); void teams.refresh(); }} />}
+      {detail && teams.games && <StartGameDialog groupId={detail.id} config={teams.games} open={startGame} onClose={() => setStartGame(false)} onCreated={() => teams.reloadGames()} />}
+      {teams.games && <Leaderboard open={board} onClose={() => setBoard(false)} kinds={teams.games.kinds} selfId={selfId} />}
       {detail && people && <AddPeopleDialog group={detail} mode={people} open onClose={() => setPeople(null)} onDone={(g) => { setDetail(g); void teams.refresh(); }} />}
     </div>
   );

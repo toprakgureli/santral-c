@@ -5,7 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Camera, Clock, Pencil, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Camera, Clock, Gamepad2, Pencil, Trash2, UserRound } from "lucide-react";
+import { gamesApi } from "../games/api";
+import type { GameRecord } from "../games/types";
 import { api, ApiError } from "../api/client";
 import type { Profile as ProfileData } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -288,6 +290,8 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
       </div>
       </div>
 
+      <GameRecordCard userId={profile.id} />
+
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Çağrı karnesi</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -310,6 +314,31 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
           Bu kişinin henüz kayıtlı çağrısı yok.
         </p>
       )}
+    </div>
+  );
+}
+
+// GameRecordCard: how the person has fared in the Teams mini games.
+function GameRecordCard({ userId }: { userId: number }) {
+  const [rec, setRec] = useState<GameRecord | null>(null);
+  useEffect(() => {
+    gamesApi.record(userId).then(setRec).catch(() => setRec(null));
+  }, [userId]);
+  if (!rec || rec.played === 0) return null;
+  const rate = Math.round((rec.wins / Math.max(1, rec.played)) * 100);
+  return (
+    <div className="space-y-2">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Gamepad2 className="size-3.5" /> Oyun karnesi</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Stat label="Oynanan" value={String(rec.played)} />
+        <Stat label="Galibiyet" value={String(rec.wins)} hint={`%${rate} kazanma`} tone={rec.wins > 0 ? "text-success" : undefined} />
+        <Stat label="Toplam puan" value={String(rec.points)} />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {rec.kinds.map((k) => (
+          <span key={k.kind} className="rounded-full bg-muted/50 px-2.5 py-0.5 text-xs">{k.kind}: <span className="font-medium">{k.wins}</span>/{k.played}</span>
+        ))}
+      </div>
     </div>
   );
 }

@@ -2,7 +2,8 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Coffee, HardDrive, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { DriveStatus, IPBan, LoginAttempt, Paged } from "../api/types";
 import { formatSize } from "../lib/attachments";
@@ -27,6 +28,7 @@ export function Settings() {
   const canManage = can(user, "system.settings");
   const canBreakLimit = can(user, "agent.break_limit");
   const canDrive = can(user, "teams.admin");
+  const canGames = can(user, "games.manage");
 
   const [attempts, setAttempts] = useState<Paged<LoginAttempt> | null>(null);
   const [bans, setBans] = useState<IPBan[]>([]);
@@ -63,6 +65,18 @@ export function Settings() {
       {canManage && <MfaRequiredCard />}
       {canBreakLimit && <BreakLimitCard />}
       {canDrive && <DriveCard />}
+      {canGames && (
+        <Card title="Mini Oyunlar" actions={<Badge tone="blue">Teams</Badge>}>
+          <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
+            <Gamepad2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm font-medium">Ekibin Teams içinde oynadığı oyunlar: açma kapama, çağrıda duraklatma, sadece molada kuralı ve oyun içerikleri</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">Kelimeler, sorular, senaryolar ve bingo kutuları koda gömülü değildir; buradan elle ya da Excel ile girilir.</p>
+              <Link to="/games/admin" className="inline-flex h-9 items-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Mini oyunları yönet</Link>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {canSeeLogs && (
         <>

@@ -11,6 +11,8 @@ import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
 import { tones } from "@/softphone/tones";
 import type { Presence } from "@/components/teams/Presence";
+import { gamesApi } from "@/games/api";
+import type { GamesConfig } from "@/games/types";
 import { previewLabel } from "@/lib/attachments";
 
 interface TeamsState {
@@ -41,6 +43,9 @@ interface TeamsState {
   dismissToast: () => void;
   // "Toprak yazıyor..." for a room, or null.
   typingLabel: (groupId: number) => string | null;
+  // Mini games: switches and catalogue, null until loaded.
+  games: GamesConfig | null;
+  reloadGames: () => void;
 }
 
 export interface MentionToast {
@@ -163,6 +168,12 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   }, [mentions]);
   const dismissMention = useCallback((id: number) => setMentions((cur) => cur.filter((t) => t.id !== id)), []);
   const [typing, setTyping] = useState<Typing>({});
+  const [games, setGames] = useState<GamesConfig | null>(null);
+  const reloadGames = useCallback(() => {
+    if (!enabled) return;
+    gamesApi.config().then(setGames).catch(() => setGames(null));
+  }, [enabled]);
+  useEffect(reloadGames, [reloadGames]);
 
   // Expire "yazıyor" entries a few seconds after the last keystroke.
   useEffect(() => {
@@ -261,18 +272,18 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         tones.mention();
         if (m.sender) {
           const sender = m.sender;
-          setMentions((cur) => [...cur.filter((t) => t.id !== m.id), { id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender, body: previewLabel(m.body, m.attachments), at: m.createdAt }].slice(-20));
+          setMentions((cur) => [...cur.filter((t) => t.id !== m.id), { id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender, body: previewLabel(m.body, m.attachments, m.kind), at: m.createdAt }].slice(-20));
         }
       } else {
         tones.notify();
-        if (m.sender) showToast({ id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender: m.sender, body: previewLabel(m.body, m.attachments), at: m.createdAt });
+        if (m.sender) showToast({ id: m.id, groupId: m.groupId, groupName: g?.name ?? "Teams", sender: m.sender, body: previewLabel(m.body, m.attachments, m.kind), at: m.createdAt });
       }
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
         const title = tagged
           ? `${m.sender?.name ?? "Biri"} seni etiketledi${g ? ` · ${g.name}` : ""}`
           : g ? (g.kind === "dm" ? g.name : `${g.name} · ${m.sender?.name ?? ""}`) : m.sender?.name ?? "Teams";
         try {
-          const n = new Notification(title, { body: previewLabel(m.body, m.attachments).slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
+          const n = new Notification(title, { body: previewLabel(m.body, m.attachments, m.kind).slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
           n.onclick = () => {
             window.focus();
             window.location.assign(`/teams/${m.groupId}`);
@@ -439,8 +450,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<TeamsState>(
-    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel }),
-    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel],
+    () => ({ enabled, groups, invites, unread, refresh, openGroupId, setOpenGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel, games, reloadGames }),
+    [enabled, groups, invites, unread, refresh, openGroupId, subscribe, bumpGroup, clearUnread, notifications, askNotifications, presence, presenceOf, mentions, dismissMention, toast, dismissToast, typingLabel, games, reloadGames],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

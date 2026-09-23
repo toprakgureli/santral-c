@@ -254,8 +254,10 @@ export interface DriveStatus {
 export interface TeamsMessage {
   id: number;
   groupId: number;
-  kind: "text" | "system";
+  kind: "text" | "system" | "game";
   body: string;
+  // A game card: the match the line stands for.
+  gameId?: number;
   sender?: TeamsPerson;
   replyTo?: { id: number; body: string; sender: string; deleted: boolean };
   deleted: boolean;
@@ -326,7 +328,7 @@ export interface TeamsOverview {
 }
 
 export interface TeamsEvent {
-  type: "hello" | "message" | "message.edited" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt" | "typing";
+  type: "hello" | "message" | "message.edited" | "message.deleted" | "reaction" | "group" | "invite" | "presence" | "receipt" | "typing" | "game" | "game.stroke" | "game.frame";
   groupId?: number;
   message?: TeamsMessage;
   id?: number;
@@ -344,6 +346,9 @@ export interface TeamsEvent {
   emoji?: string;
   added?: boolean;
   senderId?: number;
+  // game (id carries the version), game.stroke and game.frame (payload)
+  gameId?: number;
+  payload?: unknown;
 }
 
 export interface Paged<T> {

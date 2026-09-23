@@ -305,7 +305,8 @@ export function thumbUrl(a: TeamsAttachment): string | null {
 }
 
 // previewLabel is what the room list shows for a line with files.
-export function previewLabel(body: string, attachments: TeamsAttachment[] | undefined): string {
+export function previewLabel(body: string, attachments: TeamsAttachment[] | undefined, kind?: string): string {
+  if (kind === "game") return "🎮 Oyun başlattı";
   if (body) return stripMarkup(body);
   if (!attachments?.length) return "";
   const a = attachments[0];

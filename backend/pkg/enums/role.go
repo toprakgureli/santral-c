@@ -68,6 +68,7 @@ func managerPermissions() []Permission {
 		SystemLogs, SystemAuditView,
 		PerformanceViewRole,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
+		GamesPlay, GamesManage,
 	}
 }
 
@@ -78,6 +79,7 @@ func technicalTeamPermissions() []Permission {
 		ContactView, EscalationView, EscalationSearch, EscalationListOwn, AgentView, AgentPresenceViewAll, SystemLogs,
 		PerformanceViewRole,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite,
+		GamesPlay,
 	}
 }
 
@@ -87,5 +89,6 @@ func salesTeamPermissions() []Permission {
 		CDRViewOwn, ContactView, ContactManage, EscalationView, EscalationListOwn, AgentView,
 		PerformanceViewRole,
 		TeamsView, TeamsMemberInvite,
+		GamesPlay,
 	}
 }

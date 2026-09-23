@@ -5,8 +5,10 @@ package teams
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -126,6 +128,7 @@ type MessageView struct {
 	MentionsAll bool             `json:"mentionsAll"`
 	EditedAt    string           `json:"editedAt,omitempty"`
 	Attachments []AttachmentView `json:"attachments"`
+	GameID      uint             `json:"gameId,omitempty"`
 	CreatedAt   string           `json:"createdAt"`
 	// Status is set on the reader's own lines: sent, delivered or read.
 	Status string   `json:"status,omitempty"`
@@ -166,6 +169,50 @@ type Event struct {
 	Emoji    string `json:"emoji,omitempty"`
 	Added    *bool  `json:"added,omitempty"`
 	SenderID uint   `json:"senderId,omitempty"`
+	// game: the match that changed (id carries its version); game.stroke and
+	// game.frame carry a payload the room draws directly.
+	GameID  uint            `json:"gameId,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// ---------------------------------------------------------------- games
+
+// IsMember reports whether a person sits in a room.
+func (s *Service) IsMember(ctx context.Context, userID, groupID uint) bool {
+	m, err := s.repo.Member(ctx, groupID, userID)
+	return err == nil && m != nil
+}
+
+// MemberIDs lists a room's seats for the games engine.
+func (s *Service) MemberIDs(ctx context.Context, groupID uint) ([]uint, error) {
+	return s.repo.MemberIDs(ctx, groupID)
+}
+
+// PostGame drops a match card into a room and returns the line's id.
+func (s *Service) PostGame(ctx context.Context, groupID, userID, gameID uint) (uint, error) {
+	g, err := s.repo.Group(ctx, groupID)
+	if err != nil || g == nil {
+		return 0, errs.NotFound("Grup bulunamadı.")
+	}
+	msg := &models.ChatMessage{GroupID: groupID, SenderID: &userID, Kind: "game", Body: strconv.FormatUint(uint64(gameID), 10), CreatedAt: time.Now()}
+	if err := s.repo.CreateMessage(ctx, msg); err != nil {
+		return 0, errs.Internal(err)
+	}
+	_ = s.repo.MarkRead(ctx, groupID, userID, msg.ID)
+	if _, err := s.broadcastMessage(ctx, g, msg, nil, nil); err != nil {
+		return 0, err
+	}
+	return msg.ID, nil
+}
+
+// PostSystem drops a grey line into a room.
+func (s *Service) PostSystem(ctx context.Context, groupID uint, text string) {
+	s.system(ctx, groupID, text)
+}
+
+// Push sends a live event to the given people.
+func (s *Service) Push(ids []uint, event any) {
+	s.hub.Send(ids, event)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -1256,6 +1303,12 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 	}
 	if r.EditedAt != nil {
 		v.EditedAt = stamp(*r.EditedAt)
+	}
+	if r.Kind == "game" {
+		if id, err := strconv.ParseUint(r.Body, 10, 64); err == nil {
+			v.GameID = uint(id)
+		}
+		v.Body = ""
 	}
 	v.CanDelete = !v.Deleted && r.Kind == "text" && (v.Mine || isAdmin(m) || actor.Can(enums.TeamsAdmin))
 	grouped := map[string]*ReactionView{}
