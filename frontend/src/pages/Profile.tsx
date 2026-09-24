@@ -1,7 +1,7 @@
 // Profil: one person's page, laid out like Devtrack's. /profile is the
 // caller's own (editable), /profile/:id a teammate's. The card holds the
 // photo, name, headline, roles and biography; below it the call-centre
-// record for today and this month.
+// record over a chosen day range (last seven days by default).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -9,7 +9,9 @@ import { ArrowLeft, Camera, Clock, Gamepad2, Pencil, Trash2, UserRound } from "l
 import { gamesApi } from "../games/api";
 import type { GameRecord } from "../games/types";
 import { api, ApiError } from "../api/client";
-import type { Profile as ProfileData } from "../api/types";
+import type { Profile as ProfileData, ProfileRecord, ProfileStats } from "../api/types";
+import RangePicker, { useRange } from "../components/RangePicker";
+import { rangeLabel } from "../lib/dateRange";
 import { useAuth } from "../auth/AuthContext";
 import AvatarCropper from "../components/profile/AvatarCropper";
 import { Badge, Button, CharCount, EmptyState, Input, Skeleton } from "../components/ui";
@@ -290,30 +292,91 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
       </div>
       </div>
 
+      <RecordCard userId={profile.id} totals={stats} />
+
       <GameRecordCard userId={profile.id} />
+    </div>
+  );
+}
 
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Çağrı karnesi</p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Bugün gerçek çağrı" value={String(stats.todayReal)} hint="30 sn ve üstü görüşmeler" tone={stats.todayReal > 0 ? "text-success" : undefined} />
-          <Stat label="Bugün cevapsız" value={String(stats.todayUnanswered)} hint="Bağlanmayan çağrılar" tone={stats.todayUnanswered > 0 ? "text-warning" : undefined} />
-          <Stat label="Bu ay gerçek çağrı" value={String(stats.monthReal)} />
-          <Stat label="Bu ay görüşme süresi" value={hours(stats.monthTalkSeconds)} hint="Cevaplanan çağrıların toplamı" />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Ortalama çağrı süresi" value={stats.weekAvgTalkSeconds > 0 ? clock(stats.weekAvgTalkSeconds) : "—"} hint={`Son 7 gün · ${stats.weekReal} gerçek çağrı`} tone={stats.weekAvgTalkSeconds > 0 ? "text-primary" : undefined} />
-          <Stat label="Son 7 gün gerçek çağrı" value={String(stats.weekReal)} />
-          <Stat label="Bu ay eskalasyon" value={String(stats.monthEscalations)} hint="Kaydettiği eskalasyon sayısı" />
-          <Stat label="Toplam eskalasyon" value={String(stats.totalEscalations)} />
-        </div>
+function pct(part: number, whole: number): string {
+  return whole > 0 ? `%${Math.round((part / whole) * 100)}` : "—";
+}
+
+// RecordCard: the call-centre record over a day range. Last seven days by
+// default; the picker is the same as the team page's.
+function RecordCard({ userId, totals }: { userId: number; totals: ProfileStats }) {
+  const { preset, range, choose, setFrom, setTo } = useRange("last7");
+  const [rec, setRec] = useState<ProfileRecord | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!range.from || !range.to || range.to < range.from) return;
+    let live = true;
+    api
+      .profileRecord(userId, range)
+      .then((r) => {
+        if (!live) return;
+        setRec(r);
+        setError(null);
+      })
+      .catch((e) => live && setError(e instanceof ApiError ? e.message : "Karne alınamadı."));
+    return () => {
+      live = false;
+    };
+  }, [userId, range]);
+
+  const unreached = rec ? rec.unanswered + rec.short : 0;
+  const attempts = rec ? rec.real + unreached : 0;
+  const maxDay = rec ? Math.max(1, ...rec.days.map((d) => d.real)) : 1;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">Çağrı karnesi <span className="text-muted-foreground/60">· {rangeLabel(range.from, range.to)}</span></p>
+        <RangePicker preset={preset} range={range} onPreset={choose} onFrom={setFrom} onTo={setTo} compact />
       </div>
-
-      {stats.monthReal === 0 && stats.todayUnanswered === 0 && stats.totalEscalations === 0 && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground/70">
-          <Clock className="size-4" />
-          Bu kişinin henüz kayıtlı çağrısı yok.
-        </p>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {!rec ? (
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      ) : (
+        <>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Gerçek çağrı" value={String(rec.real)} hint={`${rec.inboundReal} gelen · ${rec.outboundReal} giden · 30 sn ve üstü`} tone={rec.real > 0 ? "text-success" : undefined} />
+            <Stat label="Ulaşılamayan" value={String(unreached)} hint={`${rec.unanswered} cevapsız · ${rec.short} geçersiz`} tone={unreached > 0 ? "text-warning" : undefined} />
+            <Stat label="Ulaşma oranı" value={pct(rec.real, attempts)} hint={`${attempts} denemede ${rec.real} görüşme`} tone={attempts > 0 ? "text-primary" : undefined} />
+            <Stat label="Görüşme süresi" value={hours(rec.talkSeconds)} hint={rec.avgTalkSeconds > 0 ? `Ortalama ${clock(rec.avgTalkSeconds)} · en uzun ${clock(rec.longestSeconds)}` : "Cevaplanan çağrıların toplamı"} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Mesai" value={rec.shiftSeconds > 0 ? hours(rec.shiftSeconds) : "—"} hint={rec.breakSeconds > 0 ? `${hours(rec.breakSeconds)} mola` : "Mola yok"} />
+            <Stat label="Yoğunluk" value={pct(rec.talkSeconds, rec.shiftSeconds)} hint="Mesainin görüşmede geçen payı" />
+            <Stat label="Saatte çağrı" value={rec.shiftSeconds >= 600 ? (rec.real / (rec.shiftSeconds / 3600)).toFixed(1) : "—"} hint={rec.busiestHour >= 0 ? `En yoğun saat ${String(rec.busiestHour).padStart(2, "0")}:00` : "Gerçek çağrı / mesai saati"} />
+            <Stat label="Eskalasyon" value={String(rec.escalations)} hint="Bu aralıkta kaydettikleri" />
+          </div>
+          {rec.days.length > 1 && (
+            <div className="rounded-xl border border-border/60 bg-muted/25 p-3.5">
+              <p className="mb-2 text-[0.6875rem] text-muted-foreground">Günlük gerçek çağrı</p>
+              <div className="flex h-16 items-end gap-[3px]">
+                {rec.days.map((d) => (
+                  <div key={d.day} className="group relative flex h-full flex-1 items-end" title={`${d.day.split("-").reverse().join(".")} · ${d.real} gerçek çağrı`}>
+                    <div className={cn("w-full rounded-t-sm transition-colors", d.real > 0 ? "bg-success/70 group-hover:bg-success" : "bg-border/60")} style={{ height: `${Math.max(4, (d.real / maxDay) * 100)}%` }} />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 flex justify-between text-[0.6rem] text-muted-foreground/70">
+                <span>{rec.days[0].day.split("-").reverse().slice(0, 2).join(".")}</span>
+                <span>{rec.days[rec.days.length - 1].day.split("-").reverse().slice(0, 2).join(".")}</span>
+              </div>
+            </div>
+          )}
+        </>
       )}
+      <p className="flex items-center gap-2 text-xs text-muted-foreground/70">
+        <Clock className="size-3.5" />
+        {totals.totalReal === 0 && totals.totalEscalations === 0
+          ? "Bu kişinin henüz kayıtlı çağrısı yok."
+          : `Tüm zamanlar: ${totals.totalReal} gerçek çağrı · ${hours(totals.totalTalkSeconds)} görüşme · ${totals.totalEscalations} eskalasyon`}
+      </p>
     </div>
   );
 }

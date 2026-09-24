@@ -54,6 +54,8 @@ type Counts struct {
 	TalkSeconds    int64 `json:"talkSeconds"`
 	// Mean length of real conversations (30 s and up) in the window.
 	AvgTalkSeconds int64 `json:"avgTalkSeconds"`
+	// The longest answered call in the window.
+	LongestSeconds int64 `json:"longestSeconds"`
 }
 
 // CallCounts aggregates the call log per user for [from, to).
@@ -73,7 +75,8 @@ func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLo
 			"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds, "+
-			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds",
+			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds, "+
+			"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest_seconds",
 			shortLong, shortLong, shortLong, shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ? AND started_at < ?", from, to).
 		// A ring that a teammate answered is not this agent's call.
@@ -86,6 +89,45 @@ func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLo
 	out := make(map[uint]Counts, len(rows))
 	for _, c := range rows {
 		out[c.UserID] = c
+	}
+	return out, nil
+}
+
+// Escalations counts the escalations each agent recorded in [from, to).
+func (r *Repository) Escalations(ctx context.Context, from, to time.Time) (map[uint]int64, error) {
+	var rows []struct {
+		AgentID uint
+		N       int64
+	}
+	if err := r.db.WithContext(ctx).Model(&models.CallEscalation{}).
+		Select("agent_id, count(*) AS n").
+		Where("agent_id IS NOT NULL AND created_at >= ? AND created_at < ?", from, to).
+		Group("agent_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("escalation counts could not be computed: %w", err)
+	}
+	out := make(map[uint]int64, len(rows))
+	for _, row := range rows {
+		out[row.AgentID] = row.N
+	}
+	return out, nil
+}
+
+// BreakSeconds sums the time each agent spent on break inside [from, to),
+// counting an open break up to now.
+func (r *Repository) BreakSeconds(ctx context.Context, from, to time.Time) (map[uint]int64, error) {
+	var rows []struct {
+		UserID  uint
+		Seconds int64
+	}
+	if err := r.db.WithContext(ctx).Model(&models.PresenceEvent{}).
+		Select("user_id, COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(COALESCE(ended_at, now()), ?) - GREATEST(started_at, ?)))), 0)::bigint AS seconds", to, from).
+		Where("state = 'break' AND started_at < ? AND COALESCE(ended_at, now()) > ?", to, from).
+		Group("user_id").Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("break time could not be computed: %w", err)
+	}
+	out := make(map[uint]int64, len(rows))
+	for _, row := range rows {
+		out[row.UserID] = row.Seconds
 	}
 	return out, nil
 }

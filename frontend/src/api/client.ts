@@ -18,6 +18,7 @@ import type {
   PBXStats,
   PermissionGroup,
   Profile,
+  ProfileRecord,
   DriveStatus,
   TeamsAttachment,
   TeamsGroupDetail,
@@ -207,6 +208,7 @@ export const api = {
 
   myProfile: () => request<Profile>("/profile/me"),
   profileOf: (id: number) => request<Profile>(`/profile/${id}`),
+  profileRecord: (id: number | "me", params: { from: string; to: string }) => request<ProfileRecord>(`/profile/${id}/record` + query(params)),
   updateMyProfile: (body: { headline: string; bio: string }) => request<Profile>("/profile/me", { method: "PUT", body: JSON.stringify(body) }),
   setMyAvatar: (avatar: string) => request<User>("/users/me/avatar", { method: "PUT", body: JSON.stringify({ avatar }) }),
   setMyWhatsAppTemplates: (body: { template: string; live: string }) =>

@@ -149,6 +149,7 @@ export interface TeamCounts {
   outboundReal: number;
   talkSeconds: number;
   avgTalkSeconds: number;
+  longestSeconds: number;
 }
 
 export interface TeamRow {
@@ -161,6 +162,8 @@ export interface TeamRow {
   call?: { peer: string; peerName?: string; direction: string; startedAt: string };
   shift: { startedAt?: string; firstStart?: string; lastEnd?: string; open: boolean; seconds: number };
   calls: TeamCounts;
+  escalations: number;
+  breakSeconds: number;
 }
 
 export interface TeamPerformance {
@@ -171,14 +174,28 @@ export interface TeamPerformance {
 }
 
 export interface ProfileStats {
-  todayReal: number;
-  todayUnanswered: number;
-  monthReal: number;
-  monthTalkSeconds: number;
-  weekReal: number;
-  weekAvgTalkSeconds: number;
-  monthEscalations: number;
+  totalReal: number;
+  totalTalkSeconds: number;
   totalEscalations: number;
+}
+
+// ProfileRecord is the call-centre record over a day range.
+export interface ProfileRecord {
+  from: string;
+  to: string;
+  real: number;
+  inboundReal: number;
+  outboundReal: number;
+  unanswered: number;
+  short: number;
+  talkSeconds: number;
+  avgTalkSeconds: number;
+  longestSeconds: number;
+  escalations: number;
+  shiftSeconds: number;
+  breakSeconds: number;
+  busiestHour: number;
+  days: { day: string; real: number }[];
 }
 
 export interface Profile {

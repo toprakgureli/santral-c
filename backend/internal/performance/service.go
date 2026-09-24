@@ -71,6 +71,9 @@ type Row struct {
 	Call      *CurrentCall `json:"call,omitempty"`
 	Shift     ShiftInfo    `json:"shift"`
 	Calls     Counts       `json:"calls"`
+	// Escalations the agent recorded and seconds spent on break in the window.
+	Escalations  int64 `json:"escalations"`
+	BreakSeconds int64 `json:"breakSeconds"`
 }
 
 // Team is the page payload.
@@ -147,6 +150,14 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	escalations, err := s.repo.Escalations(ctx, from, to)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	breaks, err := s.repo.BreakSeconds(ctx, from, to)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	live := map[string]string{}
 	if s.live != nil {
 		live = s.live.ExtensionStatuses(ctx)
@@ -159,7 +170,7 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 		if u.SIPExtension != nil {
 			ext = *u.SIPExtension
 		}
-		row := Row{UserID: u.ID, Name: u.Name, Extension: ext, Roles: roleNames(u), Shift: shifts[u.ID], Calls: counts[u.ID]}
+		row := Row{UserID: u.ID, Name: u.Name, Extension: ext, Roles: roleNames(u), Shift: shifts[u.ID], Calls: counts[u.ID], Escalations: escalations[u.ID], BreakSeconds: breaks[u.ID]}
 		_, onCall := open[u.ID]
 		row.Status, row.Since = s.status(u.ID, ext, onCall, presence, shifts, live)
 		if c, ok := open[u.ID]; ok && row.Status == "talking" {
