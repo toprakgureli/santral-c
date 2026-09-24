@@ -158,6 +158,10 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	lastCalls, err := s.repo.LastCallEnds(ctx)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	live := map[string]string{}
 	if s.live != nil {
 		live = s.live.ExtensionStatuses(ctx)
@@ -172,7 +176,7 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 		}
 		row := Row{UserID: u.ID, Name: u.Name, Extension: ext, Roles: roleNames(u), Shift: shifts[u.ID], Calls: counts[u.ID], Escalations: escalations[u.ID], BreakSeconds: breaks[u.ID]}
 		_, onCall := open[u.ID]
-		row.Status, row.Since = s.status(u.ID, ext, onCall, presence, shifts, live)
+		row.Status, row.Since = s.status(u.ID, ext, onCall, presence, shifts, live, lastCalls)
 		if c, ok := open[u.ID]; ok && row.Status == "talking" {
 			row.Call = &CurrentCall{Peer: c.PeerNumber, Direction: c.Direction, StartedAt: c.StartedAt}
 			if s.contacts != nil {
@@ -199,8 +203,12 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 
 // status combines the stored presence, the shift, the panel's own call log and
 // the hosted PBX's live view into one label. A call in progress (seen by either
-// the PBX or our log) always wins; off shift always reads as off.
-func (s *Service) status(userID uint, ext string, onCall bool, presence map[uint]models.AgentPresence, shifts map[uint]ShiftInfo, live map[string]string) (string, *time.Time) {
+// the PBX or our log) always wins; off shift always reads as off. "Since" is
+// how long the label has been true: a state change, the shift start or the
+// end of the last call, whichever is latest. So "Boşta · 12 dk" means twelve
+// minutes without a call, never the hours since the agent last touched the
+// status menu.
+func (s *Service) status(userID uint, ext string, onCall bool, presence map[uint]models.AgentPresence, shifts map[uint]ShiftInfo, live map[string]string, lastCalls map[uint]time.Time) (string, *time.Time) {
 	if shifts[userID].StartedAt == nil {
 		return "off", nil
 	}
@@ -222,6 +230,17 @@ func (s *Service) status(userID uint, ext string, onCall bool, presence map[uint
 	// Without a presence row the state has held since the shift began.
 	if since == nil {
 		since = shifts[userID].StartedAt
+	}
+	// Nothing holds from before the shift began.
+	if start := shifts[userID].StartedAt; start != nil && since.Before(*start) {
+		since = start
+	}
+	// Idle time is counted from the last call, not the last click.
+	if state == "available" {
+		if last, ok := lastCalls[userID]; ok && last.After(*since) {
+			t := last
+			since = &t
+		}
 	}
 	if state == "available" && live[ext] == "UNREGISTERED" {
 		return "unregistered", since
