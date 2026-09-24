@@ -86,7 +86,7 @@ func technicalTeamPermissions() []Permission {
 func salesTeamPermissions() []Permission {
 	return []Permission{
 		CallViewOwn, CallOriginate, CallTransfer, CallHangup,
-		CDRViewOwn, ContactView, ContactManage, EscalationView, EscalationListOwn, AgentView,
+		CDRViewOwn, ContactView, ContactManage, EscalationView, EscalationListOwn, EscalationAuto, AgentView,
 		PerformanceViewRole,
 		TeamsView, TeamsMemberInvite,
 		GamesPlay,

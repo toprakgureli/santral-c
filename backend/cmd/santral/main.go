@@ -110,6 +110,7 @@ func run() error {
 	escalationSvc := escalation.NewService(escalation.NewRepository(db), userSvc)
 	escalationHandler := escalation.NewHandler(escalationSvc)
 	callLogSvc := calllog.NewService(calllog.NewRepository(db), userSvc)
+	callLogSvc.OnEnded = escalationSvc.AutoLog
 	callLogHandler := calllog.NewHandler(callLogSvc)
 	shiftSvc := shift.NewService(shift.NewRepository(db), auditSvc)
 	shiftHandler := shift.NewHandler(shiftSvc)

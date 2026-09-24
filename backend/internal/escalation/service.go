@@ -2,6 +2,8 @@ package escalation
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -342,6 +344,87 @@ func (s *Service) LogNone(ctx context.Context, actorID uint, req requests.Escala
 	}
 	res := toRecord(e)
 	return &res, nil
+}
+
+// Labels of the records written by themselves for agents holding
+// escalation.auto. They live on the record, not in the catalog.
+const (
+	AutoServedCategory    = "Satış desteği"
+	AutoServedReason      = "Satış desteği verildi"
+	AutoUnreachedCategory = "Ulaşılamadı"
+)
+
+// autoRealSeconds: a connected call shorter than this was the PBX playing an
+// announcement, not a conversation (same threshold as the panel's cards).
+const autoRealSeconds = 8
+
+// AutoLog writes the record a finished call implies, for agents whose role
+// carries escalation.auto: a real conversation is "satış desteği verildi",
+// an outbound call that never reached the customer is "ulaşılamadı". A
+// missed inbound ring is nobody's fault and gets nothing; a call the agent
+// already wrote an escalation for is left alone.
+func (s *Service) AutoLog(ctx context.Context, log models.CallLog) {
+	if log.UserID == nil || log.Direction == "internal" {
+		return
+	}
+	actor, err := s.users.GetByID(ctx, *log.UserID)
+	if err != nil || actor == nil || !actor.Can(enums.EscalationAuto) {
+		return
+	}
+	key := phone.Key(log.PeerNumber)
+	if key == "" {
+		return
+	}
+	if seen, err := s.repo.HasForCall(ctx, log.CallID); err != nil || seen {
+		return
+	}
+	real := log.Disposition == "answered" && log.DurationSeconds >= autoRealSeconds
+	e := &models.CallEscalation{
+		NumberKey: key,
+		Number:    strings.TrimSpace(log.PeerNumber),
+		AgentID:   log.UserID,
+		AgentName: actor.Name,
+		CallUUID:  &log.CallID,
+	}
+	switch {
+	case real:
+		e.CategoryName, e.ReasonName = AutoServedCategory, AutoServedReason
+		e.Note = "Kendiliğinden kaydedildi · " + talkLabel(log.DurationSeconds) + " görüşme"
+	case log.Direction == "outbound":
+		e.CategoryName = AutoUnreachedCategory
+		e.ReasonName = unreachedReason(log)
+		e.Note = "Kendiliğinden kaydedildi."
+	default:
+		return
+	}
+	if err := s.repo.CreateEscalation(ctx, e); err != nil {
+		slog.WarnContext(ctx, "automatic escalation could not be written", "call", log.CallID, "error", err)
+	}
+}
+
+func unreachedReason(log models.CallLog) string {
+	switch log.Disposition {
+	case "busy":
+		return "Meşgul"
+	case "canceled":
+		return "Çalarken kapatıldı"
+	case "failed":
+		return "Arama başarısız"
+	case "answered":
+		return "Santral anonsu, görüşme olmadı"
+	}
+	return "Cevap vermedi"
+}
+
+func talkLabel(seconds int) string {
+	m, s := seconds/60, seconds%60
+	if m == 0 {
+		return fmt.Sprintf("%d sn", s)
+	}
+	if s == 0 {
+		return fmt.Sprintf("%d dk", m)
+	}
+	return fmt.Sprintf("%d dk %d sn", m, s)
 }
 
 // History returns past escalations for a customer number. Agents see it for

@@ -54,6 +54,9 @@ const (
 	EscalationManage  Permission = "escalation.manage"
 	EscalationListOwn Permission = "escalation.list_own"
 	EscalationListAll Permission = "escalation.list_all"
+	// EscalationAuto: the wrap-up card is not shown; a record is written by
+	// itself when a call ends (sales support given, or unreached).
+	EscalationAuto Permission = "escalation.auto"
 
 	UserView       Permission = "user.view"
 	UserCreate     Permission = "user.create"
@@ -112,6 +115,7 @@ var permissions = []PermissionInfo{
 	{EscalationManage, "Eskalasyon durum kataloğunu yönetir"},
 	{EscalationListOwn, "Kendi eskalasyon kayıtlarını listeler"},
 	{EscalationListAll, "Tüm eskalasyon kayıtlarını listeler"},
+	{EscalationAuto, "Çağrı bitince eskalasyon kendiliğinden yazılır (görüşme: satış desteği verildi, açmadıysa: ulaşılamadı); eskalasyon kartı sorulmaz"},
 	{UserView, "Kullanıcıları görür"},
 	{UserCreate, "Kullanıcı oluşturur"},
 	{UserUpdate, "Kullanıcı günceller"},

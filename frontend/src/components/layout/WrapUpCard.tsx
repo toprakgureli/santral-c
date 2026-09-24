@@ -5,6 +5,8 @@
 // calls never open it, and neither does a call the PBX "answered" only to
 // play a rejection or busy announcement, which is why answered calls under
 // MIN_SECONDS (the announcement threshold) are skipped too.
+// Agents whose role carries escalation.auto never see it: the server writes
+// their record by itself when the call ends.
 // Pending wrap-ups survive a reload. A new call never closes the card: the
 // floating call bar sits above it, so the agent answers or rejects there and
 // keeps filling the form; a note in the header says a call is in progress.
@@ -85,7 +87,7 @@ function duration(seconds: number) {
 export default function WrapUpCard() {
   const { user } = useAuth();
   const phone = useSoftphoneContext();
-  const allowed = can(user, "escalation.view");
+  const allowed = can(user, "escalation.view") && !can(user, "escalation.auto");
   const canSearch = can(user, "escalation.search");
   const [pending, setPending] = useState<EndedCall[]>(readPending);
   const [categories, setCategories] = useState<EscalationCategory[] | null>(null);

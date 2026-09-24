@@ -134,6 +134,15 @@ func (r *Repository) CreateEscalation(ctx context.Context, e *models.CallEscalat
 	return nil
 }
 
+// HasForCall reports whether a record already refers to the call.
+func (r *Repository) HasForCall(ctx context.Context, callUUID string) (bool, error) {
+	var n int64
+	if err := r.db.WithContext(ctx).Model(&models.CallEscalation{}).Where("call_uuid = ?", callUUID).Count(&n).Error; err != nil {
+		return false, fmt.Errorf("escalation could not be checked: %w", err)
+	}
+	return n > 0, nil
+}
+
 // EscalationsByNumberKey lists escalations for a number key, newest first.
 func (r *Repository) EscalationsByNumberKey(ctx context.Context, key string, limit int) ([]models.CallEscalation, error) {
 	var out []models.CallEscalation

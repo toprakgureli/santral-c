@@ -25,6 +25,8 @@ var istanbul = time.FixedZone("+03", 3*3600)
 type Service struct {
 	repo  *Repository
 	users IActorResolver
+	// OnEnded, when set, hears every call the moment it is final.
+	OnEnded func(ctx context.Context, log models.CallLog)
 }
 
 // NewService builds a call-log service.
@@ -125,13 +127,27 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 			if err := s.repo.Create(ctx, log); err != nil {
 				return errs.Internal(err)
 			}
+			s.ended(ctx, *log)
 			return nil
 		}
 		if err := s.repo.Update(ctx, existing.ID, fields); err != nil {
 			return errs.Internal(err)
 		}
+		final := *existing
+		final.EndedAt = &now
+		final.Disposition = fields["disposition"].(string)
+		final.DurationSeconds = req.DurationSeconds
+		s.ended(ctx, final)
 	}
 	return nil
+}
+
+// ended hands a final call to the hook, outliving the request.
+func (s *Service) ended(ctx context.Context, log models.CallLog) {
+	if s.OnEnded == nil {
+		return
+	}
+	go s.OnEnded(context.WithoutCancel(ctx), log)
 }
 
 // Recent returns the actor's own call history for today (since local midnight)
