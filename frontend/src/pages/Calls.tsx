@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, Play, X } from "lucide-react";
+import { ArrowLeftRight, Download, History, PhoneIncoming, PhoneOutgoing, Play, X } from "lucide-react";
+import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
 import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
-import { Button, Card, DateField, Input, Select, Spinner, TableSkeleton } from "../components/ui";
+import { cn } from "../lib/utils";
+import { Button, Card, DateField, EmptyState, Input, Select, Skeleton, Spinner } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
 
 // ymd formats a Date as a local YYYY-MM-DD (not UTC, so it matches the panel's day).
@@ -144,9 +146,21 @@ export function Calls() {
   return (
     <>
       <Card
-        title={`Çağrılar${total ? ` (${total})` : ""}`}
+        title="Çağrılar"
+        icon={History}
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            {total > 0 && <span className="text-xs tabular-nums text-muted-foreground">{total} kayıt</span>}
+            {canExport && (
+              <Button variant="secondary" onClick={exportCsv} disabled={exporting || loading} title="Bu filtreyi CSV olarak indir">
+                <Download />
+                {exporting ? "Hazırlanıyor..." : "CSV"}
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <Toolbar className="mb-4">
             {canAll && (
               <Select value={scope} onChange={(e) => { setScope(e.target.value as "own" | "all" | "ext"); setPage(1); }} className="w-44">
                 <option value="all">Tüm çağrılar</option>
@@ -200,15 +214,7 @@ export function Calls() {
                 <DateField value={to} min={from || undefined} onChange={(v) => { setTo(v); setPage(1); }} className="w-40" title="Bitiş tarihi" />
               </div>
             )}
-            {canExport && (
-              <Button variant="secondary" onClick={exportCsv} disabled={exporting || loading} title="Bu filtreyi CSV olarak indir">
-                <Download />
-                {exporting ? "Hazırlanıyor..." : "CSV"}
-              </Button>
-            )}
-          </div>
-        }
-      >
+        </Toolbar>
         {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
         <div className="relative">
           {loading && calls.length > 0 && (
@@ -218,58 +224,44 @@ export function Calls() {
               </span>
             </div>
           )}
-          <div className={`overflow-x-auto transition-opacity ${loading && calls.length > 0 ? "pointer-events-none opacity-40" : ""}`}>
-          <table className="w-full min-w-[52rem] text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="pb-2">Yön</th>
-                <th className="pb-2">Kimden</th>
-                <th className="pb-2">Kime</th>
-                <th className="pb-2">Durum</th>
-                <th className="pb-2">Süre</th>
-                <th className="pb-2">Kayıt</th>
-                <th className="pb-2">Zaman</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && calls.length === 0 && <TableSkeleton rows={8} cols={7} />}
-              {calls.map((c) => {
-                const label = `${displayNumber(c.fromNumber) || c.fromNumber} → ${displayNumber(c.toNumber) || c.toNumber}`;
-                const isPlaying = playing?.uuid === c.uuid;
-                return (
-                  <tr key={c.uuid} className={"border-t border-border/60" + (isPlaying ? " bg-accent/40" : "")}>
-                    <td className="py-2"><Direction value={c.direction} /></td>
-                    <td className="py-2">{c.fromNumber}</td>
-                    <td className="py-2">{c.toNumber}</td>
-                    <td className="py-2"><CallDisposition value={c.disposition} /></td>
-                    <td className="py-2">{formatDuration(c.durationSeconds)}</td>
-                    <td className="py-2">
+          <div className={cn("space-y-1 transition-opacity", loading && calls.length > 0 && "pointer-events-none opacity-40")}>
+            {loading && calls.length === 0 && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-2xl" />)}
+            {calls.map((c) => {
+              const label = `${displayNumber(c.fromNumber) || c.fromNumber} → ${displayNumber(c.toNumber) || c.toNumber}`;
+              const isPlaying = playing?.uuid === c.uuid;
+              const icon = c.direction === "inbound" ? PhoneIncoming : c.direction === "outbound" ? PhoneOutgoing : ArrowLeftRight;
+              const tone = c.disposition === "answered" ? (c.direction === "inbound" ? "success" : "primary") : c.disposition === "in_progress" ? "primary" : "destructive";
+              return (
+                <ListRow
+                  key={c.uuid}
+                  icon={icon}
+                  tone={tone}
+                  active={isPlaying}
+                  title={<span className="font-mono tabular-nums">{c.fromNumber} <span className="text-muted-foreground/60">→</span> {c.toNumber}</span>}
+                  sub={<span className="flex items-center gap-2"><Direction value={c.direction} /><CallDisposition value={c.disposition} /><span>{formatStamp(c.startedAt)}</span></span>}
+                  trailing={
+                    <>
+                      <span className="w-16 text-right font-mono text-sm tabular-nums">{c.disposition === "answered" || c.disposition === "in_progress" ? formatDuration(c.durationSeconds) : "—"}</span>
                       {c.recording && canRec ? (
-                        <div className="flex items-center gap-1">
-                          <Button variant={isPlaying ? "primary" : "ghost"} className="h-8 gap-1.5 px-2" onClick={() => setPlaying({ uuid: c.uuid, label })}>
-                            <Play className="size-3.5" /> Dinle
-                          </Button>
-                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} target="_blank" rel="noopener" title="İndir" className="text-muted-foreground transition hover:text-foreground">
-                            <Download className="size-4" />
+                        <span className="flex items-center gap-1">
+                          <button type="button" onClick={() => setPlaying({ uuid: c.uuid, label })} title="Dinle" className={cn("flex size-8 items-center justify-center rounded-xl transition-colors", isPlaying ? "bg-primary text-primary-foreground" : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                            <Play className="size-3.5" />
+                          </button>
+                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} target="_blank" rel="noopener" title="İndir" className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                            <Download className="size-3.5" />
                           </a>
-                        </div>
+                        </span>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="w-[4.25rem]" />
                       )}
-                    </td>
-                    <td className="py-2 text-muted-foreground">{formatStamp(c.startedAt)}</td>
-                  </tr>
-                );
-              })}
-              {calls.length === 0 && !error && !loading && (
-                <tr>
-                  <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
-                    {(from || to) ? "Bu tarih aralığında kayıt yok." : "Kayıt yok."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    </>
+                  }
+                />
+              );
+            })}
+            {calls.length === 0 && !error && !loading && (
+              <EmptyState icon={<History />} title="Kayıt yok" description={(from || to) ? "Bu tarih aralığında kayıt yok." : "Bu filtrelerle eşleşen çağrı yok."} />
+            )}
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">

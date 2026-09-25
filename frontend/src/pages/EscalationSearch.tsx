@@ -5,7 +5,8 @@
 // agent, which is the same history the dashboard shows during a call.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, CalendarRange, Search, Users, X } from "lucide-react";
+import { ArrowUpDown, CalendarRange, CheckCircle2, ClipboardList, Search, TriangleAlert, Users, X, Zap } from "lucide-react";
+import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
 import type { EscalationCategory, EscalationRecord } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -142,6 +143,7 @@ export function EscalationSearch() {
     <div className="space-y-4">
       <Card
         title="Eskalasyonlar"
+        icon={ClipboardList}
         actions={
           <span className="hidden items-center gap-1.5 text-xs text-muted-foreground md:inline-flex">
             <Users className="size-3.5" />
@@ -150,7 +152,7 @@ export function EscalationSearch() {
         }
       >
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
+        <Toolbar>
           <div className="relative min-w-[16rem] flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -205,7 +207,7 @@ export function EscalationSearch() {
               ))}
             </Select>
           </label>
-        </div>
+        </Toolbar>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>
@@ -236,30 +238,26 @@ export function EscalationSearch() {
               <EmptyState title="Kayıt yok" description={debounced ? `${displayNumber(debounced)} için eskalasyon kaydı bulunamadı.` : "Bu filtrelerle eşleşen eskalasyon kaydı yok."} />
             )
           ) : (
-            <ul className={cn("space-y-2", loading && "opacity-60")}>
+            <ul className={cn("space-y-1", loading && "opacity-60")}>
               {items.map((r) => {
                 const none = r.categoryName === "Eskalasyon yok";
+                const auto = r.note.startsWith("Kendiliğinden");
                 return (
-                  <li key={r.id} className="rounded-xl bg-muted/30 px-4 py-3 ring-1 ring-border/50">
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                        <button
-                          type="button"
-                          onClick={() => setNumber(r.number)}
-                          title="Bu numaranın kayıtlarını göster"
-                          className="font-mono text-base font-semibold tabular-nums tracking-wide hover:underline"
-                        >
-                          {displayNumber(r.number) || r.number}
-                        </button>
-                        <span className="text-sm text-muted-foreground">{r.agentName}</span>
-                      </div>
-                      <span className="font-mono text-xs tabular-nums text-muted-foreground">{r.createdAt}</span>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                      <Badge tone={none ? "slate" : "amber"}>{r.categoryName}</Badge>
-                      <span className="text-sm text-muted-foreground">{r.reasonName}</span>
-                    </div>
-                    {r.note && <p className="mt-1.5 text-sm text-foreground/80">{r.note}</p>}
+                  <li key={r.id}>
+                    <ListRow
+                      icon={none ? CheckCircle2 : auto ? Zap : TriangleAlert}
+                      tone={none ? "muted" : auto ? "primary" : "warning"}
+                      title={
+                        <span className="flex items-center gap-2">
+                          <button type="button" onClick={() => setNumber(r.number)} title="Bu numaranın kayıtlarını göster" className="font-mono tabular-nums tracking-wide hover:underline">{displayNumber(r.number) || r.number}</button>
+                          <span className="text-xs font-normal text-muted-foreground">{r.agentName}</span>
+                        </span>
+                      }
+                      sub={<span className="flex items-center gap-2"><Badge tone={none ? "slate" : "amber"}>{r.categoryName}</Badge><span>{r.reasonName}</span></span>}
+                      trailing={<span className="font-mono text-xs tabular-nums text-muted-foreground">{r.createdAt}</span>}
+                    >
+                      {r.note && <p className="pl-11 text-sm text-foreground/80">{r.note}</p>}
+                    </ListRow>
                   </li>
                 );
               })}

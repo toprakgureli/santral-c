@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
-import { CalendarDays, TriangleAlert } from "lucide-react";
+import { CalendarDays, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonBase =
@@ -150,12 +150,17 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function Card({ title, actions, children }: { title?: string; actions?: ReactNode; children: ReactNode }) {
+export function Card({ title, icon: Icon, actions, children }: { title?: string; icon?: LucideIcon; actions?: ReactNode; children: ReactNode }) {
   return (
     <section className="flex flex-col rounded-2xl bg-card text-card-foreground shadow-sm ring-1 ring-border/60">
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-4">
-          {title && <h2 className="text-sm font-semibold tracking-tight">{title}</h2>}
+        <header className="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-3.5">
+          {title && (
+            <h2 className="flex items-center gap-2.5 text-sm font-semibold tracking-tight">
+              {Icon && <span className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="size-4" /></span>}
+              {title}
+            </h2>
+          )}
           {actions}
         </header>
       )}

@@ -2,7 +2,8 @@
 // system.audit_view.
 
 import { useEffect, useRef, useState } from "react";
-import { ScrollText, Search } from "lucide-react";
+import { FileClock, ScrollText, Search } from "lucide-react";
+import { ListRow, Toolbar } from "../components/ui/rows";
 import { api } from "../api/client";
 import type { AuditEntry } from "../api/types";
 import { Badge, Card, EmptyState, Input, Pagination, Select, Skeleton } from "../components/ui";
@@ -90,8 +91,8 @@ export function Audit() {
   }, [page, action, query]);
 
   return (
-    <Card title="Denetim Kayıtları" actions={<span className="text-xs text-muted-foreground">{total} kayıt</span>}>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+    <Card title="Denetim Kayıtları" icon={FileClock} actions={<span className="text-xs text-muted-foreground">{total} kayıt</span>}>
+      <Toolbar className="mb-4">
         <Select value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} className="w-auto min-w-40">
           {MODULES.map((m) => (
             <option key={m.key} value={m.key}>{m.label}</option>
@@ -101,7 +102,7 @@ export function Audit() {
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="Kullanıcı, e-posta, hedef no veya IP" className="pl-9" />
         </div>
-      </div>
+      </Toolbar>
 
       {loading && items.length === 0 ? (
         <div className="space-y-2">
@@ -112,55 +113,35 @@ export function Audit() {
       ) : !items.length ? (
         <EmptyState icon={<ScrollText />} title="Kayıt bulunamadı" description="Filtreleri değiştirip tekrar deneyin." />
       ) : (
-        <div className={cn("overflow-x-auto transition-opacity", loading && "opacity-60")}>
-          <table className="w-full min-w-[52rem] text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="pb-2">Zaman</th>
-                <th className="pb-2">Kullanıcı</th>
-                <th className="pb-2">İşlem</th>
-                <th className="pb-2">Hedef</th>
-                <th className="pb-2">IP</th>
-                <th className="pb-2">Detay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((e) => {
-                const detail = JSON.stringify(e.detail ?? {});
-                return (
-                  <tr key={e.id} className="border-t border-border/60 align-top">
-                    <td className="py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(e.createdAt)}</td>
-                    <td className="py-2.5">
-                      <span className="block font-medium">{e.actorName || "Sistem"}</span>
-                      {e.actorEmail && <span className="block text-xs text-muted-foreground">{e.actorEmail}</span>}
-                    </td>
-                    <td className="py-2.5">
-                      <Badge tone={tone(e.action)}>{ACTION_LABELS[e.action] ?? e.action}</Badge>
-                    </td>
-                    <td className="py-2.5 whitespace-nowrap text-muted-foreground">
-                      {(TARGET_LABELS[e.targetType] ?? e.targetType) || "—"}
-                      {e.targetId && <span className="tabular-nums"> #{e.targetId}</span>}
-                    </td>
-                    <td className="py-2.5 tabular-nums text-muted-foreground">{e.ip || "—"}</td>
-                    <td className="py-2.5">
-                      {detail === "{}" ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <details className="group">
-                          <summary className="max-w-72 cursor-pointer truncate font-mono text-[0.6875rem] text-muted-foreground group-open:whitespace-normal">
-                            {detail}
-                          </summary>
-                          <pre className="mt-1 max-w-md overflow-x-auto rounded-lg bg-muted/60 p-2 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap">
-                            {JSON.stringify(e.detail, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className={cn("space-y-1 transition-opacity", loading && "opacity-60")}>
+          {items.map((e) => {
+            const detail = JSON.stringify(e.detail ?? {});
+            const t = tone(e.action);
+            return (
+              <ListRow
+                key={e.id}
+                icon={ScrollText}
+                tone={t === "red" ? "destructive" : t === "green" ? "success" : t === "amber" ? "warning" : "primary"}
+                title={<span className="flex items-center gap-2"><Badge tone={t}>{ACTION_LABELS[e.action] ?? e.action}</Badge><span>{e.actorName || "Sistem"}</span></span>}
+                sub={
+                  <span>
+                    {e.actorEmail && <span>{e.actorEmail} · </span>}
+                    {(TARGET_LABELS[e.targetType] ?? e.targetType) || "—"}
+                    {e.targetId && <span className="tabular-nums"> #{e.targetId}</span>}
+                    {e.ip && <span className="tabular-nums"> · {e.ip}</span>}
+                  </span>
+                }
+                trailing={<span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">{formatDateTime(e.createdAt)}</span>}
+              >
+                {detail !== "{}" && (
+                  <details className="group pl-11">
+                    <summary className="max-w-xl cursor-pointer truncate font-mono text-[0.6875rem] text-muted-foreground group-open:whitespace-normal">{detail}</summary>
+                    <pre className="mt-1 max-w-xl overflow-x-auto rounded-xl bg-muted/60 p-2 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap">{JSON.stringify(e.detail, null, 2)}</pre>
+                  </details>
+                )}
+              </ListRow>
+            );
+          })}
         </div>
       )}
 

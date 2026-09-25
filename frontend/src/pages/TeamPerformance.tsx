@@ -297,7 +297,21 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
             </>
           ) : (
             <span className="truncate">
-              {!live ? "Seçilen tarihlerin rakamları" : off ? "Mesaide değil" : r.status === "available" ? "Çağrı bekliyor" : r.status === "break" ? "Molada, çağrı almıyor" : r.status === "unregistered" ? "Telefon bağlı değil" : "Çağrı almıyor"}
+              {!live
+                ? "Seçilen tarihlerin rakamları"
+                : off
+                  ? "Mesai kapalı, çağrı yönlendirilmiyor"
+                  : r.status === "available"
+                    ? "Hatta, sıradaki çağrıyı bekliyor"
+                    : r.status === "break"
+                      ? "Molada, dönünce çağrı almaya devam edecek"
+                      : r.status === "backoffice"
+                        ? "Backoffice işinde, çağrılar diğer temsilcilere düşüyor"
+                        : r.status === "dnd"
+                          ? "Rahatsız etmeyin açık, çağrılar diğer temsilcilere düşüyor"
+                          : r.status === "unregistered"
+                            ? "Telefonu bağlı değil, çağrı düşmüyor"
+                            : "Görüşmede"}
             </span>
           )}
         </div>

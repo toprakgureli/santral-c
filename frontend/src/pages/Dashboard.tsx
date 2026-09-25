@@ -5,6 +5,9 @@ import {
   Copy,
   Delete,
   Grid3x3,
+  Headset,
+  History,
+  ListOrdered,
   Mic,
   MicOff,
   Pause,
@@ -16,6 +19,7 @@ import {
   Search,
   Settings2,
   TriangleAlert,
+  UsersRound,
 } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { AgentPresenceState, Call, EscalationCategory, PBXExtension, PBXQueue, PBXStats } from "../api/types";
@@ -62,9 +66,9 @@ const statusTone: Record<string, "slate" | "green" | "amber" | "red" | "blue"> =
 
 const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-const agentStatus: Record<string, { label: string; tone: "green" | "amber" | "slate" | "red" }> = {
+const agentStatus: Record<string, { label: string; tone: "green" | "amber" | "slate" | "red" | "blue" }> = {
   AVAILABLE: { label: "Boşta", tone: "green" },
-  TALKING: { label: "Görüşmede", tone: "amber" },
+  TALKING: { label: "Görüşmede", tone: "blue" },
   UNREGISTERED: { label: "Kayıtsız", tone: "slate" },
   BREAK: { label: "Molada", tone: "amber" },
   BACKOFFICE: { label: "Backoffice", tone: "amber" },
@@ -429,7 +433,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
   }
 
   return (
-    <Card title="Softphone">
+    <Card title="Softphone" icon={Headset}>
       <WhatsAppTemplateDialog open={waOpen !== null} initialKind={waOpen ?? "unreached"} onClose={() => setWaOpen(null)} previewNumber={displayNumber((waOpen === "live" ? phone.peer : phone.lastPeer) ?? "")} />
       {!hasExtension ? (
         <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
@@ -791,7 +795,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 
   return (
     <div className="space-y-4">
-      <Card title="Temsilciler">
+      <Card title="Temsilciler" icon={UsersRound}>
         <ul className="max-h-72 space-y-0.5 overflow-y-auto">
           {loading && exts.length === 0 &&
             Array.from({ length: 5 }).map((_, i) => (
@@ -811,10 +815,12 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                 onContextMenu={(ev) => agentMenu(ev, e.extension, e.status)}
                 onClick={() => canDial && !inCall && setConfirmExt(e.extension)}
                 title="Sol tık: ara · Sağ tık: aktar veya dinle"
-                className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-accent"
+                className="flex cursor-pointer items-center justify-between rounded-2xl px-2 py-1.5 transition-colors hover:bg-accent/60"
               >
-                <span className="flex min-w-0 items-center gap-2 text-sm">
-                  <span className={cn("size-2 shrink-0 rounded-full", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : "bg-muted-foreground/50")} />
+                <span className="flex min-w-0 items-center gap-2.5 text-sm">
+                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", s.tone === "green" ? "bg-success/10 text-success" : s.tone === "amber" ? "bg-warning/12 text-warning" : s.tone === "red" ? "bg-destructive/10 text-destructive" : s.tone === "blue" ? "bg-primary/10 text-primary" : "bg-muted/70 text-muted-foreground")}>
+                    {e.status === "TALKING" ? <Phone className="size-4" /> : <Headset className="size-4" />}
+                  </span>
                   <span className="min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="font-medium">{e.extension}</span>
@@ -839,7 +845,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
         </ul>
       </Card>
 
-      <Card title="Kuyruklar">
+      <Card title="Kuyruklar" icon={ListOrdered}>
         <ul className="max-h-56 space-y-0.5 overflow-y-auto">
           {queues.map((q) => (
             <li
@@ -942,7 +948,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
   const filtered = term ? calls.filter((c) => displayNumber(c.direction === "outbound" ? c.toNumber : c.fromNumber).includes(displayNumber(term))) : calls;
 
   return (
-    <Card title="Çağrı Geçmişi">
+    <Card title="Çağrı Geçmişi" icon={History}>
       {loading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : error ? (

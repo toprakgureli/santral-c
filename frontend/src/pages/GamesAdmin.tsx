@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, FileUp, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, Gamepad2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input } from "@/components/ui";
@@ -57,7 +57,7 @@ export function GamesAdmin() {
 
       {error && <p className="rounded-xl bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{error}</p>}
 
-      <Card title="Ayarlar">
+      <Card title="Ayarlar" icon={SlidersHorizontal}>
         <div className="grid gap-2 sm:grid-cols-3">
           <Toggle label="Oyunlar açık" hint="Kapalıysa kimse oyun başlatamaz, açık oyunlar sürer." on={!!config?.enabled} onClick={() => void flip("enabled")} />
           <Toggle label="Çağrıda duraklat" hint="Oyuncuya çağrı gelince oyun herkes için durur, bitince devam eder." on={!!config?.pauseOnCall} onClick={() => void flip("pauseOnCall")} />
@@ -65,7 +65,7 @@ export function GamesAdmin() {
         </div>
       </Card>
 
-      <Card title="İçerikler" actions={config && kind ? <Badge tone={(config.itemCounts[kind.itemKind] ?? 0) >= kind.minItems ? "green" : "amber"}>{config.itemCounts[kind.itemKind] ?? 0} aktif · en az {kind.minItems}</Badge> : null}>
+      <Card title="İçerikler" icon={Gamepad2} actions={config && kind ? <Badge tone={(config.itemCounts[kind.itemKind] ?? 0) >= kind.minItems ? "green" : "amber"}>{config.itemCounts[kind.itemKind] ?? 0} aktif · en az {kind.minItems}</Badge> : null}>
         <div className="flex flex-wrap gap-1.5">
           {config?.kinds.filter((m, i, all) => m.itemKind && all.findIndex((o) => o.itemKind === m.itemKind) === i).map((m) => (
             <button key={m.key} type="button" onClick={() => setKind(m)} className={cn("rounded-full px-3 py-1.5 text-xs font-medium", kind?.key === m.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent")}>

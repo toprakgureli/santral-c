@@ -2,7 +2,7 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, TriangleAlert } from "lucide-react";
+import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings } from "../api/types";
@@ -66,7 +66,7 @@ export function Settings() {
       {canBreakLimit && <BreakLimitCard />}
       {canDrive && <DriveCard />}
       {canGames && (
-        <Card title="Mini Oyunlar" actions={<Badge tone="blue">Teams</Badge>}>
+        <Card title="Mini Oyunlar" icon={Gamepad2} actions={<Badge tone="blue">Teams</Badge>}>
           <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
             <Gamepad2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1 space-y-1">
@@ -80,7 +80,7 @@ export function Settings() {
 
       {canSeeLogs && (
         <>
-          <Card title="Banlı IP Adresleri" actions={<span className="text-xs text-muted-foreground">{bans.length} aktif</span>}>
+          <Card title="Banlı IP Adresleri" icon={ShieldBan} actions={<span className="text-xs text-muted-foreground">{bans.length} aktif</span>}>
             {!bans.length ? (
               <EmptyState icon={<ShieldBan />} title="Banlı IP yok" />
             ) : (
@@ -115,6 +115,7 @@ export function Settings() {
 
           <Card
             title="Giriş Kayıtları"
+            icon={ScrollText}
             actions={
               <Button
                 variant="secondary"
@@ -170,7 +171,7 @@ export function Settings() {
       )}
 
       {!canManage && !canSeeLogs && (
-        <Card title="Sistem Ayarları">
+        <Card title="Sistem Ayarları" icon={SlidersHorizontal}>
           <EmptyState title="Bu sayfa için yetkin yok" />
         </Card>
       )}
@@ -230,6 +231,7 @@ function BreakLimitCard() {
   return (
     <Card
       title="Günlük Mola Sınırı"
+      icon={Coffee}
       actions={saved === null ? <Skeleton className="h-5 w-16" /> : <Badge tone="amber">{label(saved)}</Badge>}
     >
       <div className="space-y-4">
@@ -342,7 +344,7 @@ function MfaPolicyCard() {
   const badge = saved === null ? <Skeleton className="h-5 w-16" /> : <Badge tone={saved.mfaMode === "on" ? "green" : saved.mfaMode === "trusted" ? "blue" : "slate"}>{MFA_MODES.find((m) => m.key === saved.mfaMode)?.label}</Badge>;
 
   return (
-    <Card title="İki Adımlı Doğrulama" actions={badge}>
+    <Card title="İki Adımlı Doğrulama" icon={ShieldCheck} actions={badge}>
       <div className="space-y-4">
         <div className="grid gap-2 sm:grid-cols-3">
           {MFA_MODES.map((m) => (
@@ -454,6 +456,7 @@ function DriveCard() {
   return (
     <Card
       title="Teams Dosya Depolama (Google Drive)"
+      icon={HardDrive}
       actions={
         status === null ? <Skeleton className="h-5 w-20" /> : status.connected ? <Badge tone="green">Bağlı</Badge> : status.configured ? <Badge tone="amber">Bağlı değil</Badge> : <Badge tone="red">Yapılandırılmamış</Badge>
       }

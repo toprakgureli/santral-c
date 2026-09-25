@@ -3,14 +3,14 @@
 // on purpose, it cannot be changed later so it must be typed deliberately).
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Plus, ShieldCheck } from "lucide-react";
+import { Copy, KeyRound, Plus, ShieldCheck } from "lucide-react";
+import { ListRow } from "../components/ui/rows";
 import { api } from "../api/client";
 import type { PermissionGroup, Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { Badge, Button, Card, EmptyState, Skeleton } from "../components/ui";
 import RoleForm from "../components/role/RoleForm";
-import { cn } from "../lib/utils";
 
 export function Roles() {
   const { user } = useAuth();
@@ -54,6 +54,7 @@ export function Roles() {
     <div className="space-y-6">
       <Card
         title="Roller"
+        icon={KeyRound}
         actions={
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{roles.length} rol · {totalPermissions} yetki</span>
@@ -75,68 +76,51 @@ export function Roles() {
         ) : !roles.length ? (
           <EmptyState icon={<ShieldCheck />} title="Rol bulunamadı" />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[42rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground">
-                  <th className="pb-2">Rol</th>
-                  <th className="pb-2">Tür</th>
-                  <th className="pb-2">Kullanıcı</th>
-                  <th className="pb-2">Yetki</th>
-                  <th className="pb-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((r) => {
-                  const ratio = totalPermissions ? (r.permissionIds.length / totalPermissions) * 100 : 0;
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => canManage && setEditing(r)}
-                      className={cn("border-t border-border/60", canManage && "cursor-pointer transition-colors hover:bg-accent/50")}
-                    >
-                      <td className="py-2.5">
-                        <span className="block font-medium">{r.displayName}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {r.name}
-                          {r.description ? ` · ${r.description}` : ""}
+          <div className="space-y-1">
+            {roles.map((r) => {
+              const ratio = totalPermissions ? (r.permissionIds.length / totalPermissions) * 100 : 0;
+              return (
+                <ListRow
+                  key={r.id}
+                  icon={r.system ? ShieldCheck : KeyRound}
+                  tone={r.system ? "primary" : "violet"}
+                  onClick={canManage ? () => setEditing(r) : undefined}
+                  title={<span className="flex items-center gap-2">{r.displayName}<Badge tone={r.system ? "blue" : "slate"}>{r.system ? "Sistem" : "Özel"}</Badge></span>}
+                  sub={<span>{r.name}{r.description ? ` · ${r.description}` : ""} · {r.userCount} kullanıcı</span>}
+                  trailing={
+                    <>
+                      <span className="flex items-center gap-2" title={`${r.permissionIds.length} / ${totalPermissions} yetki`}>
+                        <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+                          <span className="block h-full rounded-full bg-primary/70 transition-[width] duration-500" style={{ width: `${ratio}%` }} />
                         </span>
-                      </td>
-                      <td className="py-2.5">
-                        <Badge tone={r.system ? "blue" : "slate"}>{r.system ? "Sistem" : "Özel"}</Badge>
-                      </td>
-                      <td className="py-2.5 tabular-nums">{r.userCount}</td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                            <span className="block h-full rounded-full bg-primary/70 transition-[width] duration-500" style={{ width: `${ratio}%` }} />
-                          </span>
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            {r.permissionIds.length} / {totalPermissions}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        {canManage && (
-                          <Button
-                            variant="ghost"
-                            className="h-8 px-2.5 text-xs"
-                            title={`${r.displayName} yetkilerini yeni bir role kopyala`}
-                            onClick={(e) => {
+                        <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">{r.permissionIds.length} / {totalPermissions}</span>
+                      </span>
+                      {canManage && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          title={`${r.displayName} yetkilerini yeni bir role kopyala`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCopying(r);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
                               e.stopPropagation();
                               setCopying(r);
-                            }}
-                          >
-                            <Copy />
-                            Kopyala
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            }
+                          }}
+                          className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                          <Copy className="size-3.5" />
+                        </span>
+                      )}
+                    </>
+                  }
+                />
+              );
+            })}
           </div>
         )}
       </Card>

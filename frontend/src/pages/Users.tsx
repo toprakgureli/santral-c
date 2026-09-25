@@ -3,7 +3,8 @@
 // also end the user's open sessions.
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Search, Users as UsersIcon } from "lucide-react";
+import { Plus, Search, Users as UsersIcon, UsersRound } from "lucide-react";
+import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
 import type { Role, User } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -80,6 +81,7 @@ export function Users() {
     <div className="space-y-6">
       <Card
         title="Kullanıcılar"
+        icon={UsersRound}
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="text-xs text-muted-foreground">{total} kayıt</span>
@@ -93,7 +95,7 @@ export function Users() {
           </div>
         }
       >
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Toolbar className="mb-4">
           <Select value={roleId} onChange={(e) => { setRoleId(e.target.value); setPage(1); }} className="w-auto min-w-40">
             <option value="">Tüm roller</option>
             {roles.map((r) => (
@@ -109,7 +111,7 @@ export function Users() {
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(e) => { setQuery(e.target.value); setPage(1); }} placeholder="İsim veya e-posta ara..." className="pl-9" />
           </div>
-        </div>
+        </Toolbar>
 
         {loading && items.length === 0 ? (
           <div className="space-y-2">
@@ -120,49 +122,31 @@ export function Users() {
         ) : !items.length ? (
           <EmptyState icon={<UsersIcon />} title="Kullanıcı bulunamadı" description="Filtreleri değiştirip tekrar deneyin." />
         ) : (
-          <div className={cn("overflow-x-auto transition-opacity", loading && "opacity-60")}>
-            <table className="w-full min-w-[44rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground">
-                  <th className="pb-2">Kullanıcı</th>
-                  <th className="pb-2">Roller</th>
-                  <th className="pb-2">Dahili</th>
-                  <th className="pb-2">Durum</th>
-                  <th className="pb-2">Son Giriş</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((u) => (
-                  <tr
-                    key={u.id}
-                    onClick={() => canUpdate && setEditing(u)}
-                    className={cn("border-t border-border/60", canUpdate && "cursor-pointer transition-colors hover:bg-accent/50")}
-                  >
-                    <td className="py-2.5">
-                      <span className="flex items-center gap-2.5">
-                        <UserAvatar userId={u.id} name={u.name} hasAvatar={u.hasAvatar} version={u.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
-                        <span className="min-w-0">
-                          <Link to={`/profile/${u.id}`} onClick={(e) => e.stopPropagation()} className="block font-medium hover:underline" title="Profili aç">{u.name}</Link>
-                          <span className="block text-xs text-muted-foreground">{u.email}</span>
-                        </span>
-                      </span>
-                    </td>
-                    <td className="py-2.5">
-                      <div className="flex flex-wrap gap-1">
-                        {u.roleIds.map((id, i) => (
-                          <Badge key={id} tone="blue">{roleName(id) ?? u.roles[i] ?? id}</Badge>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-2.5 tabular-nums">{u.sipExtension ?? "—"}</td>
-                    <td className="py-2.5">
-                      <Badge tone={u.active ? "green" : "red"}>{u.active ? "Aktif" : "Pasif"}</Badge>
-                    </td>
-                    <td className="py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(u.lastLoginAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className={cn("space-y-1 transition-opacity", loading && "opacity-60")}>
+            {items.map((u) => (
+              <ListRow
+                key={u.id}
+                onClick={canUpdate ? () => setEditing(u) : undefined}
+                leading={<UserAvatar userId={u.id} name={u.name} hasAvatar={u.hasAvatar} version={u.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
+                title={
+                  <span className="flex items-center gap-2">
+                    <Link to={`/profile/${u.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline" title="Profili aç">{u.name}</Link>
+                    {!u.active && <Badge tone="red">Pasif</Badge>}
+                  </span>
+                }
+                sub={<span>{u.email}{u.sipExtension ? ` · dahili ${u.sipExtension}` : ""}</span>}
+                trailing={
+                  <>
+                    <span className="hidden flex-wrap justify-end gap-1 sm:flex">
+                      {u.roleIds.map((id, i) => (
+                        <Badge key={id} tone="blue">{roleName(id) ?? u.roles[i] ?? id}</Badge>
+                      ))}
+                    </span>
+                    <span className="hidden w-32 text-right text-xs tabular-nums text-muted-foreground md:block" title="Son giriş">{formatDateTime(u.lastLoginAt)}</span>
+                  </>
+                }
+              />
+            ))}
           </div>
         )}
 

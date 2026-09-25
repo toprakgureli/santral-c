@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Tags, Trash2, Upload } from "lucide-react";
+import { IconChip } from "../components/ui/rows";
 import { cn } from "../lib/utils";
 import { api, ApiError } from "../api/client";
 import type { EscalationCategory } from "../api/types";
@@ -67,6 +68,7 @@ export function Escalations() {
     <div className="space-y-6">
       <Card
         title="Eskalasyon Durumları"
+        icon={Tags}
         actions={
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={onImport} />
@@ -152,11 +154,14 @@ function CategoryCard({
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+    <div className="rounded-2xl bg-muted/30 p-3 ring-1 ring-border/50">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{index + 1}.</span>
-          <h3 className="truncate font-semibold">{category.name}</h3>
+        <div className="flex min-w-0 items-center gap-3">
+          <IconChip icon={Tags} tone="warning" />
+          <span className="min-w-0">
+            <h3 className="truncate text-sm font-semibold leading-tight">{category.name}</h3>
+            <span className="block text-xs text-muted-foreground">{index + 1}. sıra · {reasons.length} durum</span>
+          </span>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <OrderButton dir={-1} disabled={index === 0} onClick={() => onMove(-1)} title="Bir üste taşı" />
@@ -172,9 +177,9 @@ function CategoryCard({
       </div>
       <ul className="mb-3 space-y-1">
         {reasons.map((r, i) => (
-          <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg bg-card px-3 py-1.5 text-sm">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="w-5 shrink-0 text-xs tabular-nums text-muted-foreground">{i + 1}.</span>
+          <li key={r.id} className="flex items-center justify-between gap-2 rounded-xl bg-card px-2.5 py-1.5 text-sm">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[0.65rem] font-semibold tabular-nums text-muted-foreground">{i + 1}</span>
               <span className="truncate">{r.name}</span>
             </span>
             <span className="flex shrink-0 items-center gap-0.5">
