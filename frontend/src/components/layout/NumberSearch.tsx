@@ -101,7 +101,7 @@ export default function NumberSearch() {
       </div>
 
       {showCard && (
-        <div className="animate-in fade-in slide-in-from-top-1 absolute right-0 mt-2 w-[26rem] overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-xl duration-150">
+        <div className="animate-in fade-in slide-in-from-top-1 absolute right-0 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-xl duration-150">
           {error ? (
             <p className="px-4 py-3 text-sm text-destructive">{error}</p>
           ) : !result ? (

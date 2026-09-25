@@ -247,7 +247,7 @@ export function TeamPerformance() {
   );
 }
 
-function AgentCard({ row: r, now, live, multiDay, from, to }: { row: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string }) {
+export function AgentCard({ row: r, now, live, multiDay, from, to }: { row: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string }) {
   const s = STATUS[r.status] ?? STATUS.off;
   const off = r.status === "off";
   const [calls, setCalls] = useState(false);
@@ -318,20 +318,22 @@ function AgentCard({ row: r, now, live, multiDay, from, to }: { row: TeamRow; no
           )}
         </div>
 
-        {/* 3. Shift: in, out, total, break */}
-        <Line icon={Clock} label={multiDay ? "Mesai (ilk giriş, son çıkış)" : "Mesai"}>
-          {r.shift.firstStart ? (
-            <span className="flex items-center gap-2 font-mono text-xs tabular-nums">
-              <span>{stamp(r.shift.firstStart, multiDay)}</span>
-              <span className="text-muted-foreground/50">→</span>
-              <span className={cn(r.shift.open && "font-sans font-medium text-success")}>{r.shift.open ? "devam" : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}</span>
-              <span className="text-muted-foreground/50">·</span>
-              <span className="font-semibold text-foreground">{r.shift.seconds > 0 ? short(r.shift.seconds) : "—"}</span>
-              {r.breakSeconds > 0 && <span className="text-warning" title="Mola">({short(r.breakSeconds)} mola)</span>}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">{live ? "Başlatılmadı" : "Kayıt yok"}</span>
-          )}
+        {/* 3. Shift: in and out in the note, the total on the right */}
+        <Line
+          icon={Clock}
+          label="Mesai"
+          sub={
+            r.shift.firstStart ? (
+              <span className="font-mono tabular-nums">
+                {stamp(r.shift.firstStart, multiDay)} → {r.shift.open ? <span className="font-sans font-medium text-success">devam</span> : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}
+                {r.breakSeconds > 0 && <span className="font-sans text-warning"> · {short(r.breakSeconds)} mola</span>}
+              </span>
+            ) : (
+              live ? "Başlatılmadı" : "Seçilen tarihlerde kayıt yok"
+            )
+          }
+        >
+          <span className="text-sm font-semibold tabular-nums">{r.shift.seconds > 0 ? short(r.shift.seconds) : "—"}</span>
         </Line>
 
         {/* 4. Reached and unreached, one row each, the number on the right */}
@@ -373,23 +375,23 @@ function AgentCard({ row: r, now, live, multiDay, from, to }: { row: TeamRow; no
           </span>
           <ChevronRight className="size-4 shrink-0" />
         </button>
-        {calls && <AgentCallsDialog row={r} from={from} to={to} onClose={() => setCalls(false)} />}
       </div>
+      {calls && <AgentCallsDialog row={r} from={from} to={to} onClose={() => setCalls(false)} />}
     </section>
   );
 }
 
 // Line is one row of the card in the menu's shape: an icon chip, a label
 // with an optional small note, and the value on the right.
-function Line({ icon: Icon, label, sub, tone, children }: { icon: LucideIcon; label: string; sub?: string; tone?: "success" | "destructive"; children: React.ReactNode }) {
+function Line({ icon: Icon, label, sub, tone, children }: { icon: LucideIcon; label: string; sub?: React.ReactNode; tone?: "success" | "destructive"; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+    <div className="flex h-12 items-center gap-3 rounded-xl px-2">
       <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", tone === "success" ? "bg-success/10 text-success" : tone === "destructive" ? "bg-destructive/10 text-destructive" : "bg-muted/70 text-muted-foreground")}>
         <Icon className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium leading-tight">{label}</span>
-        {sub && <span className="block truncate text-[0.7rem] text-muted-foreground">{sub}</span>}
+        <span className="block h-4 truncate text-[0.7rem] leading-4 text-muted-foreground">{sub}</span>
       </span>
       <span className="shrink-0">{children}</span>
     </div>

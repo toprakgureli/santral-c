@@ -35,7 +35,8 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
       return !v;
     });
   };
-  const barsClass = large ? "h-6 w-28" : "h-4 w-16";
+  // The bars take whatever width is left; labels and the figure never shrink.
+  const barsClass = large ? "h-6 min-w-12 flex-1" : "h-4 min-w-8 flex-1";
   const bars = large ? 22 : 14;
 
   return (
@@ -51,9 +52,9 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
         <VoiceBars read={() => phone.spectrum("remote")} token="--primary" bars={bars} className={barsClass} />
         <Lbl large={large} muted={phone.muted}>Sen</Lbl>
         <VoiceBars read={() => (phone.muted ? null : phone.spectrum("local"))} token="--success" bars={bars} className={barsClass} />
-        <span className="ml-auto flex items-center gap-1.5 text-muted-foreground">
+        <span className="ml-1 flex shrink-0 items-center gap-1.5 whitespace-nowrap text-muted-foreground">
           <Volume2 className={large ? "size-4" : "size-3.5"} />
-          <span className={cn("font-semibold tabular-nums", large ? "text-sm" : "text-xs", pct > 100 ? "text-primary" : pct === 0 ? "text-destructive" : "text-foreground")}>%{pct}</span>
+          <span className={cn("font-semibold tabular-nums", large ? "min-w-[3.25rem] text-sm" : "min-w-11 text-xs", pct > 100 ? "text-primary" : pct === 0 ? "text-destructive" : "text-foreground")}>%{pct}</span>
           <ChevronDown className={cn("transition-transform", large ? "size-4" : "size-3.5", open && "rotate-180")} />
         </span>
       </button>
@@ -85,5 +86,5 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
 }
 
 function Lbl({ large, muted, children }: { large: boolean; muted?: boolean; children: React.ReactNode }) {
-  return <span className={cn("shrink-0 font-medium uppercase tracking-wide", large ? "text-[0.65rem]" : "text-[0.6rem]", muted ? "text-muted-foreground/60 line-through" : "text-muted-foreground")}>{children}</span>;
+  return <span className={cn("shrink-0 whitespace-nowrap font-medium uppercase tracking-wide", large ? "text-[0.65rem]" : "text-[0.6rem]", muted ? "text-muted-foreground/60 line-through" : "text-muted-foreground")}>{children}</span>;
 }

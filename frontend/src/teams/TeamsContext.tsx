@@ -464,6 +464,12 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+// TeamsMockProvider offers an empty chat state, for the development preview.
+export function TeamsMockProvider({ children }: { children: ReactNode }) {
+  const value = { groups: [], invites: [], unread: 3, games: null, notifications: "denied" } as unknown as TeamsState;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 export function useTeams(): TeamsState {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useTeams must be used within TeamsProvider");

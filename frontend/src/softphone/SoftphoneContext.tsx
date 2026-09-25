@@ -6,7 +6,7 @@ import { useSoftphone, type Phone } from "./useSoftphone";
 export type { EndedCall } from "./useSoftphone";
 import { usePanelBridge } from "./extensionBridge";
 
-type SoftphoneValue = Phone & { secondary: boolean; takeOver: () => void };
+export type SoftphoneValue = Phone & { secondary: boolean; takeOver: () => void };
 
 const Ctx = createContext<SoftphoneValue | null>(null);
 
@@ -88,6 +88,11 @@ export function SoftphoneProvider({ children }: { children: ReactNode }) {
       <audio ref={phone.audioRef} autoPlay className="hidden" />
     </Ctx.Provider>
   );
+}
+
+// SoftphoneMockProvider supplies a fixed value, for the development preview.
+export function SoftphoneMockProvider({ value, children }: { value: SoftphoneValue; children: ReactNode }) {
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useSoftphoneContext(): SoftphoneValue {

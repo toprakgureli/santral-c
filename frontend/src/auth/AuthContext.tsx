@@ -47,6 +47,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+// AuthMockProvider signs in a fixed user, for the development preview.
+export function AuthMockProvider({ user, children }: { user: User; children: ReactNode }) {
+  const value = useMemo<AuthState>(
+    () => ({ user, loading: false, setUser: () => undefined, refresh: async () => undefined, logout: async () => undefined, can: (p) => user.permissions.includes("*") || user.permissions.includes(p) }),
+    [user],
+  );
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 export function useAuth(): AuthState {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
