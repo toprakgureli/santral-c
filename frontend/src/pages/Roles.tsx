@@ -89,7 +89,7 @@ export function Roles() {
                   sub={<span>{r.name}{r.description ? ` · ${r.description}` : ""} · {r.userCount} kullanıcı</span>}
                   trailing={
                     <>
-                      <span className="flex items-center gap-2" title={`${r.permissionIds.length} / ${totalPermissions} yetki`}>
+                      <span className="flex items-center gap-2" data-tip={`${r.permissionIds.length} / ${totalPermissions} yetki`}>
                         <span className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                           <span className="block h-full rounded-full bg-primary/70 transition-[width] duration-500" style={{ width: `${ratio}%` }} />
                         </span>
@@ -99,7 +99,7 @@ export function Roles() {
                         <span
                           role="button"
                           tabIndex={0}
-                          title={`${r.displayName} yetkilerini yeni bir role kopyala`}
+                          data-tip={`${r.displayName} yetkilerini yeni bir role kopyala`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setCopying(r);

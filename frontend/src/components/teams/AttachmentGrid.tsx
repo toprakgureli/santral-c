@@ -32,7 +32,7 @@ export default function AttachmentGrid({ attachments, onOpen, className }: { att
                 key={a.id}
                 type="button"
                 onClick={() => onOpen(i)}
-                title={`${a.name} · ${formatSize(a.size)}`}
+                data-tip={`${a.name} · ${formatSize(a.size)}`}
                 className={cn("group relative block overflow-hidden bg-muted/60 text-left", single ? "" : "aspect-[4/3]", shown.length === 3 && i === 0 && "row-span-2 aspect-auto")}
                 style={single ? { aspectRatio: `${Math.max(0.6, Math.min(2.2, ratio))}`, maxHeight: 220 } : undefined}
               >

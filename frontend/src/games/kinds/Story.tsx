@@ -24,7 +24,7 @@ export default function Story({ h, selfId }: KindProps) {
       <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 text-base leading-loose">
         <span className="font-medium">{d.prompt}</span>{" "}
         {sentences.map((s, i) => (
-          <span key={i} title={s.name} className={s.userId === selfId ? "text-primary" : ""}>{s.text} </span>
+          <span key={i} data-tip={s.name} className={s.userId === selfId ? "text-primary" : ""}>{s.text} </span>
         ))}
         <span className="animate-pulse text-muted-foreground">▍</span>
       </div>

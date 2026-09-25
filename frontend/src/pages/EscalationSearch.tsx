@@ -170,7 +170,7 @@ export function EscalationSearch() {
             )}
           </div>
 
-          <label className="relative" title="Tarih">
+          <label className="relative" data-tip="Tarih">
             <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Select value={preset} onChange={(e) => choosePreset(e.target.value as Preset)} className="h-10 w-40 pl-9">
               {PRESETS.map((p) => (
@@ -180,14 +180,14 @@ export function EscalationSearch() {
           </label>
           {preset === "custom" && (
             <div className="flex items-center gap-1">
-              <DateField value={from} max={to || undefined} onChange={setFrom} className="w-40" title="Başlangıç" />
+              <DateField value={from} max={to || undefined} onChange={setFrom} className="w-40" data-tip="Başlangıç" />
               <span className="text-muted-foreground">-</span>
-              <DateField value={to} min={from || undefined} max={ymd(new Date())} onChange={setTo} className="w-40" title="Bitiş" />
+              <DateField value={to} min={from || undefined} max={ymd(new Date())} onChange={setTo} className="w-40" data-tip="Bitiş" />
             </div>
           )}
 
           {canAll && (
-            <label className="relative" title="Temsilci">
+            <label className="relative" data-tip="Temsilci">
               <Users className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Select value={agentId} onChange={(e) => setAgentId(Number(e.target.value))} className="h-10 w-48 pl-9">
                 <option value={0}>Tüm temsilciler</option>
@@ -198,7 +198,7 @@ export function EscalationSearch() {
             </label>
           )}
 
-          <label className="relative" title="Kategori">
+          <label className="relative" data-tip="Kategori">
             <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Select value={categoryId} onChange={(e) => setCategoryId(Number(e.target.value))} className="h-10 w-52 pl-9">
               <option value={0}>Tüm kategoriler</option>
@@ -249,7 +249,7 @@ export function EscalationSearch() {
                       tone={none ? "muted" : auto ? "primary" : "warning"}
                       title={
                         <span className="flex items-center gap-2">
-                          <button type="button" onClick={() => setNumber(r.number)} title="Bu numaranın kayıtlarını göster" className="font-mono tabular-nums tracking-wide hover:underline">{displayNumber(r.number) || r.number}</button>
+                          <button type="button" onClick={() => setNumber(r.number)} data-tip="Bu numaranın kayıtlarını göster" className="font-mono tabular-nums tracking-wide hover:underline">{displayNumber(r.number) || r.number}</button>
                           <span className="text-xs font-normal text-muted-foreground">{r.agentName}</span>
                         </span>
                       }

@@ -334,7 +334,7 @@ export default function Composer({
             <span className="font-medium">{reply.sender?.name}</span>
             <span className="text-muted-foreground"> kişisine yanıt: {stripMarkup(reply.body).slice(0, 100)}</span>
           </span>
-          <button type="button" onClick={onCancelReply} aria-label="Yanıtı iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
+          <button type="button" onClick={onCancelReply} aria-label="Yanıtı iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground" data-tip="Yanıtı iptal et"><X className="size-3.5" /></button>
         </div>
       ) : null}
 
@@ -402,7 +402,7 @@ export default function Composer({
       )}
 
       <div className={cn("flex items-end gap-1.5 rounded-[1.375rem] border bg-card px-2 py-1.5 shadow-sm transition-[box-shadow,border-color] focus-within:ring-4", editing ? "border-warning/60 focus-within:ring-warning/15" : "border-border/60 focus-within:border-ring/50 focus-within:ring-ring/15")}>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => picker.current?.click()} disabled={!!editing} title="Dosya ekle (görsel 200 MB, video 1 GB, dosya 3 GB)" className="mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"><Paperclip className="size-4" /></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => picker.current?.click()} disabled={!!editing} data-tip="Dosya ekle (görsel 200 MB, video 1 GB, dosya 3 GB)" className="mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"><Paperclip className="size-4" /></button>
         <input
           ref={picker}
           type="file"
@@ -439,7 +439,7 @@ export default function Composer({
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => { setEmoji((v) => !v); setHelp(false); }}
-          title="Emoji"
+          data-tip="Emoji"
           className={cn("mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", emoji && "bg-accent text-foreground")}
         >
           <SmilePlus className="size-4" />
@@ -448,7 +448,7 @@ export default function Composer({
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => { setHelp((v) => !v); setEmoji(false); }}
-          title="Biçimlendirme"
+          data-tip="Biçimlendirme"
           className={cn("mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground", help && "bg-accent text-foreground")}
         >
           <Type className="size-4" />
@@ -469,7 +469,7 @@ export default function Composer({
               el?.setSelectionRange(pos, pos);
             });
           }}
-          title="Etiketle"
+          data-tip="Etiketle"
           className="mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <AtSign className="size-4" />

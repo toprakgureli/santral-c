@@ -268,7 +268,7 @@ function BreakLimitCard() {
               value={minutes}
               onChange={(e) => setMinutes(e.target.value)}
               className="h-9 w-24 font-mono tabular-nums"
-              title="Dakika (5 ile 720 arası)"
+              data-tip="Dakika (5 ile 720 arası)"
             />
             <span className="text-sm text-muted-foreground">dakika</span>
           </div>

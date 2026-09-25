@@ -45,7 +45,7 @@ export default function GameCard({ gameId, onOpen }: { gameId: number; onOpen: (
       {g.status !== "cancelled" && (
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
           {g.players.map((p) => (
-            <span key={p.id} className={cn("inline-flex items-center gap-1.5 rounded-full bg-muted/60 py-0.5 pr-2.5 pl-0.5 text-xs", p.left && "line-through opacity-50", g.winners.includes(p.id) && "bg-success/15 text-success")} title={`${p.name}${g.status !== "lobby" ? ` · ${p.score} puan` : ""}`}>
+            <span key={p.id} className={cn("inline-flex items-center gap-1.5 rounded-full bg-muted/60 py-0.5 pr-2.5 pl-0.5 text-xs", p.left && "line-through opacity-50", g.winners.includes(p.id) && "bg-success/15 text-success")} data-tip={`${p.name}${g.status !== "lobby" ? ` · ${p.score} puan` : ""}`}>
               <UserAvatar userId={p.id} name={p.name} className="size-6" fallbackClassName="bg-primary/10 text-[0.55rem] text-primary" />
               {p.name.split(" ")[0]}
               {p.id === g.hostId && <Crown className="size-3 text-warning" />}
@@ -53,7 +53,7 @@ export default function GameCard({ gameId, onOpen }: { gameId: number; onOpen: (
             </span>
           ))}
           {g.status === "lobby" && g.invited.map((p) => (
-            <span key={`i-${p.id}`} className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-warning/60 py-0.5 pr-2.5 pl-0.5 text-xs text-muted-foreground" title={`${p.name} davet edildi, bekleniyor`}>
+            <span key={`i-${p.id}`} className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-warning/60 py-0.5 pr-2.5 pl-0.5 text-xs text-muted-foreground" data-tip={`${p.name} davet edildi, bekleniyor`}>
               <UserAvatar userId={p.id} name={p.name} className="size-6 opacity-60" fallbackClassName="bg-muted text-[0.55rem]" />
               {p.name.split(" ")[0]}
               <Clock className="size-3 text-warning" />

@@ -177,7 +177,7 @@ export default function ImageEditor({ file, onCancel, onReady }: { file: File; o
                 key={t.value}
                 type="button"
                 onClick={() => setTool(t.value)}
-                title={t.label}
+                data-tip={t.label}
                 aria-pressed={tool === t.value}
                 className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-colors duration-150", tool === t.value ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-muted")}
               >

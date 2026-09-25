@@ -199,7 +199,7 @@ export function TeamPerformance() {
               {scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} · {rangeLabel(from, to)}
             </span>
             <RangePicker preset={preset} range={range} onPreset={choose} onFrom={setFrom} onTo={setTo} />
-            <label className="relative" title="Sıralama">
+            <label className="relative" data-tip="Sıralama">
               <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="h-9 w-52 pl-9">
                 {SORTS.map((s) => (
@@ -211,7 +211,7 @@ export function TeamPerformance() {
               type="button"
               onClick={() => setShare(true)}
               disabled={rows.length === 0}
-              title="Performans görseli oluştur"
+              data-tip="Performans görseli oluştur"
               className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
             >
               <Share2 className="size-4" /> Paylaş
@@ -272,13 +272,13 @@ export function AgentCard({ row: r, now, live, multiDay, from, to }: { row: Team
           <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "talking" && "animate-pulse")} />
         </UserAvatar>
         <div className="min-w-0 flex-1">
-          <Link to={`/profile/${r.userId}`} className="block truncate text-sm font-semibold leading-tight hover:underline" title="Profili aç">{r.name}</Link>
+          <Link to={`/profile/${r.userId}`} className="block truncate text-sm font-semibold leading-tight hover:underline" data-tip="Profili aç">{r.name}</Link>
           <div className="truncate text-xs text-muted-foreground">
             {r.extension}
             {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}
           </div>
         </div>
-        <span className={cn("flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium", s.chip)} title={held && stateSince ? `${hhmm(stateSince)}'den beri` : undefined}>
+        <span className={cn("flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium", s.chip)} data-tip={held && stateSince ? `${hhmm(stateSince)}'den beri` : undefined}>
           <Icon className="size-3.5" />
           {s.label}
           {held && <span className="tabular-nums opacity-80">· {held}</span>}
@@ -345,7 +345,7 @@ export function AgentCard({ row: r, now, live, multiDay, from, to }: { row: Team
         </Line>
 
         {/* 5. Reach bar */}
-        <div className="flex items-center gap-2 px-2 py-1 text-[0.7rem]" title="Gerçek çağrı / tüm denemeler">
+        <div className="flex items-center gap-2 px-2 py-1 text-[0.7rem]" data-tip="Gerçek çağrı / tüm denemeler">
           <span className="w-8 shrink-0" />
           <span className="w-16 shrink-0 text-muted-foreground">Ulaşma</span>
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -400,7 +400,7 @@ function Line({ icon: Icon, label, sub, tone, children }: { icon: LucideIcon; la
 
 function Rate({ label, value, hint, icon: Icon }: { label: string; value: string; hint: string; icon?: LucideIcon }) {
   return (
-    <div className="rounded-xl bg-muted/50 px-2 py-1.5 text-center" title={hint}>
+    <div className="rounded-xl bg-muted/50 px-2 py-1.5 text-center" data-tip={hint}>
       <div className="flex items-center justify-center gap-1 truncate text-sm font-semibold tabular-nums">{Icon && <Icon className="size-3.5 text-warning" />}{value}</div>
       <div className="text-[0.6rem] text-muted-foreground">{label}</div>
     </div>
@@ -409,7 +409,7 @@ function Rate({ label, value, hint, icon: Icon }: { label: string; value: string
 
 function Stat({ dot, label, value, hint }: { dot: string; label: string; value: string; hint?: string }) {
   return (
-    <span className="flex items-center gap-2" title={hint}>
+    <span className="flex items-center gap-2" data-tip={hint}>
       <span className={`size-2 rounded-full ${dot}`} />
       <span className="text-muted-foreground">{label}</span>
       <span className="font-semibold tabular-nums">{value}</span>

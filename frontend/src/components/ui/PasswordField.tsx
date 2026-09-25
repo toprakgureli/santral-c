@@ -35,7 +35,7 @@ const PasswordField = forwardRef<HTMLInputElement, PasswordFieldProps>(function 
           <button
             type="button"
             tabIndex={-1}
-            title="Kurallara uygun şifre oluştur"
+            data-tip="Kurallara uygun şifre oluştur"
             aria-label="Şifre oluştur"
             onClick={() => {
               onChange(generatePassword());

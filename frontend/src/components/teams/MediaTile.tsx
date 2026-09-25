@@ -26,7 +26,7 @@ export default function MediaTile({ item, onRemove, onRetry, onEdit }: { item: P
           )}
         </>
       ) : (
-        <div className="flex h-full items-center gap-2.5 px-2.5" title={item.name}>
+        <div className="flex h-full items-center gap-2.5 px-2.5" data-tip={item.name}>
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-4" /></span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs font-medium">{item.name}</span>
@@ -48,19 +48,19 @@ export default function MediaTile({ item, onRemove, onRetry, onEdit }: { item: P
       )}
 
       {item.status === "hata" && (
-        <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1 bg-destructive/85 px-1.5 py-0.5 text-[0.6rem] text-white" title={item.error}>
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1 bg-destructive/85 px-1.5 py-0.5 text-[0.6rem] text-white" data-tip={item.error}>
           <TriangleAlert className="size-3 shrink-0" /> Yüklenemedi
         </span>
       )}
 
       <span className={cn("absolute top-1 right-1 flex gap-0.5", media ? "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100" : "")}>
         {item.status === "hata" && onRetry && (
-          <button type="button" onClick={onRetry} title="Yeniden dene" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><RefreshCw className="size-3" /></button>
+          <button type="button" onClick={onRetry} data-tip="Yeniden dene" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><RefreshCw className="size-3" /></button>
         )}
         {item.kind === "image" && onEdit && item.status !== "hazırlanıyor" && (
-          <button type="button" onClick={onEdit} title="İşaretle / gizle" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><Pencil className="size-3" /></button>
+          <button type="button" onClick={onEdit} data-tip="İşaretle / gizle" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><Pencil className="size-3" /></button>
         )}
-        <button type="button" onClick={onRemove} title="Kaldır" className={cn("flex size-6 items-center justify-center rounded-md", media ? "bg-black/60 text-white hover:bg-black/80" : "text-muted-foreground hover:bg-accent hover:text-foreground")}><X className="size-3" /></button>
+        <button type="button" onClick={onRemove} data-tip="Kaldır" className={cn("flex size-6 items-center justify-center rounded-md", media ? "bg-black/60 text-white hover:bg-black/80" : "text-muted-foreground hover:bg-accent hover:text-foreground")}><X className="size-3" /></button>
       </span>
     </div>
   );

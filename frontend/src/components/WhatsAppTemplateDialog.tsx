@@ -132,7 +132,7 @@ export default function WhatsAppTemplateDialog({
               key={p.key}
               type="button"
               onClick={() => insert(p.key)}
-              title={p.label}
+              data-tip={p.label}
               className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 font-mono text-xs transition-colors hover:border-border hover:bg-accent"
             >
               {p.key}

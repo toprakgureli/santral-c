@@ -302,14 +302,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={badgeTone}>{badgeLabel}</Badge>
-          {hasExtension && <span className="font-mono text-sm tabular-nums text-muted-foreground" title={onCall ? "Görüşme süresi" : "Bu durumdaki süre"}>{formatClock(timerSeconds)}</span>}
+          {hasExtension && <span className="font-mono text-sm tabular-nums text-muted-foreground" data-tip={onCall ? "Görüşme süresi" : "Bu durumdaki süre"}>{formatClock(timerSeconds)}</span>}
         </div>
         {hasExtension && (
           <Select
             value={agentState}
             onChange={(e) => changeState(e.target.value as AgentPresenceState)}
             disabled={!shift.active}
-            title={shift.active ? undefined : "Durum değiştirmek için mesai başlatın"}
+            data-tip={shift.active ? undefined : "Durum değiştirmek için mesai başlatın"}
             className="h-9 w-40 rounded-xl"
           >
             {Object.entries(agentStates)
@@ -385,7 +385,7 @@ function Round({ onClick, tone = "muted", title, disabled, size = "md", children
   };
   const sizeClass = size === "lg" ? "size-16 [&_svg]:size-6" : "size-12 [&_svg]:size-5";
   return (
-    <button onClick={onClick} disabled={disabled} title={title} className={cn("flex items-center justify-center rounded-full shadow-sm transition active:scale-95 disabled:opacity-40", sizeClass, toneClass[tone])}>
+    <button onClick={onClick} disabled={disabled} data-tip={title} className={cn("flex items-center justify-center rounded-full shadow-sm transition active:scale-95 disabled:opacity-40", sizeClass, toneClass[tone])}>
       {children}
     </button>
   );
@@ -505,7 +505,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                   <button
                     type="button"
                     onClick={() => openWhatsApp("unreached")}
-                    title={`${displayNumber(phone.lastPeer ?? "")} numarasına WhatsApp'tan yaz`}
+                    data-tip={`${displayNumber(phone.lastPeer ?? "")} numarasına WhatsApp'tan yaz`}
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#25D366]/10 px-3.5 py-2.5 text-left ring-1 ring-[#25D366]/30 transition-colors hover:bg-[#25D366]/18 hover:ring-[#25D366]/50"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#25D366] text-black">
@@ -522,7 +522,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     type="button"
                     onClick={() => setWaOpen("unreached")}
                     aria-label="WhatsApp mesajını düzenle"
-                    title="Mesajı düzenle"
+                    data-tip="Mesajı düzenle"
                     className="flex w-12 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
@@ -542,10 +542,10 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
               </div>
               <div className="mx-auto flex max-w-[15rem] items-center justify-between">
                 <span className="size-12" />
-                <Round tone="call" size="lg" title="Ara" onClick={callNow} disabled={phone.status !== "registered" || !target}>
+                <Round tone="call" size="lg" data-tip="Ara" onClick={callNow} disabled={phone.status !== "registered" || !target}>
                   <Phone />
                 </Round>
-                <Round title="Sil" onClick={() => setTarget((t) => t.slice(0, -1))} disabled={!target}>
+                <Round data-tip="Sil" onClick={() => setTarget((t) => t.slice(0, -1))} disabled={!target}>
                   <Delete />
                 </Round>
               </div>
@@ -559,7 +559,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                 <button
                   type="button"
                   onClick={copyPeer}
-                  title="Numarayı kopyala"
+                  data-tip="Numarayı kopyala"
                   className="inline-flex items-center gap-2 rounded-lg px-2 py-0.5 text-2xl font-semibold tracking-wide transition-colors hover:bg-accent"
                 >
                   {displayNumber(phone.peer || "") || phone.peer || "—"}
@@ -582,7 +582,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                   <button
                     type="button"
                     onClick={() => openWhatsApp("live")}
-                    title="Görüşmekte olduğun müşteriye WhatsApp'tan yaz"
+                    data-tip="Görüşmekte olduğun müşteriye WhatsApp'tan yaz"
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-[#25D366]/10 px-3.5 py-2 text-left ring-1 ring-[#25D366]/30 transition-colors hover:bg-[#25D366]/18 hover:ring-[#25D366]/50"
                   >
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#25D366] text-black">
@@ -597,7 +597,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     type="button"
                     onClick={() => setWaOpen("live")}
                     aria-label="Görüşme sırasında mesajını düzenle"
-                    title="Mesajı düzenle"
+                    data-tip="Mesajı düzenle"
                     className="flex w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
@@ -607,18 +607,18 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
 
               {phone.status === "incoming" && (
                 <div className="flex items-center justify-center gap-12 pt-1">
-                  <Round tone="call" size="lg" title="Cevapla" onClick={() => phone.answer().catch(() => undefined)}><Phone /></Round>
-                  <Round tone="hang" size="lg" title="Reddet" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                  <Round tone="call" size="lg" data-tip="Cevapla" onClick={() => phone.answer().catch(() => undefined)}><Phone /></Round>
+                  <Round tone="hang" size="lg" data-tip="Reddet" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
                 </div>
               )}
 
               {active && (
                 <div className="flex flex-col items-center gap-3">
                   <div className="flex items-center justify-center gap-3">
-                    <Round tone={phone.muted ? "on" : "muted"} title="Sustur" onClick={phone.toggleMute}>{phone.muted ? <MicOff /> : <Mic />}</Round>
-                    <Round tone={phone.held ? "on" : "muted"} title="Beklet" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? <Play /> : <Pause />}</Round>
-                    <Round tone={showKeypad ? "on" : "muted"} title="Tuşlar" onClick={() => setShowKeypad((v) => !v)}><Grid3x3 /></Round>
-                    <Round tone="hang" size="lg" title="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                    <Round tone={phone.muted ? "on" : "muted"} data-tip="Sustur" onClick={phone.toggleMute}>{phone.muted ? <MicOff /> : <Mic />}</Round>
+                    <Round tone={phone.held ? "on" : "muted"} data-tip="Beklet" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? <Play /> : <Pause />}</Round>
+                    <Round tone={showKeypad ? "on" : "muted"} data-tip="Tuşlar" onClick={() => setShowKeypad((v) => !v)}><Grid3x3 /></Round>
+                    <Round tone="hang" size="lg" data-tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
                   </div>
                   {showKeypad && (
                     <div className="grid w-full max-w-[15rem] grid-cols-3 gap-2">
@@ -636,7 +636,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
               )}
 
               {outgoing && (
-                <Round tone="hang" size="lg" title="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                <Round tone="hang" size="lg" data-tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
               )}
             </div>
           )}
@@ -822,7 +822,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                 key={e.extension}
                 onContextMenu={(ev) => agentMenu(ev, e.extension, e.status)}
                 onClick={() => canDial && !inCall && setConfirmExt(e.extension)}
-                title="Sol tık: ara · Sağ tık: aktar veya dinle"
+                data-tip="Sol tık: ara · Sağ tık: aktar veya dinle"
                 className="flex cursor-pointer items-center justify-between rounded-2xl px-2 py-1.5 transition-colors hover:bg-accent/60"
               >
                 <span className="flex min-w-0 items-center gap-2.5 text-sm">
@@ -840,11 +840,11 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                     <span className="flex items-center gap-2">
                       <span className="font-medium">{e.extension}</span>
                       {e.names && e.names.length > 0 && (
-                        <span className="truncate text-muted-foreground" title={joinNames(e.names)}>{joinNames(e.names)}</span>
+                        <span className="truncate text-muted-foreground" data-tip={joinNames(e.names)}>{joinNames(e.names)}</span>
                       )}
                     </span>
                     {e.status === "TALKING" && e.peer && (
-                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground" title="Görüştüğü numara">
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground" data-tip="Görüştüğü numara">
                         <PhoneOutgoing className="size-3 shrink-0 text-primary" />
                         <span className="font-mono tabular-nums">{displayNumber(e.peer) || e.peer}</span>
                         {e.peerName && <span className="truncate">{e.peerName}</span>}
@@ -866,7 +866,7 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
             <li
               key={q.number}
               onContextMenu={(ev) => queueMenu(ev, q.number)}
-              title="Sağ tık: kuyruğa aktar"
+              data-tip="Sağ tık: kuyruğa aktar"
               className="flex cursor-pointer items-center gap-2.5 rounded-2xl px-2 py-1.5 transition-colors hover:bg-accent/60"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground"><ListOrdered className="size-4" /></span>
@@ -1085,7 +1085,7 @@ function CountBox({ label, sub, value, minus, tone }: { label: string; sub?: str
     <div className="rounded-xl bg-card/80 px-3 py-2 text-center ring-1 ring-border/40">
       <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>
         {value}
-        {minus ? <span className="ml-1 align-middle text-xs font-semibold text-destructive" title="Bağlanmayan">-{minus}</span> : null}
+        {minus ? <span className="ml-1 align-middle text-xs font-semibold text-destructive" data-tip="Bağlanmayan">-{minus}</span> : null}
       </div>
       <div className="mt-1 text-[0.7rem] font-medium text-foreground/80">{label}</div>
       {sub && <div className="text-[0.65rem] text-muted-foreground">{sub}</div>}
@@ -1101,7 +1101,7 @@ function CopyRow({ label, number, copied, onCopy }: { label: string; number: str
       <span className="text-xs text-muted-foreground">{label}</span>
       <button
         onClick={() => number && onCopy(number)}
-        title="Kopyala"
+        data-tip="Kopyala"
         className="flex items-center gap-1.5 rounded-md px-2 py-1 font-medium tabular-nums transition hover:bg-accent"
       >
         {shown || "—"}

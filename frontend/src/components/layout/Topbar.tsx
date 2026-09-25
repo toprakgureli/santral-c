@@ -34,8 +34,7 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
         type="button"
         onClick={onMenuClick}
         aria-label="Menüyü aç"
-        className="flex size-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent lg:hidden"
-      >
+        className="flex size-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent lg:hidden" data-tip="Menüyü aç">
         <Menu className="size-4" />
       </button>
 

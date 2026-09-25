@@ -130,7 +130,7 @@ export function Users() {
                 leading={<UserAvatar userId={u.id} name={u.name} hasAvatar={u.hasAvatar} version={u.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />}
                 title={
                   <span className="flex items-center gap-2">
-                    <Link to={`/profile/${u.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline" title="Profili aç">{u.name}</Link>
+                    <Link to={`/profile/${u.id}`} onClick={(e) => e.stopPropagation()} className="hover:underline" data-tip="Profili aç">{u.name}</Link>
                     {!u.active && <Badge tone="red">Pasif</Badge>}
                   </span>
                 }
@@ -142,7 +142,7 @@ export function Users() {
                         <Badge key={id} tone="blue">{roleName(id) ?? u.roles[i] ?? id}</Badge>
                       ))}
                     </span>
-                    <span className="hidden w-32 text-right text-xs tabular-nums text-muted-foreground md:block" title="Son giriş">{formatDateTime(u.lastLoginAt)}</span>
+                    <span className="hidden w-32 text-right text-xs tabular-nums text-muted-foreground md:block" data-tip="Son giriş">{formatDateTime(u.lastLoginAt)}</span>
                   </>
                 }
               />

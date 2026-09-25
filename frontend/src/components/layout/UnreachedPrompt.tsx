@@ -61,7 +61,7 @@ export default function UnreachedPrompt() {
         aria-labelledby="unreached-title"
         className="animate-in fade-in zoom-in-95 relative w-full max-w-md overflow-hidden rounded-3xl border-2 border-[#25D366]/40 bg-card shadow-2xl shadow-[#25D366]/10 duration-300"
       >
-        <button type="button" onClick={dismiss} aria-label="Kapat" className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+        <button type="button" onClick={dismiss} aria-label="Kapat" className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" data-tip="Kapat">
           <X className="size-4" />
         </button>
 
@@ -86,7 +86,7 @@ export default function UnreachedPrompt() {
             <button
               type="button"
               onClick={() => setEditing(true)}
-              title="Mesajı düzenle"
+              data-tip="Mesajı düzenle"
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Settings2 className="size-3.5" /> Mesajı düzenle

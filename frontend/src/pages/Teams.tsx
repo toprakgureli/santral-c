@@ -184,7 +184,7 @@ export function Teams() {
               const r = e.currentTarget.getBoundingClientRect();
               setPlus({ x: r.left - 150, y: r.bottom + 4 });
             }}
-            title="Yeni"
+            data-tip="Yeni"
             className={cn("flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md shadow-primary/30 transition-transform hover:scale-105", plus && "scale-95")}
           >
             <Plus className="size-4" />
@@ -228,7 +228,7 @@ export function Teams() {
 
         <div className="flex items-center justify-between border-t border-border/50 px-3 py-2 text-[0.65rem] text-muted-foreground">
           {teams.games && (
-            <button type="button" onClick={() => setBoard(true)} className="inline-flex items-center gap-1 hover:text-foreground" title="Oyun sıralaması"><Trophy className="size-3 text-warning" /> Sıralama</button>
+            <button type="button" onClick={() => setBoard(true)} className="inline-flex items-center gap-1 hover:text-foreground" data-tip="Oyun sıralaması"><Trophy className="size-3 text-warning" /> Sıralama</button>
           )}
           {teams.notifications === "granted" ? (
             <span className="inline-flex items-center gap-1"><BellRing className="size-3 text-success" /> Bildirimler açık</span>
@@ -264,7 +264,7 @@ export function Teams() {
                   setProfile({ userId: detail.peer.id, x: r.left, y: r.bottom, room: detail.id });
                 }}
                 className="relative inline-flex shrink-0 rounded-full disabled:cursor-default"
-                title={detail.kind === "dm" ? "Profili aç" : undefined}
+                data-tip={detail.kind === "dm" ? "Profili aç" : undefined}
               >
                 <GroupAvatar group={detail} className="size-10 text-sm" />
                 {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer, detail.id)} />}
@@ -289,15 +289,15 @@ export function Teams() {
                 })()}
               </div>
               {canPlay && detail.canPost && (
-                <button type="button" onClick={() => setStartGame(true)} title="Oyun başlat" className="flex size-9 items-center justify-center rounded-full text-violet-500 transition-colors hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
+                <button type="button" onClick={() => setStartGame(true)} data-tip="Oyun başlat" className="flex size-9 items-center justify-center rounded-full text-violet-500 transition-colors hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
               )}
-              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} title="Mesajlarda ara" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "search" && "bg-primary/10 text-primary")}><Search className="size-4" /></button>
-              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} title="Görseller, videolar ve dosyalar" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "media" && "bg-primary/10 text-primary")}><Images className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} data-tip="Mesajlarda ara" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "search" && "bg-primary/10 text-primary")}><Search className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} data-tip="Görseller, videolar ve dosyalar" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "media" && "bg-primary/10 text-primary")}><Images className="size-4" /></button>
               {detail.kind === "group" && (
                 <>
-                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} title="Üyeler" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "members" && "bg-primary/10 text-primary")}><Users className="size-4" /></button>
+                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} data-tip="Üyeler" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "members" && "bg-primary/10 text-primary")}><Users className="size-4" /></button>
                   {detail.canManage && (
-                    <button type="button" onClick={() => setSettings(true)} title="Grup ayarları" className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
+                    <button type="button" onClick={() => setSettings(true)} data-tip="Grup ayarları" className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
                   )}
                 </>
               )}

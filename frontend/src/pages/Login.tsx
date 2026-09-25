@@ -165,7 +165,7 @@ export function Login() {
           <div className="flex flex-col gap-6">
             <button
               type="button"
-              title="E-posta adresini değiştir"
+              data-tip="E-posta adresini değiştir"
               onClick={() => {
                 setStep("email");
                 setPassword("");

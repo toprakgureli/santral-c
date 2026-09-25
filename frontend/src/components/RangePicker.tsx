@@ -32,7 +32,7 @@ export default function RangePicker({ preset, range, onPreset, onFrom, onTo, com
   const field = compact ? "w-40 [&>input]:h-8" : "w-40 [&>input]:h-9";
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className="relative" title="Tarih">
+      <label className="relative" data-tip="Tarih">
         <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Select value={preset} onChange={(e) => onPreset(e.target.value as Preset)} className={`${h} w-40 pl-9`}>
           {PRESETS.map((p) => (
@@ -40,12 +40,12 @@ export default function RangePicker({ preset, range, onPreset, onFrom, onTo, com
           ))}
         </Select>
       </label>
-      {preset === "day" && <DateField value={range.from} max={today} onChange={onFrom} className={field} title="Gün" />}
+      {preset === "day" && <DateField value={range.from} max={today} onChange={onFrom} className={field} data-tip="Gün" />}
       {preset === "custom" && (
         <div className="flex items-center gap-1">
-          <DateField value={range.from} max={range.to || undefined} onChange={onFrom} className={field} title="Başlangıç" />
+          <DateField value={range.from} max={range.to || undefined} onChange={onFrom} className={field} data-tip="Başlangıç" />
           <span className="text-muted-foreground">-</span>
-          <DateField value={range.to} min={range.from || undefined} max={today} onChange={onTo} className={field} title="Bitiş" />
+          <DateField value={range.to} min={range.from || undefined} max={today} onChange={onTo} className={field} data-tip="Bitiş" />
         </div>
       )}
     </div>

@@ -61,8 +61,7 @@ export default function WelcomeCard() {
           type="button"
           onClick={close}
           aria-label="Kapat"
-          className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
+          className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" data-tip="Kapat">
           <X className="size-4" />
         </button>
 

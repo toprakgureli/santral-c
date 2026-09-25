@@ -34,7 +34,7 @@ export default function ThemeMenu({ align = "right" }: { align?: "left" | "right
         aria-label="Tema seç"
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`Tema: ${info.label}`}
+        data-tip={`Tema: ${info.label}`}
         className={cn("flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", open && "bg-accent text-foreground")}
       >
         <Palette className="size-4" />

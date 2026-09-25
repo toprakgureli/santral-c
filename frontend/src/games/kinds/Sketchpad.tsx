@@ -127,8 +127,8 @@ const Sketchpad = forwardRef<SketchpadHandle, Props>(function Sketchpad({ enable
               <span className="rounded-full bg-foreground" style={{ width: w + 2, height: w + 2 }} />
             </button>
           ))}
-          <button type="button" onClick={() => { setColor("#ffffff"); setWidth(20); }} title="Silgi" className="ml-1 rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-accent"><Eraser className="size-4" /></button>
-          <button type="button" onClick={clear} title="Temizle" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
+          <button type="button" onClick={() => { setColor("#ffffff"); setWidth(20); }} data-tip="Silgi" className="ml-1 rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-accent"><Eraser className="size-4" /></button>
+          <button type="button" onClick={clear} data-tip="Temizle" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
         </div>
       )}
     </div>

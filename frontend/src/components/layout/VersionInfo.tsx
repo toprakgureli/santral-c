@@ -18,7 +18,7 @@ export default function VersionInfo({ collapsed }: { collapsed: boolean }) {
   const match = be && be === FE;
   if (collapsed) {
     return (
-      <div className="mt-1 text-center" title={`Arayüz ${FE} · Sunucu ${be ?? "..."}`}>
+      <div className="mt-1 text-center" data-tip={`Arayüz ${FE} · Sunucu ${be ?? "..."}`}>
         <span className={cn("inline-block size-1.5 rounded-full", match ? "bg-success" : "bg-warning")} />
       </div>
     );

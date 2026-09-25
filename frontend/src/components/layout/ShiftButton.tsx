@@ -30,7 +30,7 @@ export default function ShiftButton() {
         type="button"
         onClick={() => void shift.start()}
         disabled={shift.busy}
-        title="Mesaiyi başlat; çağrı ekranı açılır"
+        data-tip="Mesaiyi başlat; çağrı ekranı açılır"
         className={cn(
           "flex h-9 items-center gap-2 rounded-xl bg-success px-3 text-sm font-medium text-white shadow-sm transition hover:opacity-90",
           "disabled:pointer-events-none disabled:opacity-50",
@@ -49,18 +49,18 @@ export default function ShiftButton() {
   return (
     <div className="flex items-center gap-2">
       {overtime && (
-        <span className="hidden items-center rounded-lg bg-warning/15 px-2 py-1 text-xs font-medium text-warning md:flex" title="Mesai saati doldu">
+        <span className="hidden items-center rounded-lg bg-warning/15 px-2 py-1 text-xs font-medium text-warning md:flex" data-tip="Mesai saati doldu">
           {hhmm(shift.status?.reminderAt)} geçti · {hhmm(shift.status?.autoEndAt)}&apos;de otomatik biter
         </span>
       )}
-      <span className="hidden font-mono text-sm tabular-nums text-muted-foreground sm:block" title={`Mesai ${hhmm(open.startedAt)} başladı`}>
+      <span className="hidden font-mono text-sm tabular-nums text-muted-foreground sm:block" data-tip={`Mesai ${hhmm(open.startedAt)} başladı`}>
         {formatClock(elapsed)}
       </span>
       <button
         type="button"
         onClick={() => void shift.end()}
         disabled={shift.busy}
-        title="Mesaiyi bitir"
+        data-tip="Mesaiyi bitir"
         className={cn(
           "flex h-9 items-center gap-2 rounded-xl bg-destructive px-3 text-sm font-medium text-destructive-foreground shadow-sm transition hover:opacity-90",
           "disabled:pointer-events-none disabled:opacity-50",

@@ -106,7 +106,7 @@ export function DateField({
   }
 
   return (
-    <div className={cn("relative", className)} title={title}>
+    <div className={cn("relative", className)} data-tip={title}>
       <input
         className={cn(fieldBase, "pr-9 font-mono tabular-nums")}
         value={text}
@@ -133,8 +133,7 @@ export function DateField({
         type="button"
         onClick={openPicker}
         aria-label="Takvimden seç"
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-      >
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground" data-tip="Takvimden seç">
         <CalendarDays className="size-4" />
       </button>
     </div>

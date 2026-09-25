@@ -45,7 +45,7 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        title={open ? "Ses ayarını gizle" : "Karşı tarafın sesini ayarla"}
+        data-tip={open ? "Ses ayarını gizle" : "Karşı tarafın sesini ayarla"}
         className={cn("flex w-full items-center gap-2 rounded-xl text-left transition-colors hover:bg-accent/50", large ? "px-3 py-2" : "px-2 py-1.5")}
       >
         <Lbl large={large}>Karşı</Lbl>
@@ -59,7 +59,7 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
         </span>
       </button>
       {open && (
-        <div className={cn("flex items-center gap-2 border-t border-border/40", large ? "px-3 py-2" : "px-2 py-1.5")} title="Karşı tarafın sesi. %100 geldiği gibi; üstü yükseltir.">
+        <div className={cn("flex items-center gap-2 border-t border-border/40", large ? "px-3 py-2" : "px-2 py-1.5")} data-tip="Karşı tarafın sesi. %100 geldiği gibi; üstü yükseltir.">
           <button type="button" onClick={() => phone.setRemoteGain(phone.remoteGain - 0.1)} aria-label="Sesi kıs" className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-accent hover:text-foreground">
             <Minus className="size-3" />
           </button>
@@ -76,7 +76,7 @@ export default function VoiceMixer({ size = "compact", className }: { size?: "co
           <button type="button" onClick={() => phone.setRemoteGain(phone.remoteGain + 0.1)} aria-label="Sesi aç" className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-accent hover:text-foreground">
             <Plus className="size-3" />
           </button>
-          <button type="button" onClick={() => phone.setRemoteGain(1)} disabled={pct === 100} title="Geldiği gibi (%100)" className="shrink-0 rounded-lg px-1.5 text-[0.65rem] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">
+          <button type="button" onClick={() => phone.setRemoteGain(1)} disabled={pct === 100} data-tip="Geldiği gibi (%100)" className="shrink-0 rounded-lg px-1.5 text-[0.65rem] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">
             Sıfırla
           </button>
         </div>

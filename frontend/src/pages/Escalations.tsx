@@ -168,7 +168,7 @@ function CategoryCard({
           <OrderButton dir={1} disabled={index === count - 1} onClick={() => onMove(1)} title="Bir alta taşı" />
           <button
             onClick={async () => { await api.deleteEscalationCategory(category.id).catch(() => undefined); onChange(); }}
-            title="Kategoriyi sil"
+            data-tip="Kategoriyi sil"
             className="ml-1 text-muted-foreground transition hover:text-destructive"
           >
             <Trash2 className="size-4" />
@@ -187,7 +187,7 @@ function CategoryCard({
               <OrderButton dir={1} small disabled={i === reasons.length - 1} onClick={() => moveReason(i, 1)} title="Bir alta taşı" />
               <button
                 onClick={async () => { await api.deleteEscalationReason(r.id).catch(() => undefined); onChange(); }}
-                title="Durumu sil"
+                data-tip="Durumu sil"
                 className="ml-1 text-muted-foreground transition hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
@@ -213,7 +213,7 @@ function OrderButton({ dir, small, disabled, onClick, title }: { dir: -1 | 1; sm
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title}
+      data-tip={title}
       className={cn("rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-25 disabled:hover:bg-transparent", small ? "p-0.5" : "p-1")}
     >
       <Icon className={small ? "size-3.5" : "size-4"} />

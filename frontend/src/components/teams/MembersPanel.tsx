@@ -73,7 +73,7 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
             !p.online && "opacity-60 hover:opacity-100",
             manageable && "cursor-context-menu",
           )}
-          title={manageable ? "Sağ tık: rol ve yazma hakkı" : undefined}
+          data-tip={manageable ? "Sağ tık: rol ve yazma hakkı" : undefined}
         >
           <span className="relative inline-flex shrink-0">
             <UserAvatar userId={m.id} name={m.name} hasAvatar={m.hasAvatar} version={m.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" />
@@ -111,12 +111,12 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
         <span className="rounded-full bg-muted px-1.5 text-[0.65rem] font-semibold tabular-nums text-muted-foreground">{group.members.length}</span>
         <span className="ml-auto flex items-center gap-0.5">
           {group.canAdd && (
-            <button type="button" onClick={onAdd} title="Üye ekle (doğrudan katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+            <button type="button" onClick={onAdd} data-tip="Üye ekle (doğrudan katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
               <UserPlus className="size-4" />
             </button>
           )}
           {group.canInvite && (
-            <button type="button" onClick={onInvite} title="Davet gönder (kabul edince katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+            <button type="button" onClick={onInvite} data-tip="Davet gönder (kabul edince katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
               <MailPlus className="size-4" />
             </button>
           )}

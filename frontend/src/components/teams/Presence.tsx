@@ -25,7 +25,7 @@ export function OnlineDot({ presence, className }: { presence: Presence; classNa
         chatting ? "bg-violet-500" : presence.online ? "bg-success" : "bg-muted-foreground/40",
         className ?? "-right-0.5 -bottom-0.5 size-3",
       )}
-      title={seenLabel(presence)}
+      data-tip={seenLabel(presence)}
     />
   );
 }
@@ -59,7 +59,7 @@ export function Ticks({ status, readBy, className, size = "size-[1.05rem]" }: { 
   const title = status === "read" ? (readBy && readBy.length ? `Okudu: ${readBy.join(", ")}` : "Okundu") : status === "delivered" ? "Teslim edildi" : "Gönderildi";
   const Icon = status === "sent" ? Check : CheckCheck;
   return (
-    <span title={title} className={cn("inline-flex shrink-0 items-center align-middle", status === "read" ? "text-success" : "text-muted-foreground/70", className)}>
+    <span data-tip={title} className={cn("inline-flex shrink-0 items-center align-middle", status === "read" ? "text-success" : "text-muted-foreground/70", className)}>
       <Icon className={cn(size, "stroke-[2.25]")} />
     </span>
   );

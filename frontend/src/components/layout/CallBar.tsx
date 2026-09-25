@@ -111,7 +111,7 @@ export default function CallBar() {
       <div className="mb-3 flex items-center gap-3">
         <span
           onPointerDown={startDrag}
-          title="Taşı"
+          data-tip="Taşı"
           className="flex size-9 shrink-0 cursor-move touch-none items-center justify-center rounded-full bg-primary/15 text-primary"
         >
           <GripVertical className="size-4" />
@@ -147,14 +147,14 @@ export default function CallBar() {
             <>
               <button
                 onClick={phone.toggleMute}
-                title={phone.muted ? "Susturmayı aç" : "Sustur"}
+                data-tip={phone.muted ? "Susturmayı aç" : "Sustur"}
                 className="flex size-10 items-center justify-center rounded-xl border border-border/70 hover:bg-accent"
               >
                 {phone.muted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
               </button>
               <button
                 onClick={() => phone.toggleHold().catch(() => undefined)}
-                title={phone.held ? "Devam et" : "Beklet"}
+                data-tip={phone.held ? "Devam et" : "Beklet"}
                 className="flex size-10 items-center justify-center rounded-xl border border-border/70 hover:bg-accent"
               >
                 {phone.held ? <Play className="size-4" /> : <Pause className="size-4" />}
@@ -162,7 +162,7 @@ export default function CallBar() {
               {waNumber && (
                 <button
                   onClick={openWhatsApp}
-                  title="Müşteriye WhatsApp'tan yaz"
+                  data-tip="Müşteriye WhatsApp'tan yaz"
                   className="flex size-10 items-center justify-center rounded-xl border border-[#25D366]/40 bg-[#25D366]/10 text-[#1da851] hover:bg-[#25D366]/20 dark:text-[#4fe08a]"
                 >
                   <WhatsAppIcon className="size-4" />

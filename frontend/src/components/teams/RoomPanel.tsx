@@ -39,7 +39,7 @@ export default function RoomPanel({
     <aside className="flex h-full w-72 shrink-0 flex-col border-l border-sidebar-border bg-sidebar">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
         <span className="text-sm font-semibold tracking-tight">{mode === "search" ? "Mesajlarda ara" : "Paylaşılanlar"}</span>
-        <button type="button" onClick={onClose} aria-label="Kapat" className="ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"><X className="size-4" /></button>
+        <button type="button" onClick={onClose} aria-label="Kapat" className="ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground" data-tip="Kapat"><X className="size-4" /></button>
       </div>
       {mode === "search" ? <SearchView group={group} onJump={onJump} /> : <MediaView group={group} onJump={onJump} />}
     </aside>
@@ -169,7 +169,7 @@ function MediaView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: nu
         {tab !== "file" ? (
           <div className="grid grid-cols-3 gap-1">
             {items.map((a, i) => (
-              <button key={a.id} type="button" onClick={() => setGallery(i)} onContextMenu={(e) => { e.preventDefault(); onJump(a.messageId); }} title={`${a.name} · ${formatSize(a.size)} · ${a.sender} · ${when(a.createdAt)}\nSağ tık: mesaja git`} className="group relative aspect-square overflow-hidden rounded-lg bg-muted/60">
+              <button key={a.id} type="button" onClick={() => setGallery(i)} onContextMenu={(e) => { e.preventDefault(); onJump(a.messageId); }} data-tip={`${a.name} · ${formatSize(a.size)} · ${a.sender} · ${when(a.createdAt)}\nSağ tık: mesaja git`} className="group relative aspect-square overflow-hidden rounded-lg bg-muted/60">
                 {thumbUrl(a) ? <img src={thumbUrl(a) ?? undefined} alt={a.name} loading="lazy" className="size-full object-cover transition-transform group-hover:scale-105" /> : <span className="flex size-full items-center justify-center text-muted-foreground"><Play className="size-5" /></span>}
                 {a.kind === "video" && <span className="pointer-events-none absolute inset-0 flex items-center justify-center"><span className="flex size-7 items-center justify-center rounded-full bg-black/55"><Play className="size-3 fill-white text-white" /></span></span>}
                 {a.kind === "video" && a.durationMs ? <span className="pointer-events-none absolute right-1 bottom-1 rounded bg-black/65 px-1 text-[0.6rem] text-white tabular-nums">{formatDuration(a.durationMs)}</span> : null}
@@ -181,11 +181,11 @@ function MediaView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: nu
             {items.map((a) => (
               <li key={a.id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 hover:bg-sidebar-accent/60">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="size-4" /></span>
-                <button type="button" onClick={() => onJump(a.messageId)} className="min-w-0 flex-1 text-left" title="Mesaja git">
+                <button type="button" onClick={() => onJump(a.messageId)} className="min-w-0 flex-1 text-left" data-tip="Mesaja git">
                   <span className="block truncate text-xs font-medium">{a.name}</span>
                   <span className="block truncate text-[0.65rem] text-muted-foreground">{extensionOf(a.name, a.mime)} · {formatSize(a.size)} · {a.sender} · {when(a.createdAt)}</span>
                 </button>
-                <a href={attachmentUrl(a.id, true)} download={a.name} title="İndir" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Download className="size-4" /></a>
+                <a href={attachmentUrl(a.id, true)} download={a.name} data-tip="İndir" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Download className="size-4" /></a>
               </li>
             ))}
           </ul>

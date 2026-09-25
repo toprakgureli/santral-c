@@ -61,7 +61,7 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
           {g?.status === "playing" && !g.paused && h.seconds > 0 && (
             <span className={cn("rounded-full px-3.5 py-1 font-mono text-base font-bold tabular-nums shadow-sm", h.seconds <= 5 ? "bg-red-500 text-white" : "bg-white text-indigo-700")}>{h.seconds}</span>
           )}
-          <button type="button" onClick={onClose} aria-label="Kapat" className="relative flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white"><X className="size-5" /></button>
+          <button type="button" onClick={onClose} aria-label="Kapat" className="relative flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/15 hover:text-white" data-tip="Kapat"><X className="size-5" /></button>
         </header>
 
         {h.error && <p className="border-b border-destructive/30 bg-destructive/10 px-4 py-1.5 text-xs text-destructive">{h.error}</p>}

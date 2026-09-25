@@ -24,7 +24,7 @@ function Spoiler({ children }: { children: ReactNode }) {
     <span
       role="button"
       tabIndex={0}
-      title={open ? undefined : "Göstermek için tıkla"}
+      data-tip={open ? undefined : "Göstermek için tıkla"}
       onClick={() => setOpen(true)}
       onKeyDown={(e) => e.key === "Enter" && setOpen(true)}
       className={open ? "rounded bg-muted/60 px-0.5" : "cursor-pointer rounded bg-foreground/80 px-0.5 text-transparent select-none [&_*]:text-transparent"}

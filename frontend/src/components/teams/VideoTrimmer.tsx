@@ -264,7 +264,7 @@ export default function VideoTrimmer({ file, maxBytes, onCancel, onReady }: Prop
       footer={
         <>
           {busy ? (
-            <Button variant="ghost" onClick={() => aborter.current?.abort()} className="h-9" title="İşlemi durdur"><X /> İşlemi iptal et</Button>
+            <Button variant="ghost" onClick={() => aborter.current?.abort()} className="h-9" data-tip="İşlemi durdur"><X /> İşlemi iptal et</Button>
           ) : (
             <Button variant="ghost" onClick={onCancel} className="h-9">Vazgeç</Button>
           )}

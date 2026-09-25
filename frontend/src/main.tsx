@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import TooltipLayer from "./components/ui/Tooltip";
 import "./index.css";
 
 // The development preview draws the shared pieces with sample data.
@@ -13,6 +14,7 @@ if (import.meta.env.DEV && window.location.pathname === "/__preview") {
       <StrictMode>
         <ThemeProvider>
           <Preview />
+          <TooltipLayer />
         </ThemeProvider>
       </StrictMode>,
     );
@@ -24,6 +26,7 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <AuthProvider>
           <App />
+          <TooltipLayer />
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

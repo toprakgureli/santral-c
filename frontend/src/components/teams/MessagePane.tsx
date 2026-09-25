@@ -393,7 +393,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                 >
                   <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
                     {head && m.sender && (
-                      <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" title="Profili aç">
+                      <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" data-tip="Profili aç">
                         <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9 shadow-sm ring-2 ring-card" fallbackClassName="bg-primary/10 text-xs text-primary" />
                       </button>
                     )}
@@ -404,7 +404,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                       <button
                         type="button"
                         onClick={() => jump(m.replyTo!.id)}
-                        title="Yanıtlanan mesaja git"
+                        data-tip="Yanıtlanan mesaja git"
                         className="group/reply relative mb-1 flex h-5 w-fit max-w-[75%] items-center gap-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
                       >
                         <span className="pointer-events-none absolute top-1/2 -left-[30px] h-[14px] w-[24px] rounded-tl-lg border-t-2 border-l-2 border-border" />
@@ -433,7 +433,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                           <AttachmentGrid attachments={m.attachments} className={m.body ? "mt-1 mb-1.5" : "mt-1"} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
                         )}
                         {m.body && renderMarkup(m.body, { mentions: labels })}
-                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" title={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
+                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" data-tip={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
                       </div>
                     )}
                     {m.reactions.length > 0 && (
@@ -448,7 +448,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                               e.stopPropagation();
                               setWho({ x: e.clientX, y: e.clientY, emoji: r.emoji, people: r.people ?? [] });
                             }}
-                            title={`${r.names.join(", ")}
+                            data-tip={`${r.names.join(", ")}
 Sağ tık: kimler verdi`}
                             className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors", r.mine ? "border-primary/50 bg-primary/10" : "border-border/70 bg-muted/40 hover:bg-accent")}
                           >
@@ -456,20 +456,20 @@ Sağ tık: kimler verdi`}
                             <span className="tabular-nums">{r.count}</span>
                           </button>
                         ))}
-                        <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} title="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
+                        <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} data-tip="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
                       </div>
                     )}
                   </div>
                   {!m.deleted && (
                     <div className={cn("absolute -top-4 right-3 items-center gap-0.5 rounded-full border border-border/70 bg-card px-1 py-0.5 shadow-md group-hover:flex", picker === m.id ? "flex" : "hidden")}>
                       {QUICK.map((e) => (
-                        <button key={e} type="button" onClick={() => void react(m, e)} title="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
+                        <button key={e} type="button" onClick={() => void react(m, e)} data-tip="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
                       ))}
-                      <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} title="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
+                      <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} data-tip="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
                       <span className="mx-0.5 h-4 w-px bg-border" />
-                      {group.canPost && <button type="button" onClick={() => { setEditing(null); setReply(m); }} title="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
-                      {m.mine && group.canPost && <button type="button" onClick={() => { setReply(null); setEditing(m); }} title="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
-                      {m.canDelete && <button type="button" onClick={() => setConfirmDelete(m)} title="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
+                      {group.canPost && <button type="button" onClick={() => { setEditing(null); setReply(m); }} data-tip="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
+                      {m.mine && group.canPost && <button type="button" onClick={() => { setReply(null); setEditing(m); }} data-tip="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
+                      {m.canDelete && <button type="button" onClick={() => setConfirmDelete(m)} data-tip="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
                     </div>
                   )}
                   {picker === m.id && (

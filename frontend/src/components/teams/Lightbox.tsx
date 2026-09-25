@@ -44,8 +44,8 @@ export default function Lightbox({ items, index, onIndex, onClose }: { items: Te
             {items.length > 1 ? ` · ${index + 1} / ${items.length}` : ""}
           </span>
         </span>
-        <a href={attachmentUrl(item.id, true)} download={item.name} title="İndir" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"><Download className="size-5" /></a>
-        <button type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"><X className="size-5" /></button>
+        <a href={attachmentUrl(item.id, true)} download={item.name} data-tip="İndir" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"><Download className="size-5" /></a>
+        <button type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white" data-tip="Kapat"><X className="size-5" /></button>
       </div>
 
       <div className={cn("relative flex min-h-0 flex-1 items-center justify-center p-4", zoom && "overflow-auto")}>
