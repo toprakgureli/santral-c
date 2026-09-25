@@ -573,7 +573,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                 <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{formatDuration(dur)}</div>
               )}
 
-              {active && <VoiceMixer size="large" className="w-full max-w-md" />}
+              {active && <VoiceMixer size="large" className="w-full max-w-sm" />}
 
               {/* Mid-call: open WhatsApp with the customer on the line, "we are talking right now" text. */}
               {active && waLiveNumber && (
