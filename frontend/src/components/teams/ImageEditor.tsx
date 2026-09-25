@@ -1,4 +1,4 @@
-// Image marking and masking, as in Devtrack. Arrows and boxes show where
+// Image marking and masking. Arrows and boxes show where
 // to look; the mosaic hides what must not be shown (a customer's name, a
 // phone number). Mosaic, not blur: blur can be undone, mosaic cannot.
 // The result is burned into the file.

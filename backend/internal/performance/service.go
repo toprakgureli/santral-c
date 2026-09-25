@@ -60,6 +60,16 @@ type CurrentCall struct {
 	StartedAt time.Time `json:"startedAt"`
 }
 
+// RecentCall is one of an agent's latest calls, for the card's detail fold.
+type RecentCall struct {
+	Peer            string    `json:"peer"`
+	PeerName        string    `json:"peerName,omitempty"`
+	Direction       string    `json:"direction"`
+	Disposition     string    `json:"disposition"`
+	StartedAt       time.Time `json:"startedAt"`
+	DurationSeconds int       `json:"durationSeconds"`
+}
+
 // Row is one agent on the team page.
 type Row struct {
 	UserID    uint         `json:"userId"`
@@ -74,6 +84,8 @@ type Row struct {
 	// Escalations the agent recorded and seconds spent on break in the window.
 	Escalations  int64 `json:"escalations"`
 	BreakSeconds int64 `json:"breakSeconds"`
+	// Recent are the latest calls in the window, newest first.
+	Recent []RecentCall `json:"recent"`
 }
 
 // Team is the page payload.
@@ -162,6 +174,10 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	recent, err := s.repo.RecentCalls(ctx, from, to, 6)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
 	live := map[string]string{}
 	if s.live != nil {
 		live = s.live.ExtensionStatuses(ctx)
@@ -184,6 +200,16 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 					row.Call.PeerName = s.contacts.NameByNumber(ctx, e164)
 				}
 			}
+		}
+		row.Recent = []RecentCall{}
+		for _, l := range recent[u.ID] {
+			rc := RecentCall{Peer: l.PeerNumber, Direction: l.Direction, Disposition: l.Disposition, StartedAt: l.StartedAt, DurationSeconds: l.DurationSeconds}
+			if s.contacts != nil {
+				if e164, err := phone.Normalize(l.PeerNumber); err == nil {
+					rc.PeerName = s.contacts.NameByNumber(ctx, e164)
+				}
+			}
+			row.Recent = append(row.Recent, rc)
 		}
 		rows = append(rows, row)
 	}

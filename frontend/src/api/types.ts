@@ -168,6 +168,30 @@ export interface TeamRow {
   calls: TeamCounts;
   escalations: number;
   breakSeconds: number;
+  recent: RecentCall[];
+}
+
+// RecentCall is one of an agent's latest calls on the team page.
+export interface RecentCall {
+  peer: string;
+  peerName?: string;
+  direction: string;
+  disposition: string;
+  startedAt: string;
+  durationSeconds: number;
+}
+
+// CallLookup answers who spoke with a number.
+export interface CallLookup {
+  number: string;
+  scope: "all" | "own";
+  days: number;
+  total: number;
+  answered: number;
+  talkSeconds: number;
+  lastAt?: string;
+  agents: { id: number; name: string; calls: number; answered: number; talkSeconds: number }[];
+  items: { uuid: string; direction: string; disposition: string; agentId: number; agentName: string; startedAt: string; durationSeconds: number }[];
 }
 
 export interface TeamPerformance {

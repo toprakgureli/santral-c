@@ -51,6 +51,19 @@ func (h *Handler) Recent(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// Lookup returns who spoke with the number in the query.
+func (h *Handler) Lookup(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Lookup(c.UserContext(), id, c.Query("number"))
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {

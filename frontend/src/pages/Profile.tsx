@@ -1,4 +1,4 @@
-// Profil: one person's page, laid out like Devtrack's. /profile is the
+// Profil: one person's page. /profile is the
 // caller's own (editable), /profile/:id a teammate's. The card holds the
 // photo, name, headline, roles and biography; below it the call-centre
 // record over a chosen day range (last seven days by default).
@@ -9,6 +9,7 @@ import { ArrowLeft, Camera, Clock, Pencil, Trash2, UserRound } from "lucide-reac
 import { api, ApiError } from "../api/client";
 import type { Profile as ProfileData, ProfileRecord, ProfileStats } from "../api/types";
 import RangePicker, { useRange } from "../components/RangePicker";
+import DailyBars from "../components/charts/DailyBars";
 import { rangeLabel } from "../lib/dateRange";
 import { useAuth } from "../auth/AuthContext";
 import AvatarCropper from "../components/profile/AvatarCropper";
@@ -325,7 +326,6 @@ function RecordCard({ userId, totals }: { userId: number; totals: ProfileStats }
 
   const unreached = rec ? rec.unanswered + rec.short : 0;
   const attempts = rec ? rec.real + unreached : 0;
-  const maxDay = rec ? Math.max(1, ...rec.days.map((d) => d.real)) : 1;
 
   return (
     <div className="space-y-2">
@@ -353,17 +353,7 @@ function RecordCard({ userId, totals }: { userId: number; totals: ProfileStats }
           {rec.days.length > 1 && (
             <div className="rounded-xl border border-border/60 bg-muted/25 p-3.5">
               <p className="mb-2 text-[0.6875rem] text-muted-foreground">Günlük gerçek çağrı</p>
-              <div className="flex h-16 items-end gap-[3px]">
-                {rec.days.map((d) => (
-                  <div key={d.day} className="group relative flex h-full flex-1 items-end" title={`${d.day.split("-").reverse().join(".")} · ${d.real} gerçek çağrı`}>
-                    <div className={cn("w-full rounded-t-sm transition-colors", d.real > 0 ? "bg-success/70 group-hover:bg-success" : "bg-border/60")} style={{ height: `${Math.max(4, (d.real / maxDay) * 100)}%` }} />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-1 flex justify-between text-[0.6rem] text-muted-foreground/70">
-                <span>{rec.days[0].day.split("-").reverse().slice(0, 2).join(".")}</span>
-                <span>{rec.days[rec.days.length - 1].day.split("-").reverse().slice(0, 2).join(".")}</span>
-              </div>
+              <DailyBars points={rec.days.map((d) => ({ day: d.day, value: d.real }))} />
             </div>
           )}
         </>

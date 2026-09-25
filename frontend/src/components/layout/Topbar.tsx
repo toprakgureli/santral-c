@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { LogOut, Menu, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
+import NumberSearch from "./NumberSearch";
 import ShiftButton from "./ShiftButton";
 import ThemeMenu from "./ThemeMenu";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -41,6 +42,8 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
       <h1 className="truncate text-[0.9375rem] font-semibold tracking-tight">{title}</h1>
 
       <div className="ml-auto flex items-center gap-1.5">
+        <NumberSearch />
+        <span className="mx-1 hidden h-6 w-px bg-border md:block" />
         <ShiftButton />
         <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <ThemeMenu />

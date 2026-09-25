@@ -1,5 +1,5 @@
 // Çiz & Bil: a canvas the drawer paints on, strokes streamed to the room,
-// a guess box for the rest. Like Gartic, a correct or nearly correct guess
+// a guess box for the rest. A correct or nearly correct guess
 // is announced by name only, never by text.
 
 import { useEffect, useRef, useState } from "react";

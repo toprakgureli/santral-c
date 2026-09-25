@@ -1,8 +1,8 @@
 // Presence bits shared by the chat: the online dot, the "son görülme"
 // label and the delivery ticks under a person's own line.
 //
-// "Sohbette" is room-scoped, like Instagram's "aynı sohbettesiniz": a
-// person shows as in the chat only inside the room they are looking at.
+// "Sohbette" is room-scoped: a person shows as in the chat only inside
+// the room they are looking at.
 // Everywhere else they are simply online.
 
 import { Check, CheckCheck } from "lucide-react";

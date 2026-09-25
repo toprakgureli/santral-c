@@ -153,6 +153,24 @@ func (r *Repository) LastCallEnds(ctx context.Context) (map[uint]time.Time, erro
 	return out, nil
 }
 
+// RecentCalls returns each user's latest n finished calls inside [from, to),
+// newest first.
+func (r *Repository) RecentCalls(ctx context.Context, from, to time.Time, n int) (map[uint][]models.CallLog, error) {
+	var logs []models.CallLog
+	err := r.db.WithContext(ctx).Raw(
+		"SELECT * FROM (SELECT *, row_number() OVER (PARTITION BY user_id ORDER BY started_at DESC) AS rn FROM call_logs "+
+			"WHERE user_id IS NOT NULL AND started_at >= ? AND started_at < ? AND disposition <> 'in_progress' AND NOT ("+calllog.NotMineSQL+")) t "+
+			"WHERE rn <= ? ORDER BY user_id, started_at DESC", from, to, n).Scan(&logs).Error
+	if err != nil {
+		return nil, fmt.Errorf("recent calls could not be listed: %w", err)
+	}
+	out := map[uint][]models.CallLog{}
+	for _, l := range logs {
+		out[*l.UserID] = append(out[*l.UserID], l)
+	}
+	return out, nil
+}
+
 // OpenCalls returns each user's call that is still in progress, newest first
 // so a stale duplicate never shadows the live one.
 func (r *Repository) OpenCalls(ctx context.Context) (map[uint]models.CallLog, error) {

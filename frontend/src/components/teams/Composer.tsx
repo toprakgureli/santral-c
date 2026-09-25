@@ -319,7 +319,7 @@ export default function Composer({
   }
 
   return (
-    <div className="relative border-t border-border/60 px-4 py-3">
+    <div className="relative border-t border-border/50 bg-card/60 px-4 py-3 backdrop-blur-md">
       {editing ? (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-1.5 text-xs">
           <Pencil className="size-3.5 shrink-0 text-warning" />
@@ -401,7 +401,7 @@ export default function Composer({
         </div>
       )}
 
-      <div className={cn("flex items-end gap-2 rounded-2xl border bg-muted/30 px-2 py-1.5 focus-within:ring-4", editing ? "border-warning/60 focus-within:ring-warning/15" : "border-border/70 focus-within:border-ring/60 focus-within:ring-ring/15")}>
+      <div className={cn("flex items-end gap-1.5 rounded-[1.375rem] border bg-card px-2 py-1.5 shadow-sm transition-[box-shadow,border-color] focus-within:ring-4", editing ? "border-warning/60 focus-within:ring-warning/15" : "border-border/60 focus-within:border-ring/50 focus-within:ring-ring/15")}>
         <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => picker.current?.click()} disabled={!!editing} title="Dosya ekle (görsel 200 MB, video 1 GB, dosya 3 GB)" className="mb-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"><Paperclip className="size-4" /></button>
         <input
           ref={picker}
@@ -474,7 +474,7 @@ export default function Composer({
         >
           <AtSign className="size-4" />
         </button>
-        <button type="button" onClick={() => void submit()} disabled={busy || (!text.trim() && (!!editing || uploads.items.filter((i) => i.status === "hazır").length === 0)) || (!editing && uploads.busy)} aria-label={editing ? "Kaydet" : "Gönder"} className={cn("mb-0.5 flex size-9 items-center justify-center rounded-xl transition-opacity disabled:opacity-40", editing ? "bg-warning text-black" : "bg-primary text-primary-foreground")}>
+        <button type="button" onClick={() => void submit()} disabled={busy || (!text.trim() && (!!editing || uploads.items.filter((i) => i.status === "hazır").length === 0)) || (!editing && uploads.busy)} aria-label={editing ? "Kaydet" : "Gönder"} className={cn("mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full shadow-md transition-[transform,opacity] hover:scale-105 disabled:scale-100 disabled:opacity-40 disabled:shadow-none", editing ? "bg-warning text-black shadow-warning/30" : "bg-primary text-primary-foreground shadow-primary/30")}>
           {editing ? <Pencil className="size-4" /> : <SendHorizontal className="size-4" />}
         </button>
       </div>

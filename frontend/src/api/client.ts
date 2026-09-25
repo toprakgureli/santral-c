@@ -2,6 +2,7 @@ import type {
   AgentPresence,
   AgentPresenceState,
   AuditEntry,
+  CallLookup,
   CallPage,
   Contact,
   TodayCalls,
@@ -268,6 +269,7 @@ export const api = {
 
   // Call log (our own store, used for the panel history — today, per agent)
   recentCalls: () => request<TodayCalls>("/calls/log/"),
+  callLookup: (number: string) => request<CallLookup>("/calls/log/lookup" + query({ number })),
   logCall: (body: { callId: string; phase: "start" | "answer" | "end"; direction?: string; peer?: string; disposition?: string; durationSeconds?: number }) =>
     request<void>("/calls/log/", { method: "POST", body: JSON.stringify(body) }),
 

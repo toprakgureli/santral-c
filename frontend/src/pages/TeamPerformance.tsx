@@ -10,7 +10,7 @@
 // connected plus the ones too short to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Clock, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Clock, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
 import { Badge, Card, EmptyState, Select, Skeleton } from "../components/ui";
@@ -24,14 +24,16 @@ import { formatClock } from "./callFormat";
 
 const REFRESH_MS = 15000;
 
-const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red" | "slate" | "blue"; dot: string }> = {
-  talking: { label: "Görüşmede", tone: "blue", dot: "bg-primary" },
-  available: { label: "Boşta", tone: "green", dot: "bg-success" },
-  break: { label: "Molada", tone: "amber", dot: "bg-warning" },
-  backoffice: { label: "Backoffice", tone: "amber", dot: "bg-warning" },
-  dnd: { label: "Rahatsız etmeyin", tone: "red", dot: "bg-destructive" },
-  unregistered: { label: "Kayıtsız", tone: "slate", dot: "bg-muted-foreground/50" },
-  off: { label: "Mesai dışı", tone: "slate", dot: "bg-muted-foreground/40" },
+// One colour per status, used the same way everywhere on the card: the
+// dot on the photo, the ring around it, the header tint and the badge.
+const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red" | "slate" | "blue"; dot: string; ring: string; tint: string }> = {
+  talking: { label: "Görüşmede", tone: "blue", dot: "bg-primary", ring: "ring-primary/60", tint: "from-primary/12" },
+  available: { label: "Boşta", tone: "green", dot: "bg-success", ring: "ring-success/60", tint: "from-success/12" },
+  break: { label: "Molada", tone: "amber", dot: "bg-warning", ring: "ring-warning/60", tint: "from-warning/14" },
+  backoffice: { label: "Backoffice", tone: "amber", dot: "bg-amber-600", ring: "ring-amber-600/60", tint: "from-amber-600/12" },
+  dnd: { label: "Rahatsız etmeyin", tone: "red", dot: "bg-destructive", ring: "ring-destructive/60", tint: "from-destructive/12" },
+  unregistered: { label: "Kayıtsız", tone: "slate", dot: "bg-muted-foreground/50", ring: "ring-muted-foreground/30", tint: "from-muted/60" },
+  off: { label: "Mesai dışı", tone: "slate", dot: "bg-muted-foreground/40", ring: "ring-border", tint: "from-muted/40" },
 };
 
 type SortKey = "long" | "reach" | "talkSeconds" | "occupancy" | "unanswered" | "escalations" | "shift" | "name";
@@ -234,6 +236,7 @@ export function TeamPerformance() {
 function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number; live: boolean; multiDay: boolean }) {
   const s = STATUS[r.status] ?? STATUS.off;
   const off = r.status === "off";
+  const [more, setMore] = useState(false);
   const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
   const unreached = unreachedOf(r);
   const reach = reachOf(r);
@@ -246,10 +249,10 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
   return (
     <section className={cn("flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-border/60 transition", off && "opacity-60")}>
       {/* 1. Who, and what they are doing right now */}
-      <header className="flex items-start justify-between gap-3 border-b border-border/60 px-5 py-3.5">
+      <header className={cn("flex items-start justify-between gap-3 rounded-t-2xl border-b border-border/60 bg-gradient-to-r to-transparent px-5 py-3.5", s.tint)}>
         <div className="flex min-w-0 items-center gap-3">
-          <UserAvatar userId={r.userId} name={r.name} className="size-10" fallbackClassName="bg-primary/10 text-sm text-primary">
-            <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "available" && "animate-pulse")} />
+          <UserAvatar userId={r.userId} name={r.name} className={cn("size-10 rounded-full ring-2 ring-offset-2 ring-offset-card", s.ring)} fallbackClassName="bg-primary/10 text-sm text-primary">
+            <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, (r.status === "available" || r.status === "talking") && "animate-pulse")} />
           </UserAvatar>
           <div className="min-w-0">
             <Link to={`/profile/${r.userId}`} className="block truncate font-semibold leading-tight hover:underline" title="Profili aç">{r.name}</Link>
@@ -328,6 +331,36 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
           <Rate label="Ortalama" value={r.calls.avgTalkSeconds > 0 ? formatClock(r.calls.avgTalkSeconds) : "—"} hint={`Gerçek çağrı ortalaması · en uzun ${r.calls.longestSeconds > 0 ? formatClock(r.calls.longestSeconds) : "—"}`} />
           <Rate label="Yoğunluk" value={pct(occupancy)} hint="Görüşme süresi / mesai süresi" tone={occupancy >= 0.5 ? "text-violet-500" : undefined} />
           <Rate label="Eskalasyon" value={String(r.escalations)} hint="Kaydettiği eskalasyonlar" tone={r.escalations > 0 ? "text-warning" : undefined} />
+        </div>
+
+        {/* 7. The fold: the latest calls, closed until asked */}
+        <div className="rounded-xl border border-border/60">
+          <button
+            type="button"
+            onClick={() => setMore((v) => !v)}
+            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+          >
+            <span>Son görüşmeler{r.recent.length > 0 && !more && r.recent[0] ? <span className="ml-1.5 font-normal">· en son {displayNumber(r.recent[0].peer) || r.recent[0].peer}{r.recent[0].peerName ? ` (${r.recent[0].peerName})` : ""}, {stamp(r.recent[0].startedAt, true)}</span> : null}</span>
+            <ChevronDown className={cn("size-3.5 shrink-0 transition-transform", more && "rotate-180")} />
+          </button>
+          {more && (
+            <ul className="border-t border-border/60 px-2 py-1.5">
+              {r.recent.length === 0 && <li className="px-1 py-1.5 text-xs text-muted-foreground">Seçilen tarihlerde çağrı yok.</li>}
+              {r.recent.map((c, i) => (
+                <li key={i} className="flex items-center gap-2 rounded-lg px-1 py-1 text-xs">
+                  {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
+                  <span className="w-[4.5rem] shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-mono">{displayNumber(c.peer) || c.peer}</span>
+                    {c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}
+                  </span>
+                  <span className={cn("w-12 shrink-0 text-right font-mono tabular-nums", c.disposition === "answered" ? (c.durationSeconds >= 30 ? "text-success" : "text-warning") : "text-destructive")}>
+                    {c.disposition === "answered" ? formatClock(c.durationSeconds) : "cevapsız"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </section>

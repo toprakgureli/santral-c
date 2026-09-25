@@ -133,6 +133,41 @@ const RepeatRingSQL = "call_logs.direction = 'inbound' AND call_logs.disposition
 // NotMineSQL combines the two: rows that must not count as this agent's call.
 const NotMineSQL = "(" + AnsweredElsewhereSQL + ") OR (" + RepeatRingSQL + ")"
 
+// ByPeer lists calls with a number, newest first, optionally only one
+// agent's, since a point in time.
+func (r *Repository) ByPeer(ctx context.Context, peerKey string, userID *uint, since time.Time, limit int) ([]models.CallLog, error) {
+	q := r.db.WithContext(ctx).
+		Where("peer_key = ? AND user_id IS NOT NULL AND started_at >= ? AND disposition <> 'in_progress'", peerKey, since).
+		Where("NOT (" + NotMineSQL + ")")
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	var logs []models.CallLog
+	if err := q.Order("started_at DESC").Limit(limit).Find(&logs).Error; err != nil {
+		return nil, fmt.Errorf("calls could not be looked up: %w", err)
+	}
+	return logs, nil
+}
+
+// Names resolves user display names.
+func (r *Repository) Names(ctx context.Context, ids []uint) (map[uint]string, error) {
+	out := map[uint]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		ID   uint
+		Name string
+	}
+	if err := r.db.WithContext(ctx).Model(&models.User{}).Unscoped().Select("id, name").Where("id IN ?", ids).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("names could not be loaded: %w", err)
+	}
+	for _, row := range rows {
+		out[row.ID] = row.Name
+	}
+	return out, nil
+}
+
 // AnsweredElsewhere returns the ids among the given logs that another agent
 // answered, so the list can label them instead of showing them as missed.
 func (r *Repository) AnsweredElsewhere(ctx context.Context, ids []uint) (map[uint]bool, error) {

@@ -343,7 +343,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
         />
       )}
       {gallery && <Lightbox items={gallery.items} index={gallery.index} onIndex={(i) => setGallery({ ...gallery, index: i })} onClose={() => setGallery(null)} />}
-      <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div ref={list} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,color-mix(in_oklab,var(--foreground)_5%,transparent)_1px,transparent_0)] bg-[size:20px_20px] px-5 py-4">
         {more && (
           <div className="mb-3 text-center">
             <button type="button" onClick={() => void loadOlder()} className="rounded-full border border-border/70 px-3 py-1 text-xs text-muted-foreground hover:bg-accent">Daha eski mesajlar</button>
@@ -367,10 +367,8 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
           return (
             <div key={m.id} data-mid={m.id}>
               {day && (
-                <div className="my-4 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-border/60" />
-                  <span className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">{day}</span>
-                  <span className="h-px flex-1 bg-border/60" />
+                <div className="my-4 flex items-center justify-center">
+                  <span className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm backdrop-blur">{day}</span>
                 </div>
               )}
               {firstUnread === m.id && (
@@ -381,14 +379,14 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                 </div>
               )}
               {m.kind === "system" ? (
-                <p className="my-2 text-center text-xs text-muted-foreground">{m.body}</p>
+                <p className="my-2 text-center"><span className="rounded-full bg-muted/70 px-3 py-1 text-xs text-muted-foreground">{m.body}</span></p>
               ) : (
                 <div
                   onContextMenu={(e) => lineMenu(e, m)}
                   className={cn(
-                    "group relative flex gap-3 rounded-xl px-2 py-0.5 transition-colors duration-700",
-                    head ? "mt-2" : "mt-0",
-                    flash === m.id ? "bg-primary/15" : "hover:bg-accent/40",
+                    "group relative flex gap-3 rounded-2xl px-2.5 py-1 transition-colors duration-700",
+                    head ? "mt-2.5" : "mt-0",
+                    flash === m.id ? "bg-primary/15" : "hover:bg-card/80",
                     editing?.id === m.id && "bg-warning/10",
                     mentionsMe && "bg-violet-500/[0.07] before:absolute before:top-1 before:bottom-1 before:left-0 before:w-[3px] before:rounded-full before:bg-violet-500 hover:bg-violet-500/10",
                   )}
@@ -396,7 +394,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                   <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
                     {head && m.sender && (
                       <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" title="Profili aç">
-                        <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9" fallbackClassName="bg-primary/10 text-xs text-primary" />
+                        <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9 shadow-sm ring-2 ring-card" fallbackClassName="bg-primary/10 text-xs text-primary" />
                       </button>
                     )}
                     {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
@@ -463,7 +461,7 @@ Sağ tık: kimler verdi`}
                     )}
                   </div>
                   {!m.deleted && (
-                    <div className={cn("absolute -top-3.5 right-3 items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-hover:flex", picker === m.id ? "flex" : "hidden")}>
+                    <div className={cn("absolute -top-4 right-3 items-center gap-0.5 rounded-full border border-border/70 bg-card px-1 py-0.5 shadow-md group-hover:flex", picker === m.id ? "flex" : "hidden")}>
                       {QUICK.map((e) => (
                         <button key={e} type="button" onClick={() => void react(m, e)} title="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
                       ))}

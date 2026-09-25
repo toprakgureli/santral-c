@@ -20,4 +20,5 @@ func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/calls/log", r.guard)
 	group.Post("/", r.handler.Record)
 	group.Get("/", r.handler.Recent)
+	group.Get("/lookup", r.handler.Lookup)
 }

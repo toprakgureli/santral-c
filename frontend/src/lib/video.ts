@@ -1,4 +1,4 @@
-// In-browser video trimming and compression, as in Devtrack.
+// In-browser video trimming and compression.
 //
 // No library: the video is drawn onto a canvas while being cropped,
 // MediaRecorder records a new video from the canvas, the audio is taken

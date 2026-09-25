@@ -1,4 +1,4 @@
-// ProfilePopover: the Discord-style card that opens when a name or avatar
+// ProfilePopover: the small profile card that opens when a name or avatar
 // is clicked in the chat. Anchored next to the click, it shows the photo
 // with the presence dot, name, headline, roles, biography and when the
 // person joined, with a way to message them or open the full profile.

@@ -1,4 +1,4 @@
-// Video trim and compress window, as in Devtrack. It opens for every
+// Video trim and compress window. It opens for every
 // video, not only those over the limit: whoever wants to cut should not
 // first upload and then shrink. An untouched video under the limit is
 // sent as is, without re-encoding.

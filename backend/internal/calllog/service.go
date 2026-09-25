@@ -150,6 +150,110 @@ func (s *Service) ended(ctx context.Context, log models.CallLog) {
 	go s.OnEnded(context.WithoutCancel(ctx), log)
 }
 
+// lookupDays is how far back the number lookup reaches.
+const lookupDays = 90
+
+// LookupItem is one call with a number, with the agent who handled it.
+type LookupItem struct {
+	UUID            string `json:"uuid"`
+	Direction       string `json:"direction"`
+	Disposition     string `json:"disposition"`
+	AgentID         uint   `json:"agentId"`
+	AgentName       string `json:"agentName"`
+	StartedAt       string `json:"startedAt"`
+	DurationSeconds int    `json:"durationSeconds"`
+}
+
+// LookupAgent is one agent's share of the calls with a number.
+type LookupAgent struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Calls       int    `json:"calls"`
+	Answered    int    `json:"answered"`
+	TalkSeconds int    `json:"talkSeconds"`
+}
+
+// Lookup is everything the panel knows about a number: who spoke with it,
+// how often and for how long, newest first.
+type Lookup struct {
+	Number      string        `json:"number"`
+	Scope       string        `json:"scope"` // all or own
+	Days        int           `json:"days"`
+	Total       int           `json:"total"`
+	Answered    int           `json:"answered"`
+	TalkSeconds int           `json:"talkSeconds"`
+	LastAt      string        `json:"lastAt,omitempty"`
+	Agents      []LookupAgent `json:"agents"`
+	Items       []LookupItem  `json:"items"`
+}
+
+// Lookup answers "who spoke with this number": everyone's calls for agents
+// who may see all calls, the actor's own otherwise.
+func (s *Service) Lookup(ctx context.Context, actorID uint, number string) (*Lookup, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	var only *uint
+	scope := "all"
+	switch {
+	case canViewAll(actor):
+	case canViewOwn(actor):
+		only, scope = &actorID, "own"
+	default:
+		return nil, errs.Forbidden("Çağrı geçmişini görme yetkiniz yok.")
+	}
+	key := phone.Key(number)
+	if len(key) < 3 {
+		return nil, errs.Invalid("Aramak için en az üç rakam girin.", nil)
+	}
+	logs, err := s.repo.ByPeer(ctx, key, only, time.Now().AddDate(0, 0, -lookupDays), 60)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	ids := make([]uint, 0, len(logs))
+	seen := map[uint]bool{}
+	for _, l := range logs {
+		if l.UserID != nil && !seen[*l.UserID] {
+			seen[*l.UserID] = true
+			ids = append(ids, *l.UserID)
+		}
+	}
+	names, err := s.repo.Names(ctx, ids)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	out := &Lookup{Number: strings.TrimSpace(number), Scope: scope, Days: lookupDays, Agents: []LookupAgent{}, Items: []LookupItem{}}
+	byAgent := map[uint]*LookupAgent{}
+	for _, l := range logs {
+		uid := *l.UserID
+		item := LookupItem{UUID: l.CallID, Direction: l.Direction, Disposition: l.Disposition, AgentID: uid, AgentName: names[uid], StartedAt: l.StartedAt.In(istanbul).Format(time.RFC3339), DurationSeconds: l.DurationSeconds}
+		out.Items = append(out.Items, item)
+		out.Total++
+		if out.LastAt == "" {
+			out.LastAt = item.StartedAt
+		}
+		a := byAgent[uid]
+		if a == nil {
+			a = &LookupAgent{ID: uid, Name: names[uid]}
+			byAgent[uid] = a
+			out.Agents = append(out.Agents, LookupAgent{})
+		}
+		a.Calls++
+		if l.Disposition == "answered" {
+			out.Answered++
+			out.TalkSeconds += l.DurationSeconds
+			a.Answered++
+			a.TalkSeconds += l.DurationSeconds
+		}
+	}
+	out.Agents = out.Agents[:0]
+	for _, id := range ids {
+		out.Agents = append(out.Agents, *byAgent[id])
+	}
+	return out, nil
+}
+
 // Recent returns the actor's own call history for today (since local midnight)
 // with a short/long/unanswered breakdown. The panel history is always personal:
 // every agent sees only their own calls and it resets at 00:00 local.

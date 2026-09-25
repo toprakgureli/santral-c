@@ -332,7 +332,7 @@ func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 			}
 			return true, nil
 		}
-		// A near miss is announced without the text, like Gartic: the room
+		// A near miss is announced without the text: the room
 		// learns someone is close, not what they wrote.
 		if closeGuess(text, st.Word) {
 			st.Guesses = append(st.Guesses, drawGuess{UserID: uid, Name: name, Close: true})

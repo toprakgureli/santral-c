@@ -1,6 +1,6 @@
 // Teams: in-house chat. Left, the rooms (groups and direct messages) with
 // unread counts and pending invites; middle, the open room; right, its
-// members. Laid out like Discord and Microsoft Teams, kept plain.
+// members: a three-column chat.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -137,15 +137,15 @@ export function Teams() {
         type="button"
         onClick={() => navigate(`/teams/${g.id}`)}
         onContextMenu={(e) => roomMenu(e, g)}
-        className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors", active ? "bg-sidebar-accent" : "hover:bg-accent/60")}
+        className={cn("flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition-[background-color,box-shadow] duration-200", active ? "bg-card shadow-sm ring-1 ring-border/60" : "hover:bg-card/60")}
       >
         <span className="relative inline-flex shrink-0">
-          <GroupAvatar group={g} className="size-9 text-xs" />
+          <GroupAvatar group={g} className="size-11 text-sm" />
           {g.kind === "dm" && <OnlineDot presence={teams.presenceOf(g.peer, g.id)} />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span className={cn("min-w-0 flex-1 truncate text-sm", g.unread && !g.muted ? "font-semibold" : "font-medium")}>{g.name}</span>
+            <span className={cn("min-w-0 flex-1 truncate text-sm", g.unread && !g.muted ? "font-semibold text-foreground" : "font-medium")}>{g.name}</span>
             {g.muted && <VolumeX className={cn("size-3 shrink-0", g.mute === "all" ? "text-destructive/70" : "text-muted-foreground")} aria-label={g.mute === "all" ? "Tamamen sessiz" : "Sessiz, etiketler bildirir"} />}
             {last && <span className="shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">{when(last.createdAt)}</span>}
           </span>
@@ -161,7 +161,7 @@ export function Teams() {
             </>
             )}
             {g.unread > 0 && (
-              <span className={cn("shrink-0 rounded-full px-1.5 text-[0.65rem] font-semibold tabular-nums", g.muted ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground")}>{g.unread > 99 ? "99+" : g.unread}</span>
+              <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums leading-none", g.muted ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground shadow-sm shadow-primary/30")}>{g.unread > 99 ? "99+" : g.unread}</span>
             )}
           </span>
         </span>
@@ -172,11 +172,11 @@ export function Teams() {
   return (
     <div className="-mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden md:-mx-6 lg:-mx-8">
       {/* Rooms */}
-      <aside className="flex w-72 shrink-0 flex-col border-r border-border/60 bg-card/40">
-        <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5">
+      <aside className="flex w-[19rem] shrink-0 flex-col border-r border-border/50 bg-gradient-to-b from-card/70 to-card/30">
+        <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
           <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara" className="h-8 w-full rounded-lg bg-muted/50 pl-8 pr-2 text-sm outline-none placeholder:text-muted-foreground/60 focus:bg-card focus:ring-2 focus:ring-ring/20" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sohbet ara" className="h-9 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-3 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/60 focus:border-ring/40 focus:bg-card focus:ring-4 focus:ring-ring/15" />
           </div>
           <button
             type="button"
@@ -185,7 +185,7 @@ export function Teams() {
               setPlus({ x: r.left - 150, y: r.bottom + 4 });
             }}
             title="Yeni"
-            className={cn("flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105", plus && "scale-95")}
+            className={cn("flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md shadow-primary/30 transition-transform hover:scale-105", plus && "scale-95")}
           >
             <Plus className="size-4" />
           </button>
@@ -213,20 +213,20 @@ export function Teams() {
             </div>
           )}
 
-          <p className="px-2 pb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Gruplar</p>
+          <p className="px-2.5 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">Gruplar</p>
           <div className="space-y-0.5">
             {rooms.map((g) => <Room key={g.id} g={g} />)}
             {rooms.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">{canCreate ? "Henüz grup yok. Artı ile bir grup aç." : "Henüz bir gruba eklenmedin."}</p>}
           </div>
 
-          <p className="px-2 pt-4 pb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-muted-foreground">Özel mesajlar</p>
+          <p className="px-2.5 pt-5 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">Özel mesajlar</p>
           <div className="space-y-0.5">
             {dms.map((g) => <Room key={g.id} g={g} />)}
             {dms.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">Kimseyle yazışmadın. Yeni mesaj ile başla.</p>}
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-[0.65rem] text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-border/50 px-3 py-2 text-[0.65rem] text-muted-foreground">
           {teams.games && (
             <button type="button" onClick={() => setBoard(true)} className="inline-flex items-center gap-1 hover:text-foreground" title="Oyun sıralaması"><Trophy className="size-3 text-warning" /> Sıralama</button>
           )}
@@ -244,7 +244,7 @@ export function Teams() {
       <section className="flex min-w-0 flex-1 flex-col bg-background">
         {!groupId ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <span className="flex size-14 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-500"><Users className="size-6" /></span>
+            <span className="flex size-20 items-center justify-center rounded-[1.75rem] bg-gradient-to-br from-primary/20 to-violet-500/20 text-primary shadow-inner"><Users className="size-8" /></span>
             <p className="text-sm font-medium">Bir grup ya da kişi seç</p>
             <p className="max-w-xs text-xs text-muted-foreground">Soldan bir sohbet aç. Yeni mesaj ile bir kişiye yaz{canCreate ? ", artı ile bir grup oluştur" : ""}.</p>
           </div>
@@ -254,7 +254,7 @@ export function Teams() {
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Yükleniyor...</div>
         ) : (
           <>
-            <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4">
+            <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-card/60 px-4 backdrop-blur-md">
               <button
                 type="button"
                 disabled={detail.kind !== "dm" || !detail.peer}
@@ -266,13 +266,13 @@ export function Teams() {
                 className="relative inline-flex shrink-0 rounded-full disabled:cursor-default"
                 title={detail.kind === "dm" ? "Profili aç" : undefined}
               >
-                <GroupAvatar group={detail} className="size-9 text-xs" />
+                <GroupAvatar group={detail} className="size-10 text-sm" />
                 {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer, detail.id)} />}
               </button>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   {detail.kind === "group" && <Hash className="size-4 shrink-0 text-muted-foreground" />}
-                  <h2 className="truncate text-sm font-semibold">{detail.name}</h2>
+                  <h2 className="truncate text-[0.9375rem] font-semibold tracking-tight">{detail.name}</h2>
                   {detail.postPolicy === "admins" && <Badge tone="amber">Duyuru</Badge>}
                   {detail.muted && <VolumeX className="size-3.5 text-muted-foreground" />}
                 </div>
@@ -289,15 +289,15 @@ export function Teams() {
                 })()}
               </div>
               {canPlay && detail.canPost && (
-                <button type="button" onClick={() => setStartGame(true)} title="Oyun başlat" className="rounded-lg p-2 text-violet-500 hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
+                <button type="button" onClick={() => setStartGame(true)} title="Oyun başlat" className="flex size-9 items-center justify-center rounded-full text-violet-500 transition-colors hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
               )}
-              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} title="Mesajlarda ara" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "search" && "bg-accent text-foreground")}><Search className="size-4" /></button>
-              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} title="Görseller, videolar ve dosyalar" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "media" && "bg-accent text-foreground")}><Images className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} title="Mesajlarda ara" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "search" && "bg-primary/10 text-primary")}><Search className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} title="Görseller, videolar ve dosyalar" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "media" && "bg-primary/10 text-primary")}><Images className="size-4" /></button>
               {detail.kind === "group" && (
                 <>
-                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} title="Üyeler" className={cn("rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground", panel === "members" && "bg-accent text-foreground")}><Users className="size-4" /></button>
+                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} title="Üyeler" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "members" && "bg-primary/10 text-primary")}><Users className="size-4" /></button>
                   {detail.canManage && (
-                    <button type="button" onClick={() => setSettings(true)} title="Grup ayarları" className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
+                    <button type="button" onClick={() => setSettings(true)} title="Grup ayarları" className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
                   )}
                 </>
               )}

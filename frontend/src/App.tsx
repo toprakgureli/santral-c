@@ -4,7 +4,6 @@ import AppShell from "./components/layout/AppShell";
 import { Spinner } from "./components/ui";
 import { Audit } from "./pages/Audit";
 import { Calls } from "./pages/Calls";
-import { Contacts } from "./pages/Contacts";
 import { Dashboard } from "./pages/Dashboard";
 import { EscalationSearch } from "./pages/EscalationSearch";
 import { Escalations } from "./pages/Escalations";
@@ -43,7 +42,6 @@ export function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/calls" element={<Calls />} />
         <Route path="/performance" element={<TeamPerformance />} />
-        <Route path="/contacts" element={<Contacts />} />
         <Route path="/escalation-search" element={<EscalationSearch />} />
         <Route path="/escalations" element={<Escalations />} />
         <Route path="/roles" element={<Roles />} />

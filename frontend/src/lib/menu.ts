@@ -1,4 +1,4 @@
-import { Gauge, Headset, MessagesSquare, PhoneCall, Contact, ScrollText, SearchCheck, Settings, ShieldCheck, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, MessageCircleMore, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
 
 export type MenuItem = {
   label: string;
@@ -20,23 +20,22 @@ export const MENU: MenuGroup[] = [
       {
         label: "Çağrılar",
         path: "/calls",
-        icon: PhoneCall,
+        icon: History,
         permission: ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"],
       },
-      { label: "Teams", path: "/teams", icon: MessagesSquare, permission: "teams.view" },
-      { label: "Ekip Performansı", path: "/performance", icon: Gauge, permission: ["performance.view_role", "performance.view_all"] },
-      { label: "Kişiler", path: "/contacts", icon: Contact, permission: "contact.view" },
-      { label: "Eskalasyonlar", path: "/escalation-search", icon: SearchCheck, permission: ["escalation.list_own", "escalation.list_all", "escalation.search"] },
+      { label: "Teams", path: "/teams", icon: MessageCircleMore, permission: "teams.view" },
+      { label: "Ekip Performansı", path: "/performance", icon: ChartColumn, permission: ["performance.view_role", "performance.view_all"] },
+      { label: "Eskalasyonlar", path: "/escalation-search", icon: ClipboardList, permission: ["escalation.list_own", "escalation.list_all", "escalation.search"] },
     ],
   },
   {
     title: "Yönetim",
     items: [
-      { label: "Eskalasyon Durumları", path: "/escalations", icon: TriangleAlert, permission: "escalation.manage" },
-      { label: "Kullanıcılar", path: "/users", icon: Users, permission: "user.view" },
-      { label: "Roller", path: "/roles", icon: ShieldCheck, permission: "role.view" },
-      { label: "Sistem Ayarları", path: "/settings", icon: Settings, permission: ["system.settings", "system.logs", "agent.break_limit"] },
-      { label: "Denetim Kayıtları", path: "/audit", icon: ScrollText, permission: "system.audit_view" },
+      { label: "Eskalasyon Durumları", path: "/escalations", icon: Tags, permission: "escalation.manage" },
+      { label: "Kullanıcılar", path: "/users", icon: UsersRound, permission: "user.view" },
+      { label: "Roller", path: "/roles", icon: KeyRound, permission: "role.view" },
+      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit"] },
+      { label: "Denetim Kayıtları", path: "/audit", icon: FileClock, permission: "system.audit_view" },
     ],
   },
 ];

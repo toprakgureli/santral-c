@@ -1,4 +1,4 @@
-// Discord-style light markup for chat lines. Nothing here is HTML: the text
+// Light markup for chat lines. Nothing here is HTML: the text
 // is tokenised and rendered as React nodes, so it is safe by construction.
 //
 //   **kalın**   *italik* or _italik_   __altı çizili__   ~~üstü çizili~~
