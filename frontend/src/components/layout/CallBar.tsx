@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
+import { GripVertical, Mic, MicOff, Minus, Pause, Phone, PhoneOff, Play, Plus, Volume2 } from "lucide-react";
+import AudioWave from "@/components/layout/AudioWave";
+import { GAIN_MAX } from "@/softphone/audioGraph";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import { displayNumber } from "@/softphone/dial";
+import { cn } from "@/lib/utils";
 import { whatsappLink, whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 
 const statusLabel: Record<string, string> = {
@@ -20,7 +23,7 @@ const MARGIN = 12;
 
 type Pos = { x: number; y: number };
 
-function clampPos(p: Pos, height = 140): Pos {
+function clampPos(p: Pos, height = 220): Pos {
   const maxX = Math.max(MARGIN, window.innerWidth - WIDTH - MARGIN);
   const maxY = Math.max(MARGIN, window.innerHeight - height - MARGIN);
   return { x: Math.min(Math.max(MARGIN, p.x), maxX), y: Math.min(Math.max(MARGIN, p.y), maxY) };
@@ -122,6 +125,35 @@ export default function CallBar() {
       </div>
 
       {phone.error && <p className="mb-2 text-xs leading-snug text-destructive">{phone.error}</p>}
+
+      {inCall && (
+        <div className="mb-3 space-y-2">
+          {/* Both voices, the other side first */}
+          <div className="grid grid-cols-[3.25rem_1fr] items-center gap-x-2 gap-y-1 rounded-xl bg-muted/40 px-2.5 py-2">
+            <span className="truncate text-[0.65rem] font-medium text-muted-foreground">Karşı taraf</span>
+            <AudioWave read={() => phone.wave("remote")} color="var(--primary)" />
+            <span className="truncate text-[0.65rem] font-medium text-muted-foreground">Sen</span>
+            <AudioWave read={() => (phone.muted ? null : phone.wave("local"))} color="var(--success)" />
+          </div>
+          {/* The other side's loudness; past 100 is a boost */}
+          <div className="flex items-center gap-1.5" title="Karşı tarafın sesi. %100 geldiği gibi; üstü yükseltir.">
+            <Volume2 className="size-3.5 shrink-0 text-muted-foreground" />
+            <button type="button" onClick={() => phone.setRemoteGain(phone.remoteGain - 0.1)} aria-label="Sesi kıs" className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Minus className="size-3" /></button>
+            <input
+              type="range"
+              min={0}
+              max={GAIN_MAX * 100}
+              step={5}
+              value={Math.round(phone.remoteGain * 100)}
+              onChange={(e) => phone.setRemoteGain(Number(e.target.value) / 100)}
+              aria-label="Karşı tarafın sesi"
+              className="h-1.5 min-w-0 flex-1 cursor-pointer accent-primary"
+            />
+            <button type="button" onClick={() => phone.setRemoteGain(phone.remoteGain + 0.1)} aria-label="Sesi aç" className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="size-3" /></button>
+            <span className={cn("w-11 shrink-0 text-right text-[0.7rem] font-semibold tabular-nums", phone.remoteGain > 1 ? "text-primary" : "text-muted-foreground")}>%{Math.round(phone.remoteGain * 100)}</span>
+          </div>
+        </div>
+      )}
 
       {phone.status === "incoming" ? (
         <div className="grid grid-cols-2 gap-2">

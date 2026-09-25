@@ -5,6 +5,7 @@ import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue
 import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
 import { tones } from "./tones";
+import { CallAudio, GAIN_MAX, GAIN_MIN, loadGain, saveGain, type WaveSide } from "./audioGraph";
 
 // mediaError turns a getUserMedia failure into a message the agent can act on.
 // Anything else keeps its own text.
@@ -97,6 +98,11 @@ export interface Phone {
   callStartedAt: number | null; // when the current call attempt/incoming began
   answeredAt: number | null; // when the current call was answered
   audioRef: React.RefObject<HTMLAudioElement>;
+  // The other side's loudness, 1 is as received; goes past 1 to boost.
+  remoteGain: number;
+  setRemoteGain: (v: number) => void;
+  // Latest samples of one voice for the wave, null when not wired.
+  wave: (side: WaveSide) => Float32Array | null;
   call: (target: string) => Promise<void>;
   answer: () => Promise<void>;
   hangup: () => Promise<void>;
@@ -161,6 +167,9 @@ export function useSoftphone(enabled: boolean): Phone {
   const [lastUnreached, setLastUnreached] = useState<UnreachedCall | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioGraph = useRef(new CallAudio());
+  const [remoteGain, setRemoteGainState] = useState(loadGain);
+  const gainRef = useRef(remoteGain);
   const uaRef = useRef<UserAgent | null>(null);
   const sessionRef = useRef<Session | null>(null);
   // Re-registers with the PBX; used when its offer arrives without DTLS.
@@ -177,12 +186,19 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const attachRemoteMedia = useCallback((session: Session) => {
     const pc = peerConnection(session);
-    if (!pc || !audioRef.current) return;
-    const stream = new MediaStream();
-    pc.getReceivers().forEach((r) => r.track && stream.addTrack(r.track));
-    audioRef.current.srcObject = stream;
-    void audioRef.current.play().catch(() => undefined);
+    if (!pc) return;
+    audioGraph.current.attach(pc, audioRef.current, gainRef.current);
   }, []);
+
+  const setRemoteGain = useCallback((v: number) => {
+    const g = Math.min(GAIN_MAX, Math.max(GAIN_MIN, Math.round(v * 100) / 100));
+    gainRef.current = g;
+    setRemoteGainState(g);
+    saveGain(g);
+    audioGraph.current.setGain(g);
+  }, []);
+
+  const wave = useCallback((side: WaveSide) => audioGraph.current.wave(side), []);
 
   const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
     if (!callIdRef.current) return;
@@ -236,6 +252,7 @@ export function useSoftphone(enabled: boolean): Phone {
           logCall("answer");
         } else if (state === SessionState.Terminated) {
           tones.stop();
+          audioGraph.current.detach();
           // Only beep when an actual conversation ended, so a rejected or
           // failed call does not collide with the PBX's own announcement.
           if (wasEstablished) {
@@ -575,6 +592,9 @@ export function useSoftphone(enabled: boolean): Phone {
     callStartedAt,
     answeredAt,
     audioRef,
+    remoteGain,
+    setRemoteGain,
+    wave,
     call,
     answer,
     hangup,
