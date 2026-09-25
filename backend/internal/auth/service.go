@@ -10,6 +10,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
+	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/hash"
@@ -98,7 +99,11 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 		return nil, errs.Forbidden("Hesabınız pasif durumda. Yöneticinizle iletişime geçin.")
 	}
 
-	if !u.MFAEnabled && !u.MFAExempt && s.mfaRequired(ctx) {
+	// The policy decides whether this login is asked for a second factor at
+	// all: off asks nobody, trusted asks nobody from the listed addresses.
+	asked := s.mfaAsked(ctx, meta.IP)
+
+	if asked && !u.MFAEnabled && !u.MFAExempt {
 		token, err := jwt.GenerateEnroll(s.cfg, u.ID)
 		if err != nil {
 			return nil, errs.Internal(err)
@@ -107,7 +112,7 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 		return &LoginResult{MFASetupRequired: true, MFAToken: token.Value}, nil
 	}
 
-	if u.MFAEnabled {
+	if asked && u.MFAEnabled {
 		token, err := jwt.GenerateMFA(s.cfg, u.ID)
 		if err != nil {
 			return nil, errs.Internal(err)
@@ -146,11 +151,19 @@ func (s *Service) Me(ctx context.Context, userID uint) (*responses.User, error) 
 	return &dto, nil
 }
 
-func (s *Service) mfaRequired(ctx context.Context) bool {
+// mfaAsked says whether a login from ip goes through the second factor.
+func (s *Service) mfaAsked(ctx context.Context, ip string) bool {
 	if s.settings == nil {
 		return false
 	}
-	return s.settings.MFARequired(ctx)
+	mode, trusted := s.settings.MFAPolicy(ctx)
+	switch mode {
+	case setting.MFAOff:
+		return false
+	case setting.MFATrusted:
+		return !setting.IPTrusted(ip, trusted)
+	}
+	return true
 }
 
 // Refresh rotates a valid refresh session into a new access token.

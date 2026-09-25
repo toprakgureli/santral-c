@@ -238,7 +238,7 @@ export const api = {
   securityBans: () => request<{ items: IPBan[] }>("/security/bans").then((r) => r.items),
   removeBan: (id: number) => request<void>(`/security/bans/${id}`, { method: "DELETE" }),
   systemSettings: () => request<SystemSettings>("/settings/"),
-  updateSystemSettings: (body: SystemSettings) => request<SystemSettings>("/settings/", { method: "PUT", body: JSON.stringify(body) }),
+  updateSystemSettings: (body: { mfaMode: SystemSettings["mfaMode"]; mfaTrustedIps: string[] }) => request<SystemSettings>("/settings/", { method: "PUT", body: JSON.stringify(body) }),
   breakLimit: () => request<{ minutes: number }>("/settings/break-limit"),
   updateBreakLimit: (minutes: number) => request<{ minutes: number }>("/settings/break-limit", { method: "PUT", body: JSON.stringify({ minutes }) }),
 

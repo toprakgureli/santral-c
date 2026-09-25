@@ -6,6 +6,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/validator"
 )
 
 // Handler serves the system settings endpoints.
@@ -24,7 +25,7 @@ func (h *Handler) Get(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	res, err := h.service.Settings(c.UserContext(), id)
+	res, err := h.service.Settings(c.UserContext(), id, c.IP())
 	if err != nil {
 		return err
 	}
@@ -40,6 +41,9 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	var req requests.SettingsUpdate
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
 	}
 	res, err := h.service.Update(c.UserContext(), id, req, c.IP())
 	if err != nil {

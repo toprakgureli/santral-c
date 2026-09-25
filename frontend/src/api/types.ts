@@ -48,8 +48,12 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+export type MfaMode = "on" | "off" | "trusted";
+
 export interface SystemSettings {
-  mfaRequired: boolean;
+  mfaMode: MfaMode;
+  mfaTrustedIps: string[];
+  clientIp?: string;
 }
 
 export interface LoginChallenge {

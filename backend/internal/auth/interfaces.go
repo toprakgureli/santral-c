@@ -42,9 +42,10 @@ type IDenylist interface {
 	Has(ctx context.Context, id string) (bool, error)
 }
 
-// ISettingService exposes runtime flags.
+// ISettingService exposes runtime flags. MFAPolicy is the mode (on, off,
+// trusted) and the trusted addresses.
 type ISettingService interface {
-	MFARequired(ctx context.Context) bool
+	MFAPolicy(ctx context.Context) (string, []string)
 }
 
 // IService is the auth application service.

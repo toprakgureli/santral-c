@@ -2,10 +2,10 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { DriveStatus, IPBan, LoginAttempt, Paged } from "../api/types";
+import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings } from "../api/types";
 import { formatSize } from "../lib/attachments";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
@@ -62,7 +62,7 @@ export function Settings() {
 
   return (
     <div className="space-y-6">
-      {canManage && <MfaRequiredCard />}
+      {canManage && <MfaPolicyCard />}
       {canBreakLimit && <BreakLimitCard />}
       {canDrive && <DriveCard />}
       {canGames && (
@@ -284,33 +284,54 @@ function BreakLimitCard() {
   );
 }
 
-// MfaRequiredCard toggles forced TOTP enrollment at login. The server enforces
+// MfaPolicyCard sets who is asked for a second factor at login: everyone,
+// nobody, or nobody from a list of trusted addresses. The server enforces
 // the rule; the card only reflects and changes it.
-function MfaRequiredCard() {
-  const [required, setRequired] = useState<boolean | null>(null);
+const MFA_MODES: { key: MfaMode; label: string; text: string }[] = [
+  { key: "on", label: "Açık", text: "Herkes doğrulama uygulaması kurar ve her girişte kod girer. Muaf işaretli hesaplar hariç." },
+  { key: "off", label: "Kapalı", text: "Kimseye kod sorulmaz, uygulaması olanlara da. Kurulumlar silinmez, tekrar açınca çalışır." },
+  { key: "trusted", label: "Güvenilir IP", text: "Aşağıdaki adreslerden girenlere kod sorulmaz. Diğer her yerden giriş Açık gibi davranır: kurulum zorunlu, kod istenir." },
+];
+
+function MfaPolicyCard() {
+  const [saved, setSaved] = useState<SystemSettings | null>(null);
+  const [mode, setMode] = useState<MfaMode>("off");
+  const [ips, setIps] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     api
       .systemSettings()
-      .then((s) => { if (alive) setRequired(Boolean(s.mfaRequired)); })
+      .then((s) => {
+        if (!alive) return;
+        setSaved(s);
+        setMode(s.mfaMode);
+        setIps(s.mfaTrustedIps.join("\n"));
+      })
       .catch((e) => {
         if (!alive) return;
         setError(e instanceof ApiError ? e.message : "Ayarlar okunamadı.");
-        setRequired(false);
       });
     return () => { alive = false; };
   }, []);
 
-  const toggle = async () => {
-    const next = !required;
+  const list = ips.split(/[\n,;]+/).map((v) => v.trim()).filter(Boolean);
+  const dirty = saved !== null && (mode !== saved.mfaMode || list.join("\n") !== saved.mfaTrustedIps.join("\n"));
+  const myIp = saved?.clientIp ?? "";
+  const hasMyIp = myIp !== "" && list.includes(myIp);
+
+  const save = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await api.updateSystemSettings({ mfaRequired: next });
-      setRequired(next);
+      const s = await api.updateSystemSettings({ mfaMode: mode, mfaTrustedIps: list });
+      setSaved(s);
+      setIps(s.mfaTrustedIps.join("\n"));
+      setNotice("Kaydedildi.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Ayar kaydedilemedi.");
     } finally {
@@ -318,24 +339,57 @@ function MfaRequiredCard() {
     }
   };
 
+  const badge = saved === null ? <Skeleton className="h-5 w-16" /> : <Badge tone={saved.mfaMode === "on" ? "green" : saved.mfaMode === "trusted" ? "blue" : "slate"}>{MFA_MODES.find((m) => m.key === saved.mfaMode)?.label}</Badge>;
+
   return (
-    <Card
-      title="İki Adımlı Doğrulama Zorunluluğu"
-      actions={required === null ? <Skeleton className="h-5 w-16" /> : <Badge tone={required ? "green" : "slate"}>{required ? "Açık" : "Kapalı"}</Badge>}
-    >
+    <Card title="İki Adımlı Doğrulama" actions={badge}>
       <div className="space-y-4">
-        <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Kullanıcılar doğrulama uygulaması kurmadan giriş yapamasın</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Açıkken, TOTP kurulumu olmayan herkes bir sonraki girişinde kurulum ekranına yönlendirilir ve kurulumu tamamlamadan oturum açamaz.
-              Muaf işaretli hesaplar bu kuraldan etkilenmez.
-            </p>
-          </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {MFA_MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              disabled={saved === null}
+              className={cn(
+                "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-colors",
+                mode === m.key ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border/60 hover:bg-accent/50",
+              )}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <span className={cn("size-3 rounded-full border-2", mode === m.key ? "border-primary bg-primary" : "border-muted-foreground/40")} />
+                {m.label}
+              </span>
+              <span className="text-xs leading-relaxed text-muted-foreground">{m.text}</span>
+            </button>
+          ))}
         </div>
 
-        {required && (
+        {mode === "trusted" && (
+          <div className="space-y-2 rounded-xl border border-border/60 p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="mfa-ips" className="text-sm font-medium">Güvenilir adresler</label>
+              {myIp && !hasMyIp && (
+                <Button variant="secondary" className="h-8 text-xs" onClick={() => setIps((v) => (v.trim() ? v.trimEnd() + "\n" : "") + myIp)}>
+                  Şu anki adresimi ekle ({myIp})
+                </Button>
+              )}
+              {myIp && hasMyIp && <span className="text-xs text-success">Şu anki adresin ({myIp}) listede</span>}
+            </div>
+            <textarea
+              id="mfa-ips"
+              rows={4}
+              value={ips}
+              onChange={(e) => setIps(e.target.value)}
+              placeholder={"Her satıra bir adres\n85.105.10.20\n10.0.0.0/8"}
+              spellCheck={false}
+              className="w-full resize-y rounded-xl border border-border/70 bg-muted/40 px-3.5 py-2.5 font-mono text-sm outline-none transition focus-visible:border-ring/60 focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-ring/20"
+            />
+            <p className="text-xs leading-relaxed text-muted-foreground">Tek adres (85.105.10.20) ya da blok (10.0.0.0/8) yazılabilir. Ofisin sabit çıkış IP'sini ekle; evden ve mobilden girenler kod girmeye devam eder.</p>
+          </div>
+        )}
+
+        {mode !== "off" && (
           <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs leading-relaxed text-warning">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <span>Doğrulama uygulamasına erişimini kaybeden kullanıcıyı yalnızca bir yönetici (MFA sıfırlayarak) kurtarabilir.</span>
@@ -343,12 +397,12 @@ function MfaRequiredCard() {
         )}
 
         {error && <p className="text-xs text-destructive">{error}</p>}
+        {notice && !dirty && <p className="text-xs text-success">{notice}</p>}
 
-        {required !== null && (
-          <Button variant={required ? "danger" : "primary"} onClick={toggle} disabled={busy}>
-            {busy ? "Kaydediliyor..." : required ? "Zorunluluğu kaldır" : "Zorunlu yap"}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Button onClick={save} disabled={busy || !dirty}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>
+          {dirty && <Button variant="ghost" disabled={busy} onClick={() => { if (saved) { setMode(saved.mfaMode); setIps(saved.mfaTrustedIps.join("\n")); } }}>Vazgeç</Button>}
+        </div>
       </div>
     </Card>
   );
