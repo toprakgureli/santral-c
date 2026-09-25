@@ -132,17 +132,19 @@ func (r *Repository) BreakSeconds(ctx context.Context, from, to time.Time) (map[
 	return out, nil
 }
 
-// LastCallEnds returns when each user's latest finished call ended, so an
+// LastCallEnds returns when each user's latest answered call ended, so an
 // idle timer starts from the last conversation rather than from the last
-// manual state change.
+// manual state change. Only answered calls count, the same rule as the
+// agent's own header timer, so the two never disagree; a ring nobody
+// picked up is not a conversation.
 func (r *Repository) LastCallEnds(ctx context.Context) (map[uint]time.Time, error) {
 	var rows []struct {
 		UserID uint
 		At     time.Time
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
-		Select("user_id, MAX(COALESCE(ended_at, started_at)) AS at").
-		Where("user_id IS NOT NULL AND disposition <> 'in_progress' AND started_at >= ?", time.Now().Add(-48*time.Hour)).
+		Select("user_id, MAX(ended_at) AS at").
+		Where("user_id IS NOT NULL AND answered_at IS NOT NULL AND ended_at IS NOT NULL AND ended_at >= ?", time.Now().Add(-48*time.Hour)).
 		Group("user_id").Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("last call ends could not be read: %w", err)
 	}
