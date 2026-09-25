@@ -10,11 +10,12 @@
 // connected plus the ones too short to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ChevronDown, Clock, Coffee, Headset, Mic, MicOff, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Clock, Coffee, Headset, Mic, MicOff, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Share2, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
 import { Card, EmptyState, Select, Skeleton } from "../components/ui";
 import RangePicker, { useRange } from "../components/RangePicker";
+import ShareDialog from "../components/performance/ShareDialog";
 import { rangeLabel, ymd } from "../lib/dateRange";
 import { displayNumber } from "../softphone/dial";
 import { cn } from "../lib/utils";
@@ -102,6 +103,7 @@ export function TeamPerformance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("long");
+  const [share, setShare] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const { preset, range, choose, setFrom, setTo } = useRange("today");
   const { from, to } = range;
@@ -203,6 +205,15 @@ export function TeamPerformance() {
                 ))}
               </Select>
             </label>
+            <button
+              type="button"
+              onClick={() => setShare(true)}
+              disabled={rows.length === 0}
+              title="Performans görseli oluştur"
+              className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <Share2 className="size-4" /> Paylaş
+            </button>
           </div>
         </div>
       </div>
@@ -229,6 +240,7 @@ export function TeamPerformance() {
           ))}
         </div>
       )}
+      <ShareDialog open={share} rows={rows} rangeLabel={rangeLabel(from, to)} scopeLabel={scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} onClose={() => setShare(false)} />
     </div>
   );
 }
@@ -326,7 +338,7 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
 
         {/* 6. Four rates, always in this order */}
         <div className="grid grid-cols-4 gap-1.5 px-2 pt-1">
-          <Rate label="Görüşme" value={r.calls.talkSeconds > 0 ? short(r.calls.talkSeconds) : "—"} hint="Cevaplanan çağrıların toplam süresi" />
+          <Rate label="Görüşme" value={r.calls.talkSeconds + callFor > 0 ? short(r.calls.talkSeconds + callFor) : "—"} hint="Cevaplanan çağrıların toplam süresi, süren çağrı dahil" />
           <Rate label="Ortalama" value={r.calls.avgTalkSeconds > 0 ? formatClock(r.calls.avgTalkSeconds) : "—"} hint={`Gerçek çağrı ortalaması · en uzun ${r.calls.longestSeconds > 0 ? formatClock(r.calls.longestSeconds) : "—"}`} />
           <Rate label="Yoğunluk" value={pct(occupancy)} hint="Görüşme süresi / mesai süresi" />
           <Rate label="Eskalasyon" value={String(r.escalations)} hint="Kaydettiği eskalasyonlar" icon={r.escalations > 0 ? TriangleAlert : undefined} />

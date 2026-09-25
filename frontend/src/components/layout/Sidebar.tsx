@@ -2,6 +2,7 @@
 // page carries a tinted pill and a short bar on its left edge, so the eye
 // finds it without reading. Collapsed, only the chips remain.
 
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChevronsLeft, X } from "lucide-react";
 import Logo from "@/components/ui/Logo";
@@ -24,6 +25,14 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
   const { can } = useAuth();
   const groups = visibleMenu(can);
   const teams = useTeams();
+  // The tip shown beside a chip while the menu is collapsed. It is drawn
+  // outside the scrolling list so nothing clips it.
+  const [tip, setTip] = useState<{ label: string; top: number } | null>(null);
+  const showTip = (e: React.SyntheticEvent<HTMLElement>, label: string) => {
+    if (!collapsed) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ label, top: r.top + r.height / 2 });
+  };
 
   return (
     <aside
@@ -69,7 +78,10 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
                   to={item.path}
                   end={item.path !== "/teams"}
                   onClick={onNavigate}
-                  title={collapsed ? item.label : undefined}
+                  onMouseEnter={(e) => showTip(e, item.label)}
+                  onMouseLeave={() => setTip(null)}
+                  onFocus={(e) => showTip(e, item.label)}
+                  onBlur={() => setTip(null)}
                   className={({ isActive }) =>
                     cn(
                       "group relative flex items-center gap-3 rounded-2xl py-1.5 pr-3 pl-1.5 text-sm font-medium",
@@ -119,6 +131,8 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
         <button
           type="button"
           onClick={onToggleCollapse}
+          onMouseEnter={(e) => showTip(e, "Menüyü genişlet")}
+          onMouseLeave={() => setTip(null)}
           aria-label={collapsed ? "Menüyü genişlet" : "Menüyü daralt"}
           className={cn(
             "group flex items-center rounded-2xl text-muted-foreground outline-none",
@@ -131,6 +145,17 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
         </button>
         <VersionInfo collapsed={collapsed} />
       </div>
+
+      {tip && collapsed && (
+        <div
+          role="tooltip"
+          className="animate-in fade-in slide-in-from-left-1 pointer-events-none fixed z-[60] hidden -translate-y-1/2 items-center lg:flex duration-100"
+          style={{ left: "calc(4.75rem + 6px)", top: tip.top }}
+        >
+          <span className="size-2 rotate-45 rounded-[2px] border-b border-l border-border bg-popover" style={{ marginRight: -5 }} />
+          <span className="rounded-xl border border-border bg-popover px-3 py-1.5 text-xs font-medium text-popover-foreground shadow-lg whitespace-nowrap">{tip.label}</span>
+        </div>
+      )}
     </aside>
   );
 }

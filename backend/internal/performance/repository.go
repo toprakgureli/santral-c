@@ -56,6 +56,14 @@ type Counts struct {
 	AvgTalkSeconds int64 `json:"avgTalkSeconds"`
 	// The longest answered call in the window.
 	LongestSeconds int64 `json:"longestSeconds"`
+	// Answered calls of five, ten and twenty minutes or more, and how many
+	// distinct numbers were spoken with.
+	Over5  int64 `json:"over5"`
+	Over10 int64 `json:"over10"`
+	Over20 int64 `json:"over20"`
+	Peers  int64 `json:"peers"`
+	// Mean seconds an inbound call rang before this agent answered it.
+	AvgAnswerSeconds int64 `json:"avgAnswerSeconds"`
 }
 
 // CallCounts aggregates the call log per user for [from, to).
@@ -76,7 +84,12 @@ func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLo
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds, "+
 			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds, "+
-			"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest_seconds",
+			"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest_seconds, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 300) AS over5, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 600) AS over10, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 1200) AS over20, "+
+			"count(DISTINCT peer_key) FILTER (WHERE disposition = 'answered' AND peer_key <> '') AS peers, "+
+			"COALESCE(AVG(EXTRACT(EPOCH FROM (answered_at - started_at))) FILTER (WHERE direction = 'inbound' AND answered_at IS NOT NULL), 0)::bigint AS avg_answer_seconds",
 			shortLong, shortLong, shortLong, shortLong, shortLong).
 		Where("user_id IS NOT NULL AND started_at >= ? AND started_at < ?", from, to).
 		// A ring that a teammate answered is not this agent's call.
@@ -173,12 +186,17 @@ func (r *Repository) RecentCalls(ctx context.Context, from, to time.Time, n int)
 	return out, nil
 }
 
+// openCallCap bounds how long a still-open call log counts as a live call:
+// a row whose hangup was never recorded must not keep an agent "talking".
+// The same bound the agent's own header uses.
+const openCallCap = 2 * time.Hour
+
 // OpenCalls returns each user's call that is still in progress, newest first
 // so a stale duplicate never shadows the live one.
 func (r *Repository) OpenCalls(ctx context.Context) (map[uint]models.CallLog, error) {
 	var logs []models.CallLog
 	err := r.db.WithContext(ctx).
-		Where("disposition = 'in_progress' AND user_id IS NOT NULL").
+		Where("disposition = 'in_progress' AND user_id IS NOT NULL AND started_at >= ?", time.Now().Add(-openCallCap)).
 		Order("started_at DESC").
 		Find(&logs).Error
 	if err != nil {

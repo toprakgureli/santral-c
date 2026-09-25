@@ -154,6 +154,11 @@ export interface TeamCounts {
   talkSeconds: number;
   avgTalkSeconds: number;
   longestSeconds: number;
+  over5: number;
+  over10: number;
+  over20: number;
+  peers: number;
+  avgAnswerSeconds: number;
 }
 
 export interface TeamRow {
