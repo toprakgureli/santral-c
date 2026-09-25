@@ -10,10 +10,10 @@
 // connected plus the ones too short to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ChevronDown, Clock, PhoneIncoming, PhoneOutgoing, Users } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Clock, Coffee, Headset, Mic, MicOff, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, TriangleAlert, Users, type LucideIcon } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
-import { Badge, Card, EmptyState, Select, Skeleton } from "../components/ui";
+import { Card, EmptyState, Select, Skeleton } from "../components/ui";
 import RangePicker, { useRange } from "../components/RangePicker";
 import { rangeLabel, ymd } from "../lib/dateRange";
 import { displayNumber } from "../softphone/dial";
@@ -25,15 +25,15 @@ import { formatClock } from "./callFormat";
 const REFRESH_MS = 15000;
 
 // One colour per status, used the same way everywhere on the card: the
-// dot on the photo, the ring around it, the header tint and the badge.
-const STATUS: Record<TeamStatus, { label: string; tone: "green" | "amber" | "red" | "slate" | "blue"; dot: string; ring: string; tint: string }> = {
-  talking: { label: "Görüşmede", tone: "blue", dot: "bg-primary", ring: "ring-primary/60", tint: "from-primary/12" },
-  available: { label: "Boşta", tone: "green", dot: "bg-success", ring: "ring-success/60", tint: "from-success/12" },
-  break: { label: "Molada", tone: "amber", dot: "bg-warning", ring: "ring-warning/60", tint: "from-warning/14" },
-  backoffice: { label: "Backoffice", tone: "amber", dot: "bg-amber-600", ring: "ring-amber-600/60", tint: "from-amber-600/12" },
-  dnd: { label: "Rahatsız etmeyin", tone: "red", dot: "bg-destructive", ring: "ring-destructive/60", tint: "from-destructive/12" },
-  unregistered: { label: "Kayıtsız", tone: "slate", dot: "bg-muted-foreground/50", ring: "ring-muted-foreground/30", tint: "from-muted/60" },
-  off: { label: "Mesai dışı", tone: "slate", dot: "bg-muted-foreground/40", ring: "ring-border", tint: "from-muted/40" },
+// bar on its left edge, the dot on the photo and the status chip.
+const STATUS: Record<TeamStatus, { label: string; icon: LucideIcon; dot: string; bar: string; chip: string }> = {
+  talking: { label: "Görüşmede", icon: Phone, dot: "bg-primary", bar: "bg-primary", chip: "bg-primary/10 text-primary" },
+  available: { label: "Boşta", icon: Headset, dot: "bg-success", bar: "bg-success", chip: "bg-success/10 text-success" },
+  break: { label: "Molada", icon: Coffee, dot: "bg-warning", bar: "bg-warning", chip: "bg-warning/12 text-warning" },
+  backoffice: { label: "Backoffice", icon: MicOff, dot: "bg-amber-600", bar: "bg-amber-600", chip: "bg-amber-600/10 text-amber-600" },
+  dnd: { label: "Rahatsız etmeyin", icon: PhoneOff, dot: "bg-destructive", bar: "bg-destructive", chip: "bg-destructive/10 text-destructive" },
+  unregistered: { label: "Kayıtsız", icon: Mic, dot: "bg-muted-foreground/50", bar: "bg-muted-foreground/40", chip: "bg-muted text-muted-foreground" },
+  off: { label: "Mesai dışı", icon: Clock, dot: "bg-muted-foreground/40", bar: "bg-border", chip: "bg-muted text-muted-foreground" },
 };
 
 type SortKey = "long" | "reach" | "talkSeconds" | "occupancy" | "unanswered" | "escalations" | "shift" | "name";
@@ -245,35 +245,40 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
   // the last shift end when off, the presence change otherwise.
   const stateSince = r.status === "talking" ? r.call?.startedAt : off ? r.shift.lastEnd : r.since;
   const held = live ? forHow(stateSince, now) : null;
+  const Icon = s.icon;
 
   return (
-    <section className={cn("flex flex-col rounded-2xl bg-card shadow-sm ring-1 ring-border/60 transition", off && "opacity-60")}>
+    <section className={cn("relative flex flex-col overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border/60 transition", off && "opacity-60")}>
+      {/* the bar on the left edge carries the status colour, as the menu marks the open page */}
+      <span aria-hidden className={cn("absolute inset-y-3 left-0 w-1 rounded-r-full", s.bar)} />
+
       {/* 1. Who, and what they are doing right now */}
-      <header className={cn("flex items-start justify-between gap-3 rounded-t-2xl border-b border-border/60 bg-gradient-to-r to-transparent px-5 py-3.5", s.tint)}>
-        <div className="flex min-w-0 items-center gap-3">
-          <UserAvatar userId={r.userId} name={r.name} className={cn("size-10 rounded-full ring-2 ring-offset-2 ring-offset-card", s.ring)} fallbackClassName="bg-primary/10 text-sm text-primary">
-            <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, (r.status === "available" || r.status === "talking") && "animate-pulse")} />
-          </UserAvatar>
-          <div className="min-w-0">
-            <Link to={`/profile/${r.userId}`} className="block truncate font-semibold leading-tight hover:underline" title="Profili aç">{r.name}</Link>
-            <div className="truncate text-xs text-muted-foreground">
-              {r.extension}
-              {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}
-            </div>
+      <header className="flex items-center gap-3 px-5 pt-4 pb-3">
+        <UserAvatar userId={r.userId} name={r.name} className="size-10" fallbackClassName="bg-primary/10 text-sm text-primary">
+          <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", s.dot, r.status === "talking" && "animate-pulse")} />
+        </UserAvatar>
+        <div className="min-w-0 flex-1">
+          <Link to={`/profile/${r.userId}`} className="block truncate text-sm font-semibold leading-tight hover:underline" title="Profili aç">{r.name}</Link>
+          <div className="truncate text-xs text-muted-foreground">
+            {r.extension}
+            {r.roles.length > 0 && <span> · {r.roles.join(", ")}</span>}
           </div>
         </div>
-        <span className="flex shrink-0 flex-col items-end gap-0.5">
-          <Badge tone={s.tone}>{s.label}{held ? ` · ${held}` : ""}</Badge>
-          {held && stateSince && <span className="text-[0.65rem] tabular-nums text-muted-foreground/70">{hhmm(stateSince)}&apos;den beri</span>}
+        <span className={cn("flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium", s.chip)} title={held && stateSince ? `${hhmm(stateSince)}'den beri` : undefined}>
+          <Icon className="size-3.5" />
+          {s.label}
+          {held && <span className="tabular-nums opacity-80">· {held}</span>}
         </span>
       </header>
 
-      <div className="space-y-2.5 px-5 py-3.5">
-        {/* 2. Live line, always the same height: the call, or what the state means */}
-        <div className="flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="space-y-1 px-3 pb-3">
+        {/* 2. Live line, always the same height */}
+        <div className="flex h-9 items-center gap-3 rounded-xl px-2 text-xs text-muted-foreground">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground">
+            {r.call ? (r.call.direction === "inbound" ? <PhoneIncoming className="size-4 text-success" /> : <PhoneOutgoing className="size-4 text-primary" />) : <Icon className="size-4" />}
+          </span>
           {r.call ? (
             <>
-              {r.call.direction === "inbound" ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-primary" />}
               <span className="truncate font-mono text-foreground">{displayNumber(r.call.peer) || r.call.peer}</span>
               {r.call.peerName && <span className="truncate">{r.call.peerName}</span>}
               <span className="ml-auto font-mono tabular-nums text-foreground">{formatClock(callFor)}</span>
@@ -285,126 +290,104 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
           )}
         </div>
 
-        {/* 3. Shift strip: start, end, total, break */}
-        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-          <Clock className="size-3.5 shrink-0 text-muted-foreground" />
+        {/* 3. Shift: in, out, total, break */}
+        <Line icon={Clock} label={multiDay ? "Mesai (ilk giriş, son çıkış)" : "Mesai"}>
           {r.shift.firstStart ? (
-            <div className="grid flex-1 grid-cols-4 gap-2">
-              <ShiftCell label={multiDay ? "İlk giriş" : "Giriş"} value={stamp(r.shift.firstStart, multiDay)} />
-              <ShiftCell
-                label={multiDay ? "Son çıkış" : "Çıkış"}
-                value={r.shift.open ? "devam" : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}
-                tone={r.shift.open ? "live" : undefined}
-              />
-              <ShiftCell label="Mesai" value={r.shift.seconds > 0 ? short(r.shift.seconds) : "—"} strong />
-              <ShiftCell label="Mola" value={r.breakSeconds > 0 ? short(r.breakSeconds) : "—"} tone={r.breakSeconds > 0 ? "warn" : undefined} />
-            </div>
+            <span className="flex items-center gap-2 font-mono text-xs tabular-nums">
+              <span>{stamp(r.shift.firstStart, multiDay)}</span>
+              <span className="text-muted-foreground/50">→</span>
+              <span className={cn(r.shift.open && "font-sans font-medium text-success")}>{r.shift.open ? "devam" : r.shift.lastEnd ? stamp(r.shift.lastEnd, multiDay) : "—"}</span>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="font-semibold text-foreground">{r.shift.seconds > 0 ? short(r.shift.seconds) : "—"}</span>
+              {r.breakSeconds > 0 && <span className="text-warning" title="Mola">({short(r.breakSeconds)} mola)</span>}
+            </span>
           ) : (
-            <span className="text-xs text-muted-foreground">{live ? "Mesai başlatılmadı" : "Seçilen tarihlerde mesai kaydı yok"}</span>
+            <span className="text-xs text-muted-foreground">{live ? "Başlatılmadı" : "Kayıt yok"}</span>
           )}
-        </div>
+        </Line>
 
-        {/* 4. Reached against unreached: two equal blocks, big number left, breakdown right */}
-        <div className="grid grid-cols-2 gap-2">
-          <Block tone="green" label="Ulaşılan" value={r.calls.long} sub="30 sn ve üstü">
-            <Line icon={<PhoneIncoming className="size-3" />} label="Gelen" value={r.calls.inboundReal} />
-            <Line icon={<PhoneOutgoing className="size-3" />} label="Giden" value={r.calls.outboundReal} />
-          </Block>
-          <Block tone="red" label="Ulaşılamayan" value={unreached} sub="bağlanmayan + kısa">
-            <Line label="Cevapsız" value={r.calls.unanswered} hint={`${r.calls.inboundMissed} gelen · ${r.calls.outboundMissed} giden`} />
-            <Line label="Geçersiz" value={r.calls.short} hint="30 sn altı" />
-          </Block>
-        </div>
+        {/* 4. Reached and unreached, one row each, the number on the right */}
+        <Line icon={PhoneIncoming} label="Ulaşılan" sub={`${r.calls.inboundReal} gelen · ${r.calls.outboundReal} giden · 30 sn ve üstü`} tone="success">
+          <span className="text-xl font-bold tabular-nums leading-none text-success">{r.calls.long}</span>
+        </Line>
+        <Line icon={PhoneMissed} label="Ulaşılamayan" sub={`${r.calls.unanswered} cevapsız · ${r.calls.short} geçersiz`} tone="destructive">
+          <span className="text-xl font-bold tabular-nums leading-none text-destructive">{unreached}</span>
+        </Line>
 
-        {/* 5. Reach bar: the share of attempts that became a conversation */}
-        <div className="flex items-center gap-2 text-[0.7rem]" title="Gerçek çağrı / tüm denemeler">
+        {/* 5. Reach bar */}
+        <div className="flex items-center gap-2 px-2 py-1 text-[0.7rem]" title="Gerçek çağrı / tüm denemeler">
+          <span className="w-8 shrink-0" />
           <span className="w-16 shrink-0 text-muted-foreground">Ulaşma</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-destructive/20">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
             <div className="h-full rounded-full bg-success transition-[width]" style={{ width: `${reach < 0 ? 0 : reach * 100}%` }} />
           </div>
           <span className="w-10 shrink-0 text-right font-semibold tabular-nums">{pct(reach)}</span>
         </div>
 
         {/* 6. Four rates, always in this order */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 gap-1.5 px-2 pt-1">
           <Rate label="Görüşme" value={r.calls.talkSeconds > 0 ? short(r.calls.talkSeconds) : "—"} hint="Cevaplanan çağrıların toplam süresi" />
           <Rate label="Ortalama" value={r.calls.avgTalkSeconds > 0 ? formatClock(r.calls.avgTalkSeconds) : "—"} hint={`Gerçek çağrı ortalaması · en uzun ${r.calls.longestSeconds > 0 ? formatClock(r.calls.longestSeconds) : "—"}`} />
-          <Rate label="Yoğunluk" value={pct(occupancy)} hint="Görüşme süresi / mesai süresi" tone={occupancy >= 0.5 ? "text-violet-500" : undefined} />
-          <Rate label="Eskalasyon" value={String(r.escalations)} hint="Kaydettiği eskalasyonlar" tone={r.escalations > 0 ? "text-warning" : undefined} />
+          <Rate label="Yoğunluk" value={pct(occupancy)} hint="Görüşme süresi / mesai süresi" />
+          <Rate label="Eskalasyon" value={String(r.escalations)} hint="Kaydettiği eskalasyonlar" icon={r.escalations > 0 ? TriangleAlert : undefined} />
         </div>
 
         {/* 7. The fold: the latest calls, closed until asked */}
-        <div className="rounded-xl border border-border/60">
-          <button
-            type="button"
-            onClick={() => setMore((v) => !v)}
-            className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-          >
-            <span>Son görüşmeler{r.recent.length > 0 && !more && r.recent[0] ? <span className="ml-1.5 font-normal">· en son {displayNumber(r.recent[0].peer) || r.recent[0].peer}{r.recent[0].peerName ? ` (${r.recent[0].peerName})` : ""}, {stamp(r.recent[0].startedAt, true)}</span> : null}</span>
-            <ChevronDown className={cn("size-3.5 shrink-0 transition-transform", more && "rotate-180")} />
-          </button>
-          {more && (
-            <ul className="border-t border-border/60 px-2 py-1.5">
-              {r.recent.length === 0 && <li className="px-1 py-1.5 text-xs text-muted-foreground">Seçilen tarihlerde çağrı yok.</li>}
-              {r.recent.map((c, i) => (
-                <li key={i} className="flex items-center gap-2 rounded-lg px-1 py-1 text-xs">
-                  {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
-                  <span className="w-[4.5rem] shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-mono">{displayNumber(c.peer) || c.peer}</span>
-                    {c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}
-                  </span>
-                  <span className={cn("w-12 shrink-0 text-right font-mono tabular-nums", c.disposition === "answered" ? (c.durationSeconds >= 30 ? "text-success" : "text-warning") : "text-destructive")}>
-                    {c.disposition === "answered" ? formatClock(c.durationSeconds) : "cevapsız"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setMore((v) => !v)}
+          className="mt-1 flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+        >
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70"><ChevronDown className={cn("size-4 transition-transform", more && "rotate-180")} /></span>
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium text-foreground/80">Son görüşmeler</span>
+            {!more && r.recent[0] && <span> · {displayNumber(r.recent[0].peer) || r.recent[0].peer}{r.recent[0].peerName ? ` (${r.recent[0].peerName})` : ""}, {stamp(r.recent[0].startedAt, true)}</span>}
+          </span>
+        </button>
+        {more && (
+          <ul className="space-y-0.5 pl-[3.25rem] pr-2">
+            {r.recent.length === 0 && <li className="py-1 text-xs text-muted-foreground">Seçilen tarihlerde çağrı yok.</li>}
+            {r.recent.map((c, i) => (
+              <li key={i} className="flex items-center gap-2 py-1 text-xs">
+                {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
+                <span className="w-[4.5rem] shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-mono">{displayNumber(c.peer) || c.peer}</span>
+                  {c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}
+                </span>
+                <span className={cn("w-12 shrink-0 text-right font-mono tabular-nums", c.disposition === "answered" ? (c.durationSeconds >= 30 ? "text-success" : "text-warning") : "text-destructive")}>
+                  {c.disposition === "answered" ? formatClock(c.durationSeconds) : "cevapsız"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );
 }
 
-// ShiftCell is one labelled value in the card's shift strip.
-function ShiftCell({ label, value, tone, strong }: { label: string; value: string; tone?: "live" | "warn"; strong?: boolean }) {
+// Line is one row of the card in the menu's shape: an icon chip, a label
+// with an optional small note, and the value on the right.
+function Line({ icon: Icon, label, sub, tone, children }: { icon: LucideIcon; label: string; sub?: string; tone?: "success" | "destructive"; children: React.ReactNode }) {
   return (
-    <div className="min-w-0">
-      <div className="text-[0.6rem] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={cn("truncate text-xs tabular-nums", tone === "live" ? "font-medium text-success" : tone === "warn" ? "font-medium text-warning" : "font-mono", strong && "font-semibold text-foreground")}>{value}</div>
+    <div className="flex items-center gap-3 rounded-xl px-2 py-1.5">
+      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", tone === "success" ? "bg-success/10 text-success" : tone === "destructive" ? "bg-destructive/10 text-destructive" : "bg-muted/70 text-muted-foreground")}>
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium leading-tight">{label}</span>
+        {sub && <span className="block truncate text-[0.7rem] text-muted-foreground">{sub}</span>}
+      </span>
+      <span className="shrink-0">{children}</span>
     </div>
   );
 }
 
-// Block is one of the two call blocks: a big total with its breakdown.
-function Block({ tone, label, value, sub, children }: { tone: "green" | "red"; label: string; value: number; sub: string; children: React.ReactNode }) {
+function Rate({ label, value, hint, icon: Icon }: { label: string; value: string; hint: string; icon?: LucideIcon }) {
   return (
-    <div className={cn("rounded-xl border p-2.5", tone === "green" ? "border-success/30 bg-success/5" : "border-destructive/25 bg-destructive/5")}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className={cn("text-[0.7rem] font-semibold", tone === "green" ? "text-success" : "text-destructive")}>{label}</span>
-        <span className={cn("text-2xl font-bold leading-none tabular-nums", tone === "green" ? "text-success" : "text-destructive")}>{value}</span>
-      </div>
-      <div className="text-[0.6rem] text-muted-foreground">{sub}</div>
-      <div className="mt-1.5 space-y-0.5 border-t border-border/40 pt-1.5">{children}</div>
-    </div>
-  );
-}
-
-function Line({ icon, label, value, hint }: { icon?: React.ReactNode; label: string; value: number; hint?: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[0.7rem]" title={hint}>
-      {icon && <span className="text-muted-foreground">{icon}</span>}
-      <span className="text-muted-foreground">{label}</span>
-      <span className="ml-auto font-semibold tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function Rate({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: string }) {
-  return (
-    <div className="rounded-lg bg-muted/25 px-2 py-1.5 text-center ring-1 ring-border/40" title={hint}>
-      <div className={cn("truncate text-sm font-semibold tabular-nums", tone)}>{value}</div>
+    <div className="rounded-xl bg-muted/50 px-2 py-1.5 text-center" title={hint}>
+      <div className="flex items-center justify-center gap-1 truncate text-sm font-semibold tabular-nums">{Icon && <Icon className="size-3.5 text-warning" />}{value}</div>
       <div className="text-[0.6rem] text-muted-foreground">{label}</div>
     </div>
   );
