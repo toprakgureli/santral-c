@@ -453,6 +453,7 @@ export interface PBXExtension {
   extension: string;
   status: string;
   names?: string[];
+  users?: { id: number; name: string; hasAvatar: boolean }[];
   peer?: string;
   peerName?: string;
 }

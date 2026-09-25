@@ -266,23 +266,48 @@ func (r *Repository) OpenPeersByExtension(ctx context.Context) (map[string]strin
 // NamesByExtension maps each extension to the active users registered on it,
 // ordered by name, so the agent list can show who sits behind a number.
 func (r *Repository) NamesByExtension(ctx context.Context) (map[string][]string, error) {
+	users, err := r.UsersByExtension(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(users))
+	for ext, list := range users {
+		for _, u := range list {
+			out[ext] = append(out[ext], u.Name)
+		}
+	}
+	return out, nil
+}
+
+// ExtUser is one active panel user on an extension.
+type ExtUser struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	HasAvatar bool   `json:"hasAvatar"`
+}
+
+// UsersByExtension maps each extension to the active panel users on it, so
+// the agent list can show their photos.
+func (r *Repository) UsersByExtension(ctx context.Context) (map[string][]ExtUser, error) {
 	type row struct {
 		Extension string
+		ID        uint
 		Name      string
+		Avatar    string
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).
 		Table("users").
-		Select("sip_extension AS extension, name").
+		Select("sip_extension AS extension, id, name, avatar").
 		Where("active = TRUE AND sip_extension IS NOT NULL AND sip_extension <> ''").
 		Order("name").
 		Scan(&rows).Error
 	if err != nil {
-		return nil, fmt.Errorf("extension names could not be listed: %w", err)
+		return nil, fmt.Errorf("extension users could not be listed: %w", err)
 	}
-	out := make(map[string][]string, len(rows))
+	out := make(map[string][]ExtUser, len(rows))
 	for _, r := range rows {
-		out[r.Extension] = append(out[r.Extension], r.Name)
+		out[r.Extension] = append(out[r.Extension], ExtUser{ID: r.ID, Name: r.Name, HasAvatar: r.Avatar != ""})
 	}
 	return out, nil
 }

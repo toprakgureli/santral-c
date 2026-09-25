@@ -643,11 +643,12 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 
 // PBXExtension is an extension and its live status.
 type PBXExtension struct {
-	Extension string   `json:"extension"`
-	Status    string   `json:"status"`
-	Names     []string `json:"names,omitempty"`    // active panel users on this extension
-	Peer      string   `json:"peer,omitempty"`     // other party while TALKING (from the panel's own call log)
-	PeerName  string   `json:"peerName,omitempty"` // contact name for Peer, when known
+	Extension string    `json:"extension"`
+	Status    string    `json:"status"`
+	Names     []string  `json:"names,omitempty"`    // active panel users on this extension
+	Users     []ExtUser `json:"users,omitempty"`    // the same people, with id and photo flag
+	Peer      string    `json:"peer,omitempty"`     // other party while TALKING (from the panel's own call log)
+	PeerName  string    `json:"peerName,omitempty"` // contact name for Peer, when known
 }
 
 // PBXQueue is a call queue.
@@ -679,9 +680,9 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 	if err != nil {
 		presence = nil
 	}
-	names, err := s.repo.NamesByExtension(ctx)
+	users, err := s.repo.UsersByExtension(ctx)
 	if err != nil {
-		names = nil
+		users = nil
 	}
 	peers, err := s.repo.OpenPeersByExtension(ctx)
 	if err != nil {
@@ -692,7 +693,10 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 	out := make([]PBXExtension, len(snap))
 	copy(out, snap)
 	for i := range out {
-		out[i].Names = names[out[i].Extension]
+		out[i].Users = users[out[i].Extension]
+		for _, u := range out[i].Users {
+			out[i].Names = append(out[i].Names, u.Name)
+		}
 		if out[i].Status == "TALKING" {
 			if peer := peers[out[i].Extension]; peer != "" {
 				out[i].Peer = peer

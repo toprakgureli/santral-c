@@ -25,6 +25,7 @@ import { api, ApiError } from "../api/client";
 import type { AgentPresenceState, Call, EscalationCategory, PBXExtension, PBXQueue, PBXStats } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
+import UserAvatar from "../components/ui/UserAvatar";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { useShift } from "../shift/ShiftContext";
 import { usePresence } from "../presence/PresenceContext";
@@ -284,11 +285,14 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
         </Button>
       </div>
     )}
-    <div className="rounded-2xl bg-card px-5 py-3 ring-1 ring-border/60">
+    <div className="rounded-2xl bg-card px-4 py-3 shadow-sm ring-1 ring-border/60">
       <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className={cn("size-2.5 rounded-full", dotColor, !busy && state.tone === "green" && "animate-pulse")} />
+        <div className="flex items-center gap-3">
+          <span className={cn("relative flex size-10 items-center justify-center rounded-2xl", badgeTone === "green" ? "bg-success/10 text-success" : badgeTone === "red" ? "bg-destructive/10 text-destructive" : badgeTone === "blue" ? "bg-primary/10 text-primary" : badgeTone === "amber" ? "bg-warning/12 text-warning" : "bg-muted/70 text-muted-foreground")}>
+            <Headset className="size-5" />
+            <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", dotColor, !busy && state.tone === "green" && "animate-pulse")} />
+          </span>
           <div>
             <div className="text-xs text-muted-foreground">Dahili</div>
             <div className="text-lg font-semibold leading-tight">{phone.extension ?? extension ?? "—"}</div>
@@ -304,7 +308,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
             onChange={(e) => changeState(e.target.value as AgentPresenceState)}
             disabled={!shift.active}
             title={shift.active ? undefined : "Durum değiştirmek için mesai başlatın"}
-            className="h-9 w-40"
+            className="h-9 w-40 rounded-xl"
           >
             {Object.entries(agentStates)
               .filter(([v]) => v !== "off" || agentState === "off")
@@ -334,7 +338,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
       </div>
 
       {hasExtension && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/50 pt-2.5 text-xs">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-muted/40 px-3 py-2 text-xs">
           <span className="font-semibold text-muted-foreground">Bu mesai · Çevrimiçi</span>
           <span className="font-mono font-semibold tabular-nums">{formatClock(onlineLive)}</span>
           <span className="text-muted-foreground/40">·</span>
@@ -372,7 +376,7 @@ function Dur({ dot, label, seconds }: { dot: string; label: string; seconds: num
 
 function Round({ onClick, tone = "muted", title, disabled, size = "md", children }: { onClick?: () => void; tone?: "muted" | "on" | "call" | "hang"; title?: string; disabled?: boolean; size?: "md" | "lg"; children: React.ReactNode }) {
   const toneClass: Record<string, string> = {
-    muted: "bg-muted text-foreground hover:bg-accent",
+    muted: "bg-muted/60 text-foreground ring-1 ring-border/40 hover:bg-accent",
     on: "bg-primary text-primary-foreground",
     call: "bg-success text-white hover:opacity-90",
     hang: "bg-destructive text-white hover:opacity-90",
@@ -517,7 +521,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     onClick={() => setWaOpen("unreached")}
                     aria-label="WhatsApp mesajını düzenle"
                     title="Mesajı düzenle"
-                    className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="flex w-12 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
                   </button>
@@ -528,7 +532,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                   <button
                     key={k}
                     onClick={() => { setTarget((t) => t + k); tones.dtmf(k); }}
-                    className="h-12 rounded-xl bg-muted text-lg font-semibold text-foreground transition active:scale-95 hover:bg-accent"
+                    className="h-12 rounded-2xl bg-muted/60 text-lg font-semibold text-foreground shadow-sm ring-1 ring-border/40 transition hover:bg-accent active:scale-95"
                   >
                     {k}
                   </button>
@@ -590,7 +594,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     onClick={() => setWaOpen("live")}
                     aria-label="Görüşme sırasında mesajını düzenle"
                     title="Mesajı düzenle"
-                    className="flex w-11 shrink-0 items-center justify-center rounded-2xl border border-border/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className="flex w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
                   </button>
@@ -615,7 +619,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                   {showKeypad && (
                     <div className="grid w-full max-w-[15rem] grid-cols-3 gap-2">
                       {keypadKeys.map((k) => (
-                        <button key={k} onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }} className="h-12 rounded-xl bg-muted text-lg font-semibold text-foreground transition active:scale-95 hover:bg-accent">
+                        <button key={k} onClick={() => { tones.dtmf(k); phone.sendDtmf(k); }} className="h-12 rounded-2xl bg-muted/60 text-lg font-semibold text-foreground shadow-sm ring-1 ring-border/40 transition hover:bg-accent active:scale-95">
                           {k}
                         </button>
                       ))}
@@ -734,13 +738,13 @@ function Escalation({ categories, activePeer, connected, callId, canSearch }: { 
 // icon and a strong ring so the escalation area stands out during a call.
 function EscalationFrame({ active, connected, children }: { active?: boolean; connected?: boolean; children: React.ReactNode }) {
   return (
-    <section className={cn("rounded-2xl bg-card shadow-md ring-2 transition", connected ? "ring-primary shadow-lg shadow-primary/15" : active ? "ring-primary/50" : "ring-primary/20")}>
-      <header className="flex items-center gap-3 rounded-t-2xl border-b border-primary/15 bg-gradient-to-r from-primary/10 to-transparent px-5 py-3.5">
-        <span className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-primary [&_svg]:size-5">
-          <TriangleAlert />
+    <section className={cn("rounded-2xl bg-card shadow-sm ring-1 transition-[box-shadow,--tw-ring-color] duration-300", connected ? "ring-primary/60 shadow-lg shadow-primary/10" : active ? "ring-primary/40" : "ring-border/60")}>
+      <header className="flex items-center gap-2.5 border-b border-border/60 px-5 py-3.5">
+        <span className={cn("flex size-8 items-center justify-center rounded-xl transition-colors", connected ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "bg-primary/10 text-primary")}>
+          <TriangleAlert className="size-4" />
         </span>
         <div>
-          <h2 className="text-base font-bold leading-tight tracking-tight">Eskalasyon</h2>
+          <h2 className="text-sm font-semibold leading-tight tracking-tight">Eskalasyon</h2>
           <p className="text-xs text-muted-foreground">Görüşme sonucunu kaydet</p>
         </div>
         {active && <span className="ml-auto flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-medium text-primary"><span className="size-1.5 animate-pulse rounded-full bg-primary" /> Canlı çağrı</span>}
@@ -818,9 +822,16 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                 className="flex cursor-pointer items-center justify-between rounded-2xl px-2 py-1.5 transition-colors hover:bg-accent/60"
               >
                 <span className="flex min-w-0 items-center gap-2.5 text-sm">
-                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", s.tone === "green" ? "bg-success/10 text-success" : s.tone === "amber" ? "bg-warning/12 text-warning" : s.tone === "red" ? "bg-destructive/10 text-destructive" : s.tone === "blue" ? "bg-primary/10 text-primary" : "bg-muted/70 text-muted-foreground")}>
-                    {e.status === "TALKING" ? <Phone className="size-4" /> : <Headset className="size-4" />}
-                  </span>
+                  {e.users && e.users.length > 0 ? (
+                    <span className="relative shrink-0">
+                      <UserAvatar userId={e.users[0].id} name={e.users[0].name} hasAvatar={e.users[0].hasAvatar} className="size-8" fallbackClassName="bg-primary/10 text-[0.65rem] text-primary" />
+                      <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : s.tone === "blue" ? "bg-primary" : "bg-muted-foreground/50", e.status === "TALKING" && "animate-pulse")} />
+                    </span>
+                  ) : (
+                    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", s.tone === "green" ? "bg-success/10 text-success" : s.tone === "amber" ? "bg-warning/12 text-warning" : s.tone === "red" ? "bg-destructive/10 text-destructive" : s.tone === "blue" ? "bg-primary/10 text-primary" : "bg-muted/70 text-muted-foreground")}>
+                      {e.status === "TALKING" ? <Phone className="size-4" /> : <Headset className="size-4" />}
+                    </span>
+                  )}
                   <span className="min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="font-medium">{e.extension}</span>
@@ -852,9 +863,10 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
               key={q.number}
               onContextMenu={(ev) => queueMenu(ev, q.number)}
               title="Sağ tık: kuyruğa aktar"
-              className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 hover:bg-accent"
+              className="flex cursor-pointer items-center gap-2.5 rounded-2xl px-2 py-1.5 transition-colors hover:bg-accent/60"
             >
-              <span className="text-sm"><span className="font-medium">{q.number}</span> <span className="text-muted-foreground">{q.name}</span></span>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground"><ListOrdered className="size-4" /></span>
+              <span className="min-w-0 text-sm"><span className="font-medium">{q.number}</span> <span className="text-muted-foreground">{q.name}</span></span>
             </li>
           ))}
           {queues.length === 0 && <li className="py-4 text-center text-sm text-muted-foreground">Kuyruk yok.</li>}
@@ -957,7 +969,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
         <>
           {/* Today's breakdown (resets at 00:00) */}
           {/* Reached: real (30s+) conversations, split by direction. */}
-          <div className="mb-2 rounded-xl border border-success/30 bg-success/5 p-2">
+          <div className="mb-2 rounded-2xl bg-success/[0.07] p-2 ring-1 ring-success/15">
             <div className="mb-1.5 px-1 text-xs font-semibold text-success">Ulaşılanlar</div>
             <div className="grid grid-cols-3 gap-2">
               <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
@@ -966,7 +978,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
             </div>
           </div>
           {/* Not reached: unanswered plus too-short calls, folded away by default. */}
-          <div className="mb-3 rounded-xl border border-border/60 bg-muted/20 p-2">
+          <div className="mb-3 rounded-2xl bg-muted/30 p-2 ring-1 ring-border/40">
             <button
               type="button"
               onClick={() => setShowMissed((v) => !v)}
@@ -999,7 +1011,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Numaraya göre ara"
               inputMode="tel"
-              className="h-9 w-full rounded-xl border border-border/70 bg-muted/40 pl-9 pr-3 text-sm outline-none focus-visible:border-ring/60 focus-visible:bg-card"
+              className="h-9 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-3 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/60 focus-visible:border-ring/40 focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-ring/15"
             />
           </div>
 
@@ -1013,13 +1025,15 @@ function CallHistory({ canCall }: { canCall: boolean }) {
               const q = callQuality(c.disposition, c.durationSeconds);
               const Arrow = c.direction === "inbound" ? PhoneIncoming : PhoneOutgoing;
               return (
-                <li key={c.uuid} className="overflow-hidden rounded-xl ring-1 ring-transparent transition hover:ring-border/60">
+                <li key={c.uuid} className={cn("overflow-hidden rounded-2xl transition-[background-color,box-shadow]", isOpen && "bg-card shadow-sm ring-1 ring-border/60")}>
                   <button
                     onClick={() => setOpen(isOpen ? null : c.uuid)}
                     onContextMenu={(e) => rowMenu(e, counterpart)}
-                    className={cn("flex w-full items-center gap-3 border-l-2 py-2.5 pl-2.5 pr-2 text-left transition hover:bg-accent", q.border)}
+                    className="flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition-colors hover:bg-accent/60"
                   >
-                    <Arrow className={cn("size-4 shrink-0", q.text)} />
+                    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", q.tone === "green" ? "bg-success/10 text-success" : q.tone === "amber" ? "bg-warning/12 text-warning" : q.tone === "blue" ? "bg-primary/10 text-primary" : "bg-muted/70 text-muted-foreground")}>
+                      <Arrow className="size-4" />
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold tabular-nums">{displayNumber(counterpart) || "—"}</span>
                       <span className={cn("text-xs", q.text)}>{q.label}{c.durationSeconds > 0 && <span className="text-muted-foreground"> · {formatDuration(c.durationSeconds)}</span>}</span>
@@ -1029,7 +1043,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
                   </button>
 
                   {isOpen && (
-                    <div className="space-y-2 bg-muted/20 px-3 pb-3 pt-2 text-sm">
+                    <div className="space-y-2 px-3 pb-3 pt-1 text-sm">
                       <CopyRow label="Arayan" number={c.fromNumber} copied={copied} onCopy={copy} />
                       <CopyRow label="Aranan" number={c.toNumber} copied={copied} onCopy={copy} />
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -1064,7 +1078,7 @@ function CountBox({ label, sub, value, minus, tone }: { label: string; sub?: str
     blue: "text-primary",
   };
   return (
-    <div className="rounded-xl bg-muted/40 px-3 py-2 text-center">
+    <div className="rounded-xl bg-card/80 px-3 py-2 text-center ring-1 ring-border/40">
       <div className={cn("text-xl font-bold tabular-nums leading-none", toneClass[tone])}>
         {value}
         {minus ? <span className="ml-1 align-middle text-xs font-semibold text-destructive" title="Bağlanmayan">-{minus}</span> : null}
