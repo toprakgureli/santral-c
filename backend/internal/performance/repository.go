@@ -168,6 +168,19 @@ func (r *Repository) LastCallEnds(ctx context.Context) (map[uint]time.Time, erro
 	return out, nil
 }
 
+// CallsOf lists one user's finished calls inside [from, to), newest first.
+func (r *Repository) CallsOf(ctx context.Context, userID uint, from, to time.Time, limit int) ([]models.CallLog, error) {
+	var logs []models.CallLog
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition <> 'in_progress'", userID, from, to).
+		Where("NOT (" + calllog.NotMineSQL + ")").
+		Order("started_at DESC").Limit(limit).Find(&logs).Error
+	if err != nil {
+		return nil, fmt.Errorf("calls could not be listed: %w", err)
+	}
+	return logs, nil
+}
+
 // RecentCalls returns each user's latest n finished calls inside [from, to),
 // newest first.
 func (r *Repository) RecentCalls(ctx context.Context, from, to time.Time, n int) (map[uint][]models.CallLog, error) {

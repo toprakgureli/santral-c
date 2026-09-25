@@ -2,6 +2,7 @@ import type {
   AgentPresence,
   AgentPresenceState,
   AuditEntry,
+  AgentCalls,
   CallLookup,
   CallPage,
   Contact,
@@ -280,6 +281,7 @@ export const api = {
   pbxStats: () => request<PBXStats>("/pbx/stats"),
   // Team performance (today's figures per agent, scoped by permission)
   performanceToday: (params: { from?: string; to?: string } = {}) => request<TeamPerformance>("/performance/today" + query(params)),
+  agentCalls: (params: { userId: number; from: string; to: string }) => request<AgentCalls>("/performance/calls" + query(params)),
 
   // Shift (mesai): the dialer opens only while a shift is open
   shiftStatus: () => request<ShiftStatus>("/shift/"),

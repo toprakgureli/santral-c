@@ -227,6 +227,87 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	return &Team{Scope: scope, From: fromDay, To: toDay, Items: rows}, nil
 }
 
+// AgentCall is one call in an agent's list.
+type AgentCall struct {
+	UUID            string    `json:"uuid"`
+	Peer            string    `json:"peer"`
+	PeerName        string    `json:"peerName,omitempty"`
+	Direction       string    `json:"direction"`
+	Disposition     string    `json:"disposition"`
+	StartedAt       time.Time `json:"startedAt"`
+	DurationSeconds int       `json:"durationSeconds"`
+}
+
+// AgentCallList is the payload of one agent's calls.
+type AgentCallList struct {
+	UserID uint        `json:"userId"`
+	From   string      `json:"from"`
+	To     string      `json:"to"`
+	Items  []AgentCall `json:"items"`
+}
+
+// AgentCalls lists one agent's calls over the inclusive local day range,
+// for an actor who may see that agent on the team page.
+func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay, toDay string) (*AgentCallList, error) {
+	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	if err != nil {
+		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
+	}
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	if err != nil {
+		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
+	}
+	if toStart.Before(from) || toStart.Sub(from) > 366*24*time.Hour {
+		return nil, errs.Invalid("Tarih aralığı geçersiz.", nil)
+	}
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	var roleIDs []uint
+	switch {
+	case actor.Can(enums.PerformanceViewAll):
+	case actor.Can(enums.PerformanceViewRole):
+		for _, r := range actor.Roles {
+			roleIDs = append(roleIDs, r.ID)
+		}
+		if len(roleIDs) == 0 {
+			return nil, errs.Forbidden("Bu temsilciyi görme yetkiniz yok.")
+		}
+	default:
+		return nil, errs.Forbidden("Ekip performansını görme yetkiniz yok.")
+	}
+	agents, err := s.repo.Agents(ctx, roleIDs)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	visible := false
+	for _, a := range agents {
+		if a.ID == userID {
+			visible = true
+			break
+		}
+	}
+	if !visible {
+		return nil, errs.Forbidden("Bu temsilciyi görme yetkiniz yok.")
+	}
+	logs, err := s.repo.CallsOf(ctx, userID, from, toStart.AddDate(0, 0, 1), 500)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	out := &AgentCallList{UserID: userID, From: fromDay, To: toDay, Items: make([]AgentCall, 0, len(logs))}
+	for _, l := range logs {
+		c := AgentCall{UUID: l.CallID, Peer: l.PeerNumber, Direction: l.Direction, Disposition: l.Disposition, StartedAt: l.StartedAt, DurationSeconds: l.DurationSeconds}
+		if s.contacts != nil {
+			if e164, err := phone.Normalize(l.PeerNumber); err == nil {
+				c.PeerName = s.contacts.NameByNumber(ctx, e164)
+			}
+		}
+		out.Items = append(out.Items, c)
+	}
+	return out, nil
+}
+
 // status combines the stored presence, the shift, the panel's own call log and
 // the hosted PBX's live view into one label. A call in progress (seen by either
 // the PBX or our log) always wins; off shift always reads as off. "Since" is

@@ -174,10 +174,11 @@ const badgeTones: Record<string, string> = {
   green: "bg-success/15 text-success",
   red: "bg-destructive/15 text-destructive",
   amber: "bg-warning/15 text-warning",
-  blue: "bg-accent text-accent-foreground",
+  blue: "bg-sky-500/12 text-sky-600 dark:text-sky-400",
+  violet: "bg-violet-500/12 text-violet-500",
 };
 
-export function Badge({ tone = "slate", children }: { tone?: "slate" | "green" | "red" | "amber" | "blue"; children: ReactNode }) {
+export function Badge({ tone = "slate", children }: { tone?: "slate" | "green" | "red" | "amber" | "blue" | "violet"; children: ReactNode }) {
   return <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-medium", badgeTones[tone])}>{children}</span>;
 }
 

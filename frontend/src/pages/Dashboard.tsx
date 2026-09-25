@@ -27,6 +27,7 @@ import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import UserAvatar from "../components/ui/UserAvatar";
 import VoiceMixer from "../components/layout/VoiceMixer";
+import { STATUS_COLOR, chipClass, dotClass, type StatusTone } from "../lib/status";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { useShift } from "../shift/ShiftContext";
 import { usePresence } from "../presence/PresenceContext";
@@ -56,7 +57,7 @@ const statusLabel: Record<string, string> = {
 
 const statusTone: Record<string, "slate" | "green" | "amber" | "red" | "blue"> = {
   registered: "green",
-  "in-call": "blue",
+  "in-call": "red",
   held: "amber",
   calling: "amber",
   ringing: "amber",
@@ -68,14 +69,14 @@ const statusTone: Record<string, "slate" | "green" | "amber" | "red" | "blue"> =
 
 const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-const agentStatus: Record<string, { label: string; tone: "green" | "amber" | "slate" | "red" | "blue" }> = {
-  AVAILABLE: { label: "Boşta", tone: "green" },
-  TALKING: { label: "Görüşmede", tone: "blue" },
-  UNREGISTERED: { label: "Kayıtsız", tone: "slate" },
-  BREAK: { label: "Molada", tone: "amber" },
-  BACKOFFICE: { label: "Backoffice", tone: "amber" },
-  SS_DND: { label: "Rahatsız etmeyin", tone: "red" },
-  OFF_SHIFT: { label: "Mesai dışı", tone: "slate" },
+const agentStatus: Record<string, { label: string; tone: StatusTone }> = {
+  AVAILABLE: { label: "Boşta", tone: STATUS_COLOR.available.tone },
+  TALKING: { label: STATUS_COLOR.talking.label, tone: STATUS_COLOR.talking.tone },
+  UNREGISTERED: { label: STATUS_COLOR.unregistered.label, tone: STATUS_COLOR.unregistered.tone },
+  BREAK: { label: STATUS_COLOR.break.label, tone: STATUS_COLOR.break.tone },
+  BACKOFFICE: { label: STATUS_COLOR.backoffice.label, tone: STATUS_COLOR.backoffice.tone },
+  SS_DND: { label: STATUS_COLOR.dnd.label, tone: STATUS_COLOR.dnd.tone },
+  OFF_SHIFT: { label: STATUS_COLOR.off.label, tone: STATUS_COLOR.off.tone },
 };
 
 export function Dashboard() {
@@ -171,12 +172,12 @@ export function Dashboard() {
   );
 }
 
-const agentStates: Record<AgentPresenceState, { label: string; tone: "green" | "amber" | "red" | "slate" }> = {
-  available: { label: "Müsait", tone: "green" },
-  break: { label: "Molada", tone: "amber" },
-  backoffice: { label: "Backoffice", tone: "amber" },
-  dnd: { label: "Rahatsız Etmeyin", tone: "red" },
-  off: { label: "Mesai Dışı", tone: "slate" },
+const agentStates: Record<AgentPresenceState, { label: string; tone: StatusTone }> = {
+  available: { label: "Müsait", tone: STATUS_COLOR.available.tone },
+  break: { label: "Molada", tone: STATUS_COLOR.break.tone },
+  backoffice: { label: "Backoffice", tone: STATUS_COLOR.backoffice.tone },
+  dnd: { label: "Rahatsız Etmeyin", tone: STATUS_COLOR.dnd.tone },
+  off: { label: "Mesai Dışı", tone: STATUS_COLOR.off.tone },
 };
 
 function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { totals: { available: number; talking: number; offline: number }; showTotals: boolean; extension?: string; hasExtension: boolean; stats: PBXStats | null }) {
@@ -241,7 +242,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
   // reflects the agent's chosen state (so "Molada" no longer shows green).
   const badgeTone = busy ? statusTone[phone.status] : state.tone;
   const badgeLabel = busy ? statusLabel[phone.status] : hasExtension ? state.label : statusLabel[phone.status];
-  const dotColor = badgeTone === "green" ? "bg-success" : badgeTone === "red" ? "bg-destructive" : badgeTone === "blue" ? "bg-primary" : badgeTone === "amber" ? "bg-warning" : "bg-muted-foreground/50";
+  const dotColor = dotClass(badgeTone);
   // Call start/answer live in the global softphone, so these timers survive
   // navigating between menus instead of restarting.
   const callSince = phone.callStartedAt ?? nowTick;
@@ -290,7 +291,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
       <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
-          <span className={cn("relative flex size-10 items-center justify-center rounded-2xl", badgeTone === "green" ? "bg-success/10 text-success" : badgeTone === "red" ? "bg-destructive/10 text-destructive" : badgeTone === "blue" ? "bg-primary/10 text-primary" : badgeTone === "amber" ? "bg-warning/12 text-warning" : "bg-muted/70 text-muted-foreground")}>
+          <span className={cn("relative flex size-10 items-center justify-center rounded-2xl", chipClass(badgeTone))}>
             <Headset className="size-5" />
             <span className={cn("absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-card", dotColor, !busy && state.tone === "green" && "animate-pulse")} />
           </span>
@@ -331,7 +332,7 @@ function StatusBar({ totals, showTotals, extension, hasExtension, stats }: { tot
         {showTotals && (
           <>
             <Stat dot="bg-success" label="Boşta" value={totals.available} />
-            <Stat dot="bg-warning" label="Görüşmede" value={totals.talking} />
+            <Stat dot="bg-destructive" label="Görüşmede" value={totals.talking} />
             <Stat dot="bg-muted-foreground/60" label="Çevrimdışı" value={totals.offline} />
           </>
         )}
@@ -828,10 +829,10 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
                   {e.users && e.users.length > 0 ? (
                     <span className="relative shrink-0">
                       <UserAvatar userId={e.users[0].id} name={e.users[0].name} hasAvatar={e.users[0].hasAvatar} className="size-8" fallbackClassName="bg-primary/10 text-[0.65rem] text-primary" />
-                      <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card", s.tone === "green" ? "bg-success" : s.tone === "amber" ? "bg-warning" : s.tone === "red" ? "bg-destructive" : s.tone === "blue" ? "bg-primary" : "bg-muted-foreground/50", e.status === "TALKING" && "animate-pulse")} />
+                      <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card", dotClass(s.tone), e.status === "TALKING" && "animate-pulse")} />
                     </span>
                   ) : (
-                    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", s.tone === "green" ? "bg-success/10 text-success" : s.tone === "amber" ? "bg-warning/12 text-warning" : s.tone === "red" ? "bg-destructive/10 text-destructive" : s.tone === "blue" ? "bg-primary/10 text-primary" : "bg-muted/70 text-muted-foreground")}>
+                    <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", chipClass(s.tone))}>
                       {e.status === "TALKING" ? <Phone className="size-4" /> : <Headset className="size-4" />}
                     </span>
                   )}

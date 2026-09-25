@@ -45,6 +45,33 @@ func (h *Handler) Today(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// AgentCalls lists one agent's calls for the userId and from/to query values.
+func (h *Handler) AgentCalls(c *fiber.Ctx) error {
+	id, ok := c.Locals(middlewares.UserIDKey).(uint)
+	if !ok {
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+	}
+	userID := c.QueryInt("userId")
+	if userID < 1 {
+		return errs.Invalid("Geçersiz temsilci.", nil)
+	}
+	from, to := c.Query("from"), c.Query("to")
+	if from == "" {
+		from = to
+	}
+	if to == "" {
+		to = from
+	}
+	if from == "" {
+		from, to = todayLocal(), todayLocal()
+	}
+	res, err := h.service.AgentCalls(c.UserContext(), id, uint(userID), from, to)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // Router mounts the performance endpoints.
 type Router struct {
 	handler *Handler
@@ -59,4 +86,5 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 // Routes registers the performance routes onto g.
 func (r *Router) Routes(g fiber.Router) {
 	g.Get("/performance/today", r.guard, r.handler.Today)
+	g.Get("/performance/calls", r.guard, r.handler.AgentCalls)
 }

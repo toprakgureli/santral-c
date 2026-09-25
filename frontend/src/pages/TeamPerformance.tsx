@@ -10,7 +10,9 @@
 // connected plus the ones too short to count. No call appears in both.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ChevronDown, Clock, Coffee, Headset, Mic, MicOff, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Share2, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, ChevronRight, Clock, Coffee, Headset, Mic, MicOff, Phone, PhoneIncoming, PhoneMissed, PhoneOff, PhoneOutgoing, Share2, TriangleAlert, Users, type LucideIcon } from "lucide-react";
+import AgentCallsDialog from "../components/performance/AgentCallsDialog";
+import { STATUS_COLOR } from "../lib/status";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
 import { Card, EmptyState, Select, Skeleton } from "../components/ui";
@@ -28,13 +30,13 @@ const REFRESH_MS = 15000;
 // One colour per status, used the same way everywhere on the card: the
 // bar on its left edge, the dot on the photo and the status chip.
 const STATUS: Record<TeamStatus, { label: string; icon: LucideIcon; dot: string; bar: string; chip: string }> = {
-  talking: { label: "Görüşmede", icon: Phone, dot: "bg-primary", bar: "bg-primary", chip: "bg-primary/10 text-primary" },
-  available: { label: "Boşta", icon: Headset, dot: "bg-success", bar: "bg-success", chip: "bg-success/10 text-success" },
-  break: { label: "Molada", icon: Coffee, dot: "bg-warning", bar: "bg-warning", chip: "bg-warning/12 text-warning" },
-  backoffice: { label: "Backoffice", icon: MicOff, dot: "bg-amber-600", bar: "bg-amber-600", chip: "bg-amber-600/10 text-amber-600" },
-  dnd: { label: "Rahatsız etmeyin", icon: PhoneOff, dot: "bg-destructive", bar: "bg-destructive", chip: "bg-destructive/10 text-destructive" },
-  unregistered: { label: "Kayıtsız", icon: Mic, dot: "bg-muted-foreground/50", bar: "bg-muted-foreground/40", chip: "bg-muted text-muted-foreground" },
-  off: { label: "Mesai dışı", icon: Clock, dot: "bg-muted-foreground/40", bar: "bg-border", chip: "bg-muted text-muted-foreground" },
+  talking: { ...STATUS_COLOR.talking, icon: Phone },
+  available: { ...STATUS_COLOR.available, label: "Boşta", icon: Headset },
+  break: { ...STATUS_COLOR.break, icon: Coffee },
+  backoffice: { ...STATUS_COLOR.backoffice, icon: MicOff },
+  dnd: { ...STATUS_COLOR.dnd, icon: PhoneOff },
+  unregistered: { ...STATUS_COLOR.unregistered, icon: Mic },
+  off: { ...STATUS_COLOR.off, icon: Clock },
 };
 
 type SortKey = "long" | "reach" | "talkSeconds" | "occupancy" | "unanswered" | "escalations" | "shift" | "name";
@@ -183,7 +185,7 @@ export function TeamPerformance() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-5 text-sm">
             <Stat dot="bg-success" label="Mesaide" value={String(totals.onShift)} />
-            <Stat dot="bg-primary" label="Görüşmede" value={String(totals.talking)} />
+            <Stat dot="bg-destructive" label="Görüşmede" value={String(totals.talking)} />
             <span className="hidden h-5 w-px bg-border sm:block" />
             <Stat dot="bg-success" label="Gerçek çağrı" value={String(totals.real)} hint={`${totals.inReal} gelen · ${totals.outReal} giden · 30 saniye ve üstü`} />
             <Stat dot="bg-destructive" label="Ulaşılamayan" value={String(totals.unanswered + totals.short)} hint={`${totals.unanswered} cevapsız · ${totals.short} geçersiz`} />
@@ -236,7 +238,7 @@ export function TeamPerformance() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sorted.map((r) => (
-            <AgentCard key={r.userId} row={r} now={now} live={isToday} multiDay={from !== to} />
+            <AgentCard key={r.userId} row={r} now={now} live={isToday} multiDay={from !== to} from={from} to={to} />
           ))}
         </div>
       )}
@@ -245,10 +247,10 @@ export function TeamPerformance() {
   );
 }
 
-function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number; live: boolean; multiDay: boolean }) {
+function AgentCard({ row: r, now, live, multiDay, from, to }: { row: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string }) {
   const s = STATUS[r.status] ?? STATUS.off;
   const off = r.status === "off";
-  const [more, setMore] = useState(false);
+  const [calls, setCalls] = useState(false);
   const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
   const unreached = unreachedOf(r);
   const reach = reachOf(r);
@@ -358,36 +360,20 @@ function AgentCard({ row: r, now, live, multiDay }: { row: TeamRow; now: number;
           <Rate label="Eskalasyon" value={String(r.escalations)} hint="Kaydettiği eskalasyonlar" icon={r.escalations > 0 ? TriangleAlert : undefined} />
         </div>
 
-        {/* 7. The fold: the latest calls, closed until asked */}
+        {/* 7. The day's calls open in their own window, so the card keeps its height */}
         <button
           type="button"
-          onClick={() => setMore((v) => !v)}
-          className="mt-1 flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          onClick={() => setCalls(true)}
+          className="mt-1 flex h-11 w-full items-center gap-3 rounded-xl px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70"><ChevronDown className={cn("size-4 transition-transform", more && "rotate-180")} /></span>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70"><PhoneIncoming className="size-4" /></span>
           <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium text-foreground/80">Son görüşmeler</span>
-            {!more && r.recent[0] && <span> · {displayNumber(r.recent[0].peer) || r.recent[0].peer}{r.recent[0].peerName ? ` (${r.recent[0].peerName})` : ""}, {stamp(r.recent[0].startedAt, true)}</span>}
+            <span className="font-medium text-foreground/80">Görüşmeler</span>
+            {r.recent[0] ? <span> · son: {displayNumber(r.recent[0].peer) || r.recent[0].peer}{r.recent[0].peerName ? ` (${r.recent[0].peerName})` : ""}, {stamp(r.recent[0].startedAt, true)}</span> : <span> · kayıt yok</span>}
           </span>
+          <ChevronRight className="size-4 shrink-0" />
         </button>
-        {more && (
-          <ul className="space-y-0.5 pl-[3.25rem] pr-2">
-            {r.recent.length === 0 && <li className="py-1 text-xs text-muted-foreground">Seçilen tarihlerde çağrı yok.</li>}
-            {r.recent.map((c, i) => (
-              <li key={i} className="flex items-center gap-2 py-1 text-xs">
-                {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
-                <span className="w-[4.5rem] shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-mono">{displayNumber(c.peer) || c.peer}</span>
-                  {c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}
-                </span>
-                <span className={cn("w-12 shrink-0 text-right font-mono tabular-nums", c.disposition === "answered" ? (c.durationSeconds >= 30 ? "text-success" : "text-warning") : "text-destructive")}>
-                  {c.disposition === "answered" ? formatClock(c.durationSeconds) : "cevapsız"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        {calls && <AgentCallsDialog row={r} from={from} to={to} onClose={() => setCalls(false)} />}
       </div>
     </section>
   );

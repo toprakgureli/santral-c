@@ -186,6 +186,14 @@ export interface RecentCall {
   durationSeconds: number;
 }
 
+// AgentCalls is one agent's calls over a day range.
+export interface AgentCalls {
+  userId: number;
+  from: string;
+  to: string;
+  items: { uuid: string; peer: string; peerName?: string; direction: string; disposition: string; startedAt: string; durationSeconds: number }[];
+}
+
 // CallLookup answers who spoke with a number.
 export interface CallLookup {
   number: string;
