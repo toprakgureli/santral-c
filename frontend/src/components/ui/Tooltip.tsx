@@ -19,17 +19,26 @@ export default function TooltipLayer() {
   const box = useRef<HTMLDivElement>(null);
   // The box is measured after it renders, then slid inside the viewport;
   // the arrow keeps pointing at the element.
-  const [shift, setShift] = useState(0);
 
+  // Placed after it renders, when its size is known: centred on the element
+  // and slid inside the viewport, with the arrow still pointing at it.
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || !tip) return;
-    setShift(0);
-    const r = el.getBoundingClientRect();
-    let dx = 0;
-    if (r.left < EDGE) dx = EDGE - r.left;
-    else if (r.right > window.innerWidth - EDGE) dx = window.innerWidth - EDGE - r.right;
-    if (dx !== 0) setShift(dx);
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    let left = tip.x;
+    let top = tip.y;
+    if (tip.side === "right") {
+      top = tip.y - h / 2;
+    } else {
+      left = Math.min(Math.max(tip.x - w / 2, EDGE), window.innerWidth - EDGE - w);
+      top = tip.side === "top" ? tip.y - h : tip.y;
+    }
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    const arrow = el.querySelector<HTMLElement>("[data-arrow]");
+    if (arrow && tip.side !== "right") arrow.style.marginLeft = `${(tip.x - (left + w / 2)) * 2}px`;
   }, [tip]);
 
   useLayoutEffect(() => {
@@ -102,7 +111,6 @@ export default function TooltipLayer() {
   }, []);
 
   if (!tip) return null;
-  const vertical = tip.side !== "right";
   return (
     <div
       ref={box}
@@ -112,16 +120,12 @@ export default function TooltipLayer() {
         tip.side === "top" && "flex-col",
         tip.side === "bottom" && "flex-col-reverse",
       )}
-      style={{
-        left: tip.x + shift,
-        top: tip.y,
-        transform: vertical ? `translate(-50%, ${tip.side === "top" ? "-100%" : "0"})` : "translateY(-50%)",
-      }}
+      style={{ left: tip.x, top: tip.y }}
     >
       {tip.side === "right" && <span className="size-2 rotate-45 rounded-[2px] border-b border-l border-border bg-popover" style={{ marginRight: -5 }} />}
       <span className="w-max max-w-[280px] rounded-xl border border-border bg-popover px-3 py-1.5 text-center text-xs font-medium leading-snug text-popover-foreground shadow-lg">{tip.text}</span>
-      {tip.side === "top" && <span className="size-2 rotate-45 rounded-[2px] border-r border-b border-border bg-popover" style={{ marginTop: -5, marginLeft: -shift * 2 }} />}
-      {tip.side === "bottom" && <span className="size-2 rotate-45 rounded-[2px] border-t border-l border-border bg-popover" style={{ marginBottom: -5, marginLeft: -shift * 2 }} />}
+      {tip.side === "top" && <span data-arrow className="size-2 rotate-45 rounded-[2px] border-r border-b border-border bg-popover" style={{ marginTop: -5 }} />}
+      {tip.side === "bottom" && <span data-arrow className="size-2 rotate-45 rounded-[2px] border-t border-l border-border bg-popover" style={{ marginBottom: -5 }} />}
     </div>
   );
 }
