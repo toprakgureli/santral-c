@@ -26,6 +26,7 @@ import type { AgentPresenceState, Call, EscalationCategory, PBXExtension, PBXQue
 import { useAuth } from "../auth/AuthContext";
 import { can, canAny } from "../lib/permissions";
 import UserAvatar from "../components/ui/UserAvatar";
+import VoiceMixer from "../components/layout/VoiceMixer";
 import { useSoftphoneContext } from "../softphone/SoftphoneContext";
 import { useShift } from "../shift/ShiftContext";
 import { usePresence } from "../presence/PresenceContext";
@@ -571,6 +572,8 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
               {active && (
                 <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{formatDuration(dur)}</div>
               )}
+
+              {active && <VoiceMixer size="large" className="w-full max-w-md" />}
 
               {/* Mid-call: open WhatsApp with the customer on the line, "we are talking right now" text. */}
               {active && waLiveNumber && (

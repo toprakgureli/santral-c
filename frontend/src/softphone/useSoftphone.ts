@@ -103,6 +103,7 @@ export interface Phone {
   setRemoteGain: (v: number) => void;
   // Latest samples of one voice for the wave, null when not wired.
   wave: (side: WaveSide) => Float32Array | null;
+  spectrum: (side: WaveSide) => Uint8Array | null;
   call: (target: string) => Promise<void>;
   answer: () => Promise<void>;
   hangup: () => Promise<void>;
@@ -199,6 +200,7 @@ export function useSoftphone(enabled: boolean): Phone {
   }, []);
 
   const wave = useCallback((side: WaveSide) => audioGraph.current.wave(side), []);
+  const spectrum = useCallback((side: WaveSide) => audioGraph.current.spectrum(side), []);
 
   const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
     if (!callIdRef.current) return;
@@ -595,6 +597,7 @@ export function useSoftphone(enabled: boolean): Phone {
     remoteGain,
     setRemoteGain,
     wave,
+    spectrum,
     call,
     answer,
     hangup,

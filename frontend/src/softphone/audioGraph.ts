@@ -35,6 +35,7 @@ export class CallAudio {
   private local: AnalyserNode | null = null;
   private sources: MediaStreamAudioSourceNode[] = [];
   private buf = new Float32Array(256);
+  private bins = new Uint8Array(128);
 
   attach(pc: RTCPeerConnection, el: HTMLAudioElement | null, gainValue: number) {
     this.detach();
@@ -100,6 +101,16 @@ export class CallAudio {
     if (this.buf.length !== a.fftSize) this.buf = new Float32Array(a.fftSize);
     a.getFloatTimeDomainData(this.buf);
     return this.buf;
+  }
+
+  // spectrum returns the latest frequency bins of one side, 0..255, or null
+  // when that side is not wired.
+  spectrum(side: WaveSide): Uint8Array | null {
+    const a = side === "remote" ? this.remote : this.local;
+    if (!a) return null;
+    if (this.bins.length !== a.frequencyBinCount) this.bins = new Uint8Array(a.frequencyBinCount);
+    a.getByteFrequencyData(this.bins);
+    return this.bins;
   }
 
   detach() {
