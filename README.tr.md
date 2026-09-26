@@ -2,192 +2,211 @@
 
 [English](README.md) | Türkçe
 
-santral-c, Verimor'un bulut santrali Bulutsantralim'in üstünde kullandığımız
-çağrı yöneticisi. Temsilciler paneldeki tarayıcı softphone'u ile çağrı alıp
-açıyor, kimin görüşmede kimin molada olduğunu görüyor, arayanı kişi
-rehberinde buluyor, eskalasyon kaydı giriyor ve çağrı kayıtlarını
-dinliyor. Yöneticiler aynı panele ek olarak kullanıcı, rol ve yetki yönetimi,
-giriş güvenliği kayıtları ve denetim izi görüyor.
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 
-Bulut santral iyi yaptığı işi yapmaya devam ediyor (SIP trunk, kuyruk,
-kayıt). santral-c bunun etrafına temsilciye dönük katmanı ekliyor: durum
-takibi, filtrelenebilir çağrı geçmişi, kişiler, eskalasyonlar ve TOTP'li
-düzgün bir kimlik modeli.
+**Her gün canlıda kullanılan bir çağrı merkezi paneli: tarayıcıdan telefon,
+çağrı geçmişi, chatbot kurucusu olan WhatsApp Business gelen kutusu, müşteri
+memnuniyeti analizi, ekip içi sohbet ve rol bazlı yetki sistemi. Hepsi tek
+panelde.**
 
-## Neler var
+Verimor'un bulut santrali (Bulutsantralim) ve Meta'nın WhatsApp Cloud API'si
+üzerinde çalışır. Santral hat, kuyruk ve kayıt işini yapmaya devam eder;
+santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekler.
 
-**Softphone ve durum takibi**
+| WhatsApp gelen kutusu | Chatbot kurucusu |
+|---|---|
+| ![Gelen kutusu](docs/screenshots/inbox.png) | ![Chatbot kurucusu](docs/screenshots/chatbot.png) |
 
-- Bulutsantralim'e WSS üzerinden kayıt olan SIP.js softphone: sustur, beklet,
-  aktar, DTMF. Tarayıcı başına tek kayıt, sekmeler arasında paylaşılır.
-- Sayfalar arasında seni takip eden yüzen çağrı çubuğu ve aynı çağrı
-  kontrollerini her web sitesine taşıyan isteğe bağlı Chrome eklentisi
-  (`extension/`, kendi README'si var).
-- Temsilci durumu: müsait, mola, backoffice, rahatsız etmeyin. Müsait
-  olmayan durumlar santralde DND açar, temsilciye çağrı düşmez. Günlük durum
-  toplamları panoda görünür.
-- Ekip Performansı sayfası (`performance.view_role` kendi rolündekileri,
-  `performance.view_all` herkesi görür): temsilci başına anlık durum
-  (görüşmede ve kiminle, boşta, molada, mesai dışı), bugünkü mesai süresi,
-  toplam, görüşülen, kısa, uzun, cevapsız, gelen ve giden çağrı ile görüşme
-  süresi. Rakamlar İstanbul saatiyle 00:00'da sıfırlanır.
-- Temsilci listesinden dinleme: görüşmedeki temsilciye sağ tıklayınca
-  softphone santralin dinleme kodunu (`*5` + dahili) arar. Servis kodu
-  çağrıları çağrı günlüğüne yazılmaz.
-- Mesai: çağrı ekranı ancak "Mesai Başlat" ile açılır; "Mesai Bitir" DND'yi
-  açar ve durum sayaçlarını durdurur. Mesai 18:30'da biter; 19:20'de hâlâ açık
-  olan mesaiyi sunucu kendisi kapatır.
-- Server-Sent Events ile canlı temsilci listesi, düşerse polling'e geçer.
+![Puanlamalar](docs/screenshots/ratings.png)
 
-**Çağrılar**
+## Kısaca
 
-- Verimor CDR'ından çağrı geçmişi: yön, sonuç, süre ve kayıt dinleme. Tarihe
-  göre filtre (varsayılan bugün; dün, son 7 / 30 gün, bu ay, özel aralık),
-  yön, telefon numarası, kendi çağrıların veya belirli bir dahili.
-- Çağrı kayıtları PostgreSQL'e aynalanır (`pbx_cdrs`). Verimor'un API'si
-  numaraya veya dahiliye göre arayamıyor (filtreleri alakasız kayıt döndürüyor),
-  bu yüzden liste ve arama tamamen aynadan çalışır: anında, eksiksiz ve oran
-  sınırlı API sayfa yüklemelerinde yorulmaz. Poller en yeni sayfayı 30 saniyede
-  bir kopyalar; ilk çalışmada arka planda yavaş bir doldurma `historyDays`
-  (varsayılan 90) gün geriye gider, yeniden başlatmada kaldığı yerden sürer.
-  Kayıt dinleme yine Verimor'dan çağrı kimliğiyle akar.
-- Mevcut filtreyi CSV olarak indirme (`cdr.export`).
-- Numaranın göründüğü her yerden tıkla-ara.
+| | |
+|---|---|
+| Arka uç | ~37.000 satır Go, 16 modül, 32 SQL migration |
+| Ön yüz | ~30.000 satır TypeScript / React |
+| Yetki | Modüllere ayrılmış 75 yetki, her özellik bir yetkiye bağlı |
+| Canlı veri | Çağrı, durum, sohbet ve WhatsApp için Server-Sent Events |
+| Yayına alma | Tek komut; nginx arkasında tek Go dosyası, migration'lar kendiliğinden |
 
-**Kişiler ve eskalasyonlar**
+## Özellikler
 
-- E.164 aramalı kişi rehberi, kişi başına birden fazla numara, görüşme
-  sırasında arayan tanıma.
-- Yöneticilerin yönettiği eskalasyon kataloğu (kategori ve neden); temsilci
-  hattaki arayan için eskalasyon kaydı girer, arama sayfasında bir numaranın
-  eskalasyon geçmişi görülür.
+**Telefon**
+- WSS üzerinden SIP.js softphone (sustur, beklet, aktar, DTMF). Sekmeler arası
+  tek kayıt; çağrı kontrollerini her web sitesine taşıyan Chrome eklentisi.
+- Santralin çağrı kayıtları PostgreSQL'e kopyalanır; numaraya ya da dahiliye
+  göre arama anında çalışır (santral API'si bunu yapamıyor). Kayıt dinleme ve
+  CSV indirme.
+- Santralin "rahatsız etmeyin" ayarına bağlı mola ve mesai takibi, canlı ekip
+  ekranı, dinleme ve kişi bazında günlük performans.
 
-**Kimlik ve yönetim**
+**WhatsApp Business**
+- Ortak gelen kutusu: sohbet kaydı, havuz, otomatik dağıtım, aktarma, iç not,
+  yanıtlama, tepki, okundu bilgisi, 100 MB'a kadar dosya (Google Drive'da
+  saklanır), kişiye özel sessize alma ve sabitleme.
+- Görsel chatbot kurucusu: menü, doğrulamalı soru, koşullar (bilgiye, mesai
+  saatine ya da seçilen saat aralığına göre), dış sistem sorgusu, ekibe
+  aktarma, sürümlü yayınlama ve deneme ekranı.
+- Değişkenleri kendiliğinden dolan onaylı şablonlar (gönderenin adı, müşterinin
+  adı), kurallı otomatik mesajlar, hazır yanıtlar ve yapay zekâ yanıt yardımcısı
+  (Anthropic API).
+- Memnuniyet anketi (WhatsApp içi liste ya da Tally formu), telefon
+  görüşmesinden sonra da gider. Puanlamalar ekranı: soru bazında ortalama,
+  kişi × soru tablosu ve her anket cevabı tek tek.
+- Yazışmayı tüm fotoğraf ve videolarıyla kendi başına açılan bir HTML arşivi
+  olarak indirme.
 
-- E-posta ve şifreyle giriş, TOTP ikinci adım, ilk girişte zorunlu şifre
-  değişimi ve isteğe bağlı zorunlu MFA kurulumu (sistem ayarı).
-- Kullanıcılar: profil, roller, SIP hesabı (Verimor'dan çekilir ya da elle
-  girilir), üretilmiş geçici şifreyle sıfırlama ve göndermeye hazır
-  karşılama mesajı, aktif / pasif.
-- Modüle göre gruplanmış yetki kataloğuyla roller. Yeni rol için mevcut
-  birini kopyala. Yönetici kendinde olmayan bir yetkiyi veremez.
-- Giriş denemeleri, kaldırılabilir IP banları ve her yetkili işlemin denetim
-  izi (kim, ne, ne zaman, hangi IP'den).
+**Ekip ve yönetim**
+- Ekip içi sohbet (gruplar, birebir mesaj, dosya paylaşımı, tepkiler) ve canlı
+  mini oyunlar.
+- Kişi rehberi, eskalasyon kataloğu ve geçmişi.
+- Kullanıcılar, roller, 75 yetkilik katalog; bir yönetici kendinde olmayan
+  yetkiyi başkasına veremez. TOTP ile giriş, ilk girişte şifre değiştirme, IP
+  engelleme ve eksiksiz denetim kaydı.
 
-## Teknoloji
+## Teknik notlar
 
-- **Backend**: Go 1.26, Fiber, GORM, PostgreSQL, Redis, goose migration.
-  argon2id şifre hash'i, hash'lenmiş refresh oturumlu JWT, TOTP gizli
-  anahtarları şifreli saklanır. Uber Go stil rehberine göre yazıldı.
-- **Frontend**: React 18, TypeScript, Vite, Tailwind v4, SIP.js.
-- **Telefon**: Bulutsantralim REST API (CDR, kullanıcı durumları, kuyruklar,
-  çağrı başlatma) ve softphone için WebRTC geçidi.
+- **Güvenlik**: argon2id şifreler, JWT erişim anahtarı ve özetlenmiş yenileme
+  oturumları, TOTP. Panelden girilen her gizli bilgi (WhatsApp anahtarları,
+  Drive, yapay zekâ anahtarı, Tally imzası) AES-GCM ile şifreli saklanır.
+  Webhook'lar HMAC-SHA256 ile doğrulanır; kullanıcının girdiği adreslere giden
+  istekler, özel ve yerel ağ adreslerini reddeden bir korumadan geçer (SSRF).
+- **Sağlamlık**: WhatsApp mesajları kalıcı bir giden kutusundan, sohbet
+  sırasını koruyarak ve tekrar deneyerek gider; mesaj durumu hiç geri gitmez;
+  aynı bildirim iki kez işlenmez.
+- **Performans**: büyük arşivler hazırlanırken parça parça iner; sohbet
+  dosyaları tarayıcıdan doğrudan Drive'a yüklenir; santral sorgusu oran
+  sınırına uyar, geçmişi arka planda doldurur.
+- **Kod düzeni**: Uber Go stil rehberi, service / repository / handler
+  katmanlı modüller, chatbot motoru, saat kuralları ve mesaj okuma için
+  tablolu testler.
 
-`DESIGN.md`, planın kendi Asterisk'imizi çalıştırmak olduğu dönemden kalma
-tasarım notu. Kimlik ve veri modeli bölümleri hâlâ geçerli; medya motoru ilk
-sürümden önce bulut santralle değiştirildi.
+```mermaid
+flowchart LR
+  A[Tarayıcı paneli<br/>React + SIP.js] -- REST + SSE --> B[Go servisi<br/>Fiber]
+  A -- WSS üzerinden SIP --> P[(Verimor santrali)]
+  B --> D[(PostgreSQL)]
+  B --> R[(Redis)]
+  B -- REST --> P
+  M[Meta WhatsApp<br/>Cloud API] -- webhook --> B
+  B -- Graph API --> M
+  B -- dosyalar --> G[(Google Drive)]
+  T[Tally formları] -- webhook --> B
+```
 
-## Yerelde çalıştırma
+## Kurulum
 
-Docker, Go 1.26 ve Node 20 veya üstü gerekir.
-
-1. PostgreSQL ve Redis'i başlat:
-
-   ```bash
-   docker compose up -d
-   ```
-
-2. `config.example.yml` dosyasını `config.yml` olarak kopyala ve gizli
-   değerleri doldur. `bulutsantralim` bloğuna API anahtarı (OİM, Bulut
-   Santralım, Santral Ayarlarım), SIP alan adı ve WSS adresi gerekir.
-   `config.yml` gitignore'da.
-
-3. Backend'i çalıştır. İlk açılışta migration'ları uygular, yetki kataloğunu,
-   sistem rollerini ve sahip hesabını ekler:
-
-   ```bash
-   cd backend
-   go run ./cmd/santral -config ../config.yml
-   ```
-
-4. Frontend'i çalıştır. Geliştirme sunucusu `/api`'yi backend'e yönlendirir;
-   `app.port` değiştiyse `VITE_API_TARGET` ile hedefi ver:
-
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-`config.yml`'deki sahip bilgileriyle giriş yap. Yeni şifre belirlemen,
-`security.requireMFA` açıksa TOTP kurman istenir.
-
-Sonra temsilcileri **Kullanıcılar**'dan oluştur, dahililerini gir ve SIP
-şifresini "Verimor'dan çek" ile al (dahilinin OİM'de bir personele bağlı
-olması gerekir). Her temsilci için geçici şifre ve mesaja yapıştırılacak
-karşılama metni hazır gelir.
-
-Push etmeden önce:
+**Gerekenler**: Go 1.26+, Node 20+, Docker (PostgreSQL 16 ve Redis 7 için).
 
 ```bash
-cd backend && go build ./... && go vet ./... && go test ./...
-cd frontend && npm run build
+docker compose up -d                 # PostgreSQL + Redis
+cp config.example.yml config.yml     # sonra aşağıdaki değerleri doldurun
+cd backend && go run ./cmd/santral -config ../config.yml
+cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
-## Yayına alma
+Arka uç ilk açılışta migration'ları uygular; yetkileri, sistem rollerini ve
+sahip hesabını oluşturur. `config.yml`'daki sahip hesabıyla girin, şifreyi
+değiştirmeniz istenir.
 
-Canlı ortam tek bir Ubuntu sunucuda: nginx Vite çıktısını sunar ve `/api`'yi
-systemd altındaki Go binary'sine geçirir, PostgreSQL ve Redis aynı makinede,
-önde Cloudflare. Adım adım anlatım `DEPLOY.md`'de. Güncelleme sunucuda tek
-komut, sudo yetkili bir kullanıcıyla:
+### `config.yml`'da doldurulması gerekenler
+
+`config.yml` git'e girmez. Burada olmayan her şey örnekteki gibi kalabilir.
+
+| Anahtar | Ne yazılacak |
+|---|---|
+| `auth.secret` | Uzun, rastgele bir metin. **Panelden girilen bütün gizli bilgileri de bu şifreler: bir kez belirleyin, sonra değiştirmeyin**, yoksa o bilgiler bir daha okunamaz. |
+| `security.mfaKey` | Tam 32 bayt rastgele değer; TOTP sırlarını şifreler. |
+| `owner.*` | İlk yönetici hesabı. |
+| `database.*`, `redis.*` | PostgreSQL ve Redis bağlantınız. |
+| `app.publicUrl`, `app.corsOrigins` | Panelin dışarıdan adresi (`https://cm.example.com`). |
+| `app.trustedProxies` | nginx / Cloudflare adresleri; kayıtlara gerçek IP düşsün diye. |
+| `auth.cookieSecure` | HTTPS arkasında `true`. |
+| `bulutsantralim.apiKey` | OIM > Bulut Santralım > Santral Ayarlarım. |
+| `bulutsantralim.sipDomain`, `sipWssUrl` | Santral adı ve Verimor'un WebRTC adresi. Sıkı NAT arkasındaki temsilciler için `turnUrl` ekleyin. |
+| `bulutsantralim.sipKey` | Tam 32 bayt rastgele değer; kayıtlı SIP şifrelerini şifreler. |
+| `drive.clientId`, `clientSecret`, `redirectUrl` | Google Cloud'da bir OAuth istemcisi (Web application). Yönlendirme adresi tam olarak `https://<panel>/api/v1/teams/drive/callback` olmalı. |
+
+Rastgele değerler için: `openssl rand -base64 48` (secret) ve
+`openssl rand -hex 16` (32 baytlık anahtarlar).
+
+### Panelden yapılan ayarlar (config'e yazılmaz)
+
+- **Google Drive**: Yönetim > Sistem Ayarları > Teams Dosya Depolama'dan hesabı
+  bir kez bağlayın. Sohbet ve WhatsApp dosyaları orada durur.
+- **WhatsApp numarası**: WhatsApp > Ayarlar > Cihazlar > numara ekle. Meta'dan
+  Phone number ID, WABA ID, App ID, kalıcı sistem kullanıcısı anahtarı ve App
+  secret girilir. Panel ardından bir **Callback URL** ve **Verify token**
+  gösterir; bunları Meta App Dashboard > WhatsApp > Configuration'a yazıp
+  `messages` alanına abone olun. Uygulamada değiştiremediğiniz bir webhook
+  zaten varsa "kayıtlı webhook" seçeneğiyle onu santral-c'ye yönlendirin
+  (`deploy/nginx/whatsapp-existing-webhook.conf`).
+- **Yapay zekâ yardımcısı**: WhatsApp > Ayarlar > Yapay zekâ, bir Anthropic API
+  anahtarı.
+- **Tally ile memnuniyet anketi**: WhatsApp > Ayarlar > Cihaz ayarları >
+  Memnuniyet anketi. Forma `ticket`, `number`, `agent`, `channel`, `token` gizli
+  alanlarını ekleyin (görüşme sonrası anket için `call`, `agent`, `token`).
+  Panelin gösterdiği webhook adresini Tally > Integrations > Webhooks'a, oradaki
+  imza anahtarını panele yazın.
+- **Temsilciler**: Kullanıcılar > kullanıcı oluşturun, dahiliyi girin ve SIP
+  şifresini "Verimor'dan çek" ile alın (sadece Türkiye IP'sinden çalışır, yoksa
+  elle yazın). Rolleri Roller ekranından verin.
+
+### Göndermeden önce
 
 ```bash
-cd /opt/santral-c && bash deploy/deploy.sh
+cd backend && gofmt -l . && go vet ./... && go test ./...
+cd frontend && npx tsc --noEmit && npm run build
 ```
 
-Derleme git SHA'sı ve saatle damgalanır; kenar çubuğunda görünür, çalışan
-sürümün güncel olup olmadığı bir bakışta anlaşılır.
+## Canlı ortam
 
-## Kilitlenen sahip hesabını kurtarma
+Tek bir Ubuntu sunucu: nginx derlenmiş ön yüzü sunar ve `/api`'yi systemd
+altındaki Go servisine yönlendirir; PostgreSQL ve Redis aynı makinede. Adım adım
+anlatım [DEPLOY.md](DEPLOY.md)'de; systemd ve nginx dosyaları `deploy/`
+altında. nginx'te iki şey önemli: `/api/v1/wa/` için 110 MB gövde sınırı,
+tamponlamanın kapalı olması ve uzun zaman aşımı (dosyalar ve arşiv indirme);
+canlı akışlar için de `proxy_buffering off`.
 
-`backend/cmd/resetpw` bir kullanıcının şifresini doğrudan veritabanında
-değiştirir, MFA'yı temizler ve kilidi açar. E-posta yoksa görünmez yönetici
-olarak oluşturur:
+Güncelleme tek komut, sudo yetkili kullanıcıyla:
 
 ```bash
-cd backend
-go run ./cmd/resetpw -config ../config.yml -email owner@example.com -password 'NewPass123!'
+BRANCH=main /opt/santral-c/deploy/deploy.sh
 ```
 
-## Verimor API'si hakkında bilinmesi gerekenler
+Her derlemeye git commit'i yazılır ve kenar çubuğunda görünür.
 
-Bunlar bize zaman kaybettirdi, o yüzden buraya yazıldı.
+Hesabı kilitlenen sahip şöyle kurtarılır:
+`go run ./cmd/resetpw -config ../config.yml -email owner@example.com -password 'Yeni-Sifre-123'`.
 
-- `/cdrs` tarih aralığı verilmezse yalnızca bugünün çağrılarını döner; ilk
-  sayfadan sonrası zaman aşımına düşecek kadar yavaş. Backend bu yüzden 1.
-  sayfadan kayan bir pencere biriktirip bellekte filtreler; geçmiş tarihler
-  `start_stamp_from` ve `start_stamp_to` ile sorgulanır, eksiksizdir ama
-  sayfa başına on beş saniye civarı sürer.
-- `number` filtresi kısa dahililerde çalışmaz, neredeyse tüm santrali döner.
-  Dahili filtresi `1014 (9021...)` ve `9021... (1008)` taraf biçimleri
-  eşleştirilerek uygulama içinde yapılır.
-- `/user_statuses` yirmi saniye kadar sürer ve dakikada birkaç çağrıyla
-  sınırlı. Arka planda sorgulanır; panel doğrudan çağırmaz.
-- Art arda istekler 429 döner. Poller çağrılarını aralıklı atar, kısıtlama
-  yiyince geri çekilir.
-- SIP şifrelerini veren webphone sayfası yalnızca Türkiye IP'lerine sunulur.
-  Yurt dışındaki sunucudan OİM giriş sayfası gelir; "Verimor'dan çek"
-  Türkiye'deki bir makineden çalışır, aksi halde şifre elle girilir.
+## Verimor API'sinde vakit kaybettirenler
 
-## Depo düzeni
+- `/cdrs` tarihsiz sadece bugünü döndürür, derin sayfalar zaman aşımına düşer;
+  geçmiş tarihler `start_stamp_from/to` ister ve sayfa başı ~15 sn sürer. Yerel
+  kopya bu yüzden var.
+- `number` filtresi kısa dahilileri dikkate almaz; dahili filtresi uygulama
+  içinde yapılır.
+- `/user_statuses` ~20 sn sürer ve dakikada birkaç çağrıya izin verir; sadece
+  arka planda sorgulanır. Art arda istekler 429 döner.
+- SIP şifrelerinin olduğu webphone sayfası sadece Türkiye IP'lerine açılır.
+
+## Klasörler
 
 ```
-backend/     Go servisi: cmd/santral (sunucu), cmd/resetpw, internal/* modülleri, migration'lar
-frontend/    React panel ve softphone
-extension/   Panelin çağrısını her sekmeye taşıyan Chrome MV3 mini widget
-deploy/      deploy.sh, systemd birimi, nginx site tanımı
+backend/     Go servisi: cmd/santral (sunucu), cmd/resetpw, internal/* modüller, migrations
+frontend/    React paneli, softphone, WhatsApp gelen kutusu ve chatbot kurucusu
+extension/   Panelin çağrısını her sekmeye taşıyan Chrome MV3 eklentisi
+deploy/      deploy.sh, systemd birimi, nginx siteleri
 ```
 
-## Lisans
+## Geliştiren
 
-Özel, şirket içi proje.
+**Toprak Şahin Güreli** tarafından tasarlanıp geliştirildi; backend
+geliştirici (Go, .NET). toprak@toprakgureli.com
+
+Özel proje; kaynak kod inceleme için paylaşılmıştır, yeniden kullanım için
+değil.

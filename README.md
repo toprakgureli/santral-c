@@ -2,192 +2,213 @@
 
 English | [Türkçe](README.tr.md)
 
-santral-c is the call manager we use on top of Bulutsantralim, Verimor's hosted
-PBX. Agents take and make calls from a browser softphone inside the panel, see
-who is on the line and who is on a break, look up the caller in the contact
-book, log escalations, and listen to recordings. Managers get the same panel
-plus user, role and permission administration, login security logs and an
-audit trail.
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 
-The hosted PBX keeps doing what it does well (SIP trunks, queues, recording).
-santral-c adds the agent-facing layer around it: presence, call history with
-filters, contacts, escalations, and a proper identity model with TOTP.
+**A call-centre workspace in daily production use: browser softphone, call
+history, WhatsApp Business inbox with a visual chatbot builder, customer
+satisfaction analytics, team chat and a role-based permission model, all in
+one panel.**
 
-## What is in the box
+It sits on top of Verimor's hosted PBX (Bulutsantralim) and Meta's WhatsApp
+Cloud API. The PBX keeps doing trunks, queues and recording; santral-c adds
+everything an agent and a team lead actually work in.
 
-**Softphone and presence**
+| WhatsApp inbox | Chatbot builder |
+|---|---|
+| ![Inbox](docs/screenshots/inbox.png) | ![Chatbot builder](docs/screenshots/chatbot.png) |
 
-- SIP.js softphone registering to Bulutsantralim over WSS, with mute, hold,
-  transfer and DTMF. One registration per browser, shared across tabs.
-- Floating call bar that follows you across pages, and an optional Chrome
-  extension that puts the same call controls on every website
-  (`extension/`, see its README).
-- Agent presence: available, break, back office, do not disturb. Non-available
-  states engage DND on the PBX so the agent stops receiving calls. Daily totals
-  per state are shown on the dashboard.
-- Team performance page (`performance.view_role` sees agents sharing a role
-  with the viewer, `performance.view_all` sees everyone): live status per
-  agent (on a call and with whom, idle, break, off shift), today's shift time,
-  total, answered, short, long, unanswered, inbound and outbound calls and
-  talk time. Figures reset at 00:00 Istanbul.
-- Listen-in from the agent list: right-click an agent who is on a call and
-  the softphone dials the PBX spy code (`*5` + extension). Feature-code calls
-  are kept out of the call log.
-- Shifts: the dialer opens only after the agent presses "Mesai Başlat", and
-  "Mesai Bitir" engages DND and stops the presence clocks. The working day ends
-  at 18:30 Istanbul; a shift still open at 19:20 is closed by the server.
-- Live agent list over Server-Sent Events with a polling fallback.
+![Ratings](docs/screenshots/ratings.png)
 
-**Calls**
+## At a glance
 
-- Call history from Verimor's CDR with direction, disposition, duration and
-  recording playback. Filter by date (today by default, presets for yesterday,
-  last 7 or 30 days, this month, custom range), direction, phone number, own
-  calls or a specific extension.
-- Call records are mirrored into PostgreSQL (`pbx_cdrs`). Verimor's own API
-  cannot search by number or extension (its filters return unrelated rows), so
-  every list and search runs on the mirror: instant, complete, and the
-  rate-limited API is not hit on page loads. The poller copies the newest
-  page every 30 seconds; on first run a slow background backfill walks back
-  `historyDays` (default 90) one request at a time and resumes after a
-  restart. Recordings still stream from Verimor by call id.
-- CSV export of the current filter (`cdr.export`).
-- Click to call from anywhere a number is shown.
+| | |
+|---|---|
+| Backend | ~37,000 lines of Go, 16 domain modules, 32 SQL migrations |
+| Frontend | ~30,000 lines of TypeScript / React |
+| Access control | 75 permissions grouped by module, every feature behind one |
+| Real time | Server-Sent Events for calls, presence, chat and WhatsApp |
+| Deploy | One command, a single Go binary behind nginx, zero-config migrations |
 
-**Contacts and escalations**
+## Features
 
-- Contact book with E.164 lookup, multiple numbers per contact, caller
-  identification during a call.
-- Escalation catalog (category and reason) managed by admins; agents log an
-  escalation for the caller on the line, and a search page shows a number's
-  escalation history.
+**Telephony**
+- SIP.js softphone over WSS (mute, hold, transfer, DTMF), one registration
+  shared across tabs, plus a Chrome extension that puts the call controls on
+  every website.
+- Call history mirrored from the PBX into PostgreSQL, so search by number or
+  extension is instant (the PBX API cannot do it), with recording playback
+  and CSV export.
+- Agent presence and shifts wired to the PBX's do-not-disturb, live team
+  board, listen-in, and per-agent daily performance.
 
-**Identity and administration**
+**WhatsApp Business**
+- Shared inbox with tickets, pool, automatic distribution, transfer, internal
+  notes, replies, reactions, read receipts, media up to 100 MB (kept on
+  Google Drive), and a per-person mute and pin.
+- Visual chatbot builder: menus, questions with validation, conditions (on
+  data, working hours or chosen time ranges), calls to outside systems,
+  hand-off to a team, versioned publishing and a built-in simulator.
+- Approved templates with variables that fill themselves (the sender's name,
+  the customer's name), rule-based automatic messages, quick replies and an
+  AI reply assistant (Anthropic API).
+- Satisfaction surveys (a list inside WhatsApp or a Tally form), also sent
+  after phone calls, with a ratings page: averages per question, a person by
+  question table, and each answer on its own.
+- Conversation export as a self-contained HTML archive with every photo and
+  video.
 
-- Login with e-mail and password, TOTP second factor, forced first-login
-  password change and optional forced MFA enrollment (a system setting).
-- Users: profile, roles, SIP account (pulled from Verimor or entered by hand),
-  password reset with a generated temporary password and a ready-to-send
-  welcome message, activate and deactivate.
-- Roles with a permission catalog grouped by module. Copy a role to start a new
-  one. An admin cannot grant a permission they do not hold themselves.
-- Login attempts, IP bans with unban, and an audit trail of every privileged
-  action (who, what, when, from which IP).
+**Team and administration**
+- Internal chat (groups, direct messages, file sharing, reactions) with
+  real-time mini games.
+- Contacts, escalation catalogue and history.
+- Users, roles, 75-permission catalogue; an admin can never grant what they
+  do not hold. Login with TOTP, forced first-login password change, IP bans
+  and a full audit trail.
 
-## Stack
+## Engineering notes
 
-- **Backend**: Go 1.26, Fiber, GORM, PostgreSQL, Redis, goose migrations.
-  argon2id password hashing, JWT access tokens with hashed refresh sessions,
-  TOTP secrets encrypted at rest. Written to the Uber Go style guide.
-- **Frontend**: React 18, TypeScript, Vite, Tailwind v4, SIP.js.
-- **Telephony**: Bulutsantralim REST API (CDR, user statuses, queues,
-  originate) and the WebRTC gateway for the softphone.
+- **Security**: argon2id passwords, JWT access tokens with hashed refresh
+  sessions, TOTP, every credential typed into the panel (WhatsApp tokens,
+  Drive, AI key, Tally secret) sealed with AES-GCM at rest. Webhooks are
+  verified with HMAC-SHA256; outbound calls to user-given URLs go through an
+  SSRF guard that refuses private and loopback addresses.
+- **Reliability**: WhatsApp messages go through a persistent outbox with
+  per-conversation ordering and retries; statuses never move backwards;
+  webhook deliveries are de-duplicated by message id.
+- **Performance**: large exports stream a zip as it is built; chat
+  attachments upload straight from the browser to Drive through a resumable
+  session; the PBX poller respects its rate limits and backfills history in
+  the background.
+- **Style**: Uber Go style guide, domain packages with service / repository /
+  handler layers, table-driven tests for the chatbot engine, time rules and
+  message parsing.
 
-`DESIGN.md` is the original design note from when the plan was to run our own
-Asterisk. The identity and data model sections still apply; the media engine
-was replaced by the hosted PBX before the first release.
-
-## Running locally
-
-You need Docker, Go 1.26 and Node 20 or newer.
-
-1. Start PostgreSQL and Redis:
-
-   ```bash
-   docker compose up -d
-   ```
-
-2. Copy `config.example.yml` to `config.yml` and fill in the secrets. The
-   `bulutsantralim` block needs your API key (OIM, Bulut Santralım, Santral
-   Ayarlarım), the SIP domain and the WSS URL. `config.yml` is gitignored.
-
-3. Run the backend. It applies migrations, seeds the permission catalog, the
-   system roles and the owner account on first start:
-
-   ```bash
-   cd backend
-   go run ./cmd/santral -config ../config.yml
-   ```
-
-4. Run the frontend. The dev server proxies `/api` to the backend; point it at
-   another port with `VITE_API_TARGET` if you changed `app.port`:
-
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-Sign in with the owner credentials from `config.yml`. You will be asked to set
-a new password, and to enroll TOTP if `security.requireMFA` is on.
-
-Then create the agents under **Kullanıcılar**, give each one their extension
-and pull the SIP password with "Verimor'dan çek" (the extension must be
-attached to a personnel record in OIM). Each agent gets a temporary password
-and the welcome text to paste into a message.
-
-Checks before pushing:
-
-```bash
-cd backend && go build ./... && go vet ./... && go test ./...
-cd frontend && npm run build
+```mermaid
+flowchart LR
+  A[Browser panel<br/>React + SIP.js] -- REST + SSE --> B[Go service<br/>Fiber]
+  A -- SIP over WSS --> P[(Verimor PBX)]
+  B --> D[(PostgreSQL)]
+  B --> R[(Redis)]
+  B -- REST --> P
+  M[Meta WhatsApp<br/>Cloud API] -- webhook --> B
+  B -- Graph API --> M
+  B -- files --> G[(Google Drive)]
+  T[Tally forms] -- webhook --> B
 ```
 
-## Deploying
+## Getting started
 
-Production runs on a single Ubuntu host: nginx serves the Vite build and
-proxies `/api` to the Go binary under systemd, PostgreSQL and Redis on the same
-machine, Cloudflare in front. `DEPLOY.md` has the full walkthrough. Updates are
-one command on the server, run as a sudo-capable user:
+**Requirements**: Go 1.26+, Node 20+, Docker (for PostgreSQL 16 and Redis 7).
 
 ```bash
-cd /opt/santral-c && bash deploy/deploy.sh
+docker compose up -d                 # PostgreSQL + Redis
+cp config.example.yml config.yml     # then fill in the values below
+cd backend && go run ./cmd/santral -config ../config.yml
+cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
-The build is stamped with the git SHA and time; the sidebar shows it so you can
-tell at a glance whether the running version is the latest.
+The backend applies migrations and seeds permissions, the system roles and the
+owner account on first start. Sign in with the owner from `config.yml`; you
+will be asked to change the password.
 
-## Recovering a locked-out owner
+### What you must set in `config.yml`
 
-`backend/cmd/resetpw` sets a user's password straight in the database, clears
-MFA and unlocks the account. If the e-mail does not exist it is created as an
-invisible admin:
+`config.yml` is gitignored. Everything not listed here can stay as in the
+example.
+
+| Key | What to put |
+|---|---|
+| `auth.secret` | A long random string. **It also encrypts every credential entered in the panel: set it once and never change it**, or those credentials can no longer be read. |
+| `security.mfaKey` | Exactly 32 random bytes; encrypts TOTP secrets. |
+| `owner.*` | The first admin account. |
+| `database.*`, `redis.*` | Your PostgreSQL and Redis. |
+| `app.publicUrl`, `app.corsOrigins` | The panel's public address (`https://cm.example.com`). |
+| `app.trustedProxies` | nginx / Cloudflare addresses, so real client IPs are logged. |
+| `auth.cookieSecure` | `true` behind HTTPS. |
+| `bulutsantralim.apiKey` | OIM > Bulut Santralım > Santral Ayarlarım. |
+| `bulutsantralim.sipDomain`, `sipWssUrl` | The PBX name and Verimor's WebRTC endpoint. Add `turnUrl` for agents behind strict NAT. |
+| `bulutsantralim.sipKey` | Exactly 32 random bytes; encrypts stored SIP passwords. |
+| `drive.clientId`, `clientSecret`, `redirectUrl` | A Google Cloud OAuth client (Web application). The redirect URI must be exactly `https://<panel>/api/v1/teams/drive/callback`. |
+
+Generate the random values with `openssl rand -base64 48` (secret) and
+`openssl rand -hex 16` (32-byte keys).
+
+### What you set in the panel (not in the config)
+
+- **Google Drive**: Yönetim > Sistem Ayarları > Teams Dosya Depolama, link the
+  account once. Chat and WhatsApp files are stored there.
+- **WhatsApp number**: WhatsApp > Ayarlar > Cihazlar > add a number with the
+  Phone number ID, WABA ID, App ID, a permanent system-user token and the app
+  secret from Meta. The panel then shows a **Callback URL** and **Verify
+  token**; enter them in Meta App Dashboard > WhatsApp > Configuration and
+  subscribe to the `messages` field. If the app already has a webhook you
+  cannot change, choose "existing webhook" and forward it to santral-c
+  (`deploy/nginx/whatsapp-existing-webhook.conf`).
+- **AI reply assistant**: WhatsApp > Ayarlar > Yapay zekâ, an Anthropic API
+  key.
+- **Satisfaction survey with Tally**: WhatsApp > Ayarlar > Cihaz ayarları >
+  Memnuniyet anketi. Add
+  hidden fields `ticket`, `number`, `agent`, `channel`, `token` to the form
+  (`call`, `agent`, `token` for the after-call survey), paste the webhook
+  address the panel shows into Tally > Integrations > Webhooks, and its
+  signing secret back into the panel.
+- **Agents**: Kullanıcılar > create a user, set the extension and pull the SIP
+  password with "Verimor'dan çek" (works from a Turkish IP only; otherwise type
+  it in). Give roles under Roller.
+
+### Checks before pushing
 
 ```bash
-cd backend
-go run ./cmd/resetpw -config ../config.yml -email owner@example.com -password 'NewPass123!'
+cd backend && gofmt -l . && go vet ./... && go test ./...
+cd frontend && npx tsc --noEmit && npm run build
 ```
 
-## Things worth knowing about the Verimor API
+## Production
 
-These cost us time, so they are written down here.
+A single Ubuntu host: nginx serves the built frontend and proxies `/api` to
+the Go binary under systemd; PostgreSQL and Redis on the same machine.
+[DEPLOY.md](DEPLOY.md) is the full walkthrough; `deploy/` has the systemd unit
+and nginx sites. Two nginx details matter: `/api/v1/wa/` needs a 110 MB body
+limit, no buffering and long timeouts (media and streamed exports), and the
+event streams need `proxy_buffering off`.
 
-- `/cdrs` without a date range returns only today's calls, and pages deeper
-  than the first are slow enough to time out. The backend therefore keeps a
-  rolling window from page 1 and filters in memory; past dates use
-  `start_stamp_from` and `start_stamp_to`, which are complete but take around
-  fifteen seconds per page.
-- The `number` filter does not work for short internal extensions; it returns
-  nearly the whole tenant. Extension filtering is done in process by matching
-  the `1014 (9021...)` and `9021... (1008)` party formats.
-- `/user_statuses` takes about twenty seconds and is limited to a couple of
-  calls a minute. It is polled in the background; the panel never calls it
-  directly.
-- Bursts of requests answer with 429. The poller spaces its calls and backs off
-  after a throttle.
-- The webphone page that exposes SIP passwords is served only to Turkish IPs.
-  From a server abroad you get the OIM login page instead, so "Verimor'dan çek"
-  works from a machine in Turkey; otherwise enter the password by hand.
+Updates are one command, run as a sudo-capable user:
+
+```bash
+BRANCH=main /opt/santral-c/deploy/deploy.sh
+```
+
+The build is stamped with the git commit, shown in the sidebar.
+
+A locked-out owner can be recovered with
+`go run ./cmd/resetpw -config ../config.yml -email owner@example.com -password 'New-Pass-123'`.
+
+## Verimor API: what cost us time
+
+- `/cdrs` without dates returns only today, deep pages time out; past dates
+  need `start_stamp_from/to` and take ~15 s a page. Hence the local mirror.
+- The `number` filter ignores short extensions; extension filtering happens
+  in process.
+- `/user_statuses` takes ~20 s and allows a couple of calls a minute; it is
+  polled in the background only. Bursts answer 429.
+- The webphone page with SIP passwords is served to Turkish IPs only.
 
 ## Repository layout
 
 ```
 backend/     Go service: cmd/santral (server), cmd/resetpw, internal/* modules, migrations
-frontend/    React panel and softphone
-extension/   Chrome MV3 mini widget that relays the panel's call to every tab
-deploy/      deploy.sh, systemd unit, nginx site
+frontend/    React panel, softphone, WhatsApp inbox and chatbot builder
+extension/   Chrome MV3 widget that relays the panel's call to every tab
+deploy/      deploy.sh, systemd unit, nginx sites
 ```
 
-## License
+## Author
 
-Private, internal project.
+Designed and built by **Toprak Şahin Güreli**, backend engineer (Go, .NET).
+toprak@toprakgureli.com
+
+Private project; the source is shared for review, not for reuse.
