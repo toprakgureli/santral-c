@@ -170,7 +170,6 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
   const last = c.last;
   const unread = c.unread > 0;
   const press = useRef<number | null>(null);
-  const owner = t?.owner;
   return (
     <button
       type="button"
@@ -208,15 +207,48 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
           )}
           <span className="flex shrink-0 items-center gap-1">
             {waiting && t?.awaitingSince && <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-px text-[0.62rem] font-semibold text-destructive" data-tip="Müşteri bu kadar süredir cevap bekliyor"><Hourglass className="size-2.5" />{since(t.awaitingSince, now)}</span>}
-            {owner && <span data-tip={`Sorumlu: ${owner.id === me ? "sen" : owner.name}`}><UserAvatar userId={owner.id} name={owner.name} hasAvatar={owner.hasAvatar} version={owner.avatarVersion} className="size-4.5" fallbackClassName="bg-primary/10 text-[0.45rem] text-primary" /></span>}
             {muted && <BellOff className="size-3.5 text-muted-foreground" aria-label="Sessizde" />}
             {pinned && <Pin className="size-3.5 rotate-45 text-muted-foreground" aria-label="Sabitlendi" />}
             {unread && <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[0.68rem] font-bold leading-5 tabular-nums", muted ? "bg-muted-foreground/25 text-foreground/80" : "bg-wa-accent text-wa-on-accent")}>{c.unread > 99 ? "99+" : c.unread}</span>}
           </span>
         </span>
-        {showChannel && <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground/80">{c.channelName}{t && t.status !== "resolved" && !owner && t.status !== "bot" ? " · havuzda" : ""}</span>}
+        <Handler c={c} me={me} showChannel={showChannel} />
       </span>
     </button>
+  );
+}
+
+// Handler is the last line of a row: who is looking after the conversation
+// (their photo and first name, "+2" when others help), or that it waits in
+// the pool or talks to the chatbot. The number it came to is added when there
+// are several.
+function Handler({ c, me, showChannel }: { c: WAConversation; me: number; showChannel: boolean }) {
+  const t = c.ticket;
+  const owner = t?.owner;
+  const helpers = (t?.participants ?? []).filter((p) => p.id !== owner?.id);
+  const channel = showChannel ? <span className="truncate">{c.channelName}</span> : null;
+  let who: React.ReactNode = null;
+  if (owner) {
+    const mine = owner.id === me;
+    who = (
+      <span className="flex min-w-0 items-center gap-1" data-tip={`Sorumlu: ${owner.name}${helpers.length ? ` · yardım eden: ${helpers.map((h) => h.name).join(", ")}` : ""}`}>
+        <UserAvatar userId={owner.id} name={owner.name} hasAvatar={owner.hasAvatar} version={owner.avatarVersion} className="size-4" fallbackClassName="bg-primary/10 text-[0.42rem] text-primary" />
+        <span className={cn("truncate", mine && "font-semibold text-wa-accent")}>{mine ? "Sen" : owner.name.split(" ")[0]}</span>
+        {helpers.length > 0 && <span className="shrink-0 rounded-full bg-muted px-1 text-[0.6rem] font-semibold">+{helpers.length}</span>}
+      </span>
+    );
+  } else if (t?.status === "bot") {
+    who = <span className="shrink-0 font-medium text-violet-600 dark:text-violet-400">Chatbot'ta</span>;
+  } else if (t && t.status !== "resolved") {
+    who = <span className="shrink-0 font-medium text-amber-600 dark:text-amber-400">Havuzda</span>;
+  }
+  if (!who && !channel) return null;
+  return (
+    <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[0.7rem] text-muted-foreground">
+      {who}
+      {who && channel && <span className="shrink-0 opacity-50">·</span>}
+      {channel}
+    </span>
   );
 }
 

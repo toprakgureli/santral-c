@@ -213,6 +213,31 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		if in.Params != nil {
 			params = *in.Params
 		}
+		// Blanks left empty are filled as the template says: the customer's
+		// name, or the name of the person sending.
+		if fill := parseFill(tpl.Fill); len(fill) > 0 {
+			sender, _ := s.users.GetByID(ctx, actorID)
+			for i, f := range fill {
+				for len(params.Body) <= i {
+					params.Body = append(params.Body, "")
+				}
+				if strings.TrimSpace(params.Body[i]) != "" {
+					continue
+				}
+				switch f {
+				case "customer":
+					params.Body[i] = firstName(contactView(contact).Display)
+				case "agent":
+					if sender != nil {
+						params.Body[i] = firstName(sender.Name)
+					}
+				case "agent_full":
+					if sender != nil {
+						params.Body[i] = sender.Name
+					}
+				}
+			}
+		}
 		if params.HeaderFile > 0 {
 			id, _, err := s.metaMediaFor(ctx, ch, params.HeaderFile)
 			if err != nil {

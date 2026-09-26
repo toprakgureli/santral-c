@@ -39,6 +39,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [assign, setAssign] = useState(false);
   const [confirmResolve, setConfirmResolve] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [viewer, setViewer] = useState<WAMessage | null>(null);
   const [quick, setQuick] = useState<WAQuickReply[]>([]);
@@ -359,7 +360,12 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
                 )}
                 <MenuItem icon={wa.pinned(conv.id) ? PinOff : Pin} label={wa.pinned(conv.id) ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => { setMore(false); void wa.setConvPref(conv.id, { pin: !wa.pinned(conv.id) }); }} />
                 <MenuItem icon={Mail} label="Okunmadı olarak işaretle" onClick={() => { setMore(false); void wa.markUnread(conv.id); }} />
-                {can(user, "whatsapp.export") && <MenuItem icon={Download} label="Yazışmayı indir" onClick={() => { setMore(false); void waApi.exportChat(conv.id).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi.")); }} />}
+                {can(user, "whatsapp.export") && <MenuItem icon={Download} label={exporting ? "Hazırlanıyor..." : "Yazışmayı indir"} onClick={() => {
+                  setMore(false);
+                  if (exporting) return;
+                  setExporting(true);
+                  void waApi.exportChat(conv.id).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi.")).finally(() => setExporting(false));
+                }} />}
               </MoreMenu>
             )}
           </span>
@@ -419,6 +425,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         )}
       </div>
 
+      {exporting && <div className="flex items-center gap-2 border-t border-border/60 bg-muted/60 px-4 py-2 text-xs text-muted-foreground"><Download className="size-3.5 animate-pulse" /> Yazışma, görseller ve videolarla birlikte hazırlanıyor. Bitince zip olarak iner; açıp içindeki sohbet.html dosyasına çift tıklayın.</div>}
       {error && <div className="flex items-center justify-between gap-2 border-t border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"><span>{error}</span><button type="button" onClick={() => setError(null)} aria-label="Kapat"><X className="size-3.5" /></button></div>}
 
       {canReply && t && !participant && !resolved && (

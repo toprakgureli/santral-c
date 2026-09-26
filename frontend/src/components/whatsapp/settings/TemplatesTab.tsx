@@ -13,7 +13,7 @@ import { waText } from "@/components/whatsapp/waText";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
-import type { WAChannel, WATemplate } from "@/whatsapp/types";
+import type { WAChannel, WATemplate, WATemplateFill } from "@/whatsapp/types";
 import { since } from "@/whatsapp/util";
 
 const STATUS: Record<string, { label: string; tone: string; tip: string }> = {
@@ -25,6 +25,22 @@ const STATUS: Record<string, { label: string; tone: string; tip: string }> = {
 };
 
 const CATEGORY: Record<string, string> = { MARKETING: "Pazarlama", UTILITY: "Hizmet", AUTHENTICATION: "Doğrulama" };
+
+// What a blank can be filled with when the template is sent.
+const FILLS: { key: WATemplateFill; label: string; sample: (me: string) => string }[] = [
+  { key: "", label: "Gönderen elle yazsın", sample: () => "" },
+  { key: "customer", label: "Müşterinin adı", sample: () => "Ayşe" },
+  { key: "agent", label: "Gönderenin adı", sample: (me) => me.split(" ")[0] || "Toprak" },
+  { key: "agent_full", label: "Gönderenin adı soyadı", sample: (me) => me || "Toprak Gureli" },
+];
+
+function FillSelect({ value, onChange }: { value: WATemplateFill; onChange: (v: WATemplateFill) => void }) {
+  return (
+    <select className={cn(inputCls, "h-9")} value={value} onChange={(e) => onChange(e.target.value as WATemplateFill)}>
+      {FILLS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+    </select>
+  );
+}
 
 export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
   const { user } = useAuth();
@@ -127,12 +143,60 @@ export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
             <Button onClick={() => setOpen(null)}>Kapat</Button>
           </>}>
           <PhonePreview t={toDraft(open)} />
+          <FillEditor key={open.id} t={open} manage={manage} onSaved={(t) => { setOpen(t); setItems((cur) => cur.map((x) => (x.id === t.id ? t : x))); }} />
         </Modal>
       )}
       {creating && <TemplateForm channelId={channelId} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load(); }} />}
       <ConfirmDialog open={!!del} title="Şablon silinsin mi?" description={`${del?.name} Meta'dan da silinir. Aynı adla 30 gün yeni şablon açılamaz.`} confirmLabel="Sil" onCancel={() => setDel(null)}
         onConfirm={() => del && void waApi.deleteTemplate(del.id).then(() => { setDel(null); load(); }).catch((e) => { setMsg(e instanceof ApiError ? e.message : "Silinemedi."); setDel(null); })} />
     </Card>
+  );
+}
+
+// FillEditor sets what each blank of an existing template is filled with
+// when someone sends it, so nobody has to type their own name every time.
+function FillEditor({ t, manage, onSaved }: { t: WATemplate; manage: boolean; onSaved: (t: WATemplate) => void }) {
+  const count = useMemo(() => {
+    let n = 0;
+    for (const m of bodyOf(t).matchAll(/\{\{(\d+)\}\}/g)) n = Math.max(n, Number(m[1]));
+    return n;
+  }, [t]);
+  const [fill, setFill] = useState<WATemplateFill[]>(() => Array.from({ length: count }, (_, i) => t.fill?.[i] ?? ""));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  if (count === 0) return null;
+  const changed = fill.some((f, i) => f !== (t.fill?.[i] ?? ""));
+  const save = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      onSaved(await waApi.setTemplateFill(t.id, fill));
+      setNote("Kaydedildi.");
+    } catch (e) {
+      setNote(e instanceof ApiError ? e.message : "Kaydedilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-4 space-y-2 rounded-2xl bg-muted/30 p-3">
+      <p className="text-xs font-semibold">Boşluklar gönderirken nasıl dolsun?</p>
+      <p className="text-[0.72rem] text-muted-foreground">Seçtiğiniz boşluk, şablonu kim gönderiyorsa onun bilgisiyle kendiliğinden dolar. Gönderen isterse yine değiştirebilir. Bu ayar sadece bu panelde geçerli; Meta'ya gitmez, yeniden onay gerekmez.</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {fill.map((f, i) => (
+          <label key={i} className="flex items-center gap-2">
+            <code className="w-10 shrink-0 font-mono text-xs text-muted-foreground">{`{{${i + 1}}}`}</code>
+            {manage ? <FillSelect value={f} onChange={(v) => setFill((cur) => cur.map((x, j) => (j === i ? v : x)))} /> : <span className="text-sm">{FILLS.find((x) => x.key === f)?.label}</span>}
+          </label>
+        ))}
+      </div>
+      {manage && (
+        <div className="flex items-center justify-end gap-3">
+          {note && <span className="text-xs text-muted-foreground">{note}</span>}
+          <Button variant="secondary" onClick={() => void save()} disabled={busy || !changed}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -208,6 +272,10 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
   const [d, setD] = useState<Draft>({ headerFormat: "NONE", headerText: "", body: "", footer: "", buttons: [] });
   const [headerExample, setHeaderExample] = useState("");
   const [examples, setExamples] = useState<string[]>([]);
+  const [fills, setFills] = useState<WATemplateFill[]>([]);
+  const { user } = useAuth();
+  const me = user?.name ?? "";
+  const sampleOf = (i: number) => examples[i] || FILLS.find((f) => f.key === (fills[i] ?? ""))?.sample(me) || "";
   const [handle, setHandle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -251,7 +319,8 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
       await waApi.createTemplate({
         channelId, name, language, category,
         headerFormat: d.headerFormat, headerText: d.headerText, headerExample, headerHandle: handle,
-        body: d.body, bodyExamples: examples.slice(0, varCount), footer: d.footer, buttons: d.buttons,
+        body: d.body, bodyExamples: Array.from({ length: varCount }, (_, i) => sampleOf(i)), footer: d.footer, buttons: d.buttons,
+        fill: Array.from({ length: varCount }, (_, i) => fills[i] ?? ""),
       });
       onSaved();
     } catch (e) {
@@ -329,15 +398,17 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
           </div>
           {varCount > 0 && (
             <div className="space-y-1.5 rounded-2xl bg-muted/30 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Meta onay için her değişkene bir örnek ister</p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <p className="text-xs font-medium text-muted-foreground">Her boşluk gönderirken nasıl dolsun? Meta onay için bir de örnek ister.</p>
+              <div className="space-y-2">
                 {Array.from({ length: varCount }).map((_, i) => (
-                  <label key={i} className="flex items-center gap-2">
-                    <code className="w-10 shrink-0 font-mono text-xs text-muted-foreground">{`{{${i + 1}}}`}</code>
-                    <input className={cn(inputCls, "h-9")} value={examples[i] ?? ""} onChange={(e) => setExamples((cur) => { const n = [...cur]; n[i] = e.target.value; return n; })} placeholder={i === 0 ? "Ayşe" : "örnek değer"} />
-                  </label>
+                  <div key={i} className="grid items-center gap-2 sm:grid-cols-[2.5rem_1fr_1fr]">
+                    <code className="font-mono text-xs text-muted-foreground">{`{{${i + 1}}}`}</code>
+                    <FillSelect value={fills[i] ?? ""} onChange={(v) => setFills((cur) => { const n = [...cur]; n[i] = v; return n; })} />
+                    <input className={cn(inputCls, "h-9")} value={examples[i] ?? ""} onChange={(e) => setExamples((cur) => { const n = [...cur]; n[i] = e.target.value; return n; })} placeholder={FILLS.find((f) => f.key === (fills[i] ?? ""))?.sample(me) || "Meta için örnek"} />
+                  </div>
                 ))}
               </div>
+              <p className="text-[0.7rem] text-muted-foreground">"Gönderenin adı" seçilirse şablonu Ahmet gönderince Ahmet, Toprak gönderince Toprak yazar. Örneği boş bırakırsanız Meta'ya soluk yazılan değer gider.</p>
             </div>
           )}
           <FormField label="Alt yazı (isteğe bağlı)">
@@ -366,7 +437,7 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
         </div>
         <div className="space-y-2 lg:sticky lg:top-0 lg:self-start">
           <p className="text-xs font-medium text-muted-foreground">Müşterinin göreceği</p>
-          <PhonePreview t={d} examples={examples} />
+          <PhonePreview t={d} examples={Array.from({ length: varCount }, (_, i) => sampleOf(i))} />
         </div>
       </div>
     </Modal>

@@ -96,7 +96,7 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
             </button>
           )}
           <p className="mt-0.5 font-mono text-sm tabular-nums text-muted-foreground">{prettyPhone(c.waId)}</p>
-          <p className="text-xs text-muted-foreground">{c.profileName && c.name && c.profileName !== c.name ? `WhatsApp adı: ${c.profileName} · ` : ""}{conv.channelName}</p>
+          {c.profileName && c.name && c.profileName !== c.name && <p className="text-xs text-muted-foreground">WhatsApp adı: {c.profileName}</p>}
           <div className="mt-4 flex w-full justify-center gap-2">
             {canCall && <Quick icon={Phone} label="Ara" onClick={() => void phone.call("0" + c.waId.replace(/^90/, "")).catch(() => undefined)} />}
             <Quick icon={Copy} label={copied ? "Kopyalandı" : "Kopyala"} onClick={() => { void navigator.clipboard?.writeText("0" + c.waId.replace(/^90/, "")); setCopied(true); window.setTimeout(() => setCopied(false), 1400); }} />
@@ -150,11 +150,11 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
                 )}
               </div>
               <div>
-                <Label>Konu</Label>
+                <Label hint="Bu sohbet ne hakkında? Tek bir konu yazılır; raporlarda sohbetler buna göre gruplanır.">Konu</Label>
                 <Subject value={t.category} editable={canEditTicket} onSave={(v) => void saveTicket({ category: v })} />
               </div>
               <div>
-                <Label>Etiketler</Label>
+                <Label hint="Sadece bu sohbete ait. Sohbet kapanınca müşteriye taşınmaz. Örn. iade, arıza, fatura.">Sohbet etiketleri</Label>
                 <Tags values={t.tags} editable={canEditTicket} onChange={(tags) => void saveTicket({ tags })} />
               </div>
             </div>
@@ -182,7 +182,7 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
 
         <Card title="Müşteri notu">
           <textarea value={note} disabled={!canEditContact} onChange={(e) => setNote(e.target.value)} onBlur={() => note !== c.note && void saveContact({ note })} rows={3} placeholder={canEditContact ? "Bu müşteriyle ilgili kalıcı bir not yazın" : "Not yok"} className="w-full resize-none rounded-lg bg-muted/60 px-3 py-2 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30 disabled:opacity-70" />
-          <p className="mt-3 mb-1.5 text-xs text-muted-foreground">Müşteri etiketleri</p>
+          <div className="mt-3"><Label hint="Müşteriye kalıcı olarak yapışır; bu kişinin bütün sohbetlerinde görünür. Örn. VIP, bayi, kurumsal.">Müşteri etiketleri</Label></div>
           <Tags values={c.tags} editable={canEditContact} onChange={(tags) => void saveContact({ tags })} />
         </Card>
 
@@ -276,8 +276,13 @@ const PRIORITY_ON: Record<string, string> = {
 };
 const PRIORITY_TEXT: Record<string, string> = { low: "text-foreground/70", normal: "text-foreground", high: "text-amber-600 dark:text-amber-400", urgent: "text-red-600 dark:text-red-400" };
 
-function Label({ children }: { children: React.ReactNode }) {
-  return <p className="mb-1.5 text-xs font-medium text-muted-foreground">{children}</p>;
+function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <p className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      {children}
+      {hint && <span className="flex size-3.5 cursor-help items-center justify-center rounded-full bg-muted-foreground/15 text-[0.55rem] font-bold" data-tip={hint}>?</span>}
+    </p>
+  );
 }
 
 // Subject reads as plain text; a click turns it into a box, Enter or

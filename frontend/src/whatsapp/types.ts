@@ -222,8 +222,13 @@ export interface WATemplate {
   components: WATemplateComponent[];
   rejectedReason?: string;
   quality?: string;
+  // what fills each body blank when sent: "" typed by hand, "customer",
+  // "agent" (sender's first name) or "agent_full"
+  fill: WATemplateFill[];
   updatedAt: string;
 }
+
+export type WATemplateFill = "" | "customer" | "agent" | "agent_full";
 
 export interface WATeam {
   id: number;

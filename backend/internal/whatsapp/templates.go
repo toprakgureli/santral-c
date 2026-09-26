@@ -43,12 +43,49 @@ type TemplateView struct {
 	Components     json.RawMessage `json:"components"`
 	RejectedReason string          `json:"rejectedReason,omitempty"`
 	Quality        string          `json:"quality,omitempty"`
+	Fill           []string        `json:"fill"` // what fills each body blank when sent
 	UpdatedAt      time.Time       `json:"updatedAt"`
+}
+
+// fillWords are what a template blank can be filled with on sending.
+var fillWords = map[string]bool{"": true, "customer": true, "agent": true, "agent_full": true}
+
+func parseFill(raw string) []string {
+	var out []string
+	_ = json.Unmarshal([]byte(raw), &out)
+	if out == nil {
+		out = []string{}
+	}
+	return out
 }
 
 func templateView(t *models.WATemplate) TemplateView {
 	return TemplateView{ID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category, Status: t.Status, Components: json.RawMessage(t.Components),
-		RejectedReason: t.RejectedReason, Quality: t.Quality, UpdatedAt: t.UpdatedAt}
+		RejectedReason: t.RejectedReason, Quality: t.Quality, Fill: parseFill(t.Fill), UpdatedAt: t.UpdatedAt}
+}
+
+// SetTemplateFill says what fills each blank of a template when it is sent.
+func (s *Service) SetTemplateFill(ctx context.Context, actorID, id uint, fill []string) (*TemplateView, error) {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablonları düzenleme yetkiniz yok."); err != nil {
+		return nil, err
+	}
+	for _, f := range fill {
+		if !fillWords[f] {
+			return nil, errs.Invalid("Otomatik doldurma seçeneği tanınmadı.", nil)
+		}
+	}
+	if fill == nil {
+		fill = []string{}
+	}
+	if err := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE id = ?", jsonString(fill), id).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
+	t, err := s.template(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	v := templateView(t)
+	return &v, nil
 }
 
 // Templates lists a device's templates. Agents see only approved ones.
@@ -171,6 +208,7 @@ type TemplateInput struct {
 	BodyExamples  []string         `json:"bodyExamples"`
 	Footer        string           `json:"footer"`
 	Buttons       []TemplateButton `json:"buttons"`
+	Fill          []string         `json:"fill"`
 }
 
 var (
@@ -286,6 +324,13 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 		t.WABAID, t.MetaID, t.Name, t.Language, t.Category, t.Status, t.Components, actorID).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
+	fill := []string{}
+	for _, f := range in.Fill {
+		if fillWords[f] {
+			fill = append(fill, f)
+		}
+	}
+	_ = s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE waba_id = ? AND name = ? AND language = ?", jsonString(fill), t.WABAID, t.Name, t.Language).Error
 	_ = s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ?", t.WABAID, t.Name, t.Language).First(t).Error
 	v := templateView(t)
 	return &v, nil

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileText, Search } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { useAuth } from "@/auth/AuthContext";
 import { Button, Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import FileUpload, { type PickedFile } from "@/components/whatsapp/FileUpload";
@@ -11,6 +12,16 @@ import { waApi } from "@/whatsapp/api";
 import type { WATemplate, WATemplateComponent } from "@/whatsapp/types";
 
 const CATEGORY: Record<string, string> = { MARKETING: "Pazarlama", UTILITY: "Hizmet", AUTHENTICATION: "Doğrulama" };
+const LAST_KEY = "santral.wa-last-template";
+const FILL_NOTE: Record<string, string> = { customer: "müşterinin adı", agent: "sizin adınız", agent_full: "adınız soyadınız" };
+
+function lastTemplate(): number {
+  try {
+    return Number(localStorage.getItem(LAST_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
 
 function vars(text?: string): number {
   let n = 0;
@@ -44,12 +55,21 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
   const [byLink, setByLink] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [last, setLast] = useState(0);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!open) return;
     setPick(null);
     setError(null);
-    waApi.templates(channelId).then((l) => setList(l.filter((t) => t.status === "APPROVED"))).catch((e) => {
+    const lastId = lastTemplate();
+    setLast(lastId);
+    waApi.templates(channelId).then((l) => {
+      // the last one used comes first and is already chosen
+      const ok = l.filter((t) => t.status === "APPROVED").sort((a, b) => Number(b.id === lastId) - Number(a.id === lastId));
+      setList(ok);
+      if (ok[0]?.id === lastId) setPick(ok[0]);
+    }).catch((e) => {
       setList([]);
       setError(e instanceof ApiError ? e.message : "Şablonlar alınamadı.");
     });
@@ -66,7 +86,16 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
     const bn = vars(parts.body?.text);
     const pre = defaults ?? {};
     setHeader(Array.from({ length: vars(parts.header?.text) }, () => ""));
-    setBody(Array.from({ length: bn }, (_, i) => (i === 0 && pre.musteri ? pre.musteri : "")));
+    const me = user?.name ?? "";
+    const set = (pick.fill ?? []).some(Boolean);
+    setBody(Array.from({ length: bn }, (_, i) => {
+      switch (pick.fill?.[i]) {
+        case "customer": return pre.musteri ?? "";
+        case "agent": return me.split(" ")[0] ?? "";
+        case "agent_full": return me;
+      }
+      return !set && i === 0 && pre.musteri ? pre.musteri : "";
+    }));
     setButtons((parts.buttons?.buttons ?? []).filter((b) => b.type?.toUpperCase() === "URL" && vars(b.url) > 0).map(() => ""));
     setMedia("");
     setHeaderFile(null);
@@ -83,6 +112,11 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
     setError(null);
     try {
       await onSend({ templateId: pick.id, name: pick.name, params: { header, body, buttons, headerMedia: byLink ? media : "", headerFile: byLink ? undefined : headerFile?.id } });
+      try {
+        localStorage.setItem(LAST_KEY, String(pick.id));
+      } catch {
+        // remembering is only a convenience
+      }
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
@@ -113,7 +147,7 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground"><FileText className="size-4" /></span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{t.name}</span>
-                  <span className="block text-[0.65rem] text-muted-foreground">{CATEGORY[t.category] ?? t.category} · {t.language}</span>
+                  <span className="block text-[0.65rem] text-muted-foreground">{t.id === last ? "Son kullandığınız · " : ""}{CATEGORY[t.category] ?? t.category} · {t.language}</span>
                 </span>
               </button>
             ))}
@@ -141,7 +175,7 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
                     </div>
                   )}
                   {header.map((v, i) => <Field key={`h${i}`} label={`Başlık {{${i + 1}}}`} value={v} onChange={(x) => setHeader((a) => a.map((y, j) => (j === i ? x : y)))} />)}
-                  {body.map((v, i) => <Field key={`b${i}`} label={`Metin {{${i + 1}}}`} value={v} onChange={(x) => setBody((a) => a.map((y, j) => (j === i ? x : y)))} />)}
+                  {body.map((v, i) => <Field key={`b${i}`} label={`Metin {{${i + 1}}}${pick.fill?.[i] ? ` · ${FILL_NOTE[pick.fill[i]]}, kendiliğinden doldu` : ""}`} value={v} onChange={(x) => setBody((a) => a.map((y, j) => (j === i ? x : y)))} />)}
                   {buttons.map((v, i) => <Field key={`u${i}`} label={`Düğme linkinin sonu ${i + 1}`} value={v} onChange={(x) => setButtons((a) => a.map((y, j) => (j === i ? x : y)))} />)}
                 </div>
               )}

@@ -1,8 +1,13 @@
 // AssignDialog hands a conversation to a person or a team, with a note
-// that stays in the history.
+// that stays in the history. Only people added to the conversation's number
+// who may write replies can take it; being offline does not matter. Everyone
+// else is listed greyed out with the reason, so it is clear what to fix.
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Users } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Info, Search, Users } from "lucide-react";
+import { useAuth } from "@/auth/AuthContext";
+import { can } from "@/lib/permissions";
 import { ApiError } from "@/api/client";
 import { Button, Modal } from "@/components/ui";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -28,12 +33,16 @@ export default function AssignDialog({ conv, open, onClose }: { conv: WAConversa
     waApi.teams().then(setTeams).catch(() => setTeams([]));
   }, [open]);
 
-  const people = useMemo(() => {
+  const { user } = useAuth();
+  const manageDevices = can(user, "whatsapp.channel_manage");
+  const { people, others } = useMemo(() => {
     const needle = q.trim().toLocaleLowerCase("tr");
-    return agents
-      .filter((a) => a.canReply && a.channelIds.includes(conv.channelId) && a.id !== conv.ticket?.owner?.id)
+    const shown = agents
+      .filter((a) => a.id !== conv.ticket?.owner?.id)
       .filter((a) => !needle || a.name.toLocaleLowerCase("tr").includes(needle))
       .sort((a, b) => Number(b.available && b.online) - Number(a.available && a.online) || a.name.localeCompare(b.name, "tr"));
+    const ok = (a: WAAgent) => a.canReply && a.channelIds.includes(conv.channelId);
+    return { people: shown.filter(ok), others: shown.filter((a) => !ok(a)) };
   }, [agents, q, conv]);
 
   const save = async () => {
@@ -89,7 +98,30 @@ export default function AssignDialog({ conv, open, onClose }: { conv: WAConversa
                 </span>
               </button>
             ))}
-            {people.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground">Bu cihazda aktarılabilecek başka kimse yok.</p>}
+            {people.length === 0 && (
+              <div className="flex gap-2.5 rounded-xl bg-muted/50 px-3 py-3 text-xs text-muted-foreground">
+                <Info className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  {q.trim() ? "Aramaya uyan, aktarılabilecek kimse yok." : `${conv.channelName} numarasında aktarılabilecek başka kimse yok.`}{" "}
+                  Bir kişinin burada çıkması için bu numaraya ekli olması ve WhatsApp'ta cevap yazma yetkisinin olması gerekir. Panelde olmayanlar da listede çıkar, yani sebep çevrimdışı olmak değil.
+                  {manageDevices && <> Kişi eklemek için <Link to="/whatsapp/settings?tab=devices" onClick={onClose} className="font-medium text-primary hover:underline">Ayarlar &gt; Cihazlar</Link>.</>}
+                </p>
+              </div>
+            )}
+            {others.length > 0 && (
+              <>
+                <p className="px-2 pt-3 pb-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Aktarılamayanlar</p>
+                {others.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 opacity-55">
+                    <UserAvatar userId={a.id} name={a.name} hasAvatar={a.hasAvatar} version={a.avatarVersion} className="size-8 grayscale" fallbackClassName="bg-muted text-xs" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{a.name}</span>
+                      <span className="block text-[0.65rem] text-muted-foreground">{!a.channelIds.includes(conv.channelId) ? "Bu numaraya ekli değil" : "Cevap yazma yetkisi yok"}</span>
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
         <label className="block space-y-1">

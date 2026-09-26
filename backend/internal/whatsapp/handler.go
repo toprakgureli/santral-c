@@ -2,8 +2,10 @@ package whatsapp
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -260,13 +262,24 @@ func (h *Handler) Export(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	data, name, err := h.s.ExportConversation(c.UserContext(), uid, id)
+	exp, err := h.s.PrepareExport(c.UserContext(), uid, id)
 	if err != nil {
 		return err
 	}
-	c.Set("Content-Type", "text/plain; charset=utf-8")
-	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", pathEscape(name)))
-	return c.Send(data)
+	c.Set("Content-Type", "application/zip")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", pathEscape(exp.FileName)))
+	// The archive goes out as it is built, so a chat with many files does
+	// not have to fit in memory or wait until the end.
+	ctx := context.WithoutCancel(c.UserContext())
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		defer cancel()
+		if err := exp.Write(ctx, w); err != nil {
+			slog.WarnContext(ctx, "whatsapp export stopped", "conversation", id, "error", err)
+		}
+		_ = w.Flush()
+	})
+	return nil
 }
 
 func serveStream(c *fiber.Ctx, m *MediaStream) error {
@@ -610,6 +623,15 @@ func (r *Router) Routes(g fiber.Router) {
 		return fiber.Map{"count": n}, nil
 	}))
 	a.Post("/templates/media", with(h.TemplateMedia))
+	a.Put("/templates/:id/fill", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		var in struct {
+			Fill []string `json:"fill"`
+		}
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SetTemplateFill(c.UserContext(), uid, id, in.Fill)
+	}))
 	a.Delete("/templates/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.DeleteTemplate(c.UserContext(), uid, id) }))
 
 	// teams, people, quick replies

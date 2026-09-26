@@ -91,6 +91,7 @@ export const waApi = {
   // templates
   templates: (channel: number) => request<WATemplate[]>("/wa/templates" + q({ channel })),
   createTemplate: (body: Record<string, unknown>) => request<WATemplate>("/wa/templates", json("POST", body)),
+  setTemplateFill: (id: number, fill: string[]) => request<WATemplate>(`/wa/templates/${id}/fill`, json("PUT", { fill })),
   syncTemplates: (channelId: number) => request<{ count: number }>("/wa/templates/sync", json("POST", { channelId })),
   templateMedia: (channelId: number, file: File) => {
     const f = new FormData();
@@ -146,7 +147,7 @@ export const waApi = {
     return request<WAFile>("/wa/files", { method: "POST", body: f });
   },
   fileUrl: (id: number) => `/api/v1/wa/files/${id}`,
-  exportChat: (conversationId: number) => download(`/wa/conversations/${conversationId}/export`, `whatsapp_${conversationId}.txt`),
+  exportChat: (conversationId: number) => download(`/wa/conversations/${conversationId}/export`, `whatsapp_${conversationId}.zip`),
 
   // the person's own preferences
   myPrefs: () => request<WAPrefs>("/wa/me"),

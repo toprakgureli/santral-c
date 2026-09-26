@@ -4,8 +4,8 @@
 // one by one.
 
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Bell, BellOff, MessageCircle, Pin, SlidersHorizontal } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Bell, BellOff, MessageCircle, Pin, SlidersHorizontal } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { Card, EmptyState } from "@/components/ui";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
@@ -26,6 +26,7 @@ function until(iso?: string) {
 
 export function Preferences() {
   const wa = useWhatsApp();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [permission, setPermission] = useState(() => (typeof Notification === "undefined" ? "unsupported" : Notification.permission));
   const [, tick] = useState(0);
@@ -50,6 +51,9 @@ export function Preferences() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center gap-3">
+        <button type="button" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))} aria-label="Geri" data-tip="Geri" className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground">
+          <ArrowLeft className="size-4" />
+        </button>
         <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SlidersHorizontal className="size-5" /></span>
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Ayarlarım</h1>

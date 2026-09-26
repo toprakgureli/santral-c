@@ -212,6 +212,7 @@ type WATemplate struct {
 	Components     string    `gorm:"column:components;type:jsonb"`
 	RejectedReason string    `gorm:"column:rejected_reason"`
 	Quality        string    `gorm:"column:quality"`
+	Fill           string    `gorm:"column:fill;type:jsonb;->"`
 	CreatedBy      *uint     `gorm:"column:created_by"`
 	UpdatedAt      time.Time `gorm:"column:updated_at"`
 }
