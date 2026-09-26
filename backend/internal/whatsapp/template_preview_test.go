@@ -55,3 +55,36 @@ func TestSurveyAnswersHelpers(t *testing.T) {
 		t.Errorf("title = %q", got)
 	}
 }
+
+func TestParseTallyThreeQuestions(t *testing.T) {
+	body := []byte(`{"eventType":"FORM_RESPONSE","data":{"fields":[
+		{"key":"q1","label":"ticket","type":"HIDDEN_FIELDS","value":"42"},
+		{"key":"q2","label":"token","type":"HIDDEN_FIELDS","value":"abc"},
+		{"key":"q3","label":"Hızımızdan memnun musunuz?","type":"RATING","value":5},
+		{"key":"q4","label":"İlgimizden memnun musunuz?","type":"LINEAR_SCALE","value":3},
+		{"key":"q5","label":"Sorununuz çözüldü mü?","type":"MULTIPLE_CHOICE","value":["o2"],"options":[{"id":"o1","text":"5 - Çok iyi"},{"id":"o2","text":"Kötü"}]},
+		{"key":"q6","label":"Eklemek istedikleriniz","type":"TEXTAREA","value":"Daha hızlı olun"}
+	]}}`)
+	f, err := parseTally(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.ticket != "42" || f.token != "abc" {
+		t.Errorf("hidden fields: %+v", f)
+	}
+	want := []RatingAnswer{{"Hızımızdan memnun musunuz?", 5}, {"İlgimizden memnun musunuz?", 3}, {"Sorununuz çözüldü mü?", 2}}
+	if len(f.answers) != len(want) {
+		t.Fatalf("answers = %+v", f.answers)
+	}
+	for i := range want {
+		if f.answers[i] != want[i] {
+			t.Errorf("answer %d = %+v, want %+v", i, f.answers[i], want[i])
+		}
+	}
+	if joinTexts(f.texts) != "Daha hızlı olun" {
+		t.Errorf("texts = %+v", f.texts)
+	}
+	if scoreFromText("10") != 0 || scoreFromText("4 - İyi") != 4 || scoreFromText("Çok iyi") != 5 {
+		t.Error("scoreFromText")
+	}
+}

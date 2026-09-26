@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -214,47 +215,15 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 			return errs.Unauthorized("Anket imzası doğrulanamadı.")
 		}
 	}
-	var p struct {
-		EventType string `json:"eventType"`
-		Data      struct {
-			Fields []struct {
-				Key   string          `json:"key"`
-				Label string          `json:"label"`
-				Type  string          `json:"type"`
-				Value json.RawMessage `json:"value"`
-			} `json:"fields"`
-		} `json:"data"`
+	f, err := parseTally(body)
+	if err != nil {
+		return err
 	}
-	if err := json.Unmarshal(body, &p); err != nil {
-		return errs.Invalid("Anket cevabı okunamadı.", err)
-	}
-	var ticket, call, token string
-	var answers []RatingAnswer
-	var texts []RatingText
-	for _, f := range p.Data.Fields {
-		label := strings.ToLower(strings.TrimSpace(f.Label))
-		var str string
-		_ = json.Unmarshal(f.Value, &str)
-		var num float64
-		isNum := json.Unmarshal(f.Value, &num) == nil
-		switch {
-		case label == "ticket":
-			ticket = str
-		case label == "call":
-			call = str
-		case label == "token":
-			token = str
-		case f.Type == "RATING" || f.Type == "LINEAR_SCALE" || (f.Type == "INPUT_NUMBER" && isNum && num >= 1 && num <= 5):
-			// every score question counts on its own, under its title
-			if isNum && num >= 1 {
-				answers = append(answers, RatingAnswer{Question: questionTitle(f.Label, len(answers)+1), Score: min(5, int(num+0.5))})
-			}
-		case f.Type == "TEXTAREA" || f.Type == "INPUT_TEXT":
-			if t := strings.TrimSpace(str); t != "" {
-				texts = append(texts, RatingText{Question: strings.TrimSpace(f.Label), Text: t})
-			}
-		}
-	}
+	ticket, call, token, answers := f.ticket, f.call, f.token, f.answers
+	// What the form sent, without the answers themselves, so a form that
+	// is read wrong can be seen in the server log.
+	slog.InfoContext(ctx, "tally answer", "channel", ch.ID, "fields", f.shape, "questions", len(answers))
+	texts := f.texts
 	score := overallScore(answers)
 	comment := joinTexts(texts)
 	if call != "" {
@@ -280,6 +249,106 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	}
 	s.recordRating(ctx, uint(tid), 0, score, comment, answers...)
 	return nil
+}
+
+// tallyForm is what a Tally answer says: the hidden fields that tie it to
+// a conversation or a call, every score question and every written answer.
+type tallyForm struct {
+	ticket, call, token string
+	answers             []RatingAnswer
+	texts               []RatingText
+	shape               []string // "type: title" of each field, for the log
+}
+
+type tallyField struct {
+	Key     string          `json:"key"`
+	Label   string          `json:"label"`
+	Type    string          `json:"type"`
+	Value   json.RawMessage `json:"value"`
+	Options []struct {
+		ID   string `json:"id"`
+		Text string `json:"text"`
+	} `json:"options"`
+}
+
+// parseTally reads a Tally webhook body. Score questions may be stars
+// (RATING), a scale (LINEAR_SCALE), a number, or a choice whose option
+// reads as a score ("5", "4 - İyi", "Çok iyi").
+func parseTally(body []byte) (*tallyForm, error) {
+	var p struct {
+		Data struct {
+			Fields []tallyField `json:"fields"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return nil, errs.Invalid("Anket cevabı okunamadı.", err)
+	}
+	out := &tallyForm{}
+	for _, f := range p.Data.Fields {
+		label := strings.ToLower(strings.TrimSpace(f.Label))
+		out.shape = append(out.shape, f.Type+": "+questionTitle(f.Label, len(out.shape)+1))
+		var str string
+		_ = json.Unmarshal(f.Value, &str)
+		var num float64
+		isNum := json.Unmarshal(f.Value, &num) == nil
+		score := 0
+		switch f.Type {
+		case "RATING", "LINEAR_SCALE", "INPUT_NUMBER":
+			if isNum && num >= 1 && num <= 5.5 {
+				score = min(5, int(num+0.5))
+			}
+		case "MULTIPLE_CHOICE", "DROPDOWN":
+			var picked []string
+			if json.Unmarshal(f.Value, &picked) != nil && str != "" {
+				picked = []string{str}
+			}
+			for _, id := range picked {
+				for _, o := range f.Options {
+					if o.ID == id {
+						score = scoreFromText(o.Text)
+					}
+				}
+			}
+		}
+		switch {
+		case label == "ticket":
+			out.ticket = str
+		case label == "call":
+			out.call = str
+		case label == "token":
+			out.token = str
+		case score > 0:
+			// every score question counts on its own, under its title
+			out.answers = append(out.answers, RatingAnswer{Question: questionTitle(f.Label, len(out.answers)+1), Score: score})
+		case f.Type == "TEXTAREA" || f.Type == "INPUT_TEXT":
+			if t := strings.TrimSpace(str); t != "" {
+				out.texts = append(out.texts, RatingText{Question: strings.TrimSpace(f.Label), Text: t})
+			}
+		}
+	}
+	return out, nil
+}
+
+// scoreFromText reads a choice as a score: a leading 1-5, or the usual
+// words from "çok kötü" to "çok iyi". 0 when it is not a score.
+func scoreFromText(t string) int {
+	t = strings.ToLower(strings.TrimSpace(t))
+	if t == "" {
+		return 0
+	}
+	if c := t[0]; c >= '1' && c <= '5' && (len(t) == 1 || t[1] < '0' || t[1] > '9') {
+		return int(c - '0')
+	}
+	words := []struct {
+		w string
+		n int
+	}{{"çok kötü", 1}, {"cok kotu", 1}, {"çok iyi", 5}, {"cok iyi", 5}, {"kötü", 2}, {"kotu", 2}, {"orta", 3}, {"idare eder", 3}, {"iyi", 4}, {"mükemmel", 5}}
+	for _, x := range words {
+		if strings.Contains(t, x.w) {
+			return x.n
+		}
+	}
+	return 0
 }
 
 // RatingAnswer is one score question of a survey form and its answer.
