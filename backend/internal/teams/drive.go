@@ -401,6 +401,34 @@ func (d *Drive) StartUpload(ctx context.Context, folder, name, mime string, size
 	return loc, nil
 }
 
+// Put stores bytes as a new file from the server itself and returns its
+// id. Used where the bytes are already here (WhatsApp media).
+func (d *Drive) Put(ctx context.Context, folder, name, mime string, data []byte) (string, error) {
+	session, err := d.StartUpload(ctx, folder, name, mime, int64(len(data)), "")
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, session, bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", mime)
+	resp, err := d.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return "", fmt.Errorf("Drive yükleme yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var f DriveFile
+	if err := json.NewDecoder(resp.Body).Decode(&f); err != nil || f.ID == "" {
+		return "", errors.New("Drive dosya kimliği gelmedi")
+	}
+	return f.ID, nil
+}
+
 // File reads one file's card.
 func (d *Drive) File(ctx context.Context, id string) (*DriveFile, error) {
 	var f DriveFile

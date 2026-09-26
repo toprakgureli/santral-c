@@ -11,6 +11,7 @@ import { APP_NAME } from "@/lib/brand";
 import { useAuth } from "@/auth/AuthContext";
 import VersionInfo from "@/components/layout/VersionInfo";
 import { useTeams } from "@/teams/TeamsContext";
+import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 
 type SidebarProps = {
   open: boolean;
@@ -24,6 +25,7 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
   const { can } = useAuth();
   const groups = visibleMenu(can);
   const teams = useTeams();
+  const wa = useWhatsApp();
   return (
     <aside
       data-collapsed={collapsed}
@@ -65,7 +67,7 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  end={item.path !== "/teams"}
+                  end={item.path !== "/teams" && item.path !== "/whatsapp"}
                   onClick={onNavigate}
                   data-tip={collapsed ? item.label : undefined}
                   data-tip-side="right"
@@ -100,6 +102,11 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
                         <item.icon className="size-4" strokeWidth={isActive ? 2.25 : 2} />
                       </span>
                       <span className={cn("truncate", collapsed && "lg:hidden")}>{item.label}</span>
+                      {item.path === "/whatsapp" && wa.counts.badge > 0 && (
+                        <span className={cn("ml-auto rounded-full px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums leading-none shadow-sm", wa.counts.waiting > 0 ? "bg-destructive text-white" : "bg-emerald-500 text-white", collapsed && "lg:absolute lg:-top-1 lg:-right-1 lg:ml-0")}>
+                          {wa.counts.badge > 99 ? "99+" : wa.counts.badge}
+                        </span>
+                      )}
                       {item.path === "/teams" && teams.unread > 0 && (
                         <span className={cn("ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[0.6rem] font-semibold tabular-nums leading-none text-primary-foreground shadow-sm", collapsed && "lg:absolute lg:-top-1 lg:-right-1 lg:ml-0")}>
                           {teams.unread > 99 ? "99+" : teams.unread}

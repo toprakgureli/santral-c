@@ -23,6 +23,7 @@ const (
 	ModuleSystem      Module = "system"
 	ModuleTeams       Module = "teams"
 	ModuleGames       Module = "games"
+	ModuleWhatsApp    Module = "whatsapp"
 )
 
 // Permission keys.
@@ -81,6 +82,35 @@ const (
 	GamesPlay   Permission = "games.play"
 	GamesManage Permission = "games.manage"
 
+	// WhatsApp. Seeing: own tickets by default; team and all widen it.
+	WAView            Permission = "whatsapp.view"
+	WAViewTeam        Permission = "whatsapp.view_team"
+	WAViewAll         Permission = "whatsapp.view_all"
+	WAReply           Permission = "whatsapp.reply"
+	WANote            Permission = "whatsapp.note"
+	WAPool            Permission = "whatsapp.pool"
+	WAWaiting         Permission = "whatsapp.waiting"
+	WATake            Permission = "whatsapp.take"
+	WAAssign          Permission = "whatsapp.assign"
+	WAResolve         Permission = "whatsapp.resolve"
+	WATemplateSend    Permission = "whatsapp.template_send"
+	WATemplateManage  Permission = "whatsapp.template_manage"
+	WAQuickReply      Permission = "whatsapp.quick_reply_manage"
+	WAAutomation      Permission = "whatsapp.automation_manage"
+	WABotManage       Permission = "whatsapp.bot_manage"
+	WABotPublish      Permission = "whatsapp.bot_publish"
+	WAChannelManage   Permission = "whatsapp.channel_manage"
+	WASetReadReceipts Permission = "whatsapp.setting_read_receipts"
+	WASetGreeting     Permission = "whatsapp.setting_greeting"
+	WASetDistribution Permission = "whatsapp.setting_distribution"
+	WASetGeneral      Permission = "whatsapp.setting_general"
+	WATeamManage      Permission = "whatsapp.team_manage"
+	WAContactManage   Permission = "whatsapp.contact_manage"
+	WACallbacks       Permission = "whatsapp.callbacks"
+	WAReports         Permission = "whatsapp.reports"
+	WAExport          Permission = "whatsapp.export"
+	WABroadcast       Permission = "whatsapp.broadcast"
+
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
@@ -133,6 +163,33 @@ var permissions = []PermissionInfo{
 	{TeamsAdmin, "Tüm Teams gruplarını yönetir"},
 	{GamesPlay, "Teams'teki mini oyunlara katılır"},
 	{GamesManage, "Mini oyun içeriklerini ve ayarlarını yönetir"},
+	{WAView, "WhatsApp gelen kutusunu açar, kendisine atanan sohbetleri görür"},
+	{WAViewTeam, "Ekibindeki sohbetleri de görür"},
+	{WAViewAll, "Tüm cihazlardaki bütün sohbetleri görür"},
+	{WAReply, "Müşteriye mesaj yazar"},
+	{WANote, "Sohbete müşterinin görmediği iç not yazar"},
+	{WAPool, "Havuzdaki sohbetleri görür ve üstlenir"},
+	{WAWaiting, "Cevap Bekleyenler listesini görür ve yardıma katılır"},
+	{WATake, "Başkasına atanmış sohbeti kendi üstüne alır"},
+	{WAAssign, "Sohbeti başka bir kişiye ya da ekibe aktarır"},
+	{WAResolve, "Sohbeti çözüldü olarak kapatır"},
+	{WATemplateSend, "Şablonla mesaj gönderir"},
+	{WATemplateManage, "Şablon oluşturur, düzenler, siler"},
+	{WAQuickReply, "Hazır yanıtları düzenler"},
+	{WAAutomation, "Otomatik mesaj kurallarını düzenler"},
+	{WABotManage, "Chatbot akışlarını düzenler"},
+	{WABotPublish, "Chatbot akışlarını yayına alır"},
+	{WAChannelManage, "WhatsApp cihazı ekler, kimlik bilgilerini girer"},
+	{WASetReadReceipts, "Müşteriye mavi tik gidip gitmeyeceğini ayarlar"},
+	{WASetGreeting, "Karşılama mesajını açar, kapatır ve düzenler"},
+	{WASetDistribution, "Otomatik dağıtımı açar, kapatır ve ayarlar"},
+	{WASetGeneral, "Mesai saatleri, bekleme süresi ve anket gibi cihaz ayarlarını düzenler"},
+	{WATeamManage, "WhatsApp ekiplerini ve cihaz üyelerini düzenler"},
+	{WAContactManage, "Müşteri bilgilerini ve etiketlerini düzenler"},
+	{WACallbacks, "Geri arama taleplerini görür ve kapatır"},
+	{WAReports, "WhatsApp raporlarını görür"},
+	{WAExport, "WhatsApp yazışmalarını dışa aktarır"},
+	{WABroadcast, "Toplu şablon gönderimi yapar"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
@@ -160,6 +217,7 @@ var moduleLabels = map[Module]string{
 	ModuleSystem:      "Sistem",
 	ModuleTeams:       "Teams",
 	ModuleGames:       "Mini Oyunlar",
+	ModuleWhatsApp:    "WhatsApp",
 }
 
 // ModuleLabel returns the human-facing title for a module.

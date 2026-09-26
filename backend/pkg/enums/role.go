@@ -69,6 +69,10 @@ func managerPermissions() []Permission {
 		PerformanceViewRole,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
 		GamesPlay, GamesManage,
+		WAView, WAViewAll, WAReply, WANote, WAPool, WAWaiting, WATake, WAAssign, WAResolve,
+		WATemplateSend, WATemplateManage, WAQuickReply, WAAutomation, WABotManage, WABotPublish,
+		WASetReadReceipts, WASetGreeting, WASetDistribution, WASetGeneral, WATeamManage,
+		WAContactManage, WACallbacks, WAReports, WAExport,
 	}
 }
 
@@ -80,6 +84,7 @@ func technicalTeamPermissions() []Permission {
 		PerformanceViewRole,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite,
 		GamesPlay,
+		WAView, WAReply, WANote, WAPool, WAWaiting, WAResolve, WATemplateSend,
 	}
 }
 
@@ -90,5 +95,6 @@ func salesTeamPermissions() []Permission {
 		PerformanceViewRole,
 		TeamsView, TeamsMemberInvite,
 		GamesPlay,
+		WAView, WAReply, WANote, WAPool, WAWaiting, WAResolve, WATemplateSend,
 	}
 }

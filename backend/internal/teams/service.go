@@ -215,6 +215,19 @@ func (s *Service) Push(ids []uint, event any) {
 	s.hub.Send(ids, event)
 }
 
+// SubscribeRaw opens a live stream for another module (WhatsApp) for a
+// person who may not use the chat. It carries every event addressed to
+// them; the returned function closes it.
+func (s *Service) SubscribeRaw(userID uint) (chan []byte, func()) {
+	ch, _ := s.hub.Subscribe(userID)
+	return ch, func() { s.hub.Unsubscribe(userID, ch) }
+}
+
+// OnlineUsers reports who has the panel open (at least one live stream).
+func (s *Service) OnlineUsers(ids []uint) map[uint]bool {
+	return s.hub.Online(ids)
+}
+
 // ---------------------------------------------------------------- helpers
 
 func (s *Service) actor(ctx context.Context, id uint) (*models.User, error) {

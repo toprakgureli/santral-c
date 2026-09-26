@@ -1,9 +1,10 @@
 import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, MessageCircleMore, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
+import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 
 export type MenuItem = {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: LucideIcon | typeof WhatsAppIcon;
   permission?: string | string[];
 };
 
@@ -24,6 +25,7 @@ export const MENU: MenuGroup[] = [
         permission: ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"],
       },
       { label: "Teams", path: "/teams", icon: MessageCircleMore, permission: "teams.view" },
+      { label: "WhatsApp", path: "/whatsapp", icon: WhatsAppIcon, permission: "whatsapp.view" },
       { label: "Ekip Performansı", path: "/performance", icon: ChartColumn, permission: ["performance.view_role", "performance.view_all"] },
       { label: "Eskalasyonlar", path: "/escalation-search", icon: ClipboardList, permission: ["escalation.list_own", "escalation.list_all", "escalation.search"] },
     ],
@@ -55,6 +57,11 @@ export function visibleMenu(can: (permission: string) => boolean): MenuGroup[] {
 export function titleFor(pathname: string): string {
   if (pathname === "/profile") return "Profilim";
   if (pathname.startsWith("/teams")) return "Teams";
+  if (pathname.startsWith("/whatsapp/settings")) return "WhatsApp Ayarları";
+  if (pathname.startsWith("/whatsapp/bots")) return "Chatbot";
+  if (pathname.startsWith("/whatsapp/reports")) return "WhatsApp Raporları";
+  if (pathname.startsWith("/whatsapp/callbacks")) return "Geri Arama Talepleri";
+  if (pathname.startsWith("/whatsapp")) return "WhatsApp";
   if (pathname.startsWith("/games")) return "Mini Oyunlar";
   if (pathname.startsWith("/profile/")) return "Profil";
   for (const group of MENU) {

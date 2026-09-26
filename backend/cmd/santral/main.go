@@ -34,6 +34,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/teams"
 	"github.com/toprakgureli/santral-c/backend/internal/user"
 	"github.com/toprakgureli/santral-c/backend/internal/verimor"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp"
 	"github.com/toprakgureli/santral-c/backend/migrations"
 	"github.com/toprakgureli/santral-c/backend/pkg/denylist"
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
@@ -119,6 +120,8 @@ func run() error {
 	fiberCfg := fiber.Config{
 		AppName:      configs.Cnf.App.Name,
 		ErrorHandler: middlewares.ErrorHandler,
+		// WhatsApp documents may be up to 100 MB.
+		BodyLimit: 110 << 20,
 	}
 	// Behind nginx/Cloudflare, trust the configured proxies and read the real
 	// client IP from X-Forwarded-For so audit trails and lockouts are accurate.
@@ -162,10 +165,13 @@ func run() error {
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
-	teamsSvc := teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub(), teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, db))
+	drive := teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, db)
+	teamsSvc := teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub(), drive)
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
+	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, configs.Cnf.Auth.Secret)
+	whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard).Routes(api)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -176,6 +182,8 @@ func run() error {
 	teamsSvc.StartSweeper(ctx)
 	// The games' referee clock and the hockey simulation.
 	gamesSvc.StartClock(ctx)
+	// WhatsApp: webhook processing, the send queue and the timed work.
+	waSvc.Start(ctx)
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)

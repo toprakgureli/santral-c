@@ -19,6 +19,17 @@ if (import.meta.env.DEV && window.location.pathname === "/__preview") {
       </StrictMode>,
     );
   });
+} else if (import.meta.env.DEV && window.location.pathname === "/__wa") {
+  void import("./dev/WAPreview").then(({ default: WAPreview }) => {
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <ThemeProvider>
+          <WAPreview />
+          <TooltipLayer />
+        </ThemeProvider>
+      </StrictMode>,
+    );
+  });
 } else
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

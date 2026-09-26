@@ -15,6 +15,11 @@ import { Roles } from "./pages/Roles";
 import { Settings } from "./pages/Settings";
 import { TeamPerformance } from "./pages/TeamPerformance";
 import { Users } from "./pages/Users";
+import { WhatsApp } from "./pages/WhatsApp";
+import { WhatsAppSettings } from "./pages/WhatsAppSettings";
+import { WhatsAppBot } from "./pages/WhatsAppBot";
+import { WhatsAppReports } from "./pages/WhatsAppReports";
+import { WhatsAppCallbacks } from "./pages/WhatsAppCallbacks";
 
 export function App() {
   const { user, loading } = useAuth();
@@ -53,6 +58,12 @@ export function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile/:id" element={<Profile />} />
         <Route path="/audit" element={<Audit />} />
+        <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
+        <Route path="/whatsapp/bots/:id" element={<WhatsAppBot />} />
+        <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
+        <Route path="/whatsapp/callbacks" element={<WhatsAppCallbacks />} />
+        <Route path="/whatsapp" element={<WhatsApp />} />
+        <Route path="/whatsapp/:id" element={<WhatsApp />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

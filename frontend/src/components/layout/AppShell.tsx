@@ -13,6 +13,8 @@ import { ShiftProvider } from "@/shift/ShiftContext";
 import { PresenceProvider } from "@/presence/PresenceContext";
 import { TeamsProvider } from "@/teams/TeamsContext";
 import MentionToasts from "@/components/teams/MentionToasts";
+import WAAlerts from "@/components/whatsapp/WAAlerts";
+import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -48,12 +50,14 @@ export default function AppShell() {
     <SoftphoneProvider>
     <PresenceProvider>
     <TeamsProvider>
+    <WhatsAppProvider>
     <UnloadGuard />
     <BreakOverlay />
     <WelcomeCard />
     <WrapUpCard />
     <UnreachedPrompt />
     <MentionToasts />
+    <WAAlerts />
     <div className="min-h-svh bg-background">
       <Sidebar
         open={menuOpen}
@@ -83,6 +87,7 @@ export default function AppShell() {
       </div>
       <CallBar />
     </div>
+    </WhatsAppProvider>
     </TeamsProvider>
     </PresenceProvider>
     </SoftphoneProvider>
