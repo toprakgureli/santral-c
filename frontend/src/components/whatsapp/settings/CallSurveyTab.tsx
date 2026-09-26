@@ -81,7 +81,10 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
       )}
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <div className="space-y-5">
-          <SwitchRow title="Görüşmeden sonra anket gönder" on={s.enabled} onChange={(v) => up({ enabled: v })} />
+          <SwitchRow title="Görüşmeden sonra anket gönder" sub="Kapattığınız anda sıradaki anketler de gitmez." on={s.enabled} onChange={(v) => up({ enabled: v })} />
+          <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            Anket, sadece rolünde <b className="text-foreground">"Bu kişinin telefon görüşmelerinden sonra müşteriye WhatsApp anketi gider"</b> yetkisi olan kişilerin görüşmelerinden sonra gider. Bir ekip ya da kişi için kapatmak isterseniz Roller sayfasından bu yetkiyi kaldırın.
+          </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField label="Hangi numaradan gitsin">

@@ -13,7 +13,7 @@ import { api, ApiError } from "@/api/client";
 import type { CallLookup } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
-import { can, canAny } from "@/lib/permissions";
+import { canAny } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { CallDisposition, formatClock } from "@/pages/callFormat";
 import { displayNumber } from "@/softphone/dial";
@@ -21,6 +21,8 @@ import { waApi } from "@/whatsapp/api";
 import type { WAConversation } from "@/whatsapp/types";
 import { listTime, STATUS_WORD } from "@/whatsapp/util";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
+import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
+import { whatsappNumber } from "@/lib/whatsapp";
 
 function stamp(iso: string) {
   const d = new Date(iso);
@@ -37,7 +39,7 @@ export default function NumberSearch() {
   const { user } = useAuth();
   const wa = useWhatsApp();
   const callsAllowed = canAny(user, ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own", "call.originate"]);
-  const canWrite = wa.enabled && can(user, "whatsapp.template_send");
+  const { write } = useWhatsAppWrite();
   const allowed = callsAllowed || wa.enabled;
   const [chats, setChats] = useState<WAConversation[] | null>(null);
   const [q, setQ] = useState("");
@@ -164,8 +166,8 @@ export default function NumberSearch() {
               <div className="flex items-center gap-2 px-2 pb-1">
                 <WhatsAppIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span className="flex-1 text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">WhatsApp</span>
-                {canWrite && q.replace(/\D/g, "").length >= 10 && (
-                  <button type="button" onClick={() => { setOpen(false); wa.startChat({ number: q }); }} className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[0.7rem] font-semibold text-white shadow-sm hover:bg-emerald-700">
+                {whatsappNumber(q) && (
+                  <button type="button" onClick={() => { setOpen(false); write(q); }} className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[0.7rem] font-semibold text-white shadow-sm hover:bg-emerald-700">
                     <MessageCirclePlus className="size-3.5" /> WhatsApp'tan yaz
                   </button>
                 )}

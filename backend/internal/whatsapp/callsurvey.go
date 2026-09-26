@@ -217,6 +217,10 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 	if set.Directions != "both" && set.Directions != log.Direction {
 		return
 	}
+	// Only the calls of people whose role allows it get a survey.
+	if u, err := s.users.GetByID(ctx, *log.UserID); err != nil || !u.Can(enums.WASurveyMyCalls) {
+		return
+	}
 	waID, ok := mobileWAID(log.PeerNumber)
 	if !ok {
 		return
@@ -254,6 +258,12 @@ func (s *Service) sendDueCallSurveys(ctx context.Context) {
 		if !set.Enabled {
 			s.finishCallSurvey(ctx, r.ID, "skipped", "Anket kapatıldı", nil, nil)
 			continue
+		}
+		if r.UserID != nil {
+			if u, err := s.users.GetByID(ctx, *r.UserID); err != nil || !u.Can(enums.WASurveyMyCalls) {
+				s.finishCallSurvey(ctx, r.ID, "skipped", "Kişinin anket yetkisi kaldırıldı", nil, nil)
+				continue
+			}
 		}
 		if err := s.sendCallSurvey(ctx, set, r); err != nil {
 			slog.WarnContext(ctx, "call survey could not be sent", "survey", r.ID, "error", err)

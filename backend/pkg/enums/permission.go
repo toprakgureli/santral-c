@@ -112,6 +112,8 @@ const (
 	WAAISuggest       Permission = "whatsapp.ai_suggest"
 	WAAIManage        Permission = "whatsapp.ai_manage"
 	WACallSurvey      Permission = "whatsapp.call_survey_manage"
+	WASurveyMyCalls   Permission = "whatsapp.call_survey_agent"
+	WAWriteBusiness   Permission = "whatsapp.write_business"
 
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
@@ -194,6 +196,8 @@ var permissions = []PermissionInfo{
 	{WAAISuggest, "Yazarken yapay zekâdan cevap önerisi alır"},
 	{WAAIManage, "Yapay zekâ ayarlarını ve anahtarını düzenler"},
 	{WACallSurvey, "Telefon görüşmesinden sonra WhatsApp'tan giden anketi ayarlar"},
+	{WASurveyMyCalls, "Bu kişinin telefon görüşmelerinden sonra müşteriye WhatsApp anketi gider"},
+	{WAWriteBusiness, "\"WhatsApp'tan yaz\" şirket numarasından şablonla gider; yetki yoksa kişinin kendi WhatsApp'ı açılır"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
