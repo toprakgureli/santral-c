@@ -153,11 +153,21 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (p === "/events") return [{ id: 7, channelId: 1, status: "failed", attempts: 8, lastError: "medya indirilemedi: 404", receivedAt: ago(90), summary: "1 mesaj" }];
   if (p === "/ratings") return {
     count: 128, average: 4.21, dist: [6, 9, 14, 38, 61], withComment: 34, total: 3, pageSize: 50,
-    agents: [{ agent: people[0], count: 71, average: 4.5, low: 3 }, { agent: people[1], count: 42, average: 3.9, low: 8 }, { agent: people[2], count: 15, average: 2.8, low: 4 }],
+    agents: [
+      { agent: people[0], count: 71, average: 4.5, low: 3, questions: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", count: 40, average: 4.7 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", count: 40, average: 4.6 }, { question: "Sorununuz tamamen çözüldü mü?", count: 40, average: 4.1 }, { question: "Genel memnuniyet", count: 31, average: 4.5 }] },
+      { agent: people[1], count: 42, average: 3.9, low: 8, questions: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", count: 25, average: 3.1 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", count: 25, average: 4.4 }, { question: "Sorununuz tamamen çözüldü mü?", count: 25, average: 4.0 }, { question: "Genel memnuniyet", count: 17, average: 4.1 }] },
+      { agent: people[2], count: 15, average: 2.8, low: 4, questions: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", count: 9, average: 3.4 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", count: 9, average: 2.2 }, { question: "Sorununuz tamamen çözüldü mü?", count: 9, average: 3.0 }] },
+    ],
+    questions: [
+      { question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", count: 74, average: 4.12, dist: [4, 6, 9, 22, 33] },
+      { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", count: 74, average: 4.41, dist: [2, 3, 7, 18, 44] },
+      { question: "Sorununuz tamamen çözüldü mü?", count: 74, average: 3.86, dist: [6, 7, 10, 24, 27] },
+      { question: "Genel memnuniyet", count: 48, average: 4.3, dist: [1, 2, 4, 15, 26] },
+    ],
     items: [
-      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0] },
-      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412 },
-      { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0] },
+      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0], answers: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", score: 5 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", score: 5 }, { question: "Sorununuz tamamen çözüldü mü?", score: 4 }] },
+      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412, answers: [{ question: "Genel memnuniyet", score: 2 }] },
+      { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0], answers: [{ question: "Genel memnuniyet", score: 4 }] },
     ],
   };
   if (p === "/reports") return report;

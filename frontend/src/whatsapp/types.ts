@@ -569,6 +569,15 @@ export interface WARating {
   channel?: string;
   agent?: WAPerson;
   talkSeconds?: number;
+  // each question of the form; a one-question survey is "Genel memnuniyet"
+  answers: { question: string; score: number }[];
+}
+
+export interface WARatingQuestion {
+  question: string;
+  count: number;
+  average: number;
+  dist: number[];
 }
 
 export interface WARatings {
@@ -576,7 +585,8 @@ export interface WARatings {
   average: number;
   dist: number[]; // how many 1s, 2s ... 5s
   withComment: number;
-  agents: { agent: WAPerson; count: number; average: number; low: number }[];
+  agents: { agent: WAPerson; count: number; average: number; low: number; questions: { question: string; count: number; average: number }[] }[];
+  questions: WARatingQuestion[];
   items: WARating[];
   total: number;
   pageSize: number;

@@ -1,11 +1,13 @@
 // WhatsAppRatings ("Puanlamalar"): every score customers gave, at the end
 // of a WhatsApp conversation or after a phone call, with who they rated,
-// what they wrote and a way into the conversation. Totals, the spread of
-// scores and each person's average sit on top; everything filters.
+// what they wrote and a way into the conversation. Totals and the spread
+// of scores sit on top, then each survey question on its own, then a table
+// of each person by question, so it shows where each one should improve.
+// Everything filters.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, UsersRound, X } from "lucide-react";
+import { ArrowLeft, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, TrendingDown, UsersRound, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import RangePicker, { useRange } from "@/components/RangePicker";
 import { Button, Card } from "@/components/ui";
@@ -19,6 +21,17 @@ import { prettyPhone } from "@/whatsapp/util";
 const SCORE_TONE = ["", "bg-destructive/12 text-destructive", "bg-destructive/10 text-destructive", "bg-warning/14 text-warning", "bg-success/12 text-success", "bg-success/15 text-success"];
 const SCORE_BAR = ["", "bg-destructive", "bg-destructive/70", "bg-warning", "bg-success/70", "bg-success"];
 const SCORE_WORD = ["", "Çok kötü", "Kötü", "Orta", "İyi", "Çok iyi"];
+
+const SINGLE = "Genel memnuniyet";
+
+// avgTone colours an average: green when good, amber in the middle, red
+// when it needs work.
+function avgTone(v: number): string {
+  if (v >= 4.5) return "bg-success/15 text-success";
+  if (v >= 4) return "bg-success/10 text-success";
+  if (v >= 3) return "bg-warning/14 text-warning";
+  return "bg-destructive/12 text-destructive";
+}
 
 function talk(sec?: number): string {
   if (!sec) return "";
@@ -156,27 +169,10 @@ export function WhatsAppRatings() {
         </Card>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[18rem_1fr]">
-        <Card title="Kişiler" icon={UsersRound}>
-          {!data || data.agents.length === 0 ? <p className="py-3 text-center text-sm text-muted-foreground">Puanlanan kimse yok.</p> : (
-            <div className="-mx-1 space-y-0.5">
-              {data.agents.map((a) => {
-                const on = agent === a.agent.id;
-                return (
-                  <button key={a.agent.id} type="button" onClick={() => setAgent(on ? 0 : a.agent.id)} className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors", on ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent/60")}>
-                    <UserAvatar userId={a.agent.id} name={a.agent.name} hasAvatar={a.agent.hasAvatar} version={a.agent.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-[0.65rem] text-primary" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{a.agent.name}</span>
-                      <span className="block text-[0.68rem] text-muted-foreground">{a.count} puan{a.low > 0 ? ` · ${a.low} düşük` : ""}</span>
-                    </span>
-                    <span className={cn("flex items-center gap-1 text-sm font-semibold tabular-nums", a.average < 3 ? "text-destructive" : a.average < 4 ? "text-warning" : "text-foreground")}><Star className="size-3.5 fill-warning text-warning" />{a.average.toFixed(1)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+      {data && data.questions.length > 0 && <Questions questions={data.questions} />}
+      {data && data.agents.length > 0 && <People data={data} agent={agent} onAgent={setAgent} />}
 
+      <div>
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-muted-foreground">
             <span>{data ? `${data.total} puan` : "…"}</span>
@@ -232,6 +228,16 @@ function RatingRow({ r }: { r: WARating }) {
             </span>
           )}
         </div>
+        {r.answers.length > 0 && !(r.answers.length === 1 && r.answers[0].question === SINGLE) && (
+          <div className="flex flex-wrap gap-1.5">
+            {r.answers.map((a, i) => (
+              <span key={i} data-tip={a.question} className={cn("flex items-center gap-1.5 rounded-lg px-2 py-1 text-[0.72rem]", avgTone(a.score))}>
+                <span className="max-w-48 truncate font-medium">{a.question}</span>
+                <b className="tabular-nums">{a.score}</b>
+              </span>
+            ))}
+          </div>
+        )}
         {r.comment && <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">“{r.comment}”</p>}
       </div>
       {r.conversationId && (
@@ -254,4 +260,91 @@ function Figure({ icon, tone, label, value, sub, onClick, active }: { icon: type
   );
   const cls = cn("flex items-start gap-3 rounded-2xl bg-card p-4 shadow-sm ring-1 transition-colors", active ? "ring-primary/40 bg-primary/5" : "ring-border/60");
   return onClick ? <button type="button" onClick={onClick} className={cn(cls, "hover:bg-accent/40")} data-tip={active ? "Filtreyi kaldır" : "Sadece bunları göster"}>{body}</button> : <div className={cls}>{body}</div>;
+}
+
+// Questions shows each survey question on its own: its average, how many
+// answered and how the scores spread. The weakest one is marked.
+function Questions({ questions }: { questions: WARatings["questions"] }) {
+  const weakest = questions.length > 1 ? questions.reduce((a, b) => (b.average < a.average ? b : a)) : null;
+  return (
+    <Card title="Sorulara göre" icon={ListChecks}>
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">Anket formundaki her soru ayrı ayrı. Tek soruluk anketler (WhatsApp içindeki puan listesi, görüşme sonrası düğmeler) "{SINGLE}" altında toplanır.</p>
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        {questions.map((q) => {
+          const total = Math.max(1, q.dist.reduce((a, b) => a + b, 0));
+          const weak = weakest?.question === q.question;
+          return (
+            <div key={q.question} className={cn("rounded-2xl p-3.5 ring-1", weak ? "bg-destructive/5 ring-destructive/30" : "bg-muted/25 ring-border/50")}>
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 text-sm leading-snug font-medium">{q.question}</p>
+                <span className={cn("flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-lg font-bold tabular-nums", avgTone(q.average))}>{q.average.toFixed(2)}</span>
+              </div>
+              <div className="mt-2.5 flex h-2 overflow-hidden rounded-full bg-muted" data-tip={q.dist.map((v, i) => `${i + 1}: ${v}`).join(" · ")}>
+                {[4, 3, 2, 1, 0].map((i) => q.dist[i] > 0 && <span key={i} className={SCORE_BAR[i + 1]} style={{ width: `${(q.dist[i] / total) * 100}%` }} />)}
+              </div>
+              <p className="mt-1.5 flex items-center gap-2 text-[0.7rem] text-muted-foreground">
+                <span>{q.count} cevap</span>
+                {weak && <span className="flex items-center gap-1 font-semibold text-destructive"><TrendingDown className="size-3" /> En çok gelişmesi gereken alan</span>}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// People is each person by question: their average on every question,
+// the weakest marked, so it is clear what each one should work on.
+function People({ data, agent, onAgent }: { data: WARatings; agent: number; onAgent: (id: number) => void }) {
+  const cols = data.questions.map((q) => q.question);
+  const multi = cols.length > 1;
+  return (
+    <Card title="Kişilere göre" icon={UsersRound}>
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">{multi ? "Her kişinin her sorudaki ortalaması. Çerçeveli olan, o kişinin en zayıf alanı. Bir kişiye tıklayınca aşağıda sadece onun puanları kalır." : "Bir kişiye tıklayınca aşağıda sadece onun puanları kalır."}</p>
+      <div className="-mx-4 overflow-x-auto px-4">
+        <table className="w-full min-w-[36rem] border-separate border-spacing-y-1 text-sm">
+          <thead>
+            <tr className="text-left text-[0.7rem] text-muted-foreground">
+              <th className="px-2 pb-1 font-medium">Kişi</th>
+              <th className="px-2 pb-1 text-center font-medium">Genel</th>
+              {multi && cols.map((c) => <th key={c} className="max-w-40 px-2 pb-1 text-center font-medium" title={c}><span className="line-clamp-2">{c}</span></th>)}
+              <th className="px-2 pb-1 text-right font-medium">Puan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.agents.map((a) => {
+              const on = agent === a.agent.id;
+              const byQ = new Map(a.questions.map((q) => [q.question, q]));
+              const answered = a.questions.filter((q) => q.count > 0);
+              const weakest = multi && answered.length > 1 ? answered.reduce((x, y) => (y.average < x.average ? y : x)).question : "";
+              return (
+                <tr key={a.agent.id} onClick={() => onAgent(on ? 0 : a.agent.id)} className={cn("cursor-pointer transition-colors [&>td]:py-1.5 [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl", on ? "[&>td]:bg-primary/10" : "hover:[&>td]:bg-accent/50")}>
+                  <td className="px-2">
+                    <span className="flex items-center gap-2.5">
+                      <UserAvatar userId={a.agent.id} name={a.agent.name} hasAvatar={a.agent.hasAvatar} version={a.agent.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-[0.65rem] text-primary" />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{a.agent.name}</span>
+                        {weakest && <span className="block truncate text-[0.68rem] text-destructive">Gelişim alanı: {weakest}</span>}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-2 text-center"><span className={cn("inline-block min-w-12 rounded-lg px-2 py-1 font-bold tabular-nums", avgTone(a.average))}>{a.average.toFixed(1)}</span></td>
+                  {multi && cols.map((c) => {
+                    const q = byQ.get(c);
+                    return (
+                      <td key={c} className="px-2 text-center">
+                        {q ? <span data-tip={`${q.count} cevap`} className={cn("inline-block min-w-12 rounded-lg px-2 py-1 font-semibold tabular-nums", avgTone(q.average), weakest === c && "ring-2 ring-destructive/50")}>{q.average.toFixed(1)}</span> : <span className="text-muted-foreground/50">–</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 text-right text-xs text-muted-foreground tabular-nums">{a.count}{a.low > 0 && <span className="ml-1 text-destructive">({a.low} düşük)</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
 }

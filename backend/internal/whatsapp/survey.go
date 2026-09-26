@@ -160,25 +160,28 @@ func (s *Service) handleSurveyReply(ctx context.Context, ch *models.WAChannel, c
 
 // recordRating stores a score on its ticket and tells the managers when
 // it is low.
-func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uint, score int, comment string) {
+func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uint, score int, comment string, answers ...RatingAnswer) {
 	var t models.WATicket
 	if s.db.WithContext(ctx).First(&t, ticketID).Error != nil || t.ConversationID != conversationID && conversationID != 0 {
 		return
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rated_at = now() WHERE id = ?", score, strings.TrimSpace(comment), ticketID).Error; err != nil {
+	if answers == nil {
+		answers = []RatingAnswer{}
+	}
+	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", score, strings.TrimSpace(comment), jsonString(answers), ticketID).Error; err != nil {
 		return
 	}
 	conv, _, err := s.loadConv(ctx, t.ConversationID)
 	if err != nil {
 		return
 	}
-	line := fmt.Sprintf("Müşteri görüşmeyi %d/5 puanladı.", score)
+	line := fmt.Sprintf("Müşteri görüşmeyi %d/5 puanladı%s.", score, answersText(answers))
 	if c := strings.TrimSpace(comment); c != "" {
 		line += " Yorumu: " + c
 	}
 	s.event(ctx, nil, conv, ticketID, 0, line)
 	if ch, err := s.channel(ctx, t.ChannelID); err == nil {
-		if below := parseSettings(ch.Settings).Survey.AlertBelow; below > 0 && score <= below {
+		if below := parseSettings(ch.Settings).Survey.AlertBelow; below > 0 && lowestScore(score, answers) <= below {
 			viewers, _ := s.loadViewers(ctx)
 			var ids []uint
 			for id, v := range viewers {
@@ -189,7 +192,7 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 			if t.OwnerID != nil {
 				ids = append(ids, *t.OwnerID)
 			}
-			s.push.Push(ids, Event{Type: "wa.alert", ConversationID: conv.ID, Text: fmt.Sprintf("#%d numaralı sohbet %d/5 puan aldı.", t.Number, score), Level: "warning"})
+			s.push.Push(ids, Event{Type: "wa.alert", ConversationID: conv.ID, Text: fmt.Sprintf("#%d numaralı sohbet %d/5 puan aldı%s.", t.Number, score, answersText(answers)), Level: "warning"})
 		}
 	}
 	s.publish(ctx, conv.ID, nil, nil)
@@ -225,8 +228,9 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if err := json.Unmarshal(body, &p); err != nil {
 		return errs.Invalid("Anket cevabı okunamadı.", err)
 	}
-	var ticket, call, token, comment string
-	score := 0
+	var ticket, call, token string
+	var answers []RatingAnswer
+	var texts []RatingText
 	for _, f := range p.Data.Fields {
 		label := strings.ToLower(strings.TrimSpace(f.Label))
 		var str string
@@ -240,27 +244,27 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 			call = str
 		case label == "token":
 			token = str
-		case f.Type == "RATING" || f.Type == "LINEAR_SCALE" || (f.Type == "INPUT_NUMBER" && score == 0):
-			if isNum {
-				score = int(num)
+		case f.Type == "RATING" || f.Type == "LINEAR_SCALE" || (f.Type == "INPUT_NUMBER" && isNum && num >= 1 && num <= 5):
+			// every score question counts on its own, under its title
+			if isNum && num >= 1 {
+				answers = append(answers, RatingAnswer{Question: questionTitle(f.Label, len(answers)+1), Score: min(5, int(num+0.5))})
 			}
 		case f.Type == "TEXTAREA" || f.Type == "INPUT_TEXT":
-			if str != "" && comment == "" {
-				comment = str
+			if t := strings.TrimSpace(str); t != "" {
+				texts = append(texts, RatingText{Question: strings.TrimSpace(f.Label), Text: t})
 			}
 		}
 	}
+	score := overallScore(answers)
+	comment := joinTexts(texts)
 	if call != "" {
 		// the survey after a phone call
 		cid, err := strconv.Atoi(call)
 		if err != nil || cid <= 0 || !hmac.Equal([]byte(token), []byte(s.callSurveyToken(uint(cid)))) {
 			return errs.Unauthorized("Anket bağlantısı bu görüşmeye ait değil.")
 		}
-		if score > 5 {
-			score = 5
-		}
 		if score >= 1 {
-			s.recordCallSurvey(ctx, uint(cid), "", score, comment)
+			s.recordCallSurvey(ctx, uint(cid), "", score, comment, answers...)
 		}
 		return nil
 	}
@@ -274,9 +278,86 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if score < 1 {
 		return nil
 	}
-	if score > 5 {
-		score = 5
-	}
-	s.recordRating(ctx, uint(tid), 0, score, comment)
+	s.recordRating(ctx, uint(tid), 0, score, comment, answers...)
 	return nil
+}
+
+// RatingAnswer is one score question of a survey form and its answer.
+type RatingAnswer struct {
+	Question string `json:"question"`
+	Score    int    `json:"score"`
+}
+
+// RatingText is one written answer of a survey form.
+type RatingText struct {
+	Question string
+	Text     string
+}
+
+// questionTitle is a question's title as the form gave it, trimmed to fit.
+func questionTitle(label string, n int) string {
+	t := strings.Join(strings.Fields(label), " ")
+	if t == "" {
+		return fmt.Sprintf("Soru %d", n)
+	}
+	if r := []rune(t); len(r) > 80 {
+		t = string(r[:80]) + "…"
+	}
+	return t
+}
+
+// overallScore is the rounded average of the answers, 0 when none.
+func overallScore(answers []RatingAnswer) int {
+	if len(answers) == 0 {
+		return 0
+	}
+	sum := 0
+	for _, a := range answers {
+		sum += a.Score
+	}
+	return int(float64(sum)/float64(len(answers)) + 0.5)
+}
+
+// lowestScore is the weakest answer, or the overall score when there are
+// no separate questions; alerts go by it, so one bad area is not hidden
+// by good ones.
+func lowestScore(score int, answers []RatingAnswer) int {
+	low := score
+	for _, a := range answers {
+		if a.Score < low {
+			low = a.Score
+		}
+	}
+	return low
+}
+
+func answersText(answers []RatingAnswer) string {
+	if len(answers) < 2 {
+		return ""
+	}
+	parts := make([]string, len(answers))
+	for i, a := range answers {
+		parts[i] = fmt.Sprintf("%s %d", a.Question, a.Score)
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
+}
+
+// joinTexts puts written answers together; with several, each under its
+// question.
+func joinTexts(texts []RatingText) string {
+	switch len(texts) {
+	case 0:
+		return ""
+	case 1:
+		return texts[0].Text
+	}
+	lines := make([]string, len(texts))
+	for i, t := range texts {
+		if t.Question != "" {
+			lines[i] = t.Question + ": " + t.Text
+		} else {
+			lines[i] = t.Text
+		}
+	}
+	return strings.Join(lines, "\n")
 }

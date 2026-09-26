@@ -398,7 +398,7 @@ func callSurveyAnswer(m *hookMessage) (uint, int, bool) {
 }
 
 // recordCallSurvey stores a score for a call, from a button or the form.
-func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, score int, comment string) (*models.WACallSurvey, bool) {
+func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, score int, comment string, answers ...RatingAnswer) (*models.WACallSurvey, bool) {
 	var r models.WACallSurvey
 	if s.db.WithContext(ctx).First(&r, id).Error != nil {
 		return nil, false
@@ -411,11 +411,11 @@ func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, sc
 	}
 	first := r.AnsweredAt == nil
 	if err := s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ?", id).
-		Updates(map[string]any{"status": "answered", "score": score, "comment": strings.TrimSpace(comment), "answered_at": time.Now()}).Error; err != nil {
+		Updates(map[string]any{"status": "answered", "score": score, "comment": strings.TrimSpace(comment), "answers": jsonString(append([]RatingAnswer{}, answers...)), "answered_at": time.Now()}).Error; err != nil {
 		return nil, false
 	}
 	set := s.callSurveySettings(ctx)
-	if first && set.AlertBelow > 0 && score <= set.AlertBelow {
+	if first && set.AlertBelow > 0 && lowestScore(score, answers) <= set.AlertBelow {
 		viewers, _ := s.loadViewers(ctx)
 		var ids []uint
 		for uid, v := range viewers {
@@ -429,7 +429,7 @@ func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, sc
 				agent = u.Name
 			}
 		}
-		text := fmt.Sprintf("%s, +%s ile yaptığı telefon görüşmesi için %d/5 puan aldı.", agent, r.WAID, score)
+		text := fmt.Sprintf("%s, +%s ile yaptığı telefon görüşmesi için %d/5 puan aldı%s.", agent, r.WAID, score, answersText(answers))
 		if c := strings.TrimSpace(comment); c != "" {
 			text += " Yorum: " + c
 		}

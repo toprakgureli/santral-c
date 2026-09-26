@@ -149,7 +149,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
           )}
         </div>
         {limited && (
-          <p className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-[0.72rem] leading-snug text-warning" data-tip="Sadece eklendiğin numaraların sohbetleri görünür. Tüm talepleri görmek için yöneticinin rolüne &quot;Tüm cihazlardaki bütün sohbetleri görür&quot; yetkisini vermesi gerekir.">
+          <p className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-[0.72rem] leading-snug text-warning">
             <EyeOff className="mt-px size-3.5 shrink-0" />
             <span><b className="font-semibold">Tüm talepleri görme yetkin yok.</b> Sadece {limited} görüyorsun.</span>
           </p>

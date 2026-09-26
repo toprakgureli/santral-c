@@ -36,3 +36,22 @@ func TestMenuPreviewIsTheQuestion(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestSurveyAnswersHelpers(t *testing.T) {
+	answers := []RatingAnswer{{Question: "Hız", Score: 5}, {Question: "İlgi", Score: 4}, {Question: "Çözüm", Score: 2}}
+	if got := overallScore(answers); got != 4 {
+		t.Errorf("overall = %d, want 4", got)
+	}
+	if got := lowestScore(4, answers); got != 2 {
+		t.Errorf("lowest = %d, want 2", got)
+	}
+	if got := answersText(answers); got != " (Hız 5, İlgi 4, Çözüm 2)" {
+		t.Errorf("text = %q", got)
+	}
+	if got := joinTexts([]RatingText{{Question: "Öneriniz", Text: "Daha hızlı olun"}, {Question: "Not", Text: "Teşekkürler"}}); got != "Öneriniz: Daha hızlı olun\nNot: Teşekkürler" {
+		t.Errorf("texts = %q", got)
+	}
+	if got := questionTitle("  ", 2); got != "Soru 2" {
+		t.Errorf("title = %q", got)
+	}
+}
