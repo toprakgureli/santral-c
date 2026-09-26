@@ -790,7 +790,29 @@ func (r *Router) Routes(g fiber.Router) {
 	a.Post("/callbacks/:id/done", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.DoneCallback(c.UserContext(), uid, id) }))
 	a.Get("/events", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.Events(c.UserContext(), uid) }))
 	a.Post("/events/:id/retry", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.RetryEvent(c.UserContext(), uid, id) }))
+	a.Get("/ratings", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		return s.Ratings(c.UserContext(), uid, ratingFilter(c))
+	}))
+	a.Get("/ratings/export", func(c *fiber.Ctx) error {
+		uid, err := actor(c)
+		if err != nil {
+			return err
+		}
+		data, name, err := s.RatingsCSV(c.UserContext(), uid, ratingFilter(c))
+		if err != nil {
+			return err
+		}
+		c.Set("Content-Type", "text/csv; charset=utf-8")
+		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", pathEscape(name)))
+		return c.Send(data)
+	})
 	a.Get("/reports", with(func(c *fiber.Ctx, uid uint) (any, error) {
 		return s.Reports(c.UserContext(), uid, c.Query("from"), c.Query("to"), qid(c, "channel"))
 	}))
+}
+
+func ratingFilter(c *fiber.Ctx) RatingFilter {
+	page, _ := strconv.Atoi(c.Query("page"))
+	return RatingFilter{From: c.Query("from"), To: c.Query("to"), ChannelID: qid(c, "channel"), AgentID: qid(c, "agent"),
+		Source: c.Query("source"), Score: c.Query("score"), Comment: c.Query("comment") == "1", Q: c.Query("q"), Page: page}
 }

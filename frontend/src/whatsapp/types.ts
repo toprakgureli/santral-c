@@ -158,7 +158,7 @@ export interface WASettings {
   distribution: { enabled: boolean; maxOpen: number };
   waitingMinutes: number;
   hours: { enabled: boolean; days: WADayOpen[]; holidays: string[] };
-  survey: { mode: "off" | "tally" | "native"; url: string; text: string; template: string; templateLang: string; alertBelow: number };
+  survey: { mode: "off" | "tally" | "native"; url: string; text: string; template: string; templateLang: string; alertBelow: number; repeatHours: number };
   botTimeoutMinutes: number;
   humanKeywords: string[];
   optOutKeywords: string[];
@@ -554,3 +554,42 @@ export interface WAPrefs {
 }
 
 export type WAMute = "1h" | "8h" | "1d" | "1w" | "always" | "off";
+
+// One score a customer gave: at the end of a WhatsApp conversation, or in
+// the survey after a phone call.
+export interface WARating {
+  source: "chat" | "call";
+  at: string;
+  score: number;
+  comment?: string;
+  customer: string;
+  phone: string;
+  conversationId?: number;
+  ticketNumber?: number;
+  channel?: string;
+  agent?: WAPerson;
+  talkSeconds?: number;
+}
+
+export interface WARatings {
+  count: number;
+  average: number;
+  dist: number[]; // how many 1s, 2s ... 5s
+  withComment: number;
+  agents: { agent: WAPerson; count: number; average: number; low: number }[];
+  items: WARating[];
+  total: number;
+  pageSize: number;
+}
+
+export interface WARatingFilter {
+  from: string;
+  to: string;
+  channel?: number;
+  agent?: number;
+  source?: "" | "chat" | "call";
+  score?: string;
+  comment?: boolean;
+  q?: string;
+  page?: number;
+}

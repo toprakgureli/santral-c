@@ -61,6 +61,7 @@ export function titleFor(pathname: string): string {
   if (pathname.startsWith("/whatsapp/settings")) return "WhatsApp Ayarları";
   if (pathname.startsWith("/whatsapp/bots")) return "Chatbot";
   if (pathname.startsWith("/whatsapp/reports")) return "WhatsApp Raporları";
+  if (pathname.startsWith("/whatsapp/ratings")) return "Puanlamalar";
   if (pathname.startsWith("/whatsapp/callbacks")) return "Geri Arama Talepleri";
   if (pathname.startsWith("/whatsapp")) return "WhatsApp";
   if (pathname.startsWith("/games")) return "Mini Oyunlar";

@@ -29,9 +29,19 @@ func (s *Service) surveyToken(ticketID uint) string {
 }
 
 // surveyDue says whether a resolved ticket should get the survey: once per
-// resolution. If the survey already went out and the customer has not
-// written since (other than answering it), it is not sent again.
-func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t *models.WATicket) bool {
+// resolution, and not again to a customer who got one in the last
+// RepeatHours hours (on any conversation). If the survey already went out
+// and the customer has not written since (other than answering it), it is
+// not sent again either.
+func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t *models.WATicket, repeatHours int) bool {
+	if repeatHours > 0 {
+		var recent int64
+		_ = s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE contact_id = ? AND survey_sent_at > now() - make_interval(hours => ?)",
+			t.ContactID, repeatHours).Scan(&recent).Error
+		if recent > 0 {
+			return false
+		}
+	}
 	if t.SurveySentAt == nil {
 		return true
 	}
@@ -44,7 +54,7 @@ func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t 
 // sendSurvey sends the device's survey for a resolved ticket.
 func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, agentID uint) {
 	set := parseSettings(ch.Settings).Survey
-	if !s.surveyDue(ctx, conv, t) {
+	if !s.surveyDue(ctx, conv, t, set.RepeatHours) {
 		return
 	}
 	switch set.Mode {

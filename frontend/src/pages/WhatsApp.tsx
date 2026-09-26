@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { BarChart3, BellOff, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone } from "lucide-react";
+import { BarChart3, BellOff, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import ChatPane from "@/components/whatsapp/ChatPane";
@@ -159,6 +159,7 @@ export function WhatsApp() {
       <HeadMenu>
         {can(user, "whatsapp.callbacks") && <MenuLink to="/whatsapp/callbacks" icon={PhoneCall} label="Geri arama talepleri" />}
         {can(user, "whatsapp.reports") && <MenuLink to="/whatsapp/reports" icon={BarChart3} label="Raporlar" />}
+        {can(user, "whatsapp.ratings") && <MenuLink to="/whatsapp/ratings" icon={Star} label="Puanlamalar" />}
         {canSettings && <MenuLink to="/whatsapp/settings" icon={Settings2} label="WhatsApp ayarları" />}
         <MenuLink to="/preferences" icon={SlidersHorizontal} label="Ayarlarım" />
       </HeadMenu>

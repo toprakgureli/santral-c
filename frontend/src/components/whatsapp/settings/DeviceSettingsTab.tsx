@@ -184,6 +184,17 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
               <FormField label="24 saat geçtiyse bu şablonla gönder">
                 <select className={inputCls} value={s.survey.template ? s.survey.template + "|" + s.survey.templateLang : ""} onChange={(e) => up((d) => { const [n, l] = e.target.value.split("|"); d.survey.template = n ?? ""; d.survey.templateLang = l ?? ""; })} disabled={!pGen}>{tplOptions}</select>
               </FormField>
+              <FormField label="Aynı müşteriye tekrar anket gönderme" hint={s.survey.repeatHours > 0 ? `Anket giden müşteriye ${s.survey.repeatHours} saat boyunca yeni anket gitmez; bu sürede kaç sohbeti çözülürse çözülsün. 0 yazarsanız her çözülüşte gider.` : "Her çözülüşte anket gider (müşteri anketten sonra hiç yazmadıysa yine gitmez)."}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="number" min={0} max={2160} className={cn(inputCls, "w-24")} value={s.survey.repeatHours} onChange={(e) => up((d) => { d.survey.repeatHours = Math.min(2160, Math.max(0, Math.round(Number(e.target.value) || 0))); })} disabled={!pGen} />
+                  <span className="text-sm text-muted-foreground">saat boyunca</span>
+                  <span className="flex gap-1">
+                    {([[0, "Her seferinde"], [24, "1 gün"], [72, "3 gün"], [168, "1 hafta"]] as const).map(([h, l]) => (
+                      <button key={h} type="button" disabled={!pGen} onClick={() => up((d) => { d.survey.repeatHours = h; })} className={cn("h-8 rounded-full px-3 text-xs font-medium ring-1 transition-colors", s.survey.repeatHours === h ? "bg-primary/10 text-primary ring-primary/30" : "text-muted-foreground ring-border/60 hover:bg-accent")}>{l}</button>
+                    ))}
+                  </span>
+                </div>
+              </FormField>
               <FormField label="Bu puanın altında yöneticilere haber ver" hint="0 yazarsanız haber verilmez.">
                 <input type="number" min={0} max={5} className={cn(inputCls, "w-24")} value={s.survey.alertBelow} onChange={(e) => up((d) => { d.survey.alertBelow = Math.min(5, Math.max(0, Number(e.target.value) || 0)); })} disabled={!pGen} />
               </FormField>

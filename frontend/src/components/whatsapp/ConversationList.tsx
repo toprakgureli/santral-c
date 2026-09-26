@@ -5,7 +5,7 @@
 // to mark as read or unread, pin, mute or copy the number.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BellOff, Bot, Check, ChevronRight, Copy, Hand, Hourglass, Inbox, MailOpen, Mail, Pin, PinOff, Search, Bell, X } from "lucide-react";
+import { BellOff, Bot, Check, ChevronRight, Copy, EyeOff, Hand, Hourglass, Inbox, MailOpen, Mail, Pin, PinOff, Search, Bell, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
@@ -43,6 +43,7 @@ export const MUTES: { key: WAMute; label: string }[] = [
 
 export default function ConversationList({ channels, activeId, onOpen, bucket, onBucket, header }: { channels: WAChannel[]; activeId: number | null; onOpen: (id: number) => void; bucket: Bucket; onBucket: (b: Bucket) => void; header?: React.ReactNode }) {
   const wa = useWhatsApp();
+  const { user } = useAuth();
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -98,6 +99,17 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
       });
   }, [wa, bucket, channel, q, older]);
 
+  // Without "whatsapp.view_all" the inbox is only part of the picture; say
+  // plainly which part.
+  const limited = useMemo(() => {
+    if (can(user, "whatsapp.view_all")) return "";
+    const parts = ["sana ait"];
+    if (can(user, "whatsapp.view_team")) parts.push("ekibinin");
+    if (can(user, "whatsapp.pool")) parts.push("havuzdaki");
+    if (can(user, "whatsapp.waiting")) parts.push("cevap bekleyen");
+    return `${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ve ${parts[parts.length - 1]}` : parts[0]} sohbetleri`;
+  }, [user]);
+
   const loadOlder = async () => {
     const last = list[list.length - 1];
     if (!last?.last) return;
@@ -136,6 +148,12 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
             </select>
           )}
         </div>
+        {limited && (
+          <p className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-[0.72rem] leading-snug text-warning" data-tip="Sadece eklendiğin numaraların sohbetleri görünür. Tüm talepleri görmek için yöneticinin rolüne &quot;Tüm cihazlardaki bütün sohbetleri görür&quot; yetkisini vermesi gerekir.">
+            <EyeOff className="mt-px size-3.5 shrink-0" />
+            <span><b className="font-semibold">Tüm talepleri görme yetkin yok.</b> Sadece {limited} görüyorsun.</span>
+          </p>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
@@ -230,11 +248,19 @@ function Handler({ c, me, showChannel }: { c: WAConversation; me: number; showCh
   let who: React.ReactNode = null;
   if (owner) {
     const mine = owner.id === me;
+    // everyone on it, the one responsible first; three faces at most
+    const all = [owner, ...helpers];
+    const shown = all.slice(0, 3);
+    const extra = all.length - shown.length;
     who = (
-      <span className="flex min-w-0 items-center gap-1" data-tip={`Sorumlu: ${owner.name}${helpers.length ? ` · yardım eden: ${helpers.map((h) => h.name).join(", ")}` : ""}`}>
-        <UserAvatar userId={owner.id} name={owner.name} hasAvatar={owner.hasAvatar} version={owner.avatarVersion} className="size-4" fallbackClassName="bg-primary/10 text-[0.42rem] text-primary" />
+      <span className="flex min-w-0 items-center gap-1.5" data-tip={`Sorumlu: ${owner.name}${helpers.length ? ` · yardım eden: ${helpers.map((h) => h.name).join(", ")}` : ""}`}>
+        <span className="flex shrink-0 -space-x-1.5">
+          {shown.map((p) => (
+            <UserAvatar key={p.id} userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-5 ring-2 ring-card" fallbackClassName="bg-primary/15 text-[0.45rem] text-primary" />
+          ))}
+          {extra > 0 && <span className="relative flex size-5 items-center justify-center rounded-full bg-muted text-[0.52rem] font-bold text-muted-foreground ring-2 ring-card">+{extra}</span>}
+        </span>
         <span className={cn("truncate", mine && "font-semibold text-wa-accent")}>{mine ? "Sen" : owner.name.split(" ")[0]}</span>
-        {helpers.length > 0 && <span className="shrink-0 rounded-full bg-muted px-1 text-[0.6rem] font-semibold">+{helpers.length}</span>}
       </span>
     );
   } else if (t?.status === "bot") {

@@ -10,6 +10,8 @@ import RangePicker, { useRange } from "@/components/RangePicker";
 import { Card } from "@/components/ui";
 import { IconChip, Toolbar, type ChipTone } from "@/components/ui/rows";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { useAuth } from "@/auth/AuthContext";
+import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WACallSurveyReport, WAChannel, WAReport } from "@/whatsapp/types";
@@ -25,6 +27,7 @@ function dur(sec: number): string {
 }
 
 export function WhatsAppReports() {
+  const { user } = useAuth();
   const { preset, range, choose, setFrom, setTo } = useRange("last7");
   const [channel, setChannel] = useState(0);
   const [channels, setChannels] = useState<WAChannel[]>([]);
@@ -83,7 +86,8 @@ export function WhatsAppReports() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Link to="/whatsapp" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
-        <h1 className="text-lg font-semibold tracking-tight">WhatsApp raporları</h1>
+        <h1 className="flex-1 text-lg font-semibold tracking-tight">WhatsApp raporları</h1>
+        {can(user, "whatsapp.ratings") && <Link to="/whatsapp/ratings" className="flex h-9 items-center gap-1.5 rounded-xl bg-card px-3 text-sm font-medium shadow-sm ring-1 ring-border/60 hover:bg-accent"><Star className="size-4 fill-warning text-warning" /> Bütün puanlamalar</Link>}
       </div>
       <Toolbar>
         <RangePicker preset={preset} range={range} onPreset={choose} onFrom={setFrom} onTo={setTo} />

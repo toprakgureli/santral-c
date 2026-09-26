@@ -81,6 +81,10 @@ type SurveySettings struct {
 	TemplateLang string `json:"templateLang"`
 	// A low score (this or below) alerts the managers.
 	AlertBelow int `json:"alertBelow"`
+	// A customer who got the survey is not asked again for this many
+	// hours, however many conversations are closed meanwhile. 0 asks at
+	// every close.
+	RepeatHours int `json:"repeatHours"`
 }
 
 // defaultSettings is what a new device starts with.
@@ -98,9 +102,10 @@ func defaultSettings() ChannelSettings {
 		OptOutKeywords:    []string{"DUR", "STOP"},
 		OptOutReply:       "Kampanya mesajlarımızı artık almayacaksınız. Destek için bize yazmaya devam edebilirsiniz.",
 		Survey: SurveySettings{
-			Mode:       "off",
-			Text:       "Görüşmemizi değerlendirir misiniz? {link}",
-			AlertBelow: 2,
+			Mode:        "off",
+			Text:        "Görüşmemizi değerlendirir misiniz? {link}",
+			AlertBelow:  2,
+			RepeatHours: 24,
 		},
 	}
 	for i := 0; i < 5; i++ {
@@ -132,6 +137,12 @@ func (s *ChannelSettings) normalize() {
 	}
 	if s.OptOutKeywords == nil {
 		s.OptOutKeywords = []string{}
+	}
+	if s.Survey.RepeatHours < 0 {
+		s.Survey.RepeatHours = 0
+	}
+	if s.Survey.RepeatHours > 24*90 {
+		s.Survey.RepeatHours = 24 * 90
 	}
 }
 

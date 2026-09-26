@@ -72,7 +72,7 @@ func managerPermissions() []Permission {
 		WAView, WAViewAll, WAReply, WANote, WAPool, WAWaiting, WATake, WAAssign, WAResolve,
 		WATemplateSend, WATemplateManage, WAQuickReply, WAAutomation, WABotManage, WABotPublish,
 		WASetReadReceipts, WASetGreeting, WASetDistribution, WASetGeneral, WATeamManage,
-		WAContactManage, WACallbacks, WAReports, WAExport, WAAISuggest, WAAIManage, WACallSurvey,
+		WAContactManage, WACallbacks, WAReports, WARatings, WAExport, WAAISuggest, WAAIManage, WACallSurvey,
 	}
 }
 

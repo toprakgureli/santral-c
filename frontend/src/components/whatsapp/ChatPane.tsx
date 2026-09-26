@@ -294,9 +294,10 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [more, setMore] = useState(false);
   const [muteOpen, setMuteOpen] = useState(false);
   useEffect(() => { if (!more) setMuteOpen(false); }, [more]);
-  // Who is on it, where, and how long the customer can still be written to.
+  // Where it stands, where, and how long the customer can still be written
+  // to. Who handles it shows in the list and on the contact card.
   const subtitle = [
-    t?.status === "bot" ? "Chatbot ile konuşuyor" : t?.status === "resolved" ? "Çözüldü" : t?.owner ? (t.owner.id === me ? "Sen ilgileniyorsun" : `${t.owner.name.split(" ")[0]} ilgileniyor`) : t ? "Havuzda, kimse üstlenmedi" : null,
+    t?.status === "bot" ? "Chatbot ile konuşuyor" : t?.status === "resolved" ? "Çözüldü" : t && !t.owner ? "Havuzda, kimse üstlenmedi" : null,
     conv.channelName,
     left > 0 ? `${hm(left)} daha yazılabilir` : "24 saat doldu, şablonla yazılır",
   ].filter(Boolean).join(" · ");

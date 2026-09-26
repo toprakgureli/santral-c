@@ -11,6 +11,7 @@ import { WhatsApp } from "@/pages/WhatsApp";
 import { WhatsAppBot } from "@/pages/WhatsAppBot";
 import { WhatsAppCallbacks } from "@/pages/WhatsAppCallbacks";
 import { WhatsAppReports } from "@/pages/WhatsAppReports";
+import { WhatsAppRatings } from "@/pages/WhatsAppRatings";
 import { WhatsAppSettings } from "@/pages/WhatsAppSettings";
 import { TeamPerformance } from "@/pages/TeamPerformance";
 import { Preferences } from "@/pages/Preferences";
@@ -18,7 +19,7 @@ import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/Softphon
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 
-const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "performance.view_all"];
+const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "performance.view_all"];
 const user: User = { id: 1, name: "Toprak Şahin Güreli", email: "toprak@example.com", active: true, roles: ["Yönetici"], roleIds: [1], permissions: WA_PERMS, mfaEnabled: false, mustChangePassword: false, sipExtension: "1001", createdAt: "2026-01-01T00:00:00Z" };
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
@@ -150,6 +151,15 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (p === "/integrations") return [{ id: 1, name: "Abone sorgu", method: "GET", url: "https://api.example.com/abone/{abone}", body: "", timeoutSec: 8, headerNames: ["Authorization"] }];
   if (p === "/callbacks") return callbacks;
   if (p === "/events") return [{ id: 7, channelId: 1, status: "failed", attempts: 8, lastError: "medya indirilemedi: 404", receivedAt: ago(90), summary: "1 mesaj" }];
+  if (p === "/ratings") return {
+    count: 128, average: 4.21, dist: [6, 9, 14, 38, 61], withComment: 34, total: 3, pageSize: 50,
+    agents: [{ agent: people[0], count: 71, average: 4.5, low: 3 }, { agent: people[1], count: 42, average: 3.9, low: 8 }, { agent: people[2], count: 15, average: 2.8, low: 4 }],
+    items: [
+      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0] },
+      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412 },
+      { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0] },
+    ],
+  };
   if (p === "/reports") return report;
   if (p === "/ai/status") return { available: true };
   if (/^\/conversations\/\d+\/reads$/.test(p)) return [{ user: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, messageId: 99, readAt: ago(29) }, { user: { id: 2, name: "Ayşe Kaya", hasAvatar: false }, messageId: 1, readAt: ago(12) }];
@@ -225,6 +235,7 @@ const PAGES = [
   { path: "/whatsapp/settings?tab=events", label: "İşlenemeyenler" },
   { path: "/whatsapp/bots/1", label: "Chatbot akışı" },
   { path: "/whatsapp/reports", label: "Raporlar" },
+  { path: "/whatsapp/ratings", label: "Puanlamalar" },
   { path: "/whatsapp/callbacks", label: "Geri arama" },
   { path: "/whatsapp/settings?tab=ai", label: "Yapay zekâ" },
   { path: "/whatsapp/settings?tab=call-survey", label: "Çağrı anketi" },
@@ -256,6 +267,7 @@ export default function WAPreview() {
                     <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
                     <Route path="/whatsapp/bots/:id" element={<WhatsAppBot />} />
                     <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
+                    <Route path="/whatsapp/ratings" element={<WhatsAppRatings />} />
                     <Route path="/whatsapp/callbacks" element={<WhatsAppCallbacks />} />
                     <Route path="/whatsapp" element={<WhatsApp />} />
                     <Route path="/whatsapp/:id" element={<WhatsApp />} />

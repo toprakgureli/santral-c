@@ -20,6 +20,7 @@ import { Preferences } from "./pages/Preferences";
 import { WhatsAppSettings } from "./pages/WhatsAppSettings";
 import { WhatsAppBot } from "./pages/WhatsAppBot";
 import { WhatsAppReports } from "./pages/WhatsAppReports";
+import { WhatsAppRatings } from "./pages/WhatsAppRatings";
 import { WhatsAppCallbacks } from "./pages/WhatsAppCallbacks";
 
 export function App() {
@@ -63,6 +64,7 @@ export function App() {
         <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
         <Route path="/whatsapp/bots/:id" element={<WhatsAppBot />} />
         <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
+        <Route path="/whatsapp/ratings" element={<WhatsAppRatings />} />
         <Route path="/whatsapp/callbacks" element={<WhatsAppCallbacks />} />
         <Route path="/whatsapp" element={<WhatsApp />} />
         <Route path="/whatsapp/:id" element={<WhatsApp />} />
