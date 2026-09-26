@@ -92,7 +92,7 @@ const singleQuestion = "Tek soruluk anket"
 
 // ratingsSQL is every score in one list. Chat scores belong to whoever
 // closed the conversation, or else to its owner. Each row carries its
-// answers per question; a one-question survey counts as "Genel memnuniyet".
+// answers per question; a one-question survey counts as "Tek soruluk anket".
 // The slots are: what to select, what to join (the answers), and the tail.
 const ratingsSQL = `
 WITH r AS (

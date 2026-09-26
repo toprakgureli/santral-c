@@ -569,7 +569,7 @@ export interface WARating {
   channel?: string;
   agent?: WAPerson;
   talkSeconds?: number;
-  // each question of the form; a one-question survey is "Genel memnuniyet"
+  // each question of the form; a one-question survey is "Tek soruluk anket"
   answers: { question: string; score: number }[];
 }
 
