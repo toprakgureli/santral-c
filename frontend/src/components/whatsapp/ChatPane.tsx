@@ -22,7 +22,7 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { dayLabel, hm, isMine, mergeMessage, newClientId, since, windowLeft } from "@/whatsapp/util";
+import { clock, dayLabel, hm, isMine, mergeMessage, newClientId, since, windowLeft } from "@/whatsapp/util";
 
 const upsert = mergeMessage;
 
@@ -294,11 +294,10 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [more, setMore] = useState(false);
   const [muteOpen, setMuteOpen] = useState(false);
   useEffect(() => { if (!more) setMuteOpen(false); }, [more]);
-  // Where it stands, where, and how long the customer can still be written
-  // to. Who handles it shows in the list and on the contact card.
+  // Where it stands and how long the customer can still be written to. Who
+  // handles it shows in the list and on the contact card.
   const subtitle = [
     t?.status === "bot" ? "Chatbot ile konuşuyor" : t?.status === "resolved" ? "Çözüldü" : t && !t.owner ? "Havuzda, kimse üstlenmedi" : null,
-    conv.channelName,
     left > 0 ? `${hm(left)} daha yazılabilir` : "24 saat doldu, şablonla yazılır",
   ].filter(Boolean).join(" · ");
 
@@ -332,7 +331,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             <span className="flex items-center gap-2">
               <span className="truncate text-[0.95rem] font-semibold">{conv.contact.display}</span>
               {wa.muted(conv.id) && <BellOff className="size-3.5 shrink-0 text-muted-foreground" />}
-              {t?.waitingListedAt && !resolved && <span className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.62rem] font-semibold text-destructive"><Hourglass className="size-3" /> {since(t.awaitingSince, now)} bekliyor</span>}
+              {t?.waitingListedAt && !resolved && <span data-tip={`Cevap beklemeye başladığı saat: ${clock(t.awaitingSince!)}. Süre, chatbot sohbeti aktardığında ya da müşterinin ilk cevapsız mesajında başlar; bir temsilci cevap yazınca sıfırlanır.`} className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.62rem] font-semibold text-destructive"><Hourglass className="size-3" /> Cevap bekliyor · {since(t.awaitingSince, now)}</span>}
             </span>
             <span className="block truncate text-[0.78rem] text-muted-foreground">
               {typing ? <span className="font-medium text-wa-accent">{typing}</span> : subtitle}
