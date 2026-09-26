@@ -18,7 +18,7 @@ export default function WAAlerts() {
           <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-xl", a.level === "warning" ? "bg-warning/12 text-warning" : "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400")}>
             {a.level === "warning" ? <AlertTriangle className="size-4" /> : <MessageCircle className="size-4" />}
           </span>
-          <button type="button" className="min-w-0 flex-1 pt-1 text-left leading-snug" onClick={() => { if (a.conversationId) navigate(`/whatsapp/${a.conversationId}`); wa.dismissAlert(a.id); }}>
+          <button type="button" className="min-w-0 flex-1 pt-1 text-left leading-snug whitespace-pre-line" onClick={() => { if (a.conversationId) navigate(`/whatsapp/${a.conversationId}`); wa.dismissAlert(a.id); }}>
             {a.text}
             {a.conversationId && <span className="mt-0.5 block text-xs font-medium text-primary">Sohbeti aç</span>}
           </button>

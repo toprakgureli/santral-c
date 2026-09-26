@@ -429,7 +429,7 @@ func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, sc
 				agent = u.Name
 			}
 		}
-		text := fmt.Sprintf("%s, +%s ile yaptığı telefon görüşmesi için %d/5 puan aldı%s.", agent, r.WAID, score, answersText(answers))
+		text := fmt.Sprintf("%s, +%s ile yaptığı telefon görüşmesi için %d/5 puan aldı.%s", agent, r.WAID, score, weakestText(answers))
 		if c := strings.TrimSpace(comment); c != "" {
 			text += " Yorum: " + c
 		}

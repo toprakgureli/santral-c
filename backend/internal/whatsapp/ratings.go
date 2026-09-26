@@ -88,7 +88,7 @@ const ratingPage = 50
 
 // singleQuestion is how a one-question survey (the list inside WhatsApp,
 // the buttons after a call) is named among the form's questions.
-const singleQuestion = "Genel memnuniyet"
+const singleQuestion = "Tek soruluk anket"
 
 // ratingsSQL is every score in one list. Chat scores belong to whoever
 // closed the conversation, or else to its owner. Each row carries its

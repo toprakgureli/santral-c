@@ -22,7 +22,10 @@ const SCORE_TONE = ["", "bg-destructive/12 text-destructive", "bg-destructive/10
 const SCORE_BAR = ["", "bg-destructive", "bg-destructive/70", "bg-warning", "bg-success/70", "bg-success"];
 const SCORE_WORD = ["", "Çok kötü", "Kötü", "Orta", "İyi", "Çok iyi"];
 
-const SINGLE = "Genel memnuniyet";
+const SINGLE = "Tek soruluk anket";
+// A weakest question or area is only named once enough answers back it;
+// with one or two answers it would be chance, not a pattern.
+const MIN_FOR_WEAKEST = 5;
 
 // avgTone colours an average: green when good, amber in the middle, red
 // when it needs work.
@@ -265,10 +268,11 @@ function Figure({ icon, tone, label, value, sub, onClick, active }: { icon: type
 // Questions shows each survey question on its own: its average, how many
 // answered and how the scores spread. The weakest one is marked.
 function Questions({ questions }: { questions: WARatings["questions"] }) {
-  const weakest = questions.length > 1 ? questions.reduce((a, b) => (b.average < a.average ? b : a)) : null;
+  const solid = questions.filter((q) => q.count >= MIN_FOR_WEAKEST);
+  const weakest = solid.length > 1 ? solid.reduce((a, b) => (b.average < a.average ? b : a)) : null;
   return (
     <Card title="Sorulara göre" icon={ListChecks}>
-      <p className="-mt-1 mb-3 text-xs text-muted-foreground">Anket formundaki her soru ayrı ayrı. Tek soruluk anketler (WhatsApp içindeki puan listesi, görüşme sonrası düğmeler) "{SINGLE}" altında toplanır.</p>
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">Anket formundaki her soru ayrı ayrı. Tek soruluk anketler (WhatsApp içindeki puan listesi, görüşme sonrası düğmeler) ve soru bazlı kayıttan önceki puanlar "{SINGLE}" altında toplanır. En zayıf alan, her soruda en az {MIN_FOR_WEAKEST} cevap birikince işaretlenir.</p>
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
         {questions.map((q) => {
           const total = Math.max(1, q.dist.reduce((a, b) => a + b, 0));
@@ -301,7 +305,7 @@ function People({ data, agent, onAgent }: { data: WARatings; agent: number; onAg
   const multi = cols.length > 1;
   return (
     <Card title="Kişilere göre" icon={UsersRound}>
-      <p className="-mt-1 mb-3 text-xs text-muted-foreground">{multi ? "Her kişinin her sorudaki ortalaması. Çerçeveli olan, o kişinin en zayıf alanı. Bir kişiye tıklayınca aşağıda sadece onun puanları kalır." : "Bir kişiye tıklayınca aşağıda sadece onun puanları kalır."}</p>
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">{multi ? `Her kişinin her sorudaki ortalaması. Bir soruda en az ${MIN_FOR_WEAKEST} cevabı olan kişinin en düşük puan aldığı soru çerçeveyle işaretlenir; geliştirmesi gereken alan odur. Bir kişiye tıklayınca aşağıda sadece onun puanları kalır.` : "Bir kişiye tıklayınca aşağıda sadece onun puanları kalır."}</p>
       <div className="-mx-4 overflow-x-auto px-4">
         <table className="w-full min-w-[36rem] border-separate border-spacing-y-1 text-sm">
           <thead>
@@ -316,7 +320,7 @@ function People({ data, agent, onAgent }: { data: WARatings; agent: number; onAg
             {data.agents.map((a) => {
               const on = agent === a.agent.id;
               const byQ = new Map(a.questions.map((q) => [q.question, q]));
-              const answered = a.questions.filter((q) => q.count > 0);
+              const answered = a.questions.filter((q) => q.count >= MIN_FOR_WEAKEST && q.question !== SINGLE);
               const weakest = multi && answered.length > 1 ? answered.reduce((x, y) => (y.average < x.average ? y : x)).question : "";
               return (
                 <tr key={a.agent.id} onClick={() => onAgent(on ? 0 : a.agent.id)} className={cn("cursor-pointer transition-colors [&>td]:py-1.5 [&>td:first-child]:rounded-l-xl [&>td:last-child]:rounded-r-xl", on ? "[&>td]:bg-primary/10" : "hover:[&>td]:bg-accent/50")}>
@@ -325,7 +329,7 @@ function People({ data, agent, onAgent }: { data: WARatings; agent: number; onAg
                       <UserAvatar userId={a.agent.id} name={a.agent.name} hasAvatar={a.agent.hasAvatar} version={a.agent.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-[0.65rem] text-primary" />
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{a.agent.name}</span>
-                        {weakest && <span className="block truncate text-[0.68rem] text-destructive">Gelişim alanı: {weakest}</span>}
+                        {weakest && <span className="block max-w-72 truncate text-[0.68rem] text-destructive" data-tip={`En düşük puan aldığı soru: ${weakest}`}>En düşük puanı: {weakest}</span>}
                       </span>
                     </span>
                   </td>

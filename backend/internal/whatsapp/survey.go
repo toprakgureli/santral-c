@@ -169,6 +169,9 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 	if answers == nil {
 		answers = []RatingAnswer{}
 	}
+	// The same survey answered again (a form can be sent more than once):
+	// the new answer replaces the old one, but nobody is alerted twice.
+	again := t.RatedAt != nil && (t.SurveySentAt == nil || t.RatedAt.After(*t.SurveySentAt))
 	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", score, strings.TrimSpace(comment), jsonString(answers), ticketID).Error; err != nil {
 		return
 	}
@@ -176,12 +179,15 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 	if err != nil {
 		return
 	}
-	line := fmt.Sprintf("Müşteri görüşmeyi %d/5 puanladı%s.", score, answersText(answers))
+	line := fmt.Sprintf("Müşteri görüşmeyi %d/5 puanladı.%s", score, weakestText(answers))
+	if again {
+		line = fmt.Sprintf("Müşteri puanını değiştirdi: %d/5.%s", score, weakestText(answers))
+	}
 	if c := strings.TrimSpace(comment); c != "" {
-		line += " Yorumu: " + c
+		line += " Yorumu: " + strings.ReplaceAll(c, "\n", " · ")
 	}
 	s.event(ctx, nil, conv, ticketID, 0, line)
-	if ch, err := s.channel(ctx, t.ChannelID); err == nil {
+	if ch, err := s.channel(ctx, t.ChannelID); err == nil && !again {
 		if below := parseSettings(ch.Settings).Survey.AlertBelow; below > 0 && lowestScore(score, answers) <= below {
 			viewers, _ := s.loadViewers(ctx)
 			var ids []uint
@@ -193,7 +199,7 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 			if t.OwnerID != nil {
 				ids = append(ids, *t.OwnerID)
 			}
-			s.push.Push(ids, Event{Type: "wa.alert", ConversationID: conv.ID, Text: fmt.Sprintf("#%d numaralı sohbet %d/5 puan aldı%s.", t.Number, score, answersText(answers)), Level: "warning"})
+			s.push.Push(ids, Event{Type: "wa.alert", ConversationID: conv.ID, Text: fmt.Sprintf("#%d numaralı sohbet %d/5 puan aldı.%s", t.Number, score, weakestText(answers)), Level: "warning"})
 		}
 	}
 	s.publish(ctx, conv.ID, nil, nil)
@@ -400,15 +406,19 @@ func lowestScore(score int, answers []RatingAnswer) int {
 	return low
 }
 
-func answersText(answers []RatingAnswer) string {
+// weakestText names the lowest-scored question when a form had several:
+// the one thing worth reading in an alert.
+func weakestText(answers []RatingAnswer) string {
 	if len(answers) < 2 {
 		return ""
 	}
-	parts := make([]string, len(answers))
-	for i, a := range answers {
-		parts[i] = fmt.Sprintf("%s %d", a.Question, a.Score)
+	w := answers[0]
+	for _, a := range answers[1:] {
+		if a.Score < w.Score {
+			w = a
+		}
 	}
-	return " (" + strings.Join(parts, ", ") + ")"
+	return fmt.Sprintf(" En düşük: %q, %d/5.", w.Question, w.Score)
 }
 
 // joinTexts puts written answers together; with several, each under its
@@ -422,10 +432,13 @@ func joinTexts(texts []RatingText) string {
 	}
 	lines := make([]string, len(texts))
 	for i, t := range texts {
-		if t.Question != "" {
-			lines[i] = t.Question + ": " + t.Text
-		} else {
+		switch {
+		case t.Question == "":
 			lines[i] = t.Text
+		case strings.HasSuffix(t.Question, "?") || strings.HasSuffix(t.Question, ":"):
+			lines[i] = t.Question + " " + t.Text
+		default:
+			lines[i] = t.Question + ": " + t.Text
 		}
 	}
 	return strings.Join(lines, "\n")
