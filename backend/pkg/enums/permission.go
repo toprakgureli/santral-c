@@ -109,7 +109,9 @@ const (
 	WACallbacks       Permission = "whatsapp.callbacks"
 	WAReports         Permission = "whatsapp.reports"
 	WAExport          Permission = "whatsapp.export"
-	WABroadcast       Permission = "whatsapp.broadcast"
+	WAAISuggest       Permission = "whatsapp.ai_suggest"
+	WAAIManage        Permission = "whatsapp.ai_manage"
+	WACallSurvey      Permission = "whatsapp.call_survey_manage"
 
 	SystemSettings  Permission = "system.settings"
 	SystemLogs      Permission = "system.logs"
@@ -189,7 +191,9 @@ var permissions = []PermissionInfo{
 	{WACallbacks, "Geri arama taleplerini görür ve kapatır"},
 	{WAReports, "WhatsApp raporlarını görür"},
 	{WAExport, "WhatsApp yazışmalarını dışa aktarır"},
-	{WABroadcast, "Toplu şablon gönderimi yapar"},
+	{WAAISuggest, "Yazarken yapay zekâdan cevap önerisi alır"},
+	{WAAIManage, "Yapay zekâ ayarlarını ve anahtarını düzenler"},
+	{WACallSurvey, "Telefon görüşmesinden sonra WhatsApp'tan giden anketi ayarlar"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},

@@ -591,6 +591,9 @@ func (s *Service) clock(ctx context.Context) {
 		if every("rules", time.Minute) {
 			s.sweepTimedRules(ctx)
 		}
+		if every("callsurveys", 30*time.Second) {
+			s.sendDueCallSurveys(ctx)
+		}
 		if every("templates", 6*time.Hour) {
 			s.syncAllTemplates(ctx)
 		}

@@ -207,10 +207,7 @@ type hookMessage struct {
 			Description string `json:"description"`
 		} `json:"list_reply"`
 	} `json:"interactive"`
-	Button *struct {
-		Payload string `json:"payload"`
-		Text    string `json:"text"`
-	} `json:"button"`
+	Button   *hookButton `json:"button"`
 	Reaction *struct {
 		MessageID string `json:"message_id"`
 		Emoji     string `json:"emoji"`
@@ -406,4 +403,10 @@ func (s *Service) RetryEvent(ctx context.Context, actorID, id uint) error {
 	}
 	wake(s.wakeWebhook)
 	return nil
+}
+
+// hookButton is a tap on a template's quick reply button.
+type hookButton struct {
+	Payload string `json:"payload"`
+	Text    string `json:"text"`
 }

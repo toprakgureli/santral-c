@@ -183,6 +183,67 @@ func (h *Handler) Media(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	return serveStream(c, m)
+}
+
+// File streams a file uploaded from the panel.
+func (h *Handler) File(c *fiber.Ctx) error {
+	uid, err := actor(c)
+	if err != nil {
+		return err
+	}
+	id, err := pid(c, "id")
+	if err != nil {
+		return err
+	}
+	m, err := h.s.OpenFile(c.UserContext(), uid, id, c.Get("Range"))
+	if err != nil {
+		return err
+	}
+	return serveStream(c, m)
+}
+
+// Upload receives a file for chatbots and templates.
+func (h *Handler) Upload(c *fiber.Ctx, uid uint) (any, error) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return nil, errs.Invalid("Dosya gelmedi.", err)
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return nil, errs.Invalid("Dosya okunamadı.", err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, mediaLimit+1))
+	if err != nil {
+		return nil, errs.Invalid("Dosya okunamadı.", err)
+	}
+	if len(data) > mediaLimit {
+		return nil, errs.Invalid("Dosya en fazla 100 MB olabilir.", nil)
+	}
+	return h.s.UploadFile(c.UserContext(), uid, fh.Filename, fh.Header.Get("Content-Type"), data)
+}
+
+// Export downloads a conversation as a text file.
+func (h *Handler) Export(c *fiber.Ctx) error {
+	uid, err := actor(c)
+	if err != nil {
+		return err
+	}
+	id, err := pid(c, "id")
+	if err != nil {
+		return err
+	}
+	data, name, err := h.s.ExportConversation(c.UserContext(), uid, id)
+	if err != nil {
+		return err
+	}
+	c.Set("Content-Type", "text/plain; charset=utf-8")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename*=UTF-8''%s", pathEscape(name)))
+	return c.Send(data)
+}
+
+func serveStream(c *fiber.Ctx, m *MediaStream) error {
 	c.Set("Content-Type", m.Mime)
 	c.Set("Cache-Control", "private, max-age=86400")
 	c.Set("Accept-Ranges", "bytes")
@@ -359,6 +420,41 @@ func (r *Router) Routes(g fiber.Router) {
 	}))
 	a.Post("/messages/:id/retry", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.Retry(c.UserContext(), uid, id) }))
 	a.Get("/media/:id", h.Media)
+	a.Get("/conversations/:id/export", h.Export)
+	a.Post("/conversations/:id/suggest", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		var in struct {
+			Draft string `json:"draft"`
+		}
+		_ = c.BodyParser(&in)
+		return s.Suggest(c.UserContext(), uid, id, in.Draft)
+	}))
+	a.Post("/files", with(h.Upload))
+	a.Get("/files/:id", h.File)
+
+	// reply assistant
+	a.Get("/ai/status", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.AIStatus(c.UserContext(), uid) }))
+	a.Get("/ai", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.AI(c.UserContext(), uid) }))
+	a.Put("/ai", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in AIInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SaveAI(c.UserContext(), uid, in)
+	}))
+	a.Post("/ai/test", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.TestAI(c.UserContext(), uid) }))
+
+	// survey after a phone call
+	a.Get("/call-survey", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.CallSurvey(c.UserContext(), uid) }))
+	a.Put("/call-survey", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in CallSurveySettings
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SaveCallSurvey(c.UserContext(), uid, in)
+	}))
+	a.Get("/call-survey/report", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		return s.CallSurveyReport(c.UserContext(), uid, c.Query("from"), c.Query("to"))
+	}))
 	a.Get("/search", with(func(c *fiber.Ctx, uid uint) (any, error) {
 		return s.Search(c.UserContext(), uid, c.Query("q"), qid(c, "conversation"))
 	}))

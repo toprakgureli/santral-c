@@ -9,6 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
 import { tones } from "@/softphone/tones";
+import NewChatDialog from "@/components/whatsapp/NewChatDialog";
 import { useTeams } from "@/teams/TeamsContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAConversation, WAEvent, WAMessage } from "@/whatsapp/types";
@@ -36,6 +37,10 @@ interface WAState {
   alerts: WAAlert[];
   dismissAlert: (id: number) => void;
   reload: () => Promise<void>;
+  // the reply assistant is set up and this person may use it
+  ai: boolean;
+  // opens "WhatsApp'tan yaz" from anywhere, optionally for a number
+  startChat: (opts?: { number?: string; name?: string }) => void;
 }
 
 const Ctx = createContext<WAState | undefined>(undefined);
@@ -301,11 +306,25 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   }, []);
   const dismissAlert = useCallback((id: number) => setAlerts((cur) => cur.filter((a) => a.id !== id)), []);
 
+  const [ai, setAI] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    waApi.aiStatus().then((r) => setAI(r.available)).catch(() => setAI(false));
+  }, [enabled]);
+
+  const [chat, setChat] = useState<{ number?: string; name?: string } | null>(null);
+  const startChat = useCallback((opts?: { number?: string; name?: string }) => setChat(opts ?? {}), []);
+
   const value = useMemo<WAState>(
-    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload }),
-    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload],
+    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat }),
+    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat],
   );
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {enabled && <NewChatDialog open={!!chat} number={chat?.number} name={chat?.name} onClose={() => setChat(null)} onStarted={upsert} />}
+    </Ctx.Provider>
+  );
 }
 
 export function useWhatsApp(): WAState {

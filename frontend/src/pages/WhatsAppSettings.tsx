@@ -3,9 +3,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bot, FileText, Plug, ShieldAlert, SlidersHorizontal, Smartphone, UsersRound, Wand2, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bot, FileText, PhoneCall, Plug, ShieldAlert, SlidersHorizontal, Smartphone, Sparkles, UsersRound, Wand2, Zap, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
+import AITab from "@/components/whatsapp/settings/AITab";
 import BotsTab from "@/components/whatsapp/settings/BotsTab";
+import CallSurveyTab from "@/components/whatsapp/settings/CallSurveyTab";
 import ChannelsTab from "@/components/whatsapp/settings/ChannelsTab";
 import DeviceSettingsTab from "@/components/whatsapp/settings/DeviceSettingsTab";
 import EventsTab from "@/components/whatsapp/settings/EventsTab";
@@ -46,6 +48,8 @@ export function WhatsAppSettings() {
     { key: "rules", label: "Otomatik mesajlar", icon: Wand2, allowed: can(user, "whatsapp.automation_manage") },
     { key: "bots", label: "Chatbot'lar", icon: Bot, allowed: canAny(user, ["whatsapp.bot_manage", "whatsapp.bot_publish"]) },
     { key: "integrations", label: "Dış sistemler", icon: Plug, allowed: can(user, "whatsapp.bot_manage") },
+    { key: "ai", label: "Yapay zekâ", icon: Sparkles, allowed: can(user, "whatsapp.ai_manage") },
+    { key: "call-survey", label: "Çağrı sonrası anket", icon: PhoneCall, allowed: can(user, "whatsapp.call_survey_manage") },
     { key: "events", label: "İşlenemeyenler", icon: ShieldAlert, allowed: can(user, "whatsapp.channel_manage") },
   ].filter((t) => t.allowed), [user]);
 
@@ -65,7 +69,7 @@ export function WhatsAppSettings() {
           <p className="text-xs text-muted-foreground">{channels.length ? `${channels.length} numara bağlı` : "Henüz numara bağlı değil"}</p>
         </div>
       </div>
-      <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+      <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:flex-wrap lg:overflow-visible">
         {tabs.map((t) => (
           <button key={t.key} type="button" onClick={() => choose(t.key)} className={cn("flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors", active === t.key ? "bg-card text-foreground shadow-sm ring-1 ring-border/60" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground")}>
             <t.icon className={cn("size-4", active === t.key && "text-primary")} />
@@ -85,6 +89,8 @@ export function WhatsAppSettings() {
           {active === "rules" && <RulesTab channels={channels} />}
           {active === "bots" && <BotsTab channels={channels} />}
           {active === "integrations" && <IntegrationsTab />}
+          {active === "ai" && <AITab />}
+          {active === "call-survey" && <CallSurveyTab channels={channels} />}
           {active === "events" && <EventsTab channels={channels} />}
         </>
       )}

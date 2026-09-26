@@ -102,6 +102,9 @@ type inboundResult struct {
 	created  bool // a new ticket was opened
 	reopened bool // a resolved ticket was opened again
 	first    bool // the first message ever from this customer on this device
+	// a tap on a call survey button: the survey and the button
+	surveyID  uint
+	surveyIdx int
 }
 
 func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMessage, profileName string) error {
@@ -139,6 +142,9 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		if payload != nil {
 			msg.Payload = strPtr(jsonString(payload))
 		}
+		if len(m.Referral) > 0 && string(m.Referral) != "null" {
+			msg.Referral = strPtr(string(m.Referral))
+		}
 		if m.Context != nil && m.Context.ID != "" {
 			msg.ReplyToWAMID = strPtr(m.Context.ID)
 		}
@@ -152,6 +158,12 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			return nil
 		}
 		res.msg = msg
+		if id, idx, ok := callSurveyAnswer(m); ok {
+			// An answer to the survey after a phone call: kept in the
+			// conversation, but it opens no support ticket.
+			res.conv, res.surveyID, res.surveyIdx = conv, id, idx
+			return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
+		}
 		if kind == "reaction" {
 			res.conv = conv
 			return nil
@@ -177,6 +189,10 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		return err
 	}
 	if res.msg == nil {
+		return nil
+	}
+	if res.surveyID > 0 {
+		s.onCallSurveyTap(ctx, ch, res.conv, res.contact, res.surveyID, res.surveyIdx)
 		return nil
 	}
 	s.afterInbound(ctx, ch, res)

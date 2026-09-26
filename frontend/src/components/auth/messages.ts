@@ -9,5 +9,5 @@ export function errorMessage(e: unknown): string {
 }
 
 // SUCCESS_DELAY_MS lets the green "success" button state play before the
-// session switches over to the app (mirrors Devtrack's sign-in animation).
+// session switches over to the app, so the sign-in ends on a visible tick.
 export const SUCCESS_DELAY_MS = 900;

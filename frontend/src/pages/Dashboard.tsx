@@ -36,6 +36,7 @@ import { markWrapUpDone } from "../components/layout/WrapUpCard";
 import WhatsAppTemplateDialog from "../components/WhatsAppTemplateDialog";
 import WhatsAppIcon from "../components/icons/WhatsAppIcon";
 import { whatsappLink, whatsappNumber, whatsappTextFor, type WhatsAppKind } from "../lib/whatsapp";
+import { useWhatsApp } from "../whatsapp/WhatsAppContext";
 import { displayNumber, normalizeDial } from "../softphone/dial";
 import { tones } from "../softphone/tones";
 import { Badge, Button, Card, Select } from "../components/ui";
@@ -400,10 +401,19 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
   // In a call: the "we are on the phone" text goes to the customer on the line.
   const waNumber = whatsappNumber(phone.lastPeer ?? "");
   const waLiveNumber = whatsappNumber(phone.peer ?? "");
+  // With a WhatsApp Business number in the panel, writing goes out from the
+  // company number with an approved template and the reply lands in the
+  // inbox; otherwise the agent's own WhatsApp opens with their text.
+  const wa = useWhatsApp();
+  const viaBusiness = wa.enabled && can(user, "whatsapp.template_send");
   function openWhatsApp(kind: WhatsAppKind) {
     const raw = kind === "live" ? phone.peer : phone.lastPeer;
     const num = kind === "live" ? waLiveNumber : waNumber;
     if (!num) return;
+    if (viaBusiness) {
+      wa.startChat({ number: raw ?? num });
+      return;
+    }
     window.open(whatsappLink(num, whatsappTextFor(user, kind, displayNumber(raw ?? ""))), "_blank", "noopener");
   }
   const [target, setTarget] = useState("");
@@ -514,11 +524,11 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold leading-tight">WhatsApp'tan yaz</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        Son çağrı · <span className="font-mono tabular-nums">{displayNumber(phone.lastPeer ?? "")}</span>
+                        {viaBusiness ? "Şirket numarasından" : "Son çağrı"} · <span className="font-mono tabular-nums">{displayNumber(phone.lastPeer ?? "")}</span>
                       </span>
                     </span>
                   </button>
-                  <button
+                  {!viaBusiness && <button
                     type="button"
                     onClick={() => setWaOpen("unreached")}
                     aria-label="WhatsApp mesajını düzenle"
@@ -526,7 +536,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     className="flex w-12 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
-                  </button>
+                  </button>}
                 </div>
               )}
               <div className="mx-auto grid max-w-[15rem] grid-cols-3 gap-2">
@@ -590,10 +600,10 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold leading-tight">WhatsApp'tan yaz</span>
-                      <span className="block truncate text-xs text-muted-foreground">Görüşme sırasında mesajı</span>
+                      <span className="block truncate text-xs text-muted-foreground">{viaBusiness ? "Şirket numarasından, şablonla" : "Görüşme sırasında mesajı"}</span>
                     </span>
                   </button>
-                  <button
+                  {!viaBusiness && <button
                     type="button"
                     onClick={() => setWaOpen("live")}
                     aria-label="Görüşme sırasında mesajını düzenle"
@@ -601,7 +611,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
                     className="flex w-11 shrink-0 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground ring-1 ring-border/40 transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <Settings2 className="size-4" />
-                  </button>
+                  </button>}
                 </div>
               )}
 
@@ -896,6 +906,9 @@ function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExtension[]
 
 function CallHistory({ canCall }: { canCall: boolean }) {
   const phone = useSoftphoneContext();
+  const wa = useWhatsApp();
+  const { user: me } = useAuth();
+  const canWhatsApp = wa.enabled && can(me, "whatsapp.template_send");
   const [calls, setCalls] = useState<Call[]>([]);
   const [counts, setCounts] = useState({ short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0, inboundMissed: 0, outboundMissed: 0, inboundReal: 0, outboundReal: 0 });
   const [showMissed, setShowMissed] = useState(false);
@@ -954,6 +967,7 @@ function CallHistory({ canCall }: { canCall: boolean }) {
       items: [
         { label: `${displayNumber(number)} ara`, onClick: () => phone.call(normalizeDial(number)).catch(() => undefined), disabled: !canDial },
         { label: "Numarayı kopyala", onClick: () => copy(number) },
+        ...(canWhatsApp && whatsappNumber(number) ? [{ label: "WhatsApp'tan yaz", onClick: () => wa.startChat({ number }) }] : []),
         { label: "Görüşmeye aktar", onClick: () => phone.transfer(normalizeDial(number)).catch(() => undefined), disabled: !inCall },
       ],
     });
@@ -1058,6 +1072,11 @@ function CallHistory({ canCall }: { canCall: boolean }) {
                         <Button variant="secondary" className="h-8 px-3" onClick={() => phone.call(normalizeDial(counterpart)).catch(() => undefined)} disabled={!canDial || !counterpart}>
                           <Phone className="size-3.5" /> Ara
                         </Button>
+                        {canWhatsApp && whatsappNumber(counterpart) && (
+                          <Button variant="secondary" className="h-8 px-3" onClick={() => wa.startChat({ number: counterpart })}>
+                            <WhatsAppIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" /> WhatsApp'tan yaz
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )}

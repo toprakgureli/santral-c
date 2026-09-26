@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Clock3, MessageCircle, Smartphone, Star, TimerReset, UsersRound, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Clock3, MessageCircle, PhoneCall, Smartphone, Star, TimerReset, UsersRound, type LucideIcon } from "lucide-react";
 import { ApiError } from "@/api/client";
 import RangePicker, { useRange } from "@/components/RangePicker";
 import { Card } from "@/components/ui";
@@ -12,7 +12,8 @@ import { IconChip, Toolbar, type ChipTone } from "@/components/ui/rows";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
-import type { WAChannel, WAReport } from "@/whatsapp/types";
+import type { WACallSurveyReport, WAChannel, WAReport } from "@/whatsapp/types";
+import { prettyPhone } from "@/whatsapp/util";
 
 function dur(sec: number): string {
   if (!sec || sec <= 0) return "–";
@@ -28,6 +29,7 @@ export function WhatsAppReports() {
   const [channel, setChannel] = useState(0);
   const [channels, setChannels] = useState<WAChannel[]>([]);
   const [report, setReport] = useState<WAReport | null>(null);
+  const [calls, setCalls] = useState<WACallSurveyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<"owned" | "resolved" | "avgFirstReplySec" | "avgRating">("owned");
@@ -41,6 +43,10 @@ export function WhatsAppReports() {
     setError(null);
     waApi.reports(range.from, range.to, channel).then(setReport).catch((e) => setError(e instanceof ApiError ? e.message : "Rapor alınamadı.")).finally(() => setLoading(false));
   }, [range.from, range.to, channel]);
+  useEffect(() => {
+    if (!range.from || !range.to) return;
+    waApi.callSurveyReport(range.from, range.to).then(setCalls).catch(() => setCalls(null));
+  }, [range.from, range.to]);
 
   const totals = useMemo(() => {
     const ch = report?.channels ?? [];
@@ -167,6 +173,8 @@ export function WhatsAppReports() {
         )}
       </Card>
 
+      {calls && (calls.sent > 0 || calls.queued > 0 || calls.failed > 0) && <CallSurveyCard r={calls} />}
+
       {(report?.channels.length ?? 0) > 1 && (
         <Card title="Numaralar" icon={Smartphone}>
           <div className="-mx-5 overflow-x-auto">
@@ -204,6 +212,66 @@ export function WhatsAppReports() {
         </Card>
       )}
     </div>
+  );
+}
+
+function CallSurveyCard({ r }: { r: WACallSurveyReport }) {
+  const rate = r.sent > 0 ? Math.round((r.answered / r.sent) * 100) : 0;
+  return (
+    <Card title="Çağrı sonrası anket" icon={PhoneCall}>
+      <div className="mb-4 flex flex-wrap gap-2 text-sm">
+        <Pill label="Gönderilen" value={String(r.sent)} />
+        <Pill label="Cevaplayan" value={`${r.answered}${r.sent ? ` · %${rate}` : ""}`} />
+        <Pill label="Ortalama puan" value={r.average ? r.average.toFixed(1) : "–"} tone={r.average && r.average < 3 ? "text-destructive" : "text-foreground"} />
+        {r.failed > 0 && <Pill label="Gidemeyen" value={String(r.failed)} tone="text-destructive" />}
+        {r.skipped > 0 && <Pill label="Atlanan" value={String(r.skipped)} hint="Yakında zaten sorulmuş ya da müşteri mesaj istemiyor" />}
+        {r.queued > 0 && <Pill label="Sırada" value={String(r.queued)} />}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Temsilcilere göre</p>
+          {r.agents.length === 0 ? <p className="py-3 text-sm text-muted-foreground">Henüz anket yok.</p> : (
+            <div className="divide-y divide-border/50">
+              {r.agents.map((a) => (
+                <div key={a.user.id} className="flex items-center gap-2.5 py-2">
+                  <UserAvatar userId={a.user.id} name={a.user.name} hasAvatar={a.user.hasAvatar} version={a.user.avatarVersion} className="size-7" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.user.name}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{a.answered}/{a.sent} cevap</span>
+                  {a.low > 0 && <span className="rounded-full bg-destructive/10 px-1.5 py-px text-[0.65rem] font-semibold text-destructive" data-tip="2 ve altı puan">{a.low} düşük</span>}
+                  <span className="flex w-12 items-center justify-end gap-1 text-sm font-semibold tabular-nums"><Star className="size-3 fill-warning text-warning" />{a.average ? a.average.toFixed(1) : "–"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Son cevaplar</p>
+          {r.recent.length === 0 ? <p className="py-3 text-sm text-muted-foreground">Henüz cevap yok.</p> : (
+            <div className="max-h-80 space-y-1.5 overflow-y-auto">
+              {r.recent.map((a) => (
+                <div key={a.id} className="flex items-start gap-2.5 rounded-xl bg-muted/30 px-3 py-2">
+                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold tabular-nums", a.score >= 4 ? "bg-success/12 text-success" : a.score === 3 ? "bg-warning/12 text-warning" : "bg-destructive/10 text-destructive")}>{a.score}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm"><span className="font-medium">{a.agent || "?"}</span> <span className="font-mono text-xs text-muted-foreground">{prettyPhone(a.phone)}</span></span>
+                    {a.comment && <span className="block text-xs text-muted-foreground">{a.comment}</span>}
+                    <span className="block text-[0.65rem] text-muted-foreground">{new Date(a.answeredAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Pill({ label, value, tone, hint }: { label: string; value: string; tone?: string; hint?: string }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-full bg-muted/50 px-3 py-1" data-tip={hint}>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <b className={cn("tabular-nums", tone)}>{value}</b>
+    </span>
   );
 }
 

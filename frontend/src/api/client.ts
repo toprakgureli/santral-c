@@ -95,7 +95,7 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
 
 // download fetches a file endpoint (same auth/refresh handling as request) and
 // hands it to the browser as a save dialog.
-async function download(path: string, fallbackName: string, allowRetry = true): Promise<void> {
+export async function download(path: string, fallbackName: string, allowRetry = true): Promise<void> {
   const res = await fetch(BASE + path, { credentials: "include" });
   if (res.status === 401 && allowRetry) {
     if (await tryRefresh()) {
@@ -109,11 +109,21 @@ async function download(path: string, fallbackName: string, allowRetry = true): 
     throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "İndirme başarısız oldu.");
   }
   const blob = await res.blob();
-  const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "");
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const match = /filename="([^"]+)"/.exec(disposition);
+  let name = match?.[1] ?? fallbackName;
+  if (encoded) {
+    try {
+      name = decodeURIComponent(encoded[1]);
+    } catch {
+      // keep the plain name
+    }
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = match?.[1] ?? fallbackName;
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();

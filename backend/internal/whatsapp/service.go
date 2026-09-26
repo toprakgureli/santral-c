@@ -54,6 +54,8 @@ type Service struct {
 	viewers   map[uint]*viewer
 	viewersAt time.Time
 	folders   map[uint]string
+	// uploaded files already on Meta, by device and file
+	metaFiles map[string]metaFile
 }
 
 // NewService builds the module. secret encrypts tokens at rest.
@@ -67,6 +69,7 @@ func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, secre
 		wakeWebhook: make(chan struct{}, 1),
 		wakeOutbox:  make(chan struct{}, 1),
 		folders:     map[uint]string{},
+		metaFiles:   map[string]metaFile{},
 	}
 }
 

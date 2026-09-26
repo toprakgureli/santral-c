@@ -4,7 +4,7 @@
 // its ticks as WhatsApp reports them.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, Bot, CheckCircle2, ChevronDown, Hand, Hourglass, PanelRightClose, PanelRightOpen, Phone, RotateCcw, Search, UserCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Bot, Download, CheckCircle2, ChevronDown, Hand, Hourglass, PanelRightClose, PanelRightOpen, Phone, RotateCcw, Search, UserCheck, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ui";
@@ -257,6 +257,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <IconBtn tip="Sohbette ara" on={searching} onClick={() => setSearching((v) => !v)}><Search className="size-4" /></IconBtn>
+          {can(user, "whatsapp.export") && <span className="max-md:hidden"><IconBtn tip="Yazışmayı dosya olarak indir" onClick={() => void waApi.exportChat(conv.id).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi."))}><Download className="size-4" /></IconBtn></span>}
           {canCall && <IconBtn tip="Müşteriyi ara" onClick={() => void phone.call("0" + conv.contact.waId.replace(/^90/, "")).catch(() => undefined)}><Phone className="size-4" /></IconBtn>}
           {canTake && t && t.owner && t.owner.id !== me && !resolved && <TextBtn icon={Hand} label="Devral" tip="Sorumlu sen olursun, şimdiki sorumlu yardımcı olarak kalır" busy={busy === "take"} onClick={() => void act("take", () => waApi.take(conv.id))} />}
           {canAssign && t && !resolved && <TextBtn icon={ArrowRightLeft} label="Aktar" tip="Başka bir kişiye ya da ekibe aktar" onClick={() => setAssign(true)} />}
@@ -342,6 +343,13 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         onSend={send}
         onTemplate={() => setTemplates(true)}
         onTyping={() => void waApi.typing(conv.id).catch(() => undefined)}
+        onSuggest={wa.ai ? async (draft) => {
+          try {
+            return (await waApi.suggest(conv.id, draft)).text;
+          } catch (e) {
+            throw new Error(e instanceof ApiError ? e.message : "Öneri alınamadı.");
+          }
+        } : undefined}
         disabledReason={!canReply && !canNote ? "Bu sohbete yazma yetkiniz yok." : conv.contact.blocked && !canNote ? "Müşteri engellenmiş." : undefined}
       />
 

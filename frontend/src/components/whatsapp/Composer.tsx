@@ -3,7 +3,7 @@
 // when the 24-hour window is closed.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, FileText, Lock, MessageSquareText, Paperclip, SendHorizontal, SmilePlus, X, Zap } from "lucide-react";
+import { CornerUpLeft, FileText, Lock, MessageSquareText, Paperclip, SendHorizontal, SmilePlus, Sparkles, Undo2, X, Zap } from "lucide-react";
 import EmojiPicker from "@/components/teams/EmojiPicker";
 import { cn } from "@/lib/utils";
 import type { WAMessage, WAQuickReply } from "@/whatsapp/types";
@@ -26,6 +26,7 @@ export default function Composer({
   onSend,
   onTemplate,
   onTyping,
+  onSuggest,
   disabledReason,
 }: {
   canReply: boolean;
@@ -39,6 +40,8 @@ export default function Composer({
   onSend: (s: ComposerSend) => Promise<void>;
   onTemplate: () => void;
   onTyping: () => void;
+  // the reply assistant: returns a draft for the box, or tidies the given one
+  onSuggest?: (draft: string) => Promise<string>;
   disabledReason?: string;
 }) {
   const [mode, setMode] = useState<"message" | "note">(canReply ? "message" : "note");
@@ -50,6 +53,26 @@ export default function Composer({
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const lastTyping = useRef(0);
+  const [thinking, setThinking] = useState(false);
+  const [suggested, setSuggested] = useState<{ before: string } | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const suggest = async () => {
+    if (!onSuggest || thinking) return;
+    setThinking(true);
+    setSuggestError(null);
+    const before = text;
+    try {
+      const out = await onSuggest(text);
+      setText(out);
+      setSuggested({ before });
+      window.setTimeout(() => area.current?.focus(), 0);
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : "Öneri alınamadı.");
+    } finally {
+      setThinking(false);
+    }
+  };
 
   useEffect(() => {
     if (!canReply && mode === "message") setMode("note");
@@ -78,11 +101,17 @@ export default function Composer({
   const send = async () => {
     const body = text.trim();
     if (busy || (!body && !file) || messageBlocked) return;
+    if (suggested && mode === "message" && /\[[^\]]+\]/.test(body)) {
+      setSuggestError("Önerideki köşeli parantezli yerleri doldurmadan gönderemezsiniz.");
+      return;
+    }
     setBusy(true);
     try {
       await onSend({ mode, text: body, file: file ?? undefined });
       setText("");
       setFile(null);
+      setSuggested(null);
+      setSuggestError(null);
     } finally {
       setBusy(false);
       window.setTimeout(() => area.current?.focus(), 0);
@@ -209,6 +238,9 @@ export default function Composer({
             placeholder={mode === "note" ? "Ekibe not yazın, müşteri görmez" : "Mesaj yazın · hazır yanıt için / yazın"}
             className="max-h-44 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground/60"
           />
+          {mode === "message" && onSuggest && (
+            <button type="button" onClick={() => void suggest()} disabled={thinking} data-tip={text.trim() ? "Yazdığımı düzelt" : "Cevap önerisi al"} className={cn("mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-violet-500 hover:bg-violet-500/10", thinking && "animate-pulse bg-violet-500/10")}><Sparkles className="size-4" /></button>
+          )}
           <button type="button" onClick={() => setEmoji((v) => !v)} data-tip="Emoji" className={cn("mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground", emoji && "bg-accent text-foreground")}><SmilePlus className="size-4" /></button>
           <button
             type="button"
@@ -221,7 +253,16 @@ export default function Composer({
           </button>
         </div>
       )}
-      <p className="mt-1 px-1 text-[0.65rem] text-muted-foreground/70">Enter gönderir, Shift+Enter alt satıra geçer. *kalın* _italik_ ~çizili~</p>
+      {suggestError ? (
+        <p className="mt-1 px-1 text-[0.7rem] text-destructive">{suggestError}</p>
+      ) : suggested && mode === "message" ? (
+        <p className="mt-1 flex items-center gap-2 px-1 text-[0.7rem] text-violet-600 dark:text-violet-400">
+          <Sparkles className="size-3" /> Yapay zekâ önerisi. Göndermeden önce okuyun, köşeli parantezleri doldurun.
+          <button type="button" onClick={() => { setText(suggested.before); setSuggested(null); }} className="ml-auto flex items-center gap-1 font-medium hover:underline"><Undo2 className="size-3" /> Geri al</button>
+        </p>
+      ) : (
+        <p className="mt-1 px-1 text-[0.65rem] text-muted-foreground/70">Enter gönderir, Shift+Enter alt satıra geçer. *kalın* _italik_ ~çizili~</p>
+      )}
     </div>
   );
 }

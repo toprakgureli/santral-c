@@ -188,6 +188,7 @@ type WAMessage struct {
 	FailedAt       *time.Time `gorm:"column:failed_at"`
 	WATimestamp    *time.Time `gorm:"column:wa_timestamp"`
 	Pricing        *string    `gorm:"column:pricing;type:jsonb"`
+	Referral       *string    `gorm:"column:referral;type:jsonb"`
 	CreatedAt      time.Time  `gorm:"column:created_at"`
 }
 
@@ -310,3 +311,53 @@ type WACallback struct {
 
 // TableName pins the table name.
 func (WACallback) TableName() string { return "wa_callbacks" }
+
+// WAFile is a file uploaded from the panel for chatbots and templates.
+type WAFile struct {
+	ID        uint      `gorm:"column:id;primarykey"`
+	StorageID string    `gorm:"column:storage_id"`
+	Name      string    `gorm:"column:name"`
+	Mime      string    `gorm:"column:mime"`
+	Size      int64     `gorm:"column:size"`
+	CreatedBy *uint     `gorm:"column:created_by"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+}
+
+// TableName pins the table name.
+func (WAFile) TableName() string { return "wa_files" }
+
+// WAGlobalSetting is one module-wide setting stored as JSON.
+type WAGlobalSetting struct {
+	Key       string    `gorm:"column:key;primarykey"`
+	Value     string    `gorm:"column:value;type:jsonb"`
+	UpdatedBy *uint     `gorm:"column:updated_by"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+// TableName pins the table name.
+func (WAGlobalSetting) TableName() string { return "wa_global_settings" }
+
+// WACallSurvey is a survey sent over WhatsApp after a phone call.
+type WACallSurvey struct {
+	ID             uint       `gorm:"column:id;primarykey"`
+	CallID         string     `gorm:"column:call_id"`
+	UserID         *uint      `gorm:"column:user_id"`
+	PeerKey        string     `gorm:"column:peer_key"`
+	WAID           string     `gorm:"column:wa_id"`
+	ChannelID      *uint      `gorm:"column:channel_id"`
+	ConversationID *uint      `gorm:"column:conversation_id"`
+	MessageID      *uint      `gorm:"column:message_id"`
+	Direction      string     `gorm:"column:direction"`
+	TalkSeconds    int        `gorm:"column:talk_seconds"`
+	Status         string     `gorm:"column:status"`
+	Note           string     `gorm:"column:note"`
+	Score          *int       `gorm:"column:score"`
+	Comment        string     `gorm:"column:comment"`
+	SendAt         time.Time  `gorm:"column:send_at"`
+	SentAt         *time.Time `gorm:"column:sent_at"`
+	AnsweredAt     *time.Time `gorm:"column:answered_at"`
+	CreatedAt      time.Time  `gorm:"column:created_at"`
+}
+
+// TableName pins the table name.
+func (WACallSurvey) TableName() string { return "wa_call_surveys" }

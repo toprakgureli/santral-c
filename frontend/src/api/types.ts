@@ -174,6 +174,9 @@ export interface TeamRow {
   escalations: number;
   breakSeconds: number;
   recent: RecentCall[];
+  // WhatsApp work and the survey after calls, when there is any
+  wa?: { owned: number; resolved: number; messages: number; avgFirstReplySec: number; ratings: number; avgRating: number };
+  survey?: { answered: number; average: number };
 }
 
 // RecentCall is one of an agent's latest calls on the team page.

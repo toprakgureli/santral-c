@@ -86,6 +86,9 @@ type Row struct {
 	BreakSeconds int64 `json:"breakSeconds"`
 	// Recent are the latest calls in the window, newest first.
 	Recent []RecentCall `json:"recent"`
+	// WhatsApp work and the survey after calls, when there is any.
+	WA     *WAStats     `json:"wa,omitempty"`
+	Survey *SurveyStats `json:"survey,omitempty"`
 }
 
 // Team is the page payload.
@@ -178,6 +181,9 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	// WhatsApp may not be in use; its figures are optional.
+	wa, _ := s.repo.WhatsApp(ctx, from, to)
+	surveys, _ := s.repo.CallSurveys(ctx, from, to)
 	live := map[string]string{}
 	if s.live != nil {
 		live = s.live.ExtensionStatuses(ctx)
@@ -200,6 +206,12 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 					row.Call.PeerName = s.contacts.NameByNumber(ctx, e164)
 				}
 			}
+		}
+		if st, ok := wa[u.ID]; ok {
+			row.WA = &st
+		}
+		if st, ok := surveys[u.ID]; ok {
+			row.Survey = &st
 		}
 		row.Recent = []RecentCall{}
 		for _, l := range recent[u.ID] {

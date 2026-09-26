@@ -71,7 +71,7 @@ export function preview(n: BotNode, names: { integrations: Record<number, string
     case "start":
       return "Müşteri yazınca";
     case "message":
-      return d.mediaUrl ? `📎 ${d.text || "dosya"}` : d.text || "Metin yazılmadı";
+      return d.fileId ? `📎 ${d.fileName ?? "dosya"}${d.text ? ` · ${d.text}` : ""}` : d.mediaUrl ? `📎 ${d.text || "dosya"}` : d.text || "Metin yazılmadı";
     case "menu":
       return d.text || "Soru yazılmadı";
     case "ask":

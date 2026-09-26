@@ -3,6 +3,7 @@
 
 import { useRef } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2, X } from "lucide-react";
+import FileUpload from "@/components/whatsapp/FileUpload";
 import { areaCls, FormField, inputCls, Words } from "@/components/whatsapp/settings/parts";
 import { cn } from "@/lib/utils";
 import type { BotData, BotNode, WAIntegration, WATeam } from "@/whatsapp/types";
@@ -48,21 +49,7 @@ export default function NodeEditor({
         {node.type === "message" && (
           <>
             <TextWithVars label="Mesaj" value={d.text ?? ""} onChange={(v) => set({ text: v }, "text")} vars={vars} rows={5} placeholder="Merhaba {musteri}, hoş geldiniz!" />
-            <div className="space-y-2 rounded-2xl bg-muted/30 p-3">
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" checked={!!d.mediaUrl || d.mediaKind !== undefined && d.mediaKind !== ""} onChange={(e) => set(e.target.checked ? { mediaKind: "image", mediaUrl: "" } : { mediaKind: "", mediaUrl: "" }, "media")} /> Dosya da gönder</label>
-              {(d.mediaKind || d.mediaUrl) && (
-                <>
-                  <div className="flex gap-1 rounded-xl bg-muted/60 p-1">
-                    {([["image", "Görsel"], ["video", "Video"], ["document", "Belge"]] as const).map(([v, l]) => (
-                      <button key={v} type="button" onClick={() => set({ mediaKind: v }, "mediaKind")} className={cn("flex-1 rounded-lg px-2 py-1 text-xs font-medium", (d.mediaKind || "image") === v ? "bg-card shadow-sm" : "text-muted-foreground")}>{l}</button>
-                    ))}
-                  </div>
-                  <FormField label="Dosyanın internet adresi" hint="Herkese açık bir https adresi olmalı. Mesaj metni dosyanın altında açıklama olarak gider.">
-                    <input className={cn(inputCls, "font-mono text-xs")} value={d.mediaUrl ?? ""} onChange={(e) => set({ mediaUrl: e.target.value }, "mediaUrl")} placeholder="https://..." />
-                  </FormField>
-                </>
-              )}
-            </div>
+            <MediaFields d={d} set={set} />
           </>
         )}
 
@@ -204,6 +191,47 @@ export default function NodeEditor({
         </footer>
       )}
     </aside>
+  );
+}
+
+function MediaFields({ d, set }: { d: BotData; set: (p: Partial<BotData>, key: string) => void }) {
+  const on = !!d.fileId || !!d.mediaUrl || (d.mediaKind !== undefined && d.mediaKind !== "");
+  const byLink = !d.fileId && d.mediaUrl !== undefined && d.mediaUrl !== "" ? true : d.mediaKind === "link";
+  return (
+    <div className="space-y-2.5 rounded-2xl bg-muted/30 p-3">
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" className="size-4 accent-primary" checked={on} onChange={(e) => set(e.target.checked ? { mediaKind: "image", mediaUrl: "", fileId: undefined, fileName: undefined } : { mediaKind: "", mediaUrl: "", fileId: undefined, fileName: undefined }, "media")} />
+        Görsel, video ya da belge de gönder
+      </label>
+      {on && (
+        <>
+          <div className="flex gap-1 rounded-xl bg-muted/60 p-1">
+            <button type="button" onClick={() => set({ mediaKind: d.fileId ? d.mediaKind : "image", mediaUrl: "" }, "mediaMode")} className={cn("flex-1 rounded-lg px-2 py-1 text-xs font-medium", !byLink ? "bg-card shadow-sm" : "text-muted-foreground")}>Bilgisayardan yükle</button>
+            <button type="button" onClick={() => set({ mediaKind: "link", fileId: undefined, fileName: undefined }, "mediaMode")} className={cn("flex-1 rounded-lg px-2 py-1 text-xs font-medium", byLink ? "bg-card shadow-sm" : "text-muted-foreground")}>İnternet adresinden</button>
+          </div>
+          {!byLink ? (
+            <FileUpload
+              value={d.fileId ? { id: d.fileId, name: d.fileName ?? "dosya", kind: d.mediaKind } : null}
+              onChange={(f) => set(f ? { fileId: f.id, fileName: f.name, mediaKind: f.kind ?? "document", mediaUrl: "" } : { fileId: undefined, fileName: undefined, mediaKind: "image" }, "file")}
+              accept="image/jpeg,image/png,video/mp4,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+              hint="Görsel en fazla 5 MB, video 16 MB, belge 100 MB. Mesaj metni dosyanın altında açıklama olarak gider."
+            />
+          ) : (
+            <>
+              <div className="flex gap-1 rounded-xl bg-muted/60 p-1">
+                {([["image", "Görsel"], ["video", "Video"], ["document", "Belge"]] as const).map(([v, l]) => {
+                  const kind = d.mediaKind === "link" || !d.mediaKind ? "image" : d.mediaKind;
+                  return <button key={v} type="button" onClick={() => set({ mediaKind: v }, "mediaKind")} className={cn("flex-1 rounded-lg px-2 py-1 text-xs font-medium", kind === v ? "bg-card shadow-sm" : "text-muted-foreground")}>{l}</button>;
+                })}
+              </div>
+              <FormField label="Dosyanın internet adresi" hint="Herkesin açabildiği bir https adresi olmalı.">
+                <input className={cn(inputCls, "font-mono text-xs")} value={d.mediaUrl ?? ""} onChange={(e) => set({ mediaUrl: e.target.value, mediaKind: !e.target.value ? "link" : d.mediaKind === "link" ? "image" : d.mediaKind }, "mediaUrl")} placeholder="https://..." />
+              </FormField>
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

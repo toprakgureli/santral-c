@@ -338,6 +338,7 @@ type MessageView struct {
 	Media          *MediaView      `json:"media,omitempty"`
 	Payload        json.RawMessage `json:"payload,omitempty"`
 	ReplyTo        *ReplyView      `json:"replyTo,omitempty"`
+	Referral       json.RawMessage `json:"referral,omitempty"` // the ad the customer came from
 	Status         string          `json:"status"`
 	ErrorText      string          `json:"errorText,omitempty"`
 	Sender         SenderView      `json:"sender"`
@@ -456,6 +457,9 @@ func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]
 		}
 		if m.Payload != nil && m.Kind != "text" {
 			v.Payload = json.RawMessage(*m.Payload)
+		}
+		if m.Referral != nil {
+			v.Referral = json.RawMessage(*m.Referral)
 		}
 		if m.Media != nil {
 			var ref MediaRef

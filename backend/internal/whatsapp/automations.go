@@ -232,9 +232,9 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := outsideClient.Do(req)
 		if err != nil {
-			return err
+			return explainOutside(err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode/100 != 2 {

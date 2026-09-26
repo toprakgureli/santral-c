@@ -1,11 +1,15 @@
 // WhatsApp endpoints.
 
-import { request } from "@/api/client";
+import { download, request } from "@/api/client";
 import type {
   BotGraph,
   BotStats,
   SimResult,
   WAAgent,
+  WAAISettings,
+  WACallSurveyReport,
+  WACallSurveySettings,
+  WAFile,
   WABot,
   WACallback,
   WAChannel,
@@ -132,6 +136,27 @@ export const waApi = {
     request<void>(id ? `/wa/integrations/${id}` : "/wa/integrations", json(id ? "PUT" : "POST", body)),
   deleteIntegration: (id: number) => request<void>(`/wa/integrations/${id}`, json("DELETE")),
   testIntegration: (id: number, vars: Record<string, string>) => request<unknown>(`/wa/integrations/${id}/test`, json("POST", vars)),
+
+  // files for chatbots and templates
+  uploadFile: (file: File) => {
+    const f = new FormData();
+    f.set("file", file);
+    return request<WAFile>("/wa/files", { method: "POST", body: f });
+  },
+  fileUrl: (id: number) => `/api/v1/wa/files/${id}`,
+  exportChat: (conversationId: number) => download(`/wa/conversations/${conversationId}/export`, `whatsapp_${conversationId}.txt`),
+
+  // reply assistant
+  aiStatus: () => request<{ available: boolean }>("/wa/ai/status"),
+  ai: () => request<WAAISettings>("/wa/ai"),
+  saveAI: (body: { enabled: boolean; model: string; instructions: string; useQuickReplies: boolean; apiKey: string }) => request<WAAISettings>("/wa/ai", json("PUT", body)),
+  testAI: () => request<{ message: string }>("/wa/ai/test", json("POST")),
+  suggest: (conversationId: number, draft: string) => request<{ text: string }>(`/wa/conversations/${conversationId}/suggest`, json("POST", { draft })),
+
+  // survey after a phone call
+  callSurvey: () => request<WACallSurveySettings>("/wa/call-survey"),
+  saveCallSurvey: (body: WACallSurveySettings) => request<WACallSurveySettings>("/wa/call-survey", json("PUT", body)),
+  callSurveyReport: (from: string, to: string) => request<WACallSurveyReport>("/wa/call-survey/report" + q({ from, to })),
 
   // callbacks, events, reports
   callbacks: (all = false) => request<WACallback[]>("/wa/callbacks" + (all ? "?all=1" : "")),

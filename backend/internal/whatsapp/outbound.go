@@ -115,6 +115,10 @@ type TemplateParams struct {
 	Body        []string `json:"body"`
 	Buttons     []string `json:"buttons"`
 	HeaderMedia string   `json:"headerMedia"` // a link for an image/video/document header
+	HeaderFile  uint     `json:"headerFile"`  // or a file uploaded from the panel
+	// filled by the server: Meta's id for HeaderFile, and quick reply payloads
+	headerMediaID string
+	quickPayloads []string
 }
 
 // SendInput is an agent's message from the inbox.
@@ -208,6 +212,13 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		params := TemplateParams{}
 		if in.Params != nil {
 			params = *in.Params
+		}
+		if params.HeaderFile > 0 {
+			id, _, err := s.metaMediaFor(ctx, ch, params.HeaderFile)
+			if err != nil {
+				return nil, errs.Invalid("Başlık dosyası Meta'ya yüklenemedi. "+friendlyError(err), err)
+			}
+			params.headerMediaID = id
 		}
 		obj, preview, err := buildTemplate(tpl, params)
 		if err != nil {

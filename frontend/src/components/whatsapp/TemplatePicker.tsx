@@ -6,6 +6,7 @@ import { FileText, Search } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { Button, Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import FileUpload, { type PickedFile } from "@/components/whatsapp/FileUpload";
 import { waApi } from "@/whatsapp/api";
 import type { WATemplate, WATemplateComponent } from "@/whatsapp/types";
 
@@ -17,13 +18,17 @@ function vars(text?: string): number {
   return n;
 }
 
+function headerWord(format?: string) {
+  return format === "IMAGE" ? "görseli" : format === "VIDEO" ? "videosu" : "belgesi";
+}
+
 function fill(text: string, vals: string[]): string {
   return text.replace(/\{\{(\d+)\}\}/g, (all, k) => vals[Number(k) - 1] || all);
 }
 
 export interface TemplateChoice {
   templateId: number;
-  params: { header: string[]; body: string[]; buttons: string[]; headerMedia: string };
+  params: { header: string[]; body: string[]; buttons: string[]; headerMedia: string; headerFile?: number };
   name: string;
 }
 
@@ -35,6 +40,8 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
   const [body, setBody] = useState<string[]>([]);
   const [buttons, setButtons] = useState<string[]>([]);
   const [media, setMedia] = useState("");
+  const [headerFile, setHeaderFile] = useState<PickedFile | null>(null);
+  const [byLink, setByLink] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,18 +69,20 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
     setBody(Array.from({ length: bn }, (_, i) => (i === 0 && pre.musteri ? pre.musteri : "")));
     setButtons((parts.buttons?.buttons ?? []).filter((b) => b.type?.toUpperCase() === "URL" && vars(b.url) > 0).map(() => ""));
     setMedia("");
+    setHeaderFile(null);
+    setByLink(false);
   }, [pick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = (list ?? []).filter((t) => !q || t.name.includes(q.toLowerCase()) || (t.components.find((c) => c.type === "BODY")?.text ?? "").toLocaleLowerCase("tr").includes(q.toLocaleLowerCase("tr")));
   const mediaHeader = parts.header && parts.header.format && parts.header.format !== "TEXT";
-  const ready = pick && header.every((v) => v.trim()) && body.every((v) => v.trim()) && buttons.every((v) => v.trim()) && (!mediaHeader || media.trim());
+  const ready = pick && header.every((v) => v.trim()) && body.every((v) => v.trim()) && buttons.every((v) => v.trim()) && (!mediaHeader || (byLink ? media.trim() : headerFile));
 
   const send = async () => {
     if (!pick || !ready) return;
     setBusy(true);
     setError(null);
     try {
-      await onSend({ templateId: pick.id, name: pick.name, params: { header, body, buttons, headerMedia: media } });
+      await onSend({ templateId: pick.id, name: pick.name, params: { header, body, buttons, headerMedia: byLink ? media : "", headerFile: byLink ? undefined : headerFile?.id } });
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
@@ -118,7 +127,19 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
               {(header.length > 0 || body.length > 0 || buttons.length > 0 || mediaHeader) && (
                 <div className="space-y-2 rounded-2xl bg-muted/30 p-3">
                   <p className="text-xs font-semibold text-muted-foreground">Boşlukları doldurun</p>
-                  {mediaHeader && <Field label={`Başlık dosyasının linki (${parts.header?.format?.toLowerCase()})`} value={media} onChange={setMedia} placeholder="https://..." />}
+                  {mediaHeader && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-xs font-medium text-muted-foreground">Başlık {headerWord(parts.header?.format)}</span>
+                        <button type="button" onClick={() => setByLink((v) => !v)} className="text-[0.7rem] font-medium text-primary hover:underline">{byLink ? "Bilgisayardan yükle" : "Link yapıştır"}</button>
+                      </div>
+                      {byLink ? (
+                        <Field label="" value={media} onChange={setMedia} placeholder="https://..." />
+                      ) : (
+                        <FileUpload value={headerFile} onChange={(f) => setHeaderFile(f)} accept={parts.header?.format === "IMAGE" ? "image/jpeg,image/png" : parts.header?.format === "VIDEO" ? "video/mp4" : "application/pdf"} />
+                      )}
+                    </div>
+                  )}
                   {header.map((v, i) => <Field key={`h${i}`} label={`Başlık {{${i + 1}}}`} value={v} onChange={(x) => setHeader((a) => a.map((y, j) => (j === i ? x : y)))} />)}
                   {body.map((v, i) => <Field key={`b${i}`} label={`Metin {{${i + 1}}}`} value={v} onChange={(x) => setBody((a) => a.map((y, j) => (j === i ? x : y)))} />)}
                   {buttons.map((v, i) => <Field key={`u${i}`} label={`Düğme linkinin sonu ${i + 1}`} value={v} onChange={(x) => setButtons((a) => a.map((y, j) => (j === i ? x : y)))} />)}

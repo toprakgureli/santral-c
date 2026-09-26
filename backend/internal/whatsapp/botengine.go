@@ -35,6 +35,8 @@ type BotNode struct {
 type BotData struct {
 	Text        string      `json:"text,omitempty"`
 	MediaURL    string      `json:"mediaUrl,omitempty"`
+	FileID      uint        `json:"fileId,omitempty"`    // a file uploaded from the panel
+	FileName    string      `json:"fileName,omitempty"`  // its name, for the drawing
 	MediaKind   string      `json:"mediaKind,omitempty"` // image | video | document
 	Style       string      `json:"style,omitempty"`     // buttons | list
 	ButtonLabel string      `json:"buttonLabel,omitempty"`
@@ -93,7 +95,7 @@ type botState struct {
 // botIO is everything the flow may do in the world.
 type botIO interface {
 	sendText(text string)
-	sendMedia(kind, url, caption string)
+	sendMedia(kind, url string, fileID uint, fileName, caption string)
 	sendMenu(style, text, button string, options []BotOption)
 	handoff(teamID uint, note string)
 	finish(resolve bool)
@@ -149,7 +151,7 @@ func (g *BotGraph) Validate() []string {
 		label := boxName(n.Type)
 		switch n.Type {
 		case "message":
-			if strings.TrimSpace(n.Data.Text) == "" && n.Data.MediaURL == "" {
+			if strings.TrimSpace(n.Data.Text) == "" && n.Data.MediaURL == "" && n.Data.FileID == 0 {
 				problems = append(problems, label+" kutusunda metin ya da dosya yok.")
 			}
 		case "menu":
@@ -288,8 +290,8 @@ func step(g *BotGraph, st *botState, in *botInput, io botIO) {
 		case "start":
 			cur = g.next(cur.ID, "next")
 		case "message":
-			if d.MediaURL != "" {
-				io.sendMedia(d.MediaKind, d.MediaURL, fillVars(d.Text, st.Vars))
+			if d.MediaURL != "" || d.FileID > 0 {
+				io.sendMedia(d.MediaKind, d.MediaURL, d.FileID, d.FileName, fillVars(d.Text, st.Vars))
 			} else if t := strings.TrimSpace(fillVars(d.Text, st.Vars)); t != "" {
 				io.sendText(t)
 			}
@@ -612,8 +614,12 @@ type SimOutput struct {
 }
 
 func (o *simIO) sendText(t string) { o.Out = append(o.Out, SimOutput{Kind: "text", Text: t}) }
-func (o *simIO) sendMedia(kind, url, caption string) {
-	o.Out = append(o.Out, SimOutput{Kind: "media", Text: caption, Detail: kind + ": " + url})
+func (o *simIO) sendMedia(kind, url string, fileID uint, fileName, caption string) {
+	what := url
+	if fileID > 0 {
+		what = fileName
+	}
+	o.Out = append(o.Out, SimOutput{Kind: "media", Text: caption, Detail: what})
 }
 func (o *simIO) sendMenu(style, text, button string, options []BotOption) {
 	o.Out = append(o.Out, SimOutput{Kind: "menu", Text: text, Options: options, Style: style, Detail: button})

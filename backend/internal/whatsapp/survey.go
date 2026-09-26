@@ -203,7 +203,7 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if err := json.Unmarshal(body, &p); err != nil {
 		return errs.Invalid("Anket cevabı okunamadı.", err)
 	}
-	var ticket, token, comment string
+	var ticket, call, token, comment string
 	score := 0
 	for _, f := range p.Data.Fields {
 		label := strings.ToLower(strings.TrimSpace(f.Label))
@@ -214,6 +214,8 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 		switch {
 		case label == "ticket":
 			ticket = str
+		case label == "call":
+			call = str
 		case label == "token":
 			token = str
 		case f.Type == "RATING" || f.Type == "LINEAR_SCALE" || (f.Type == "INPUT_NUMBER" && score == 0):
@@ -225,6 +227,20 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 				comment = str
 			}
 		}
+	}
+	if call != "" {
+		// the survey after a phone call
+		cid, err := strconv.Atoi(call)
+		if err != nil || cid <= 0 || !hmac.Equal([]byte(token), []byte(s.callSurveyToken(uint(cid)))) {
+			return errs.Unauthorized("Anket bağlantısı bu görüşmeye ait değil.")
+		}
+		if score > 5 {
+			score = 5
+		}
+		if score >= 1 {
+			s.recordCallSurvey(ctx, uint(cid), "", score, comment)
+		}
+		return nil
 	}
 	tid, err := strconv.Atoi(ticket)
 	if err != nil || tid <= 0 {

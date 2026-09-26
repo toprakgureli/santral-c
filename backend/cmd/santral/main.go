@@ -21,6 +21,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
+	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/games"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
@@ -172,6 +173,11 @@ func run() error {
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
 	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, configs.Cnf.Auth.Secret)
 	whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard).Routes(api)
+	// A finished phone call may be followed by a survey on WhatsApp.
+	callLogSvc.OnEnded = func(ctx context.Context, log models.CallLog) {
+		escalationSvc.AutoLog(ctx, log)
+		waSvc.OnCallEnded(ctx, log)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

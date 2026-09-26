@@ -102,6 +102,8 @@ export interface WAMessage {
   media?: WAMedia;
   payload?: unknown;
   replyTo?: { id: number; kind: string; body: string; sender: string };
+  // the ad the customer came from
+  referral?: WAReferral;
   status: "received" | "queued" | "sent" | "delivered" | "read" | "failed";
   errorText?: string;
   sender: WASender;
@@ -112,6 +114,18 @@ export interface WAMessage {
   readAt?: string;
   // local only: a message on its way
   pending?: boolean;
+}
+
+export interface WAReferral {
+  source_url?: string;
+  source_type?: string;
+  source_id?: string;
+  headline?: string;
+  body?: string;
+  media_type?: string;
+  image_url?: string;
+  video_url?: string;
+  thumbnail_url?: string;
 }
 
 export interface WAListResult {
@@ -275,6 +289,8 @@ export interface BotRule {
 export interface BotData {
   text?: string;
   mediaUrl?: string;
+  fileId?: number;
+  fileName?: string;
   mediaKind?: string;
   style?: "buttons" | "list";
   buttonLabel?: string;
@@ -451,4 +467,50 @@ export interface WAReport {
   agents: WAAgentReport[];
   channels: WAChannelReport[];
   hours: number[];
+}
+
+export interface WAFile {
+  id: number;
+  name: string;
+  mime: string;
+  size: number;
+  kind: "image" | "video" | "audio" | "document";
+  url: string;
+}
+
+export interface WAAISettings {
+  enabled: boolean;
+  model: string;
+  instructions: string;
+  useQuickReplies: boolean;
+  hasKey: boolean;
+  models: { id: string; label: string }[];
+}
+
+export interface WACallSurveySettings {
+  enabled: boolean;
+  channelId: number;
+  template: string;
+  templateLang: string;
+  params: string[];
+  mode: "buttons" | "link";
+  buttonScores: number[];
+  linkUrl: string;
+  directions: "inbound" | "outbound" | "both";
+  minSeconds: number;
+  delayMinutes: number;
+  quietDays: number;
+  alertBelow: number;
+  thankYou: string;
+}
+
+export interface WACallSurveyReport {
+  queued: number;
+  sent: number;
+  answered: number;
+  failed: number;
+  skipped: number;
+  average: number;
+  agents: { user: WAPerson; sent: number; answered: number; average: number; low: number }[];
+  recent: { id: number; agent: string; phone: string; score: number; comment: string; conversationId: number; answeredAt: string }[];
 }

@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { Bot, Copy, CornerUpLeft, Download, FileText, Lock, MapPin, MousePointerClick, RotateCcw, SmilePlus, UserSquare2, Zap } from "lucide-react";
 import UserAvatar from "@/components/ui/UserAvatar";
+import AdSource from "@/components/whatsapp/AdSource";
 import Ticks from "@/components/whatsapp/Ticks";
 import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,7 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
                 <span className="block truncate text-xs text-muted-foreground">{m.replyTo.body}</span>
               </button>
             )}
+            {m.referral && <AdSource r={m.referral} compact />}
             <Media m={m} onImage={onImage} />
             {m.kind === "interactive" && !out && (
               <span className="mb-0.5 flex items-center gap-1 text-[0.65rem] font-medium text-muted-foreground"><MousePointerClick className="size-3" /> Seçti</span>

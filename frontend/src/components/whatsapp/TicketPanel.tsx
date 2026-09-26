@@ -3,9 +3,10 @@
 // on it, how long the customer waited, the score) and past conversations.
 
 import { useEffect, useState } from "react";
-import { BellOff, Ban, Clock, History, Pencil, Star, Tag, UserRound, Users, X } from "lucide-react";
+import { BellOff, Ban, Clock, History, Megaphone, Pencil, Star, Tag, UserRound, Users, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import UserAvatar from "@/components/ui/UserAvatar";
+import AdSource, { asReferral } from "@/components/whatsapp/AdSource";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
@@ -75,6 +76,11 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
         <p className="text-[0.7rem] text-muted-foreground">{conv.channelName}</p>
       </div>
 
+      {asReferral(c.source) && (
+        <Section icon={Megaphone} title="Nereden geldi">
+          <AdSource r={asReferral(c.source)!} />
+        </Section>
+      )}
       <Section icon={Tag} title="Müşteri etiketleri">
         <Tags values={c.tags} editable={canEditContact} onChange={(tags) => void saveContact({ tags })} />
       </Section>

@@ -296,3 +296,70 @@ func (r *Repository) Shifts(ctx context.Context, from, to time.Time) (map[uint]S
 	}
 	return out, nil
 }
+
+// WAStats is an agent's WhatsApp work in a window, counted the same way as
+// the WhatsApp reports.
+type WAStats struct {
+	UserID           uint    `json:"-"`
+	Owned            int64   `json:"owned"`
+	Resolved         int64   `json:"resolved"`
+	Messages         int64   `json:"messages"`
+	AvgFirstReplySec float64 `json:"avgFirstReplySec"`
+	Ratings          int64   `json:"ratings"`
+	AvgRating        float64 `json:"avgRating"`
+}
+
+// WhatsApp returns each agent's WhatsApp figures for conversations opened
+// in [from, to). Agents with none are absent.
+func (r *Repository) WhatsApp(ctx context.Context, from, to time.Time) (map[uint]WAStats, error) {
+	var rows []WAStats
+	if err := r.db.WithContext(ctx).Raw(`SELECT p.user_id,
+		count(*) FILTER (WHERE p.role = 'owner') AS owned,
+		count(*) FILTER (WHERE t.resolved_by = p.user_id) AS resolved,
+		COALESCE(avg(EXTRACT(EPOCH FROM (p.first_reply_at - t.created_at))) FILTER (WHERE p.role = 'owner' AND p.first_reply_at IS NOT NULL), 0) AS avg_first_reply_sec,
+		count(t.rating) FILTER (WHERE p.role = 'owner') AS ratings,
+		COALESCE(avg(t.rating) FILTER (WHERE p.role = 'owner'), 0) AS avg_rating
+		FROM wa_ticket_participants p JOIN wa_tickets t ON t.id = p.ticket_id
+		WHERE t.created_at >= ? AND t.created_at < ? GROUP BY p.user_id`, from, to).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("whatsapp figures could not be computed: %w", err)
+	}
+	var msgs []struct {
+		UserID uint
+		N      int64
+	}
+	if err := r.db.WithContext(ctx).Raw(`SELECT sender_user_id AS user_id, count(*) AS n FROM wa_messages
+		WHERE direction = 'out' AND sender_user_id IS NOT NULL AND created_at >= ? AND created_at < ? GROUP BY sender_user_id`, from, to).Scan(&msgs).Error; err != nil {
+		return nil, fmt.Errorf("whatsapp messages could not be counted: %w", err)
+	}
+	out := make(map[uint]WAStats, len(rows))
+	for _, row := range rows {
+		out[row.UserID] = row
+	}
+	for _, m := range msgs {
+		st := out[m.UserID]
+		st.UserID, st.Messages = m.UserID, m.N
+		out[m.UserID] = st
+	}
+	return out, nil
+}
+
+// SurveyStats is the survey sent after an agent's phone calls.
+type SurveyStats struct {
+	UserID   uint    `json:"-"`
+	Answered int64   `json:"answered"`
+	Average  float64 `json:"average"`
+}
+
+// CallSurveys returns each agent's answered call surveys in [from, to).
+func (r *Repository) CallSurveys(ctx context.Context, from, to time.Time) (map[uint]SurveyStats, error) {
+	var rows []SurveyStats
+	if err := r.db.WithContext(ctx).Raw(`SELECT user_id, count(*) AS answered, COALESCE(avg(score), 0) AS average FROM wa_call_surveys
+		WHERE status = 'answered' AND user_id IS NOT NULL AND created_at >= ? AND created_at < ? GROUP BY user_id`, from, to).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("call surveys could not be counted: %w", err)
+	}
+	out := make(map[uint]SurveyStats, len(rows))
+	for _, row := range rows {
+		out[row.UserID] = row
+	}
+	return out, nil
+}

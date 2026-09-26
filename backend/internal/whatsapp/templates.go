@@ -441,11 +441,17 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 				}
 				preview = append(preview, "*"+fill(c.Text, p.Header)+"*")
 			case "IMAGE", "VIDEO", "DOCUMENT":
-				if strings.TrimSpace(p.HeaderMedia) == "" {
-					return nil, "", errs.Invalid("Bu şablonun başlığı için dosya linki gerekiyor.", nil)
-				}
 				kind := strings.ToLower(c.Format)
-				out = append(out, map[string]any{"type": "header", "parameters": []map[string]any{{"type": kind, kind: map[string]any{"link": p.HeaderMedia}}}})
+				var media map[string]any
+				switch {
+				case p.headerMediaID != "":
+					media = map[string]any{"id": p.headerMediaID}
+				case strings.TrimSpace(p.HeaderMedia) != "":
+					media = map[string]any{"link": strings.TrimSpace(p.HeaderMedia)}
+				default:
+					return nil, "", errs.Invalid("Bu şablonun başlığı için bir dosya seçin.", nil)
+				}
+				out = append(out, map[string]any{"type": "header", "parameters": []map[string]any{{"type": kind, kind: media}}})
 			}
 		case "BODY":
 			if n := countVars(c.Text); n > 0 {
@@ -463,8 +469,12 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 		case "FOOTER":
 			preview = append(preview, "_"+c.Text+"_")
 		case "BUTTONS":
-			bi := 0
+			bi, qi := 0, 0
 			for i, b := range c.Buttons {
+				if strings.ToUpper(b.Type) == "QUICK_REPLY" && qi < len(p.quickPayloads) {
+					out = append(out, map[string]any{"type": "button", "sub_type": "quick_reply", "index": fmt.Sprint(i), "parameters": []map[string]any{{"type": "payload", "payload": p.quickPayloads[qi]}}})
+					qi++
+				}
 				if strings.ToUpper(b.Type) == "URL" && countVars(b.URL) > 0 {
 					val := ""
 					if bi < len(p.Buttons) {

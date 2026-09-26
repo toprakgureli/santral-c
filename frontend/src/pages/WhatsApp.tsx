@@ -8,7 +8,6 @@ import { BarChart3, MessageCirclePlus, PhoneCall, Settings2, Smartphone } from "
 import { useAuth } from "@/auth/AuthContext";
 import ChatPane from "@/components/whatsapp/ChatPane";
 import ConversationList from "@/components/whatsapp/ConversationList";
-import NewChatDialog from "@/components/whatsapp/NewChatDialog";
 import TicketPanel from "@/components/whatsapp/TicketPanel";
 import { can, canAny } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -26,7 +25,6 @@ export function WhatsApp() {
   const { user } = useAuth();
   const wa = useWhatsApp();
   const [channels, setChannels] = useState<WAChannel[]>([]);
-  const [newChat, setNewChat] = useState(false);
   const [panel, setPanel] = useState(() => {
     try {
       if (window.innerWidth < 1024) return false;
@@ -85,7 +83,7 @@ export function WhatsApp() {
     });
   };
 
-  const canSettings = canAny(user, ["whatsapp.channel_manage", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_read_receipts"]);
+  const canSettings = canAny(user, ["whatsapp.channel_manage", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_read_receipts", "whatsapp.ai_manage", "whatsapp.call_survey_manage"]);
 
   if (wa.loaded && channels.length === 0 && wa.conversations.length === 0) {
     return (
@@ -107,7 +105,7 @@ export function WhatsApp() {
           <span className="flex size-8 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"><Smartphone className="size-4" /></span>
           <span className="ml-1 text-sm font-semibold">WhatsApp</span>
           <span className="ml-auto flex items-center gap-0.5">
-            {can(user, "whatsapp.template_send") && <HeadBtn tip="Yeni sohbet başlat" onClick={() => setNewChat(true)}><MessageCirclePlus className="size-4" /></HeadBtn>}
+            {can(user, "whatsapp.template_send") && <HeadBtn tip="WhatsApp'tan yaz: yeni sohbet başlat" onClick={() => wa.startChat()}><MessageCirclePlus className="size-4" /></HeadBtn>}
             {can(user, "whatsapp.callbacks") && <HeadLink tip="Geri arama talepleri" to="/whatsapp/callbacks"><PhoneCall className="size-4" /></HeadLink>}
             {can(user, "whatsapp.reports") && <HeadLink tip="Raporlar" to="/whatsapp/reports"><BarChart3 className="size-4" /></HeadLink>}
             {canSettings && <HeadLink tip="WhatsApp ayarları" to="/whatsapp/settings"><Settings2 className="size-4" /></HeadLink>}
@@ -136,7 +134,6 @@ export function WhatsApp() {
           </p>
         </section>
       )}
-      <NewChatDialog open={newChat} channels={channels} onClose={() => setNewChat(false)} onStarted={(c) => { wa.upsert(c); navigate(`/whatsapp/${c.id}`); }} />
     </div>
   );
 }

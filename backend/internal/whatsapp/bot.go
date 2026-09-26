@@ -42,7 +42,25 @@ func (o *liveIO) sendText(text string) {
 	o.s.queueObject(o.ctx, o.ch, o.conv.ID, o.ticket.ID, "bot", o.bot.Name, "text", text, map[string]any{"type": "text", "text": map[string]any{"body": text}})
 }
 
-func (o *liveIO) sendMedia(kind, url, caption string) {
+func (o *liveIO) sendMedia(kind, url string, fileID uint, fileName, caption string) {
+	if fileID > 0 {
+		metaID, f, err := o.s.metaMediaFor(o.ctx, o.ch, fileID)
+		if err != nil || f == nil {
+			slog.WarnContext(o.ctx, "whatsapp chatbot file could not be sent", "bot", o.bot.ID, "file", fileID, "error", err)
+			if t := strings.TrimSpace(caption); t != "" {
+				o.sendText(t)
+			}
+			return
+		}
+		k, _ := mediaKind(f.Mime, 0)
+		ref := MediaRef{MetaID: metaID, StoreID: f.StorageID, Mime: f.Mime, Name: f.Name, Size: f.Size}
+		msg := &models.WAMessage{ChannelID: o.ch.ID, ConversationID: o.conv.ID, TicketID: uintPtr(o.ticket.ID), Direction: "out", Kind: k,
+			SenderKind: "bot", SenderLabel: o.bot.Name, Body: strings.TrimSpace(caption), Media: strPtr(jsonString(ref)), Status: "queued", CreatedAt: time.Now()}
+		if _, err := o.s.enqueue(o.ctx, o.ch, o.conv, o.ticket, msg, mediaObject(k, metaID, caption, f.Name), 0); err != nil {
+			slog.WarnContext(o.ctx, "whatsapp chatbot file could not be queued", "bot", o.bot.ID, "error", err)
+		}
+		return
+	}
 	switch kind {
 	case "video", "document":
 	default:
@@ -840,9 +858,9 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 			}
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := outsideClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, explainOutside(err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

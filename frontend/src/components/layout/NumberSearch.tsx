@@ -1,18 +1,26 @@
 // NumberSearch: the box in the top bar that answers "who spoke with this
 // number". Type a number, and a card lists the agents who handled it with
 // their call counts and talk time, then the calls themselves, newest
-// first. Agents who may only see their own calls get their own.
+// first. Agents who may only see their own calls get their own. Below the
+// calls come the number's WhatsApp conversations, with a way to write to
+// it on WhatsApp.
 
 import { useEffect, useRef, useState } from "react";
-import { PhoneIncoming, PhoneOutgoing, Search, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { MessageCirclePlus, PhoneIncoming, PhoneOutgoing, Search, X } from "lucide-react";
+import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import { api, ApiError } from "@/api/client";
 import type { CallLookup } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
-import { canAny } from "@/lib/permissions";
+import { can, canAny } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { CallDisposition, formatClock } from "@/pages/callFormat";
 import { displayNumber } from "@/softphone/dial";
+import { waApi } from "@/whatsapp/api";
+import type { WAConversation } from "@/whatsapp/types";
+import { listTime, STATUS_WORD } from "@/whatsapp/util";
+import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 
 function stamp(iso: string) {
   const d = new Date(iso);
@@ -27,7 +35,11 @@ function minutes(seconds: number) {
 
 export default function NumberSearch() {
   const { user } = useAuth();
-  const allowed = canAny(user, ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own", "call.originate"]);
+  const wa = useWhatsApp();
+  const callsAllowed = canAny(user, ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own", "call.originate"]);
+  const canWrite = wa.enabled && can(user, "whatsapp.template_send");
+  const allowed = callsAllowed || wa.enabled;
+  const [chats, setChats] = useState<WAConversation[] | null>(null);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [result, setResult] = useState<CallLookup | null>(null);
@@ -40,12 +52,20 @@ export default function NumberSearch() {
     const digits = q.replace(/\D/g, "");
     if (digits.length < 3) {
       setResult(null);
+      setChats(null);
       setError(null);
       return;
     }
     let live = true;
     setBusy(true);
     const t = window.setTimeout(() => {
+      if (wa.enabled) {
+        waApi.lookup(q).then((l) => live && setChats(l)).catch(() => live && setChats([]));
+      }
+      if (!callsAllowed) {
+        setBusy(false);
+        return;
+      }
       api
         .callLookup(q)
         .then((r) => {
@@ -60,7 +80,7 @@ export default function NumberSearch() {
       live = false;
       window.clearTimeout(t);
     };
-  }, [q]);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;
@@ -102,7 +122,7 @@ export default function NumberSearch() {
 
       {showCard && (
         <div className="animate-in fade-in slide-in-from-top-1 absolute right-0 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-xl duration-150">
-          {error ? (
+          {callsAllowed && (error ? (
             <p className="px-4 py-3 text-sm text-destructive">{error}</p>
           ) : !result ? (
             <p className="px-4 py-3 text-sm text-muted-foreground">{busy ? "Aranıyor..." : "Bekleniyor..."}</p>
@@ -126,7 +146,7 @@ export default function NumberSearch() {
                   </li>
                 ))}
               </ul>
-              <ul className="max-h-72 overflow-y-auto px-2 py-1.5">
+              <ul className="max-h-60 overflow-y-auto px-2 py-1.5">
                 {result.items.map((c) => (
                   <li key={c.uuid} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
                     {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
@@ -138,6 +158,38 @@ export default function NumberSearch() {
                 ))}
               </ul>
             </>
+          ))}
+          {wa.enabled && (
+            <div className={cn("px-2 py-2", callsAllowed && "border-t border-border/60")}>
+              <div className="flex items-center gap-2 px-2 pb-1">
+                <WhatsAppIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="flex-1 text-[0.7rem] font-semibold tracking-wide text-muted-foreground uppercase">WhatsApp</span>
+                {canWrite && q.replace(/\D/g, "").length >= 10 && (
+                  <button type="button" onClick={() => { setOpen(false); wa.startChat({ number: q }); }} className="flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[0.7rem] font-semibold text-white shadow-sm hover:bg-emerald-700">
+                    <MessageCirclePlus className="size-3.5" /> WhatsApp'tan yaz
+                  </button>
+                )}
+              </div>
+              {chats === null ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">Aranıyor...</p>
+              ) : chats.length === 0 ? (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">Bu numarayla WhatsApp yazışması yok.</p>
+              ) : (
+                <ul>
+                  {chats.slice(0, 5).map((c) => (
+                    <li key={c.id}>
+                      <Link to={`/whatsapp/${c.id}`} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs hover:bg-accent/60">
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{c.contact.display} <span className="text-xs font-normal text-muted-foreground">· {c.channelName}</span></span>
+                          <span className="block truncate text-muted-foreground">{c.last ? `${listTime(c.last.at)} · ${c.last.preview}` : "Mesaj yok"}</span>
+                        </span>
+                        {c.ticket && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[0.62rem] font-medium text-muted-foreground">{STATUS_WORD[c.ticket.status]}{c.ticket.owner ? ` · ${c.ticket.owner.name.split(" ")[0]}` : ""}</span>}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}
