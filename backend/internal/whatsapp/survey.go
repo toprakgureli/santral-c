@@ -239,7 +239,9 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 			return errs.Unauthorized("Anket bağlantısı bu görüşmeye ait değil.")
 		}
 		if score >= 1 {
-			s.recordCallSurvey(ctx, uint(cid), "", score, comment, answers...)
+			if r, _ := s.recordCallSurvey(ctx, uint(cid), "", score, comment, answers...); r != nil {
+				s.keepTexts(ctx, "wa_call_surveys", uint(cid), texts)
+			}
 		}
 		return nil
 	}
@@ -254,6 +256,7 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 		return nil
 	}
 	s.recordRating(ctx, uint(tid), 0, score, comment, answers...)
+	s.keepTexts(ctx, "wa_tickets", uint(tid), texts)
 	return nil
 }
 
@@ -365,8 +368,20 @@ type RatingAnswer struct {
 
 // RatingText is one written answer of a survey form.
 type RatingText struct {
-	Question string
-	Text     string
+	Question string `json:"question"`
+	Text     string `json:"text"`
+}
+
+// keepTexts stores the written answers of a form beside its score.
+func (s *Service) keepTexts(ctx context.Context, table string, id uint, texts []RatingText) {
+	if texts == nil {
+		texts = []RatingText{}
+	}
+	col := "rating_texts"
+	if table == "wa_call_surveys" {
+		col = "texts"
+	}
+	_ = s.db.WithContext(ctx).Exec("UPDATE "+table+" SET "+col+" = ? WHERE id = ?", jsonString(texts), id).Error
 }
 
 // questionTitle is a question's title as the form gave it, trimmed to fit.

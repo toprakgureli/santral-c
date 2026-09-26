@@ -571,6 +571,8 @@ export interface WARating {
   talkSeconds?: number;
   // each question of the form; a one-question survey is "Tek soruluk anket"
   answers: { question: string; score: number }[];
+  // written answers, each under its question
+  texts: { question: string; text: string }[];
 }
 
 export interface WARatingQuestion {

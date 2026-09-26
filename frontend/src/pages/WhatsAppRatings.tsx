@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, TrendingDown, UsersRound, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, TrendingDown, UsersRound, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import RangePicker, { useRange } from "@/components/RangePicker";
 import { Button, Card } from "@/components/ui";
@@ -64,6 +64,7 @@ export function WhatsAppRatings() {
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<WARating | null>(null);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -189,7 +190,7 @@ export function WhatsAppRatings() {
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((r, i) => <RatingRow key={`${r.source}-${r.at}-${i}`} r={r} />)}
+              {items.map((r, i) => <RatingRow key={`${r.source}-${r.at}-${i}`} r={r} onOpen={() => setOpen(r)} />)}
               {data && items.length < data.total && (
                 <div className="flex justify-center pt-1">
                   <Button variant="secondary" onClick={() => void loadMore()} disabled={more}>{more ? "Yükleniyor..." : `Daha fazla göster (${data.total - items.length})`}</Button>
@@ -199,14 +200,134 @@ export function WhatsAppRatings() {
           )}
         </div>
       </div>
+      {open && <RatingDetail r={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
-function RatingRow({ r }: { r: WARating }) {
+// writtenAnswers gives the written answers as question and answer. Newer
+// scores keep them apart; older ones kept one text, which is split back
+// where a line reads "question? answer" or "question: answer".
+function writtenAnswers(r: WARating): { question: string; text: string }[] {
+  if (r.texts?.length) return r.texts;
+  const c = r.comment?.trim();
+  if (!c) return [];
+  const lines = c.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.map((l) => {
+    // a single line is the customer's own words, whatever marks it has
+    const m = lines.length > 1 ? (/^(.+\?)\s*:?\s+(.+)$/.exec(l) ?? /^([^:]{3,120}):\s+(.+)$/.exec(l)) : null;
+    return m ? { question: m[1], text: m[2] } : { question: "", text: l };
+  });
+}
+
+// Written shows written answers as a short form: the question small and
+// grey, the answer under it.
+function Written({ r, compact }: { r: WARating; compact?: boolean }) {
+  const list = writtenAnswers(r);
+  if (list.length === 0) return null;
+  return (
+    <div className={cn("space-y-2 rounded-xl bg-muted/50 px-3.5 py-2.5", compact && "space-y-1.5 py-2")}>
+      {list.map((t, i) => (
+        <div key={i}>
+          {t.question && <p className="text-[0.7rem] leading-snug font-medium text-muted-foreground">{t.question}</p>}
+          <p className={cn("text-sm leading-relaxed whitespace-pre-wrap", compact && "line-clamp-2")}>{t.text}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// RatingDetail is one survey answer on its own: every question with its
+// score, what the customer wrote, and who and where it was about.
+function RatingDetail({ r, onClose }: { r: WARating; onClose: () => void }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  const Src = r.source === "call" ? PhoneCall : MessageCircle;
+  const answers = r.answers.filter((a) => !(r.answers.length === 1 && a.question === SINGLE));
+  return (
+    <div className="fixed inset-0 z-[70] flex justify-end bg-black/30" onClick={onClose}>
+      <aside onClick={(e) => e.stopPropagation()} className="animate-in slide-in-from-right-4 fade-in flex h-full w-full max-w-lg flex-col bg-background shadow-2xl duration-200">
+        <header className="flex items-center gap-3 border-b border-border/60 px-5 py-4">
+          <div className={cn("flex size-14 shrink-0 flex-col items-center justify-center rounded-2xl", SCORE_TONE[r.score])}>
+            <span className="text-2xl leading-none font-bold tabular-nums">{r.score}</span>
+            <span className="mt-1 flex">{[1, 2, 3, 4, 5].map((n) => <Star key={n} className={cn("size-2", n <= r.score ? "fill-current" : "opacity-30")} />)}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-semibold">{r.customer || prettyPhone(r.phone)}</p>
+            <p className="font-mono text-xs text-muted-foreground tabular-nums">{prettyPhone(r.phone)}</p>
+            <p className="text-xs text-muted-foreground">{when(r.at)} · {SCORE_WORD[r.score]}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-5" /></button>
+        </header>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          {answers.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Puanlar</h3>
+              <div className="space-y-2">
+                {answers.map((a, i) => (
+                  <div key={i} className="rounded-xl bg-card p-3 ring-1 ring-border/60">
+                    <div className="flex items-start gap-3">
+                      <p className="min-w-0 flex-1 text-sm leading-snug">{a.question}</p>
+                      <span className={cn("shrink-0 rounded-lg px-2 py-0.5 text-sm font-bold tabular-nums", avgTone(a.score))}>{a.score}/5</span>
+                    </div>
+                    <div className="mt-2 flex gap-1">{[1, 2, 3, 4, 5].map((n) => <span key={n} className={cn("h-1.5 flex-1 rounded-full", n <= a.score ? SCORE_BAR[a.score] : "bg-muted")} />)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {writtenAnswers(r).length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Müşterinin yazdıkları</h3>
+              <Written r={r} />
+            </section>
+          )}
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Bilgiler</h3>
+            <div className="divide-y divide-border/50 rounded-xl bg-card px-3.5 text-sm ring-1 ring-border/60">
+              <Info label="Nereden">
+                <span className="flex items-center gap-1.5"><Src className="size-3.5 text-muted-foreground" />{r.source === "call" ? "Telefon görüşmesinden sonra" : "WhatsApp sohbetinden sonra"}</span>
+              </Info>
+              {r.ticketNumber != null && <Info label="Sohbet">#{r.ticketNumber}</Info>}
+              {r.talkSeconds ? <Info label="Görüşme süresi">{talk(r.talkSeconds).replace(" görüşme", "")}</Info> : null}
+              {r.channel && <Info label="Numara">{r.channel}</Info>}
+              {r.agent && (
+                <Info label={r.source === "call" ? "Görüşmeyi yapan" : "Sohbeti kapatan"}>
+                  <span className="flex items-center gap-2">
+                    <UserAvatar userId={r.agent.id} name={r.agent.name} hasAvatar={r.agent.hasAvatar} version={r.agent.avatarVersion} className="size-6" fallbackClassName="bg-primary/10 text-[0.55rem] text-primary" />
+                    {r.agent.name}
+                  </span>
+                </Info>
+              )}
+            </div>
+          </section>
+        </div>
+        {r.conversationId && (
+          <footer className="border-t border-border/60 px-5 py-3">
+            <Link to={`/whatsapp/${r.conversationId}`} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"><MessageCircle className="size-4" /> Sohbeti aç</Link>
+          </footer>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function Info({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right font-medium">{children}</span>
+    </div>
+  );
+}
+
+function RatingRow({ r, onOpen }: { r: WARating; onOpen: () => void }) {
   const Src = r.source === "call" ? PhoneCall : MessageCircle;
   return (
-    <div className="flex gap-3 rounded-2xl bg-card p-3.5 ring-1 ring-border/60">
+    <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }} className="group flex cursor-pointer gap-3 rounded-2xl bg-card p-3.5 ring-1 ring-border/60 transition-colors hover:bg-accent/30 hover:ring-border">
       <div className={cn("flex w-14 shrink-0 flex-col items-center justify-center rounded-xl py-2", SCORE_TONE[r.score])}>
         <span className="text-2xl leading-none font-bold tabular-nums">{r.score}</span>
         <span className="mt-1 flex">{[1, 2, 3, 4, 5].map((n) => <Star key={n} className={cn("size-2", n <= r.score ? "fill-current" : "opacity-30")} />)}</span>
@@ -241,11 +362,9 @@ function RatingRow({ r }: { r: WARating }) {
             ))}
           </div>
         )}
-        {r.comment && <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap">“{r.comment}”</p>}
+        <Written r={r} compact />
       </div>
-      {r.conversationId && (
-        <Link to={`/whatsapp/${r.conversationId}`} data-tip="Sohbeti aç" className="flex size-9 shrink-0 items-center justify-center self-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><MessageCircle className="size-4" /></Link>
-      )}
+      <ChevronRight className="size-5 shrink-0 self-center text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
     </div>
   );
 }

@@ -43,6 +43,7 @@ type RatingItem struct {
 	Agent          *PersonView    `json:"agent,omitempty"`
 	TalkSeconds    int            `json:"talkSeconds,omitempty"`
 	Answers        []RatingAnswer `json:"answers"` // each question of the form
+	Texts          []RatingText   `json:"texts"`   // written answers, each under its question
 }
 
 // RatingQuestion is one survey question over the period: its average and
@@ -100,7 +101,8 @@ WITH r AS (
 		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(t.resolved_by, t.owner_id) AS agent_id,
 		c.wa_id, COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') AS name, 0 AS talk_seconds,
 		CASE WHEN jsonb_array_length(t.rating_answers) > 0 THEN t.rating_answers
-			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', t.rating)) END AS answers
+			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', t.rating)) END AS answers,
+		t.rating_texts AS texts
 	FROM wa_tickets t JOIN wa_contacts c ON c.id = t.contact_id
 	WHERE t.rating IS NOT NULL AND t.rated_at >= @from AND t.rated_at < @to
 	UNION ALL
@@ -108,7 +110,8 @@ WITH r AS (
 		s.conversation_id, NULL, s.channel_id, s.user_id,
 		s.wa_id, COALESCE((SELECT COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') FROM wa_contacts c WHERE c.wa_id = s.wa_id LIMIT 1), ''), s.talk_seconds,
 		CASE WHEN jsonb_array_length(s.answers) > 0 THEN s.answers
-			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', s.score)) END
+			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', s.score)) END,
+		s.texts
 	FROM wa_call_surveys s
 	WHERE s.status = 'answered' AND s.score IS NOT NULL AND s.answered_at >= @from AND s.answered_at < @to
 )
@@ -177,11 +180,12 @@ type ratingRow struct {
 	Name           string
 	TalkSeconds    int
 	Answers        string
+	Texts          string
 }
 
 func (s *Service) ratingRows(ctx context.Context, args map[string]any, tail string) ([]ratingRow, error) {
 	var rows []ratingRow
-	q := fmt.Sprintf(ratingsSQL, `r.source, r.at, r.score, r.comment, r.conversation_id, r.ticket_number, r.channel_id, r.agent_id, r.wa_id, r.name, r.talk_seconds, r.answers::text AS answers`, "", tail)
+	q := fmt.Sprintf(ratingsSQL, `r.source, r.at, r.score, r.comment, r.conversation_id, r.ticket_number, r.channel_id, r.agent_id, r.wa_id, r.name, r.talk_seconds, r.answers::text AS answers, r.texts::text AS texts`, "", tail)
 	if err := s.db.WithContext(ctx).Raw(q, args).Scan(&rows).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -202,6 +206,8 @@ func (s *Service) ratingItems(ctx context.Context, rows []ratingRow) []RatingIte
 		it := RatingItem{Source: r.Source, At: r.At, Score: r.Score, Comment: r.Comment, Customer: r.Name, Phone: r.WAID,
 			ConversationID: r.ConversationID, TicketNumber: r.TicketNumber, TalkSeconds: r.TalkSeconds, Answers: []RatingAnswer{}}
 		_ = json.Unmarshal([]byte(r.Answers), &it.Answers)
+		it.Texts = []RatingText{}
+		_ = json.Unmarshal([]byte(r.Texts), &it.Texts)
 		if r.AgentID != nil {
 			if p, ok := people[*r.AgentID]; ok {
 				it.Agent = &p

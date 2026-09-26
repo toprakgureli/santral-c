@@ -165,9 +165,9 @@ function answer(method: string, path: string, body: unknown): unknown {
       { question: "Tek soruluk anket", count: 48, average: 4.3, dist: [1, 2, 4, 15, 26] },
     ],
     items: [
-      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0], answers: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", score: 5 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", score: 5 }, { question: "Sorununuz tamamen çözüldü mü?", score: 4 }] },
-      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412, answers: [{ question: "Tek soruluk anket", score: 2 }] },
-      { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0], answers: [{ question: "Tek soruluk anket", score: 4 }] },
+      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0], answers: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", score: 5 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", score: 5 }, { question: "Sorununuz tamamen çözüldü mü?", score: 4 }], texts: [{ question: "Sizinle ilgilenen Teknik Uzmanımızın ismi nedir?", text: "Toprak Bey" }, { question: "Eklemek istediğiniz görüş, öneri veya şikayet var mı?", text: "Çok hızlı çözüldü, teşekkürler." }] },
+      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412, answers: [{ question: "Tek soruluk anket", score: 2 }], texts: [] },
+      { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0], answers: [{ question: "Tek soruluk anket", score: 4 }], texts: [] },
     ],
   };
   if (p === "/reports") return report;
