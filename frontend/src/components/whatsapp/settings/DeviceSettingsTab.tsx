@@ -14,6 +14,7 @@ import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WASettings, WATemplate } from "@/whatsapp/types";
+import { normalizeSettings } from "@/whatsapp/util";
 
 const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
@@ -41,13 +42,13 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
 
   useEffect(() => {
     if (!channel) return;
-    setS(structuredClone(channel.settings));
+    setS(normalizeSettings(channel.settings));
     setSecret("");
     setMsg(null);
     waApi.templates(channel.id).then((t) => setTemplates(t.filter((x) => x.status === "APPROVED"))).catch(() => setTemplates([]));
   }, [channel]);
 
-  const dirty = useMemo(() => !!s && !!channel && JSON.stringify(s) !== JSON.stringify(channel.settings), [s, channel]);
+  const dirty = useMemo(() => !!s && !!channel && JSON.stringify(s) !== JSON.stringify(normalizeSettings(channel.settings)), [s, channel]);
 
   if (!channel || !s) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce Cihazlar sekmesinden bir numara ekleyin.</p>;
 
@@ -247,7 +248,7 @@ function Preview({ text }: { text: string }) {
 
 function Holidays({ values, onChange, disabled }: { values: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
   const [day, setDay] = useState("");
-  const sorted = [...values].sort();
+  const sorted = [...(values ?? [])].sort();
   const fmt = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", weekday: "short" });
   return (
     <div className={cn("space-y-2", disabled && "opacity-60")}>

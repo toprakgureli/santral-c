@@ -379,6 +379,7 @@ func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in Setti
 	}
 	cur := parseSettings(ch.Settings)
 	next := in.Settings
+	next.normalize()
 	next.Survey.SecretEnc = cur.Survey.SecretEnc
 	need := func(changed bool, p enums.Permission, what string) error {
 		if changed && !u.Can(p) {

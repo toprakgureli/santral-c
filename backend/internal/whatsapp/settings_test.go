@@ -1,6 +1,8 @@
 package whatsapp
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,5 +46,16 @@ func TestHoursElapsedCountsOnlyWorkingTime(t *testing.T) {
 	h.Enabled = false
 	if got := h.Elapsed(at("2026-09-26 10:00"), at("2026-09-26 10:30")); got != 30*time.Minute {
 		t.Errorf("without hours every minute counts, got %v", got)
+	}
+}
+
+func TestSettingsListsNeverNull(t *testing.T) {
+	for _, raw := range []string{"", "{}", `{"hours":{"holidays":null},"humanKeywords":null}`} {
+		b, _ := json.Marshal(parseSettings(raw))
+		for _, bad := range []string{`"holidays":null`, `"humanKeywords":null`, `"optOutKeywords":null`} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("parseSettings(%q) gives %s", raw, bad)
+			}
+		}
 	}
 }

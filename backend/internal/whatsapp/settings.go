@@ -114,10 +114,25 @@ func defaultSettings() ChannelSettings {
 func parseSettings(raw string) ChannelSettings {
 	s := defaultSettings()
 	if strings.TrimSpace(raw) == "" || raw == "{}" {
+		s.normalize()
 		return s
 	}
 	_ = json.Unmarshal([]byte(raw), &s)
+	s.normalize()
 	return s
+}
+
+// normalize keeps lists as lists, so the panel never gets null for them.
+func (s *ChannelSettings) normalize() {
+	if s.Hours.Holidays == nil {
+		s.Hours.Holidays = []string{}
+	}
+	if s.HumanKeywords == nil {
+		s.HumanKeywords = []string{}
+	}
+	if s.OptOutKeywords == nil {
+		s.OptOutKeywords = []string{}
+	}
 }
 
 func (s ChannelSettings) encode() string {

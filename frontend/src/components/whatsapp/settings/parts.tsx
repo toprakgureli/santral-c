@@ -35,7 +35,8 @@ export function SwitchRow({ title, sub, on, onChange, disabled }: { title: strin
   );
 }
 
-export function Words({ values, onChange, placeholder, disabled }: { values: string[]; onChange: (v: string[]) => void; placeholder?: string; disabled?: boolean }) {
+export function Words({ values: given, onChange, placeholder, disabled }: { values: string[]; onChange: (v: string[]) => void; placeholder?: string; disabled?: boolean }) {
+  const values = given ?? [];
   const [draft, setDraft] = useState("");
   const add = () => {
     const v = draft.trim();

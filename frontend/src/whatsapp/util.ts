@@ -1,7 +1,7 @@
 // Small helpers for the WhatsApp screens: which list a conversation
 // belongs to, times in words, and WhatsApp's own text styling.
 
-import type { WAConversation, WAMessage } from "@/whatsapp/types";
+import type { WAConversation, WAMessage, WASettings } from "@/whatsapp/types";
 
 export type Bucket = "mine" | "waiting" | "pool" | "team" | "resolved";
 
@@ -138,4 +138,24 @@ export function menuOptions(m: WAMessage): { title: string; description?: string
 export function menuText(m: WAMessage): string {
   const p = m.payload as { interactive?: { body?: { text?: string } } } | undefined;
   return p?.interactive?.body?.text ?? m.body;
+}
+
+// normalizeSettings fills what an older or partial answer may leave out,
+// so the settings screen never trips over a missing list.
+export function normalizeSettings(raw: WASettings): WASettings {
+  // what arrives may lack any part, whatever the type says
+  const r = structuredClone(raw ?? {}) as Partial<{ [K in keyof WASettings]: Partial<WASettings[K]> }>;
+  const day = (i: number) => ({ open: i < 5, from: i < 5 ? "09:00" : "10:00", to: i < 5 ? "18:00" : "16:00" });
+  return {
+    readReceipts: r.readReceipts ?? true,
+    greeting: { enabled: false, text: "", template: "", templateLang: "", forHelpers: false, ...r.greeting },
+    distribution: { enabled: true, maxOpen: 0, ...r.distribution },
+    waitingMinutes: (r.waitingMinutes as number | undefined) ?? 15,
+    hours: { enabled: r.hours?.enabled ?? false, days: Array.from({ length: 7 }, (_, i) => r.hours?.days?.[i] ?? day(i)), holidays: r.hours?.holidays ?? [] },
+    survey: { mode: "off", url: "", text: "", template: "", templateLang: "", alertBelow: 0, ...r.survey },
+    botTimeoutMinutes: (r.botTimeoutMinutes as number | undefined) ?? 30,
+    humanKeywords: (r.humanKeywords as string[] | undefined) ?? [],
+    optOutKeywords: (r.optOutKeywords as string[] | undefined) ?? [],
+    optOutReply: (r.optOutReply as string | undefined) ?? "",
+  };
 }

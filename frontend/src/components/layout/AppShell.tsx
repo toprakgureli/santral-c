@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -81,7 +82,9 @@ export default function AppShell() {
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
           {/* Keyed by path so the entrance animation replays on each navigation. */}
           <div key={pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>
