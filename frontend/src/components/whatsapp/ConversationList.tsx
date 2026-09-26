@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { clock, inBucket, isWaiting, listTime, since, sortTime, type Bucket } from "@/whatsapp/util";
+import { inBucket, isWaiting, listTime, since, sortTime, waitShown, waitTip, type Bucket } from "@/whatsapp/util";
 
 const CHIPS: { key: Bucket; label: string; tip: string }[] = [
   { key: "mine", label: "Benim", tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
@@ -224,7 +224,7 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
             </>
           )}
           <span className="flex shrink-0 items-center gap-1">
-            {waiting && t?.awaitingSince && <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-px text-[0.62rem] font-semibold text-destructive" data-tip={`Cevap bekliyor. Beklemeye başladığı saat: ${clock(t.awaitingSince)}`}><Hourglass className="size-2.5" />{since(t.awaitingSince, now)}</span>}
+            {waiting && t?.awaitingSince && <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-px text-[0.62rem] font-semibold text-destructive" data-tip={waitTip(c, now)}><Hourglass className="size-2.5" />{since(waitShown(c), now)}</span>}
             {muted && <BellOff className="size-3.5 text-muted-foreground" aria-label="Sessizde" />}
             {pinned && <Pin className="size-3.5 rotate-45 text-muted-foreground" aria-label="Sabitlendi" />}
             {unread && <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[0.68rem] font-bold leading-5 tabular-nums", muted ? "bg-muted-foreground/25 text-foreground/80" : "bg-wa-accent text-wa-on-accent")}>{c.unread > 99 ? "99+" : c.unread}</span>}

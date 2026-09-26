@@ -22,7 +22,7 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { clock, dayLabel, hm, isMine, mergeMessage, newClientId, since, windowLeft } from "@/whatsapp/util";
+import { dayLabel, hm, isMine, mergeMessage, newClientId, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
 
 const upsert = mergeMessage;
 
@@ -331,7 +331,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             <span className="flex items-center gap-2">
               <span className="truncate text-[0.95rem] font-semibold">{conv.contact.display}</span>
               {wa.muted(conv.id) && <BellOff className="size-3.5 shrink-0 text-muted-foreground" />}
-              {t?.waitingListedAt && !resolved && <span data-tip={`Cevap beklemeye başladığı saat: ${clock(t.awaitingSince!)}. Süre, chatbot sohbeti aktardığında ya da müşterinin ilk cevapsız mesajında başlar; bir temsilci cevap yazınca sıfırlanır.`} className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.62rem] font-semibold text-destructive"><Hourglass className="size-3" /> Cevap bekliyor · {since(t.awaitingSince, now)}</span>}
+              {t?.waitingListedAt && !resolved && <span data-tip={waitTip(conv, now)} className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.62rem] font-semibold text-destructive"><Hourglass className="size-3" /> Cevap bekliyor · {since(waitShown(conv), now)}</span>}
             </span>
             <span className="block truncate text-[0.78rem] text-muted-foreground">
               {typing ? <span className="font-medium text-wa-accent">{typing}</span> : subtitle}

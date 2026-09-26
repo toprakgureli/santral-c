@@ -207,3 +207,23 @@ export function templateParts(body: string): { text: string; buttons: TemplateBu
   }
   return { text: lines.join("\n").trimEnd(), buttons };
 }
+
+// waitShown is what the "Cevap bekliyor" badge counts from: the customer's
+// latest message, or the chatbot's handover when nothing came after it.
+// The whole unanswered stretch (which the waiting list goes by) starts at
+// awaitingSince and is told on hover.
+export function waitShown(c: { lastInboundAt?: string; ticket?: { awaitingSince?: string } }): string | undefined {
+  const a = c.ticket?.awaitingSince;
+  const l = c.lastInboundAt;
+  if (!a) return undefined;
+  return l && Date.parse(l) > Date.parse(a) ? l : a;
+}
+
+export function waitTip(c: { lastInboundAt?: string; ticket?: { awaitingSince?: string } }, now: number): string {
+  const a = c.ticket?.awaitingSince;
+  const shown = waitShown(c);
+  if (!a || !shown) return "";
+  const head = shown === a ? `Beklemeye başladığı saat: ${clock(a)}.` : `Müşterinin son mesajı: ${clock(shown)}.`;
+  const total = shown === a ? "" : ` İlk cevapsız mesajı: ${clock(a)}, toplamda ${since(a, now)} oldu. Bekleyenler listesi bu toplam süreye bakar.`;
+  return head + total + " Bir temsilci cevap yazınca sıfırlanır.";
+}
