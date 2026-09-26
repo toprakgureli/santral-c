@@ -131,7 +131,7 @@ export const waApi = {
   copyBot: (id: number, name: string, channelIds: number[]) => request<WABot>(`/wa/bots/${id}/copy`, json("POST", { name, channelIds })),
   deleteBot: (id: number) => request<void>(`/wa/bots/${id}`, json("DELETE")),
   botReport: (id: number, days: number) => request<BotStats>(`/wa/bots/${id}/report` + q({ days })),
-  simulate: (body: { graph: BotGraph; nodeId: string; vars?: Record<string, string>; tries: number; text?: string; choiceId?: string; start: boolean; hoursOpen: boolean; clock?: string; day?: number }) =>
+  simulate: (body: { graph: BotGraph; nodeId: string; vars?: Record<string, string>; tries: number; text?: string; choiceId?: string; start: boolean; hoursOpen: boolean; clock?: string; day?: number; botId?: number; channelId?: number }) =>
     request<SimResult>("/wa/bots/simulate", json("POST", body)),
 
   // outside systems

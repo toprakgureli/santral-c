@@ -388,6 +388,9 @@ export interface SimResult {
   vars: Record<string, string>;
   tries: number;
   done: boolean;
+  // what the test assumed: in working hours or not, by which device
+  hoursOpen: boolean;
+  channel?: string;
 }
 
 export interface BotStats {

@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"testing"
 	"time"
+
+	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
 
 // trAt is a moment in Turkey time; 2026-09-28 is a Monday.
@@ -77,5 +79,34 @@ func TestConditionTimeBetween(t *testing.T) {
 		if len(io.Out) == 0 || io.Out[0].Text != c.want {
 			t.Errorf("at %v: got %+v, want %q", c.t, io.Out, c.want)
 		}
+	}
+}
+
+func TestSimGateSunday(t *testing.T) {
+	var h HoursSettings
+	h.Enabled = true
+	for i := 0; i < 6; i++ {
+		h.Days[i] = DayOpen{Open: true, From: "09:00", To: "18:00"}
+	}
+	sunday := trAt(6, 11, 0) // closed all day
+	open := h.Open(sunday)
+	if open {
+		t.Fatal("Sunday should be outside working hours")
+	}
+	always := &models.WABot{Trigger: "entry", Schedule: `{"mode":"always"}`}
+	if skip, note := simGate(always, h, open, sunday, "Destek"); skip != "" || note == "" {
+		t.Errorf("always-on bot should greet with a note, got skip=%q note=%q", skip, note)
+	}
+	inHours := &models.WABot{Trigger: "entry", Schedule: `{"mode":"hours"}`}
+	if skip, _ := simGate(inHours, h, open, sunday, "Destek"); skip == "" {
+		t.Error("working-hours bot should not greet on Sunday")
+	}
+	after := &models.WABot{Trigger: "after_hours"}
+	if skip, note := simGate(after, h, open, sunday, "Destek"); skip != "" || note != "" {
+		t.Error("after-hours bot should greet on Sunday")
+	}
+	monday := trAt(0, 11, 0)
+	if skip, _ := simGate(after, h, h.Open(monday), monday, "Destek"); skip == "" {
+		t.Error("after-hours bot should not greet on Monday morning")
 	}
 }

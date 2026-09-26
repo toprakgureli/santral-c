@@ -1,18 +1,20 @@
 // Simulator plays the drawn flow as a customer would see it, without
 // sending anything to anyone. Outside-system questions are really asked.
+// It can pretend any weekday and time; working hours then come from the
+// chosen device, and it says so when the chatbot would not greet at all.
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Clock3, Moon, PhoneCall, RotateCcw, SendHorizontal, Star, Sun, Tag, UserRound, X, Flag, Globe } from "lucide-react";
+import { BellOff, Clock3, Info, Moon, PhoneCall, RotateCcw, SendHorizontal, Star, Sun, Tag, UserRound, X, Flag, Globe } from "lucide-react";
 import { DAY_SHORT, TimeInput } from "@/components/whatsapp/settings/TimeParts";
 import { ApiError } from "@/api/client";
 import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
-import type { BotGraph, BotOption, SimOutput } from "@/whatsapp/types";
+import type { BotGraph, BotOption, SimOutput, WAChannel } from "@/whatsapp/types";
 
 type Line = { side: "bot"; out: SimOutput } | { side: "me"; text: string };
 
-export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; onAt: (id: string | undefined) => void; onClose: () => void }) {
+export default function Simulator({ graph, botId, channels, onAt, onClose }: { graph: BotGraph; botId?: number; channels: WAChannel[]; onAt: (id: string | undefined) => void; onClose: () => void }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [state, setState] = useState<{ nodeId: string; vars: Record<string, string>; tries: number; done: boolean } | null>(null);
   const [text, setText] = useState("");
@@ -20,6 +22,13 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
   // the moment the test pretends it is, for "belirli saatlerdeyse"; null is now
   const [at, setAt] = useState<{ clock: string; day: number } | null>(null);
   const [clockOpen, setClockOpen] = useState(false);
+  // whose working hours count; with no device the switch below decides
+  const [channelId, setChannelId] = useState(channels[0]?.id ?? 0);
+  const [assumed, setAssumed] = useState<{ open: boolean; channel?: string } | null>(null);
+  // the device list may arrive after the panel opens
+  useEffect(() => {
+    if (!channels.some((c) => c.id === channelId)) setChannelId(channels[0]?.id ?? 0);
+  }, [channels]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -31,10 +40,11 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
     setBusy(true);
     setError(null);
     try {
-      const r = await waApi.simulate({ graph, nodeId: input.start ? "" : state?.nodeId ?? "", vars: input.start ? undefined : state?.vars, tries: input.start ? 0 : state?.tries ?? 0, text: input.text, choiceId: input.choiceId, start: input.start, hoursOpen, clock: at?.clock, day: at?.day });
+      const r = await waApi.simulate({ graph, nodeId: input.start ? "" : state?.nodeId ?? "", vars: input.start ? undefined : state?.vars, tries: input.start ? 0 : state?.tries ?? 0, text: input.text, choiceId: input.choiceId, start: input.start, hoursOpen, clock: at?.clock, day: at?.day, botId, channelId: channelId || undefined });
       if (my !== seq.current) return;
       setLines((cur) => [...cur, ...r.outputs.map((o) => ({ side: "bot" as const, out: o }))]);
       setState({ nodeId: r.nodeId, vars: r.vars, tries: r.tries, done: r.done });
+      setAssumed({ open: r.hoursOpen, channel: r.channel });
       onAt(r.done ? undefined : r.nodeId);
     } catch (e) {
       if (my === seq.current) setError(e instanceof ApiError ? e.message : "Denenemedi.");
@@ -55,6 +65,16 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
     return () => onAt(undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A new day, time or device is a new test.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    restart();
+  }, [at?.clock, at?.day, channelId, hoursOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [lines]);
@@ -66,6 +86,7 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
     void run({ start: false, text: choice ? choice.label : t, choiceId: choice ? `opt:${choice.id}` : undefined });
   };
 
+  const skipped = lines.some((l) => l.side === "bot" && l.out.kind === "skip");
   const lastMenu = [...lines].reverse().find((l) => l.side === "bot" && l.out.kind === "menu");
 
   return (
@@ -75,9 +96,15 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
           <p className="text-sm font-semibold">Dene</p>
           <p className="text-[0.7rem] text-muted-foreground">Taslak akış, müşteri gibi. Kimseye mesaj gitmez.</p>
         </div>
-        <button type="button" onClick={() => { setHoursOpen((v) => !v); }} data-tip={hoursOpen ? "Şu an mesai içi sayılıyor" : "Şu an mesai dışı sayılıyor"} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", hoursOpen ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
-          {hoursOpen ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />} {hoursOpen ? "Mesai içi" : "Mesai dışı"}
-        </button>
+        {channels.length === 0 ? (
+          <button type="button" onClick={() => { setHoursOpen((v) => !v); }} data-tip={hoursOpen ? "Mesai içi sayılıyor. Değiştirmek için tıklayın." : "Mesai dışı sayılıyor. Değiştirmek için tıklayın."} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", hoursOpen ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
+            {hoursOpen ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />} {hoursOpen ? "Mesai içi" : "Mesai dışı"}
+          </button>
+        ) : assumed && (
+          <span data-tip={`${assumed.channel ?? "Cihaz"} mesai saatlerine göre`} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", assumed.open ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
+            {assumed.open ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />} {assumed.open ? "Mesai içi" : "Mesai dışı"}
+          </span>
+        )}
         <button type="button" onClick={() => setClockOpen((v) => !v)} data-tip="Denemede saat kaç olsun" className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", at ? "text-violet-600 ring-violet-500/30 dark:text-violet-400" : "text-muted-foreground ring-border/60")}>
           <Clock3 className="size-3.5" /> {at ? `${DAY_SHORT[at.day]} ${at.clock}` : "Şimdi"}
         </button>
@@ -92,7 +119,12 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
           </select>
           <TimeInput value={at?.clock ?? nowClock()} onChange={(clock) => setAt({ clock, day: at?.day ?? nowDay() })} label="Saat" />
           {at && <button type="button" onClick={() => setAt(null)} className="font-medium text-primary hover:underline">Şimdiye dön</button>}
-          <span className="basis-full text-[0.68rem] text-muted-foreground">Koşul kutusundaki "belirli saatlerdeyse" buna bakar. Mesai içi/dışı düğmesi ayrıca cihazın mesai saatlerini taklit eder. Değiştirince baştan başlatın.</span>
+          {channels.length > 1 && (
+            <select value={channelId} onChange={(e) => setChannelId(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-card px-2 text-sm" aria-label="Cihaz">
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+          <span className="basis-full text-[0.68rem] text-muted-foreground">{channels.length ? `Mesai saatleri ${channels.find((c) => c.id === channelId)?.name ?? "cihazın"} ayarlarından alınır. ` : ""}Değiştirince deneme baştan başlar.</span>
         </div>
       )}
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#efe7dd] px-3 py-4 dark:bg-[#0b141a]">
@@ -100,7 +132,7 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
           <div key={i} className="flex justify-end"><p className="max-w-[80%] rounded-xl rounded-tr-sm bg-[#d9fdd3] px-3 py-1.5 text-sm text-slate-900 shadow-sm dark:bg-[#005c4b] dark:text-slate-50">{l.text}</p></div>
         ) : <BotLine key={i} out={l.out} onPick={(o) => send(o.label, o)} active={l === lastMenu && !!state && !state.done} />)}
         {busy && <div className="flex gap-1 px-2 py-1"><Dot /><Dot d={150} /><Dot d={300} /></div>}
-        {state?.done && <p className="py-2 text-center text-[0.7rem] font-medium text-slate-500">Chatbot bitti · <button type="button" onClick={restart} className="text-primary underline">baştan dene</button></p>}
+        {state?.done && <p className="py-2 text-center text-[0.7rem] font-medium text-slate-500">{skipped ? "Chatbot başlamadı" : "Chatbot bitti"} · <button type="button" onClick={restart} className="text-primary underline">baştan dene</button></p>}
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
         <div ref={end} />
       </div>
@@ -113,7 +145,7 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
         </details>
       )}
       <form className="flex items-center gap-2 border-t border-border/60 p-3" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send(text.trim()); }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} disabled={!state || state.done} placeholder={state?.done ? "Chatbot bitti" : "Müşteri olarak yazın"} className="h-10 min-w-0 flex-1 rounded-full border border-border/60 bg-muted/40 px-4 text-sm outline-none focus:border-ring/50 disabled:opacity-60" />
+        <input value={text} onChange={(e) => setText(e.target.value)} disabled={!state || state.done} placeholder={state?.done ? (skipped ? "Chatbot başlamadı" : "Chatbot bitti") : "Müşteri olarak yazın"} className="h-10 min-w-0 flex-1 rounded-full border border-border/60 bg-muted/40 px-4 text-sm outline-none focus:border-ring/50 disabled:opacity-60" />
         <button type="submit" disabled={!text.trim() || !state || state.done || busy} className="flex size-10 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm disabled:opacity-40" aria-label="Gönder"><SendHorizontal className="size-4" /></button>
       </form>
     </aside>
@@ -161,6 +193,14 @@ function BotLine({ out, onPick, active }: { out: SimOutput; onPick: (o: BotOptio
         survey: { icon: Star, text: "Anket gönderildi" },
         api: { icon: Globe, text: `Dış sorgu ${out.detail}` },
       };
+      if (out.kind === "skip" || out.kind === "note") {
+        const Icon = out.kind === "skip" ? BellOff : Info;
+        return (
+          <p className={cn("mx-auto flex max-w-[95%] items-start gap-2 rounded-xl px-3 py-2 text-[0.72rem] leading-relaxed shadow-sm", out.kind === "skip" ? "bg-indigo-50 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-200" : "bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100")}>
+            <Icon className="mt-0.5 size-3.5 shrink-0" /> <span>{out.text}</span>
+          </p>
+        );
+      }
       const m = map[out.kind] ?? { icon: Tag, text: out.kind };
       return (
         <p className="mx-auto flex w-fit max-w-[90%] items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-[0.7rem] font-medium text-slate-600 shadow-sm dark:bg-slate-800/80 dark:text-slate-300">

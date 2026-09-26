@@ -347,7 +347,7 @@ export function WhatsAppBot() {
                 onClose={() => { setSelection(null); setPanel(null); }}
               />
             )}
-            {side === "test" && <Simulator graph={graph} onAt={setSimAt} onClose={() => setPanel(null)} />}
+            {side === "test" && <Simulator graph={graph} botId={bot?.id} channels={bot?.channelIds.length ? channels.filter((c) => bot.channelIds.includes(c.id)) : channels} onAt={setSimAt} onClose={() => setPanel(null)} />}
             {side === "versions" && (
               <aside className="flex h-full flex-col bg-card">
                 <header className="flex items-center gap-2 border-b border-border/60 px-4 py-3">

@@ -138,7 +138,8 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (/^\/bots\/\d+\/report$/.test(p)) return { started: 320, handoffs: 190, ended: 96, timeouts: 34, nodes: { start: 320, hi: 320, menu: 318, ask: 150, api: 140, handoff: 190, bill: 101, end: 96 }, fails: { menu: 22, ask: 9 }, drops: { menu: 20, ask: 14 } };
   if (/^\/bots\/\d+\/publish$/.test(p)) return { problems: ["\"Yeni abonelik\" seçeneğinden bir kutuya ok çıkmıyor.", "Soru kutusunda anlaşılmazsa yolu bağlı değil; müşteri temsilciye aktarılır."] };
   if (p === "/bots/simulate") {
-    const b = body as { start: boolean; choiceId?: string };
+    const b = body as { start: boolean; choiceId?: string; day?: number };
+    if (b.start && b.day === 6) return { outputs: [{ kind: "skip", text: "Bu saatte bu chatbot çalışmaz (ayarlarındaki \"Hangi saatlerde çalışsın\" seçimine göre). Müşteri bu saatte yazarsa, o saatte çalışan başka bir chatbot varsa o karşılar; yoksa sohbet doğrudan temsilcilere düşer." }], nodeId: "", vars: {}, tries: 0, done: true, hoursOpen: false, channel: "Destek Hattı" };
     if (b.start) return { outputs: [{ kind: "text", text: "Merhaba Ayşe, Örnek Şirket'e hoş geldiniz!" }, { kind: "menu", text: "Hangi konuda yardım istersiniz?", style: "buttons", options: graph.nodes[2].data.options }], nodeId: "menu", vars: { musteri: "Ayşe", numara: "+905xxxxxxxxx" }, tries: 0, done: false };
     if (b.choiceId === "opt:b") return { outputs: [{ kind: "text", text: "Faturanızı uygulamadan görüntüleyebilirsiniz." }, { kind: "text", text: "İyi günler dileriz!" }, { kind: "end", detail: "resolve" }], nodeId: "end", vars: { musteri: "Ayşe", konu: "Fatura" }, tries: 0, done: true };
     return { outputs: [{ kind: "text", text: "Abone numaranızı yazar mısınız?" }], nodeId: "ask", vars: { musteri: "Ayşe", konu: "Arıza bildirimi" }, tries: 0, done: false };

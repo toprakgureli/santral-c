@@ -768,7 +768,10 @@ type SimInput struct {
 	Text      string            `json:"text"`
 	ChoiceID  string            `json:"choiceId"`
 	Start     bool              `json:"start"`
-	HoursOpen bool              `json:"hoursOpen"`
+	HoursOpen bool              `json:"hoursOpen"` // used only when no device is given
+	// the chatbot being tested and the device whose working hours count
+	BotID     uint `json:"botId"`
+	ChannelID uint `json:"channelId"`
 	// the moment the test pretends it is; empty means now
 	Clock string `json:"clock"` // "14:30"
 	Day   *int   `json:"day"`   // 0 is Monday
@@ -795,6 +798,9 @@ type SimResult struct {
 	Vars    map[string]string `json:"vars"`
 	Tries   int               `json:"tries"`
 	Done    bool              `json:"done"`
+	// what the test assumed: in working hours or not, by which device
+	HoursOpen bool   `json:"hoursOpen"`
+	Channel   string `json:"channel,omitempty"`
 }
 
 // Simulate runs a turn of a flow without sending anything to anyone.
@@ -807,12 +813,44 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 	if st.Vars == nil {
 		st.Vars = map[string]string{"musteri": "Ayşe", "numara": "+905xxxxxxxxx"}
 	}
-	io := &simIO{hours: in.HoursOpen, at: in.simNow(), api: func(id uint, vars map[string]string) (map[string]any, error) {
+	at := in.simNow()
+	// Working hours come from the device at the pretended moment, so a
+	// Sunday test on a device closed on Sundays is outside working hours.
+	var h HoursSettings
+	open, chName := in.HoursOpen, ""
+	chID := in.ChannelID
+	var bot *models.WABot
+	if in.BotID > 0 {
+		var b models.WABot
+		if err := s.db.WithContext(ctx).First(&b, in.BotID).Error; err == nil {
+			bot = &b
+			if ids := parseIDs(b.ChannelIDs); chID == 0 && len(ids) > 0 {
+				chID = ids[0]
+			}
+		}
+	}
+	if chID > 0 {
+		if ch, err := s.channel(ctx, chID); err == nil {
+			h = parseSettings(ch.Settings).Hours
+			open, chName = !h.Enabled || h.Open(at), ch.Name
+		}
+	}
+	io := &simIO{hours: open, at: at, api: func(id uint, vars map[string]string) (map[string]any, error) {
 		return s.callIntegration(ctx, id, vars)
 	}}
 	var input *botInput
 	if in.Start {
 		st.NodeID = ""
+		// Would this chatbot greet the customer at all at that moment?
+		if bot != nil && chName != "" {
+			skip, note := simGate(bot, h, open, at, chName)
+			if skip != "" {
+				return &SimResult{Outputs: []SimOutput{{Kind: "skip", Text: skip}}, Vars: st.Vars, Done: true, HoursOpen: open, Channel: chName}, nil
+			}
+			if note != "" {
+				io.Out = append(io.Out, SimOutput{Kind: "note", Text: note})
+			}
+		}
 	} else {
 		input = &botInput{Text: in.Text, ChoiceID: in.ChoiceID}
 	}
@@ -820,7 +858,23 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 	if io.Out == nil {
 		io.Out = []SimOutput{}
 	}
-	return &SimResult{Outputs: io.Out, NodeID: st.NodeID, Vars: st.Vars, Tries: st.Tries, Done: st.Done}, nil
+	return &SimResult{Outputs: io.Out, NodeID: st.NodeID, Vars: st.Vars, Tries: st.Tries, Done: st.Done, HoursOpen: open, Channel: chName}, nil
+}
+
+// simGate says whether a chatbot would greet a customer writing at t on a
+// device with these working hours: a reason when it would not, or a note
+// when it would although the device is closed.
+func simGate(bot *models.WABot, h HoursSettings, open bool, t time.Time, chName string) (skip, note string) {
+	sc := parseSchedule(bot.Schedule)
+	switch {
+	case bot.Trigger == "after_hours" && open:
+		return "Bu saatte " + chName + " mesai içinde. Bu chatbot sadece mesai dışında çalıştığı için müşteriyi karşılamaz; sohbet doğrudan temsilcilere düşer.", ""
+	case bot.Trigger != "after_hours" && !sc.Fits(h, t):
+		return "Bu saatte bu chatbot çalışmaz (ayarlarındaki \"Hangi saatlerde çalışsın\" seçimine göre). Müşteri bu saatte yazarsa, o saatte çalışan başka bir chatbot varsa o karşılar; yoksa sohbet doğrudan temsilcilere düşer.", ""
+	case bot.Trigger != "after_hours" && sc.Mode == "always" && !open:
+		return "", "Bu saatte " + chName + " için mesai dışı. Bu chatbot \"Her zaman\" çalışacak şekilde ayarlı olduğu için yine karşılar. Mesai dışında karşılamasın istiyorsanız chatbot ayarlarından \"Mesai saatlerinde\" seçin ya da akışa Koşul > Mesai dışındaysa ekleyin."
+	}
+	return "", ""
 }
 
 // BotStats is a flow's use: how many entered each box and how it ended.
