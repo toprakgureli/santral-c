@@ -405,6 +405,19 @@ func (s *Service) applyStatus(ctx context.Context, msg *models.WAMessage, st *ho
 		slog.WarnContext(ctx, "whatsapp status could not be saved", "message", msg.ID, "error", err)
 		return
 	}
+	// When a customer reads several messages at once, WhatsApp often reports
+	// only the last one; the earlier ones that went out are read too.
+	if st.Status == "delivered" || st.Status == "read" {
+		lower := []string{"sent"}
+		if st.Status == "read" {
+			lower = []string{"sent", "delivered"}
+		}
+		_ = s.db.WithContext(ctx).Exec(`UPDATE wa_messages SET status = ?,
+			delivered_at = COALESCE(delivered_at, ?),
+			read_at = CASE WHEN ? = 'read' THEN COALESCE(read_at, ?) ELSE read_at END
+			WHERE conversation_id = ? AND direction = 'out' AND id < ? AND wamid IS NOT NULL AND status IN ?`,
+			st.Status, *at, st.Status, *at, msg.ConversationID, msg.ID, lower).Error
+	}
 	_ = s.db.WithContext(ctx).First(msg, msg.ID).Error
 	s.publish(ctx, msg.ConversationID, msg, nil)
 }

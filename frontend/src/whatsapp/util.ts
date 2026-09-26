@@ -159,3 +159,29 @@ export function normalizeSettings(raw: WASettings): WASettings {
     optOutReply: (r.optOutReply as string | undefined) ?? "",
   };
 }
+
+// How far an outgoing message got; a later report never moves it back.
+const RANK: Record<string, number> = { queued: 0, sent: 1, delivered: 2, read: 3 };
+
+// mergeMessage puts a message from the server or the live stream into the
+// list. A status that arrives late never undoes a newer one, and when a
+// message is delivered or read, the ones we sent before it are too:
+// WhatsApp often reports only the last of several messages read at once.
+export function mergeMessage(list: WAMessage[], m: WAMessage): WAMessage[] {
+  const i = list.findIndex((x) => x.id === m.id || (!!m.clientId && x.clientId === m.clientId));
+  let next: WAMessage[];
+  if (i >= 0) {
+    const old = list[i];
+    const keep = old.status !== "failed" && m.status !== "failed" && (RANK[old.status] ?? 0) > (RANK[m.status] ?? 0);
+    next = list.slice();
+    next[i] = keep ? { ...m, status: old.status, deliveredAt: m.deliveredAt ?? old.deliveredAt, readAt: m.readAt ?? old.readAt } : m;
+  } else {
+    next = [...list, m];
+    next.sort((a, b) => (a.pending ? 1e15 : a.id) - (b.pending ? 1e15 : b.id));
+  }
+  const rank = RANK[m.status] ?? 0;
+  if (m.direction === "out" && rank >= 2) {
+    next = next.map((x) => (x.direction === "out" && !x.pending && x.id > 0 && x.id < m.id && (x.status === "sent" || (rank === 3 && x.status === "delivered")) ? { ...x, status: m.status } : x));
+  }
+  return next;
+}

@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
@@ -93,5 +94,23 @@ func TestExistingPath(t *testing.T) {
 		if _, err := existingPath(bad); err == nil {
 			t.Errorf("existingPath(%q) should fail", bad)
 		}
+	}
+}
+
+func TestMuteUntil(t *testing.T) {
+	if _, set, err := muteUntil(""); set || err != nil {
+		t.Error("empty should leave the mute alone")
+	}
+	if at, set, _ := muteUntil("off"); !set || at != nil {
+		t.Error("off should clear the mute")
+	}
+	if at, _, _ := muteUntil("always"); at == nil || at.Year() != 9999 {
+		t.Error("always should mute for good")
+	}
+	if at, _, _ := muteUntil("8h"); at == nil || time.Until(*at) < 7*time.Hour {
+		t.Error("8h should mute for eight hours")
+	}
+	if _, _, err := muteUntil("forever"); err == nil {
+		t.Error("an unknown word should fail")
 	}
 }

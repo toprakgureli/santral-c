@@ -457,6 +457,23 @@ func (r *Router) Routes(g fiber.Router) {
 	a.Post("/files", with(h.Upload))
 	a.Get("/files/:id", h.File)
 
+	// the person's own preferences
+	a.Get("/me", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.MyPrefs(c.UserContext(), uid) }))
+	a.Put("/me", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in PrefsInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SavePrefs(c.UserContext(), uid, in)
+	}))
+	a.Put("/me/conversations/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		var in ConvPrefInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SaveConvPref(c.UserContext(), uid, id, in)
+	}))
+
 	// reply assistant
 	a.Get("/ai/status", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.AIStatus(c.UserContext(), uid) }))
 	a.Get("/ai", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.AI(c.UserContext(), uid) }))

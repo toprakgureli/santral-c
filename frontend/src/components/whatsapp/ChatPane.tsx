@@ -4,7 +4,8 @@
 // its ticks as WhatsApp reports them.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, Bot, Download, CheckCircle2, ChevronDown, Hand, Hourglass, PanelRightClose, PanelRightOpen, Phone, RotateCcw, Search, UserCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Bell, BellOff, Bot, ChevronDown, ChevronRight, CircleCheck, Download, EllipsisVertical, Hand, Hourglass, Info, Mail, Phone, Pin, PinOff, RotateCcw, Search, UserCheck, X } from "lucide-react";
+import { MUTES } from "@/components/whatsapp/ConversationList";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ui";
@@ -20,19 +21,9 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { dayLabel, hm, isMine, newClientId, prettyPhone, since, STATUS_WORD, windowLeft } from "@/whatsapp/util";
+import { dayLabel, hm, isMine, mergeMessage, newClientId, since, windowLeft } from "@/whatsapp/util";
 
-function upsert(list: WAMessage[], m: WAMessage): WAMessage[] {
-  const i = list.findIndex((x) => x.id === m.id || (!!m.clientId && x.clientId === m.clientId));
-  if (i >= 0) {
-    const next = list.slice();
-    next[i] = m;
-    return next;
-  }
-  const next = [...list, m];
-  next.sort((a, b) => (a.pending ? 1e15 : a.id) - (b.pending ? 1e15 : b.id));
-  return next;
-}
+const upsert = mergeMessage;
 
 export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { conv: WAConversation; channel?: WAChannel; panel: boolean; onPanel: () => void; onBack?: () => void }) {
   const { user } = useAuth();
@@ -228,6 +219,15 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const vars = useMemo(() => ({ musteri: conv.contact.display.split(" ")[0], ad: (user?.name ?? "").split(" ")[0], adsoyad: user?.name ?? "" }), [conv.contact.display, user?.name]);
   const typing = wa.typing(conv.id);
   const left = windowLeft(conv, now);
+  const [more, setMore] = useState(false);
+  const [muteOpen, setMuteOpen] = useState(false);
+  useEffect(() => { if (!more) setMuteOpen(false); }, [more]);
+  // Who is on it, where, and how long the customer can still be written to.
+  const subtitle = [
+    t?.status === "bot" ? "Chatbot ile konuşuyor" : t?.status === "resolved" ? "Çözüldü" : t?.owner ? (t.owner.id === me ? "Sen ilgileniyorsun" : `${t.owner.name.split(" ")[0]} ilgileniyor`) : t ? "Havuzda, kimse üstlenmedi" : null,
+    conv.channelName,
+    left > 0 ? `${hm(left)} daha yazılabilir` : "24 saat doldu, şablonla yazılır",
+  ].filter(Boolean).join(" · ");
 
   const claimLabel = greeting ? "Karşıla" : t?.owner ? "Yardıma katıl" : "Üstlen";
   const claimHint = t?.owner
@@ -235,43 +235,56 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     : `Bu sohbeti kimse üstlenmedi.${greeting ? " Karşıla dersen sohbet sana geçer ve karşılama mesajın gönderilir." : " Üstlenirsen sohbet sana geçer."}`;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-background">
-      <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border/50 bg-card/60 px-4 backdrop-blur-md max-md:gap-2 max-md:px-2">
-        {onBack && <button type="button" onClick={onBack} aria-label="Sohbet listesine dön" className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:hidden"><ArrowLeft className="size-4" /></button>}
-        <ContactAvatar name={conv.contact.display} seed={conv.contact.waId} className="size-10 max-sm:hidden" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-[0.9375rem] font-semibold tracking-tight">{conv.contact.display}</h2>
-            {t && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[0.6rem] font-semibold max-sm:hidden", t.status === "resolved" ? "bg-muted text-muted-foreground" : t.status === "bot" ? "bg-violet-500/12 text-violet-600 dark:text-violet-400" : t.status === "pending" ? "bg-sky-500/12 text-sky-600 dark:text-sky-400" : "bg-success/12 text-success")}>{STATUS_WORD[t.status]}</span>}
-            {t?.waitingListedAt && !resolved && <span className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.6rem] font-semibold text-destructive"><Hourglass className="size-3" /> {since(t.awaitingSince, now)} cevap bekliyor</span>}
-          </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {typing ? <span className="italic text-primary">{typing}</span> : (
-              <>
-                <span className="font-mono tabular-nums">{prettyPhone(conv.contact.waId)}</span> · {conv.channelName}
-                {t && ` · #${t.number}`}
-                {left > 0 ? <span data-tip="Müşterinin son mesajından sonraki 24 saat içinde serbestçe yazılabilir"> · pencere {hm(left)} daha açık</span> : <span className="text-warning"> · 24 saat doldu</span>}
-              </>
-            )}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <IconBtn tip="Sohbette ara" on={searching} onClick={() => setSearching((v) => !v)}><Search className="size-4" /></IconBtn>
-          {can(user, "whatsapp.export") && <span className="max-md:hidden"><IconBtn tip="Yazışmayı dosya olarak indir" onClick={() => void waApi.exportChat(conv.id).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi."))}><Download className="size-4" /></IconBtn></span>}
-          {canCall && <IconBtn tip="Müşteriyi ara" onClick={() => void phone.call("0" + conv.contact.waId.replace(/^90/, "")).catch(() => undefined)}><Phone className="size-4" /></IconBtn>}
+    <section className="flex min-w-0 flex-1 flex-col bg-card">
+      <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border/60 bg-card px-3 md:px-4">
+        {onBack && <button type="button" onClick={onBack} aria-label="Sohbet listesine dön" className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:hidden"><ArrowLeft className="size-5" /></button>}
+        <button type="button" onClick={onPanel} data-tip="Kişi bilgisi" className="flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1 pr-2 text-left">
+          <ContactAvatar name={conv.contact.display} seed={conv.contact.waId} className="size-10 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-[0.95rem] font-semibold">{conv.contact.display}</span>
+              {wa.muted(conv.id) && <BellOff className="size-3.5 shrink-0 text-muted-foreground" />}
+              {t?.waitingListedAt && !resolved && <span className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[0.62rem] font-semibold text-destructive"><Hourglass className="size-3" /> {since(t.awaitingSince, now)} bekliyor</span>}
+            </span>
+            <span className="block truncate text-[0.78rem] text-muted-foreground">
+              {typing ? <span className="font-medium text-wa-accent">{typing}</span> : subtitle}
+            </span>
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
           {canTake && t && t.owner && t.owner.id !== me && !resolved && <TextBtn icon={Hand} label="Devral" tip="Sorumlu sen olursun, şimdiki sorumlu yardımcı olarak kalır" busy={busy === "take"} onClick={() => void act("take", () => waApi.take(conv.id))} />}
           {canAssign && t && !resolved && <TextBtn icon={ArrowRightLeft} label="Aktar" tip="Başka bir kişiye ya da ekibe aktar" onClick={() => setAssign(true)} />}
-          {canResolve && t && !resolved && <TextBtn icon={CheckCircle2} label="Çöz" tone="success" tip="Sohbeti çözüldü olarak kapat. Anket açıksa müşteriye gider." onClick={() => setConfirmResolve(true)} />}
+          {canResolve && t && !resolved && <TextBtn icon={CircleCheck} label="Çöz" tone="success" tip="Sohbeti çözüldü olarak kapat. Anket açıksa müşteriye gider." onClick={() => setConfirmResolve(true)} />}
           {canResolve && resolved && <TextBtn icon={RotateCcw} label="Yeniden aç" tip="Sohbeti tekrar açık yap" busy={busy === "reopen"} onClick={() => void act("reopen", () => waApi.reopen(conv.id))} />}
-          <IconBtn tip={panel ? "Müşteri panelini gizle" : "Müşteri panelini göster"} onClick={onPanel}>{panel ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</IconBtn>
+          <IconBtn tip="Sohbette ara" on={searching} onClick={() => setSearching((v) => !v)}><Search className="size-[1.15rem]" /></IconBtn>
+          {canCall && <IconBtn tip="Müşteriyi ara" onClick={() => void phone.call("0" + conv.contact.waId.replace(/^90/, "")).catch(() => undefined)}><Phone className="size-[1.15rem]" /></IconBtn>}
+          <span className="relative">
+            <IconBtn tip="Diğer" on={more} onClick={() => setMore((v) => !v)}><EllipsisVertical className="size-[1.15rem]" /></IconBtn>
+            {more && (
+              <MoreMenu onClose={() => setMore(false)}>
+                <MenuItem icon={Info} label={panel ? "Kişi bilgisini kapat" : "Kişi bilgisi"} onClick={() => { setMore(false); onPanel(); }} />
+                {wa.muted(conv.id) ? (
+                  <MenuItem icon={Bell} label="Sesi aç" onClick={() => { setMore(false); void wa.setConvPref(conv.id, { mute: "off" }); }} />
+                ) : (
+                  <>
+                    <MenuItem icon={BellOff} label="Sessize al" trailing={<ChevronRight className={cn("size-4 transition-transform", muteOpen && "rotate-90")} />} onClick={() => setMuteOpen((v) => !v)} />
+                    {muteOpen && <div className="mb-1 ml-8 space-y-0.5 border-l border-border/60 pl-1.5">{MUTES.map((mu) => <MenuItem key={mu.key} label={mu.label} small onClick={() => { setMore(false); void wa.setConvPref(conv.id, { mute: mu.key }); }} />)}</div>}
+                  </>
+                )}
+                <MenuItem icon={wa.pinned(conv.id) ? PinOff : Pin} label={wa.pinned(conv.id) ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => { setMore(false); void wa.setConvPref(conv.id, { pin: !wa.pinned(conv.id) }); }} />
+                <MenuItem icon={Mail} label="Okunmadı olarak işaretle" onClick={() => { setMore(false); void wa.markUnread(conv.id); }} />
+                {can(user, "whatsapp.export") && <MenuItem icon={Download} label="Yazışmayı indir" onClick={() => { setMore(false); void waApi.exportChat(conv.id).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi.")); }} />}
+              </MoreMenu>
+            )}
+          </span>
         </div>
       </header>
 
       {searching && (
-        <div className="relative border-b border-border/50 bg-card/40 px-4 py-2">
+        <div className="relative border-b border-border/60 bg-card px-4 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input autoFocus value={sq} onChange={(e) => setSq(e.target.value)} placeholder="Bu sohbette ara" className="h-9 w-full rounded-full border border-border/60 bg-card pl-9 pr-9 text-sm outline-none focus:border-ring/50" />
+            <input autoFocus value={sq} onChange={(e) => setSq(e.target.value)} placeholder="Bu sohbette ara" className="h-9 w-full rounded-xl bg-muted/70 pl-9 pr-9 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30" />
             <button type="button" onClick={() => { setSearching(false); setSq(""); }} aria-label="Aramayı kapat" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
           </div>
           {hits.length > 0 && (
@@ -287,11 +300,11 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         </div>
       )}
 
-      <div ref={list} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,color-mix(in_oklab,var(--foreground)_5%,transparent)_1px,transparent_0)] bg-[size:20px_20px] pb-4">
+      <div ref={list} onScroll={onScroll} className="wa-wall relative min-h-0 flex-1 overflow-y-auto pb-4">
         {loading && messages.length === 0 && (
           <div className="space-y-3 p-6">{[0, 1, 2, 3].map((i) => <div key={i} className={cn("h-12 w-1/2 animate-pulse rounded-2xl bg-muted/50", i % 2 && "ml-auto")} />)}</div>
         )}
-        {older && messages.length > 0 && <p className="py-3 text-center text-[0.7rem] text-muted-foreground">{loading ? "Yükleniyor..." : "Yukarı kaydırınca eski mesajlar gelir"}</p>}
+        {older && messages.length > 0 && <p className="py-3 text-center"><span className="rounded-lg bg-card/90 px-3 py-1 text-[0.7rem] text-muted-foreground shadow-sm">{loading ? "Yükleniyor..." : "Yukarı kaydırınca eski mesajlar gelir"}</span></p>}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
           const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
@@ -300,7 +313,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             <div key={m.clientId ?? m.id}>
               {newDay && (
                 <div className="my-4 flex items-center justify-center">
-                  <span className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm backdrop-blur">{dayLabel(m.createdAt)}</span>
+                  <span className="rounded-lg bg-card/95 px-3 py-1 text-[0.72rem] font-medium text-muted-foreground shadow-sm">{dayLabel(m.createdAt)}</span>
                 </div>
               )}
               <MessageBubble m={m} head={newDay || !sameSide} highlight={flash === m.id}
@@ -313,7 +326,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
           );
         })}
         {!atBottom && (
-          <button type="button" onClick={() => { const el = list.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }} className="sticky bottom-3 left-full mr-4 ml-auto flex size-10 items-center justify-center rounded-full bg-card shadow-lg ring-1 ring-border/60" aria-label="En alta in">
+          <button type="button" onClick={() => { const el = list.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }} className="sticky bottom-3 left-full mr-4 ml-auto flex size-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-lg" aria-label="En alta in">
             <ChevronDown className="size-5" />
           </button>
         )}
@@ -322,12 +335,14 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
       {error && <div className="flex items-center justify-between gap-2 border-t border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"><span>{error}</span><button type="button" onClick={() => setError(null)} aria-label="Kapat"><X className="size-3.5" /></button></div>}
 
       {canReply && t && !participant && !resolved && (
-        <div className="flex items-center gap-3 border-t border-primary/20 bg-primary/5 px-4 py-2.5">
-          {t.owner ? <UserAvatar userId={t.owner.id} name={t.owner.name} hasAvatar={t.owner.hasAvatar} version={t.owner.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" /> : <span className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-primary">{t.status === "bot" ? <Bot className="size-4" /> : <UserCheck className="size-4" />}</span>}
-          <p className="min-w-0 flex-1 text-xs text-foreground/80">{claimHint}</p>
-          <button type="button" disabled={busy === "greet"} onClick={() => void act("greet", () => waApi.greet(conv.id))} className="flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-md shadow-primary/30 transition-transform hover:scale-105 disabled:opacity-60">
-            <Hand className="size-3.5" /> {busy === "greet" ? "Bekleyin..." : claimLabel}
-          </button>
+        <div className="wa-wall px-3 pb-2">
+          <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-2xl bg-card px-4 py-2.5 shadow-sm">
+            {t.owner ? <UserAvatar userId={t.owner.id} name={t.owner.name} hasAvatar={t.owner.hasAvatar} version={t.owner.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" /> : <span className="flex size-8 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent">{t.status === "bot" ? <Bot className="size-4" /> : <UserCheck className="size-4" />}</span>}
+            <p className="min-w-0 flex-1 text-xs text-foreground/80">{claimHint}</p>
+            <button type="button" disabled={busy === "greet"} onClick={() => void act("greet", () => waApi.greet(conv.id))} className="flex shrink-0 items-center gap-1.5 rounded-full bg-wa-accent px-4 py-2 text-xs font-semibold text-white shadow-sm transition-transform hover:scale-105 disabled:opacity-60">
+              <Hand className="size-3.5" /> {busy === "greet" ? "Bekleyin..." : claimLabel}
+            </button>
+          </div>
         </div>
       )}
 
@@ -370,7 +385,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
 
 function IconBtn({ tip, on, onClick, children }: { tip: string; on?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} data-tip={tip} aria-label={tip} className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", on && "bg-primary/10 text-primary")}>
+    <button type="button" onClick={onClick} data-tip={tip} aria-label={tip} className={cn("flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", on && "bg-accent text-foreground")}>
       {children}
     </button>
   );
@@ -378,8 +393,33 @@ function IconBtn({ tip, on, onClick, children }: { tip: string; on?: boolean; on
 
 function TextBtn({ icon: Icon, label, tip, onClick, busy, tone }: { icon: typeof Hand; label: string; tip: string; onClick: () => void; busy?: boolean; tone?: "success" }) {
   return (
-    <button type="button" onClick={onClick} disabled={busy} data-tip={tip} className={cn("flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors disabled:opacity-60", tone === "success" ? "bg-success/12 text-success hover:bg-success/20" : "text-muted-foreground ring-1 ring-border/60 hover:bg-accent hover:text-foreground")}>
-      <Icon className="size-3.5" /> <span className="max-lg:hidden">{label}</span>
+    <button type="button" onClick={onClick} disabled={busy} data-tip={tip} className={cn("mr-1 flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors disabled:opacity-60", tone === "success" ? "bg-wa-accent/15 text-wa-accent hover:bg-wa-accent/25" : "bg-muted/70 text-foreground/80 hover:bg-accent")}>
+      <Icon className="size-4" /> <span className="max-lg:hidden">{label}</span>
+    </button>
+  );
+}
+
+function MoreMenu({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (!box.current?.parentElement?.contains(e.target as Node)) onClose(); };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [onClose]);
+  return <div ref={box} className="animate-in fade-in zoom-in-95 absolute right-0 top-full z-30 mt-1 w-60 origin-top-right rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl duration-100">{children}</div>;
+}
+
+function MenuItem({ icon: Icon, label, onClick, trailing, small }: { icon?: typeof Hand; label: string; onClick: () => void; trailing?: React.ReactNode; small?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-3 rounded-xl px-3 text-left transition-colors hover:bg-accent", small ? "py-1.5 text-[0.8rem]" : "py-2 text-sm")}>
+      {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" />}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {trailing}
     </button>
   );
 }

@@ -12,7 +12,7 @@ import { tones } from "@/softphone/tones";
 import NewChatDialog from "@/components/whatsapp/NewChatDialog";
 import { useTeams } from "@/teams/TeamsContext";
 import { waApi } from "@/whatsapp/api";
-import type { WAConversation, WAEvent, WAMessage } from "@/whatsapp/types";
+import type { WAConversation, WAEvent, WAMessage, WAMute, WAPrefs } from "@/whatsapp/types";
 import { isMine, isPool, isWaiting, isResolved } from "@/whatsapp/util";
 
 export interface WAAlert {
@@ -41,7 +41,20 @@ interface WAState {
   ai: boolean;
   // opens "WhatsApp'tan yaz" from anywhere, optionally for a number
   startChat: (opts?: { number?: string; name?: string }) => void;
+  // the person's own preferences: sounds, a mute for everything, and
+  // mutes and pins on single conversations
+  prefs: WAPrefs;
+  muted: (id: number) => boolean;
+  pinned: (id: number) => boolean;
+  mutedAll: boolean;
+  setPrefs: (body: { sound?: boolean; desktop?: boolean; mute?: WAMute }) => Promise<void>;
+  setConvPref: (id: number, body: { mute?: WAMute; pin?: boolean }) => Promise<void>;
+  markUnread: (id: number) => Promise<void>;
+  markRead: (id: number) => Promise<void>;
 }
+
+const NO_PREFS: WAPrefs = { sound: true, desktop: true, conversations: [] };
+const live = (iso?: string) => !!iso && Date.parse(iso) > Date.now();
 
 const Ctx = createContext<WAState | undefined>(undefined);
 
@@ -58,6 +71,17 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const [typingMap, setTyping] = useState<Record<number, { name: string; until: number }>>({});
   const [alerts, setAlerts] = useState<WAAlert[]>([]);
   const listeners = useRef(new Set<(m: WAMessage) => void>());
+  const [prefs, setPrefsState] = useState<WAPrefs>(NO_PREFS);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
+  // sounds and desktop notices, per conversation, as the person chose
+  const quiet = (id?: number) => {
+    const p = prefsRef.current;
+    if (live(p.mutedUntil)) return { sound: false, desktop: false };
+    const conv = id ? p.conversations.find((c) => c.id === id) : undefined;
+    if (conv && live(conv.mutedUntil)) return { sound: false, desktop: false };
+    return { sound: p.sound, desktop: p.desktop };
+  };
   const mapRef = useRef(map);
   mapRef.current = map;
 
@@ -171,8 +195,9 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
             const fresh = m.direction === "in" && m.kind !== "reaction" && (!before || (before.last?.id ?? 0) < m.id);
             const looking = openRef.current === c.id && document.visibilityState === "visible";
             if (fresh && !looking && (isMine(c, me) || isPool(c) || isWaiting(c))) {
-              tones.notify();
-              notifyBrowser(c.contact.display, m.body || "Yeni mesaj", c.id);
+              const q = quiet(c.id);
+              if (q.sound) tones.notify();
+              if (q.desktop) notifyBrowser(c.contact.display, m.body || "Yeni mesaj", c.id);
             }
           }
           if (before && !isWaiting(before) && isWaiting(c) && !isMine(c, me)) {
@@ -198,16 +223,16 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
           }
           break;
         case "wa.waiting":
-          tones.mention();
+          if (quiet(e.conversationId).sound) tones.mention();
           alert(e.text ?? "Cevap bekleyen bir müşteri var.", "warning", e.conversationId);
           break;
         case "wa.assigned":
-          tones.mention();
+          if (quiet(e.conversationId).sound) tones.mention();
           alert(e.text ?? "Size bir sohbet atandı.", "info", e.conversationId);
-          if (e.conversationId) notifyBrowser("WhatsApp", e.text ?? "Size bir sohbet atandı.", e.conversationId);
+          if (e.conversationId && quiet(e.conversationId).desktop) notifyBrowser("WhatsApp", e.text ?? "Size bir sohbet atandı.", e.conversationId);
           break;
         case "wa.callback":
-          tones.notify();
+          if (quiet().sound) tones.notify();
           alert(e.text ?? "Yeni geri arama talebi.", "info", e.conversationId);
           break;
         case "wa.alert":
@@ -215,7 +240,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
           break;
       }
     },
-    [apply, alert, me, notifyBrowser, sync],
+    [apply, alert, me, notifyBrowser, sync], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Events: on the chat's stream when the person uses the chat, otherwise
@@ -282,6 +307,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
     let pool = 0;
     for (const c of conversations) {
       if (isResolved(c)) continue;
+      if (live(prefs.conversations.find((x) => x.id === c.id)?.mutedUntil)) continue;
       if (isWaiting(c)) waiting++;
       if (isPool(c)) pool++;
       if (c.unread > 0) {
@@ -290,7 +316,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
       }
     }
     return { unread, mineUnread, waiting, pool, badge: mineUnread + waiting + pool };
-  }, [conversations, me]);
+  }, [conversations, me, prefs]);
 
   const byId = useCallback((id: number) => map[id], [map]);
   const upsert = useCallback((c: WAConversation) => apply([c], []), [apply]);
@@ -306,6 +332,27 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   }, []);
   const dismissAlert = useCallback((id: number) => setAlerts((cur) => cur.filter((a) => a.id !== id)), []);
 
+  useEffect(() => {
+    if (!enabled) return;
+    waApi.myPrefs().then(setPrefsState).catch(() => setPrefsState(NO_PREFS));
+  }, [enabled]);
+  const setPrefs = useCallback(async (body: { sound?: boolean; desktop?: boolean; mute?: WAMute }) => {
+    setPrefsState(await waApi.savePrefs(body));
+  }, []);
+  const setConvPref = useCallback(async (id: number, body: { mute?: WAMute; pin?: boolean }) => {
+    setPrefsState(await waApi.convPref(id, body));
+  }, []);
+  const muted = useCallback((id: number) => live(prefs.conversations.find((c) => c.id === id)?.mutedUntil), [prefs]);
+  const pinned = useCallback((id: number) => !!prefs.conversations.find((c) => c.id === id)?.pinnedAt, [prefs]);
+  const mutedAll = live(prefs.mutedUntil);
+  const markUnread = useCallback(async (id: number) => {
+    await waApi.unread(id);
+  }, []);
+  const markRead = useCallback(async (id: number) => {
+    const c = mapRef.current[id];
+    if (c?.last && c.last.direction === "in") await waApi.read(id, c.last.id);
+  }, []);
+
   const [ai, setAI] = useState(false);
   useEffect(() => {
     if (!enabled) return;
@@ -316,8 +363,8 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const startChat = useCallback((opts?: { number?: string; name?: string }) => setChat(opts ?? {}), []);
 
   const value = useMemo<WAState>(
-    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat }),
-    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat],
+    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead }),
+    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead],
   );
   return (
     <Ctx.Provider value={value}>

@@ -1,33 +1,54 @@
-// ConversationList is the inbox's left column: tabs for "mine", "waiting
-// for an answer", the pool, everything and resolved, a search box, and the
-// conversations with their state at a glance.
+// ConversationList is the inbox's left column: a search box, filter chips
+// for "mine", "waiting for an answer", the pool, everything and resolved,
+// and the conversations, two lines each. Pinned ones stay on top, muted
+// ones count in grey. A right click (or a long press) opens a small menu
+// to mark as read or unread, pin, mute or copy the number.
 
-import { useEffect, useMemo, useState } from "react";
-import { Bot, Clock, Hourglass, Inbox, Search, UserRound, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { BellOff, Bot, Check, ChevronRight, Copy, Hand, Hourglass, Inbox, MailOpen, Mail, Pin, PinOff, Search, Bell, X } from "lucide-react";
+import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
 import Ticks from "@/components/whatsapp/Ticks";
+import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
-import type { WAChannel, WAConversation } from "@/whatsapp/types";
+import type { WAChannel, WAConversation, WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { inBucket, isMine, isWaiting, listTime, since, sortTime, type Bucket } from "@/whatsapp/util";
+import { inBucket, isWaiting, listTime, since, sortTime, type Bucket } from "@/whatsapp/util";
 
-const TABS: { key: Bucket; label: string; icon: typeof Inbox; tip: string }[] = [
-  { key: "mine", label: "Benim", icon: UserRound, tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
-  { key: "waiting", label: "Bekleyen", icon: Hourglass, tip: "Cevap Bekleyenler: müşteri belirlenen süreden uzun süredir cevap bekliyor" },
-  { key: "pool", label: "Havuz", icon: Inbox, tip: "Henüz kimsenin üstlenmediği sohbetler" },
-  { key: "team", label: "Tümü", icon: Users, tip: "Görebildiğin bütün açık sohbetler" },
-  { key: "resolved", label: "Çözülen", icon: Clock, tip: "Çözülmüş sohbetler" },
+const CHIPS: { key: Bucket; label: string; tip: string }[] = [
+  { key: "mine", label: "Benim", tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
+  { key: "waiting", label: "Bekleyen", tip: "Müşteri belirlenen süreden uzun süredir cevap bekliyor" },
+  { key: "pool", label: "Havuz", tip: "Henüz kimsenin üstlenmediği sohbetler" },
+  { key: "team", label: "Tümü", tip: "Görebildiğin bütün açık sohbetler" },
+  { key: "resolved", label: "Çözülen", tip: "Çözülmüş sohbetler" },
 ];
 
-export default function ConversationList({ channels, activeId, onOpen, bucket, onBucket }: { channels: WAChannel[]; activeId: number | null; onOpen: (id: number) => void; bucket: Bucket; onBucket: (b: Bucket) => void }) {
+const EMPTY: Record<Bucket, string> = {
+  mine: "Şu an sende açık sohbet yok",
+  waiting: "Cevap bekleyen müşteri yok",
+  pool: "Havuz boş",
+  team: "Açık sohbet yok",
+  resolved: "Çözülmüş sohbet yok",
+};
+
+export const MUTES: { key: WAMute; label: string }[] = [
+  { key: "1h", label: "1 saat" },
+  { key: "8h", label: "8 saat" },
+  { key: "1d", label: "1 gün" },
+  { key: "1w", label: "1 hafta" },
+  { key: "always", label: "Ben açana kadar" },
+];
+
+export default function ConversationList({ channels, activeId, onOpen, bucket, onBucket, header }: { channels: WAChannel[]; activeId: number | null; onOpen: (id: number) => void; bucket: Bucket; onBucket: (b: Bucket) => void; header?: React.ReactNode }) {
   const wa = useWhatsApp();
   const [q, setQ] = useState("");
   const [channel, setChannel] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [older, setOlder] = useState<WAConversation[]>([]);
   const [olderDone, setOlderDone] = useState(false);
+  const [menu, setMenu] = useState<{ c: WAConversation; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30000);
@@ -55,7 +76,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
     const out: Record<Bucket, number> = { mine: 0, waiting: 0, pool: 0, team: 0, resolved: 0 };
     for (const c of wa.conversations) {
       if (channel && c.channelId !== channel) continue;
-      for (const t of TABS) if (inBucket(c, t.key, wa.me)) out[t.key]++;
+      for (const t of CHIPS) if (inBucket(c, t.key, wa.me)) out[t.key]++;
     }
     return out;
   }, [wa.conversations, wa.me, channel]);
@@ -69,8 +90,13 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
     return [...pool.values()]
       .filter((c) => (!channel || c.channelId === channel) && inBucket(c, bucket, wa.me))
       .filter((c) => !needle || c.contact.display.toLocaleLowerCase("tr").includes(needle) || (digits.length >= 3 && c.contact.waId.includes(digits)) || c.contact.tags.some((t) => t.toLocaleLowerCase("tr").includes(needle)) || String(c.ticket?.number ?? "") === needle.replace("#", ""))
-      .sort((a, b) => (bucket === "waiting" ? Date.parse(a.ticket?.awaitingSince ?? "") - Date.parse(b.ticket?.awaitingSince ?? "") : sortTime(b) - sortTime(a)));
-  }, [wa.conversations, wa.me, bucket, channel, q, older]);
+      .sort((a, b) => {
+        if (bucket === "waiting") return Date.parse(a.ticket?.awaitingSince ?? "") - Date.parse(b.ticket?.awaitingSince ?? "");
+        const pa = wa.pinned(a.id) ? 1 : 0;
+        const pb = wa.pinned(b.id) ? 1 : 0;
+        return pb - pa || sortTime(b) - sortTime(a);
+      });
+  }, [wa, bucket, channel, q, older]);
 
   const loadOlder = async () => {
     const last = list[list.length - 1];
@@ -81,114 +107,98 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
   };
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-r md:w-[22rem] border-border/50 bg-gradient-to-b from-card/70 to-card/30">
-      <div className="space-y-2.5 px-3 pt-3 pb-2">
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="İsim, numara, etiket ya da #numara" className="h-9 w-full rounded-full border border-transparent bg-muted/60 pl-9 pr-8 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/60 focus:border-ring/40 focus:bg-card focus:ring-4 focus:ring-ring/15" />
-            {q && (
-              <button type="button" onClick={() => setQ("")} aria-label="Temizle" className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground hover:text-foreground"><X className="size-3.5" /></button>
-            )}
-          </div>
-          {channels.length > 1 && (
-            <select value={channel} onChange={(e) => setChannel(Number(e.target.value))} data-tip="Cihaza göre süz" className="h-9 max-w-[7.5rem] shrink-0 truncate rounded-full border border-transparent bg-muted/60 px-3 text-xs outline-none focus:border-ring/40">
-              <option value={0}>Tüm cihazlar</option>
-              {channels.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          )}
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border/60 bg-card md:w-[24rem]">
+      {header}
+      <div className="space-y-2.5 px-3 pb-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: isim, numara, etiket" className="h-10 w-full rounded-xl bg-muted/70 pl-10 pr-9 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/70 focus:bg-card focus:ring-2 focus:ring-wa-accent/40" />
+          {q && <button type="button" onClick={() => setQ("")} aria-label="Temizle" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
         </div>
-        <div className="grid grid-cols-5 gap-1 rounded-2xl bg-muted/50 p-1">
-          {TABS.map((t) => {
+        <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]">
+          {CHIPS.map((t) => {
             const n = counts[t.key];
             const on = bucket === t.key;
             const urgent = t.key === "waiting" && n > 0;
             return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => onBucket(t.key)}
-                data-tip={t.tip}
-                className={cn(
-                  "relative flex flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 text-[0.65rem] font-medium transition-colors",
-                  on ? "bg-card text-foreground shadow-sm ring-1 ring-border/60" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <t.icon className={cn("size-4", urgent && "text-destructive")} />
-                <span className="truncate">{t.label}</span>
-                {n > 0 && t.key !== "resolved" && (
-                  <span className={cn("absolute -top-1 right-0.5 min-w-4 rounded-full px-1 text-[0.6rem] font-bold leading-4 tabular-nums", urgent ? "bg-destructive text-white animate-pulse" : "bg-primary/15 text-primary")}>{n > 99 ? "99+" : n}</span>
-                )}
+              <button key={t.key} type="button" onClick={() => onBucket(t.key)} data-tip={t.tip}
+                className={cn("flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[0.8rem] font-medium transition-colors",
+                  on ? "bg-wa-accent/15 text-wa-accent" : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                {t.label}
+                {n > 0 && t.key !== "resolved" && <span className={cn("min-w-[1.1rem] rounded-full px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] tabular-nums", urgent ? "bg-destructive text-white" : on ? "bg-wa-accent text-white" : "bg-foreground/10")}>{n > 99 ? "99+" : n}</span>}
               </button>
             );
           })}
+          {channels.length > 1 && (
+            <select value={channel} onChange={(e) => setChannel(Number(e.target.value))} data-tip="Numaraya göre süz" className={cn("h-8 shrink-0 rounded-full px-3 text-[0.8rem] font-medium outline-none", channel ? "bg-wa-accent/15 text-wa-accent" : "bg-muted/70 text-muted-foreground")}>
+              <option value={0}>Tüm numaralar</option>
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
-        {!wa.loaded && Array.from({ length: 6 }).map((_, i) => <div key={i} className="mx-1 my-1 h-16 animate-pulse rounded-2xl bg-muted/40" />)}
+      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+        {!wa.loaded && Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3">
+            <div className="size-12 animate-pulse rounded-full bg-muted/70" />
+            <div className="flex-1 space-y-2"><div className="h-3 w-2/3 animate-pulse rounded bg-muted/70" /><div className="h-3 w-1/2 animate-pulse rounded bg-muted/50" /></div>
+          </div>
+        ))}
         {wa.loaded && list.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-muted/70 text-muted-foreground"><Inbox className="size-5" /></span>
+          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+            <span className="flex size-14 items-center justify-center rounded-full bg-muted/70 text-muted-foreground"><Inbox className="size-6" /></span>
             <p className="text-sm font-medium">{q ? "Eşleşen sohbet yok" : EMPTY[bucket]}</p>
           </div>
         )}
         {list.map((c) => (
-          <Row key={c.id} c={c} me={wa.me} now={now} active={c.id === activeId} typing={wa.typing(c.id)} showChannel={channels.length > 1} onOpen={() => onOpen(c.id)} />
+          <Row key={c.id} c={c} me={wa.me} now={now} active={c.id === activeId} typing={wa.typing(c.id)} showChannel={channels.length > 1} muted={wa.muted(c.id)} pinned={wa.pinned(c.id)}
+            onOpen={() => onOpen(c.id)} onMenu={(x, y) => setMenu({ c, x, y })} />
         ))}
         {bucket === "resolved" && list.length >= 20 && !olderDone && (
           <button type="button" onClick={() => void loadOlder()} className="mx-auto mt-2 block rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Daha eski sohbetler</button>
         )}
       </div>
+      {menu && <ConversationMenu c={menu.c} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
     </aside>
   );
 }
 
-const EMPTY: Record<Bucket, string> = {
-  mine: "Şu an sende açık sohbet yok",
-  waiting: "Cevap bekleyen müşteri yok",
-  pool: "Havuz boş",
-  team: "Açık sohbet yok",
-  resolved: "Çözülmüş sohbet yok",
-};
-
-function Row({ c, me, now, active, typing, showChannel, onOpen }: { c: WAConversation; me: number; now: number; active: boolean; typing: string | null; showChannel: boolean; onOpen: () => void }) {
+function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, onMenu }: { c: WAConversation; me: number; now: number; active: boolean; typing: string | null; showChannel: boolean; muted: boolean; pinned: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
   const t = c.ticket;
   const waiting = isWaiting(c);
-  const mine = isMine(c, me);
   const last = c.last;
+  const unread = c.unread > 0;
+  const press = useRef<number | null>(null);
+  const owner = t?.owner;
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={cn(
-        "group relative flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition-[background-color,box-shadow] duration-200",
-        active ? "bg-card shadow-sm ring-1 ring-border/60" : "hover:bg-card/60",
-      )}
+      onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
+      onTouchStart={(e) => { const p = e.touches[0]; press.current = window.setTimeout(() => onMenu(p.clientX, p.clientY), 550); }}
+      onTouchEnd={() => { if (press.current) window.clearTimeout(press.current); }}
+      onTouchMove={() => { if (press.current) window.clearTimeout(press.current); }}
+      className={cn("group flex w-full items-center gap-3 pl-3 pr-0 text-left transition-colors", active ? "bg-accent" : "hover:bg-accent/50")}
     >
-      {waiting && <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-destructive" />}
-      <ContactAvatar name={c.contact.display} seed={c.contact.waId} className="size-11">
-        {t?.status === "bot" && (
-          <span className="absolute -right-0.5 -bottom-0.5 flex size-4.5 items-center justify-center rounded-full bg-violet-500 text-white ring-2 ring-card" data-tip="Chatbot ile konuşuyor"><Bot className="size-2.5" /></span>
-        )}
+      <ContactAvatar name={c.contact.display} seed={c.contact.waId} className="my-2 size-12 shrink-0 text-sm">
+        {t?.status === "bot" && <span className="absolute -right-0.5 -bottom-0.5 flex size-5 items-center justify-center rounded-full bg-violet-500 text-white ring-2 ring-card" data-tip="Chatbot ile konuşuyor"><Bot className="size-3" /></span>}
       </ContactAvatar>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className={cn("min-w-0 flex-1 truncate text-sm", c.unread > 0 ? "font-semibold text-foreground" : "font-medium")}>{c.contact.display}</span>
-          <span className={cn("shrink-0 text-[0.65rem] tabular-nums", c.unread > 0 ? "font-semibold text-primary" : "text-muted-foreground")}>{listTime(last?.at)}</span>
+      <span className={cn("min-w-0 flex-1 border-b py-3 pr-3", active ? "border-transparent" : "border-border/50")}>
+        <span className="flex items-baseline gap-2">
+          <span className={cn("min-w-0 flex-1 truncate text-[0.95rem]", unread ? "font-semibold" : "font-medium")}>{c.contact.display}</span>
+          <span className={cn("shrink-0 text-[0.7rem] tabular-nums", unread && !muted ? "font-semibold text-wa-accent" : "text-muted-foreground")}>{listTime(last?.at)}</span>
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="mt-0.5 flex items-center gap-1.5">
           {typing ? (
-            <span className="min-w-0 flex-1 truncate text-xs italic text-primary">{typing}</span>
+            <span className="min-w-0 flex-1 truncate text-[0.8rem] font-medium text-wa-accent">{typing}</span>
           ) : (
             <>
-              {last && last.direction === "out" && <Ticks status={last.status} />}
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {last && last.direction === "out" && <Ticks status={last.status} className="size-4" />}
+              <span className={cn("min-w-0 flex-1 truncate text-[0.8rem]", unread ? "text-foreground/85" : "text-muted-foreground")}>
                 {last ? (
                   <>
-                    {last.direction === "out" && last.senderName ? <span className="text-foreground/70">{last.senderName}: </span> : null}
+                    {last.direction === "out" && last.senderName ? <span>{last.senderName.split(" ")[0]}: </span> : null}
                     {last.direction === "note" ? <span className="text-amber-600 dark:text-amber-400">Not: </span> : null}
                     {last.preview || " "}
                   </>
@@ -196,28 +206,92 @@ function Row({ c, me, now, active, typing, showChannel, onOpen }: { c: WAConvers
               </span>
             </>
           )}
-          {c.unread > 0 && <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[0.6rem] font-bold leading-none tabular-nums text-primary-foreground shadow-sm shadow-primary/30">{c.unread > 99 ? "99+" : c.unread}</span>}
+          <span className="flex shrink-0 items-center gap-1">
+            {waiting && t?.awaitingSince && <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-px text-[0.62rem] font-semibold text-destructive" data-tip="Müşteri bu kadar süredir cevap bekliyor"><Hourglass className="size-2.5" />{since(t.awaitingSince, now)}</span>}
+            {owner && <span data-tip={`Sorumlu: ${owner.id === me ? "sen" : owner.name}`}><UserAvatar userId={owner.id} name={owner.name} hasAvatar={owner.hasAvatar} version={owner.avatarVersion} className="size-4.5" fallbackClassName="bg-primary/10 text-[0.45rem] text-primary" /></span>}
+            {muted && <BellOff className="size-3.5 text-muted-foreground" aria-label="Sessizde" />}
+            {pinned && <Pin className="size-3.5 rotate-45 text-muted-foreground" aria-label="Sabitlendi" />}
+            {unread && <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[0.68rem] font-bold leading-5 tabular-nums", muted ? "bg-muted-foreground/40 text-white" : "bg-wa-accent text-white")}>{c.unread > 99 ? "99+" : c.unread}</span>}
+          </span>
         </span>
-        <span className="mt-1 flex items-center gap-1.5 text-[0.65rem] text-muted-foreground">
-          {t?.owner ? (
-            <span className="flex min-w-0 items-center gap-1" data-tip={`Sorumlu: ${t.owner.name}`}>
-              <UserAvatar userId={t.owner.id} name={t.owner.name} hasAvatar={t.owner.hasAvatar} version={t.owner.avatarVersion} className="size-4" fallbackClassName="bg-primary/10 text-[0.45rem] text-primary" />
-              <span className={cn("truncate", mine && "font-medium text-foreground/80")}>{t.owner.id === me ? "Sen" : t.owner.name.split(" ")[0]}</span>
-              {t.participants.length > 1 && <span className="text-muted-foreground/70">+{t.participants.length - 1}</span>}
-            </span>
-          ) : t && t.status !== "resolved" && t.status !== "bot" ? (
-            <span className="rounded-full bg-muted px-1.5 py-px font-medium">Havuzda</span>
-          ) : null}
-          {waiting && t?.awaitingSince && (
-            <span className="flex items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-px font-semibold text-destructive" data-tip="Müşteri bu kadar süredir cevap bekliyor"><Hourglass className="size-2.5" />{since(t.awaitingSince, now)}</span>
-          )}
-          {t && (t.priority === "high" || t.priority === "urgent") && (
-            <span className={cn("rounded-full px-1.5 py-px font-semibold", t.priority === "urgent" ? "bg-destructive/10 text-destructive" : "bg-warning/12 text-warning")}>{t.priority === "urgent" ? "Acil" : "Yüksek"}</span>
-          )}
-          {t?.status === "pending" && <span className="rounded-full bg-sky-500/10 px-1.5 py-px font-medium text-sky-600 dark:text-sky-400">Müşteri bekleniyor</span>}
-          {showChannel && <span className="ml-auto truncate text-muted-foreground/70">{c.channelName}</span>}
-        </span>
+        {showChannel && <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground/80">{c.channelName}{t && t.status !== "resolved" && !owner && t.status !== "bot" ? " · havuzda" : ""}</span>}
       </span>
+    </button>
+  );
+}
+
+// ConversationMenu is the right-click menu of a conversation.
+function ConversationMenu({ c, x, y, onClose }: { c: WAConversation; x: number; y: number; onClose: () => void }) {
+  const wa = useWhatsApp();
+  const { user } = useAuth();
+  const [muteOpen, setMuteOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  const muted = wa.muted(c.id);
+  const pinned = wa.pinned(c.id);
+  const t = c.ticket;
+  const canClaim = can(user, "whatsapp.reply") && t && !t.owner && t.status !== "resolved" && t.status !== "bot";
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({ left: Math.max(8, Math.min(x, window.innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) });
+  }, [x, y, muteOpen]);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) onClose(); };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const t = window.setTimeout(() => {
+      window.addEventListener("mousedown", close);
+      window.addEventListener("keydown", esc);
+      window.addEventListener("resize", onClose);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+
+  const run = (fn: () => Promise<unknown> | void) => {
+    onClose();
+    void Promise.resolve(fn()).catch(() => undefined);
+  };
+
+  return (
+    <div ref={box} className="animate-in fade-in zoom-in-95 fixed z-[70] w-60 origin-top-left overflow-hidden rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl duration-100" style={pos} onContextMenu={(e) => e.preventDefault()}>
+      <p className="truncate px-3 pt-1 pb-1.5 text-xs font-semibold text-muted-foreground">{c.contact.display}</p>
+      {c.unread > 0
+        ? <Item icon={MailOpen} label="Okundu olarak işaretle" onClick={() => run(() => wa.markRead(c.id))} />
+        : <Item icon={Mail} label="Okunmadı olarak işaretle" onClick={() => run(() => wa.markUnread(c.id))} />}
+      <Item icon={pinned ? PinOff : Pin} label={pinned ? "Sabitlemeyi kaldır" : "Sabitle"} onClick={() => run(() => wa.setConvPref(c.id, { pin: !pinned }))} />
+      {muted ? (
+        <Item icon={Bell} label="Sesi aç" onClick={() => run(() => wa.setConvPref(c.id, { mute: "off" }))} />
+      ) : (
+        <>
+          <Item icon={BellOff} label="Sessize al" trailing={<ChevronRight className={cn("size-4 transition-transform", muteOpen && "rotate-90")} />} onClick={() => setMuteOpen((v) => !v)} />
+          {muteOpen && (
+            <div className="mb-1 ml-8 space-y-0.5 border-l border-border/60 pl-1.5">
+              {MUTES.map((m) => <Item key={m.key} label={m.label} onClick={() => run(() => wa.setConvPref(c.id, { mute: m.key }))} small />)}
+            </div>
+          )}
+        </>
+      )}
+      {canClaim && <Item icon={Hand} label="Sohbeti üstlen" onClick={() => run(() => waApi.greet(c.id))} />}
+      <div className="my-1 h-px bg-border/70" />
+      <Item icon={Copy} label="Numarayı kopyala" onClick={() => run(() => navigator.clipboard?.writeText("0" + c.contact.waId.replace(/^90/, "")))} />
+    </div>
+  );
+}
+
+function Item({ icon: Icon, label, onClick, trailing, small }: { icon?: typeof Check; label: string; onClick: () => void; trailing?: React.ReactNode; small?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-3 rounded-xl px-3 text-left transition-colors hover:bg-accent", small ? "py-1.5 text-[0.8rem]" : "py-2 text-sm")}>
+      {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" />}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {trailing}
     </button>
   );
 }

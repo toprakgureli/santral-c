@@ -16,6 +16,7 @@ import { Settings } from "./pages/Settings";
 import { TeamPerformance } from "./pages/TeamPerformance";
 import { Users } from "./pages/Users";
 import { WhatsApp } from "./pages/WhatsApp";
+import { Preferences } from "./pages/Preferences";
 import { WhatsAppSettings } from "./pages/WhatsAppSettings";
 import { WhatsAppBot } from "./pages/WhatsAppBot";
 import { WhatsAppReports } from "./pages/WhatsAppReports";
@@ -56,6 +57,7 @@ export function App() {
         <Route path="/teams/:id" element={<Teams />} />
         <Route path="/games/admin" element={<GamesAdmin />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/preferences" element={<Preferences />} />
         <Route path="/profile/:id" element={<Profile />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />

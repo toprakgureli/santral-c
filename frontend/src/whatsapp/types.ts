@@ -518,3 +518,13 @@ export interface WACallSurveyReport {
   agents: { user: WAPerson; sent: number; answered: number; average: number; low: number }[];
   recent: { id: number; agent: string; phone: string; score: number; comment: string; conversationId: number; answeredAt: string }[];
 }
+
+// A person's own WhatsApp preferences.
+export interface WAPrefs {
+  sound: boolean;
+  desktop: boolean;
+  mutedUntil?: string;
+  conversations: { id: number; mutedUntil?: string; pinnedAt?: string }[];
+}
+
+export type WAMute = "1h" | "8h" | "1d" | "1w" | "always" | "off";

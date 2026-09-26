@@ -7,6 +7,8 @@ import type {
   SimResult,
   WAAgent,
   WAAISettings,
+  WAMute,
+  WAPrefs,
   WACallSurveyReport,
   WACallSurveySettings,
   WAFile,
@@ -145,6 +147,11 @@ export const waApi = {
   },
   fileUrl: (id: number) => `/api/v1/wa/files/${id}`,
   exportChat: (conversationId: number) => download(`/wa/conversations/${conversationId}/export`, `whatsapp_${conversationId}.txt`),
+
+  // the person's own preferences
+  myPrefs: () => request<WAPrefs>("/wa/me"),
+  savePrefs: (body: { sound?: boolean; desktop?: boolean; mute?: WAMute }) => request<WAPrefs>("/wa/me", json("PUT", body)),
+  convPref: (id: number, body: { mute?: WAMute; pin?: boolean }) => request<WAPrefs>(`/wa/me/conversations/${id}`, json("PUT", body)),
 
   // reply assistant
   aiStatus: () => request<{ available: boolean }>("/wa/ai/status"),

@@ -13,6 +13,7 @@ import { WhatsAppCallbacks } from "@/pages/WhatsAppCallbacks";
 import { WhatsAppReports } from "@/pages/WhatsAppReports";
 import { WhatsAppSettings } from "@/pages/WhatsAppSettings";
 import { TeamPerformance } from "@/pages/TeamPerformance";
+import { Preferences } from "@/pages/Preferences";
 import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/SoftphoneContext";
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
@@ -111,6 +112,9 @@ const callbacks = [
   { id: 2, channelName: "Satış Hattı", conversationId: 3, customer: "Elif Şahin", phone: "905301234567", note: "", status: "done", doneBy: "Ayşe Kaya", doneAt: ago(60), createdAt: ago(200) },
 ];
 
+const prefs: { sound: boolean; desktop: boolean; mutedUntil?: string; conversations: { id: number; mutedUntil?: string; pinnedAt?: string }[] } = { sound: true, desktop: true, conversations: [{ id: 2, mutedUntil: new Date(Date.now() + 8 * 3600000).toISOString() }, { id: 3, pinnedAt: ago(100) }] };
+const muteWord = (w?: string) => (!w ? undefined : w === "off" ? "" : new Date(Date.now() + (w === "always" ? 1e12 : 3600000)).toISOString());
+
 function answer(method: string, path: string, body: unknown): unknown {
   const p = path.replace(/^\/api\/v1\/wa/, "").split("?")[0];
   if (p === "/conversations") return { items: conversations, hidden: [], version: 20, me: 1 };
@@ -141,6 +145,26 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (p === "/events") return [{ id: 7, channelId: 1, status: "failed", attempts: 8, lastError: "medya indirilemedi: 404", receivedAt: ago(90), summary: "1 mesaj" }];
   if (p === "/reports") return report;
   if (p === "/ai/status") return { available: true };
+  if (p === "/me") {
+    const b = (body ?? {}) as { sound?: boolean; desktop?: boolean; mute?: string };
+    if (method === "PUT") {
+      if (b.sound !== undefined) prefs.sound = b.sound;
+      if (b.desktop !== undefined) prefs.desktop = b.desktop;
+      const u = muteWord(b.mute);
+      if (u !== undefined) prefs.mutedUntil = u || undefined;
+    }
+    return prefs;
+  }
+  if (p.startsWith("/me/conversations/")) {
+    const id = Number(p.split("/")[3]);
+    const b = (body ?? {}) as { mute?: string; pin?: boolean };
+    let row = prefs.conversations.find((c) => c.id === id);
+    if (!row) { row = { id }; prefs.conversations.push(row); }
+    const u = muteWord(b.mute);
+    if (u !== undefined) row.mutedUntil = u || undefined;
+    if (b.pin !== undefined) row.pinnedAt = b.pin ? new Date().toISOString() : undefined;
+    return prefs;
+  }
   if (p === "/lookup") return conversations.slice(0, 1);
   if (p === "/ai") return { enabled: true, model: "claude-sonnet-5", instructions: "Firmamız internet ve telefon hizmeti veriyor.", useQuickReplies: true, hasKey: true, models: [{ id: "claude-sonnet-5", label: "Dengeli (önerilen)" }, { id: "claude-haiku-4-5-20251001", label: "Hızlı ve ucuz" }, { id: "claude-opus-5-5", label: "En güçlü, daha yavaş" }] };
   if (/\/suggest$/.test(p)) return { text: "Anlayışınız için teşekkürler Zeynep Hanım. Arıza giderilince size buradan haber vereceğim, tahmini süre [süre]." };
@@ -197,6 +221,7 @@ const PAGES = [
   { path: "/whatsapp/settings?tab=ai", label: "Yapay zekâ" },
   { path: "/whatsapp/settings?tab=call-survey", label: "Çağrı anketi" },
   { path: "/performance", label: "Ekip performansı" },
+  { path: "/preferences", label: "Ayarlarım" },
 ];
 
 export default function WAPreview() {
@@ -227,6 +252,7 @@ export default function WAPreview() {
                     <Route path="/whatsapp" element={<WhatsApp />} />
                     <Route path="/whatsapp/:id" element={<WhatsApp />} />
                     <Route path="/performance" element={<TeamPerformance />} />
+                    <Route path="/preferences" element={<Preferences />} />
                   </Routes>
                 </main>
               </div>

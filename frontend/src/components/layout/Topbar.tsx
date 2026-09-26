@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Menu, UserRound } from "lucide-react";
+import { LogOut, Menu, SlidersHorizontal, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 import NumberSearch from "./NumberSearch";
@@ -77,6 +77,17 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
               >
                 <UserRound className="size-4" />
                 Profilim
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  navigate("/preferences");
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-accent"
+              >
+                <SlidersHorizontal className="size-4" />
+                Ayarlarım
               </button>
               <button
                 type="button"
