@@ -54,6 +54,12 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
     };
   }, [open, digits]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A known customer's name fills itself in, for the template's blanks.
+  useEffect(() => {
+    const known = existing.find((c) => c.contact.name || c.contact.profileName);
+    if (known && !name.trim()) setName(known.contact.name || known.contact.profileName || "");
+  }, [existing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const openChat = (c: WAConversation) => {
     onClose();
     navigate(`/whatsapp/${c.id}`);
@@ -81,7 +87,7 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
         </>}
       >
         {channels.length === 0 ? (
-          <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">Açık bir WhatsApp numarası yok ya da hiçbir numarada çalışmıyorsunuz.</p>
+          <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">Şirketin WhatsApp numarasından yazamıyorsunuz: ya açık bir numara yok ya da size bir numara atanmamış. Yöneticinizin Ayarlar &gt; Cihazlar'dan sizi bir numaraya eklemesi gerekiyor.</p>
         ) : (
           <div className="space-y-3">
             {channels.length > 1 && (

@@ -1,7 +1,8 @@
 // UnreachedPrompt appears the moment an outbound call ends without reaching
 // the customer (no answer, busy, cancelled while ringing, or "answered" by
-// the PBX only for a short announcement) and offers the WhatsApp follow-up
-// with the agent's own message. Only Şimdi değil or writing closes it: a
+// the PBX only for a short announcement) and offers the WhatsApp follow-up:
+// from the company number with an approved template when the person may do
+// that, otherwise from their own WhatsApp with their saved message. Only Şimdi değil or writing closes it: a
 // call that arrives meanwhile rings in the floating call bar above the card
 // and never closes it. It shows once per unreached call.
 
@@ -12,9 +13,10 @@ import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import WhatsAppTemplateDialog from "@/components/WhatsAppTemplateDialog";
 import { Button } from "@/components/ui";
 import { setWhatsAppPromptOpen } from "@/lib/overlays";
-import { whatsappLink, whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
+import { whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
+import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
 
 const REASONS: Record<string, string> = {
   no_answer: "Cevap vermedi",
@@ -28,6 +30,7 @@ export default function UnreachedPrompt() {
   const { user } = useAuth();
   const [seenId, setSeenId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const { business, write: writeWhatsApp } = useWhatsAppWrite();
 
   const call = phone.lastUnreached;
   const busy = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
@@ -48,8 +51,8 @@ export default function UnreachedPrompt() {
   }
 
   function write() {
-    window.open(whatsappLink(number, whatsappTextFor(user, "unreached", shown)), "_blank", "noopener");
     dismiss();
+    writeWhatsApp(call!.peer, "unreached");
   }
 
   return (
@@ -83,25 +86,31 @@ export default function UnreachedPrompt() {
               <div className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Müşteri</div>
               <div className="mt-0.5 font-mono text-2xl font-bold tabular-nums tracking-wide">{shown}</div>
             </div>
-            <button
+            {!business && <button
               type="button"
               onClick={() => setEditing(true)}
               data-tip="Mesajı düzenle"
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Settings2 className="size-3.5" /> Mesajı düzenle
-            </button>
+            </button>}
           </div>
 
-          <div className="mt-3 rounded-2xl rounded-tl-sm bg-[#25D366]/10 px-4 py-3 text-sm leading-relaxed ring-1 ring-[#25D366]/25">
-            {whatsappTextFor(user, "unreached", shown)}
-          </div>
+          {business ? (
+            <p className="mt-3 rounded-2xl bg-[#25D366]/10 px-4 py-3 text-sm leading-relaxed ring-1 ring-[#25D366]/25">
+              Şirket numarasından, onaylı bir şablonla yazılır. Bir sonraki adımda şablonu seçersin; müşterinin cevabı WhatsApp gelen kutusuna düşer.
+            </p>
+          ) : (
+            <div className="mt-3 rounded-2xl rounded-tl-sm bg-[#25D366]/10 px-4 py-3 text-sm leading-relaxed ring-1 ring-[#25D366]/25">
+              {whatsappTextFor(user, "unreached", shown)}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 px-7 pb-7">
           <Button variant="secondary" onClick={dismiss} className="h-12 flex-1 text-base">Şimdi değil</Button>
           <Button onClick={write} className="h-12 flex-[1.4] gap-2 bg-[#25D366] text-base text-black shadow-md hover:bg-[#25D366]/90">
-            <WhatsAppIcon className="size-5" /> WhatsApp'tan yaz
+            <WhatsAppIcon className="size-5" /> {business ? "Şablon seç ve yaz" : "WhatsApp'tan yaz"}
           </Button>
         </div>
       </div>
