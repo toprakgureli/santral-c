@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -131,6 +132,10 @@ func contactView(c *models.WAContact) ContactView {
 	return v
 }
 
+// templateButtonLine is how a template's button is written in its stored
+// text: "[Ara](tel:+90...)" or "[Evet]".
+var templateButtonLine = regexp.MustCompile(`^\[[^\]]+\](\([^)]*\))?$`)
+
 // preview is a message's one-line description.
 func preview(m *models.WAMessage) string {
 	body := strings.TrimSpace(m.Body)
@@ -145,6 +150,15 @@ func preview(m *models.WAMessage) string {
 		return label
 	case m.Kind == "template" && body == "":
 		return "Şablon: " + m.SenderLabel
+	case m.Kind == "template":
+		// the template's buttons are not part of what it says
+		var keep []string
+		for _, line := range strings.Split(body, "\n") {
+			if !templateButtonLine.MatchString(strings.TrimSpace(line)) {
+				keep = append(keep, line)
+			}
+		}
+		body = strings.TrimSpace(strings.Join(keep, " "))
 	}
 	if len([]rune(body)) > 140 {
 		body = string([]rune(body)[:140]) + "…"

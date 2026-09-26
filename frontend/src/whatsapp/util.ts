@@ -185,3 +185,25 @@ export function mergeMessage(list: WAMessage[], m: WAMessage): WAMessage[] {
   }
   return next;
 }
+
+// A template's buttons are stored at the end of its text, one per line:
+// "[Ara](tel:+90...)", "[Siteye git](https://...)" or "[Evet]".
+// templateParts splits them off so they can be drawn as buttons.
+export interface TemplateButton {
+  label: string;
+  href?: string;
+  kind: "phone" | "link" | "reply";
+}
+
+export function templateParts(body: string): { text: string; buttons: TemplateButton[] } {
+  const lines = body.split("\n");
+  const buttons: TemplateButton[] = [];
+  while (lines.length > 0) {
+    const m = /^\[([^\]]+)\](?:\(([^)]*)\))?$/.exec(lines[lines.length - 1].trim());
+    if (!m) break;
+    lines.pop();
+    const href = m[2] || undefined;
+    buttons.unshift({ label: m[1], href, kind: href?.startsWith("tel:") ? "phone" : href ? "link" : "reply" });
+  }
+  return { text: lines.join("\n").trimEnd(), buttons };
+}

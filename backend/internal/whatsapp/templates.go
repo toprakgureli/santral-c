@@ -448,9 +448,10 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 		Format  string `json:"format"`
 		Text    string `json:"text"`
 		Buttons []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-			URL  string `json:"url"`
+			Type  string `json:"type"`
+			Text  string `json:"text"`
+			URL   string `json:"url"`
+			Phone string `json:"phone_number"`
 		} `json:"buttons"`
 	}
 	_ = json.Unmarshal([]byte(t.Components), &comps)
@@ -520,15 +521,29 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 					out = append(out, map[string]any{"type": "button", "sub_type": "quick_reply", "index": fmt.Sprint(i), "parameters": []map[string]any{{"type": "payload", "payload": p.quickPayloads[qi]}}})
 					qi++
 				}
-				if strings.ToUpper(b.Type) == "URL" && countVars(b.URL) > 0 {
-					val := ""
-					if bi < len(p.Buttons) {
-						val = p.Buttons[bi]
+				link := ""
+				switch strings.ToUpper(b.Type) {
+				case "URL":
+					link = b.URL
+					if countVars(b.URL) > 0 {
+						val := ""
+						if bi < len(p.Buttons) {
+							val = p.Buttons[bi]
+						}
+						bi++
+						out = append(out, map[string]any{"type": "button", "sub_type": "url", "index": fmt.Sprint(i), "parameters": []map[string]any{{"type": "text", "text": val}}})
+						link = fill(b.URL, []string{val})
 					}
-					bi++
-					out = append(out, map[string]any{"type": "button", "sub_type": "url", "index": fmt.Sprint(i), "parameters": []map[string]any{{"type": "text", "text": val}}})
+				case "PHONE_NUMBER":
+					link = "tel:" + b.Phone
 				}
-				preview = append(preview, "["+b.Text+"]")
+				// The panel draws these lines as the template's buttons:
+				// "[Ara](tel:+90...)", "[Siteye git](https://...)", "[Evet]".
+				if link != "" {
+					preview = append(preview, "["+b.Text+"]("+link+")")
+				} else {
+					preview = append(preview, "["+b.Text+"]")
+				}
 			}
 		}
 	}

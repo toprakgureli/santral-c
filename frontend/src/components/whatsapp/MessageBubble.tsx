@@ -5,13 +5,13 @@
 // small labels in the middle. The time and the ticks sit in the corner.
 
 import { useState } from "react";
-import { Bot, Copy, CornerUpLeft, Download, FileText, Lock, MapPin, MousePointerClick, RotateCcw, SmilePlus, UserSquare2, Zap } from "lucide-react";
+import { Bot, Copy, CornerUpLeft, Download, ExternalLink, FileText, Lock, MapPin, MousePointerClick, Phone, Reply, RotateCcw, SmilePlus, UserSquare2, Zap } from "lucide-react";
 import AdSource from "@/components/whatsapp/AdSource";
 import Ticks from "@/components/whatsapp/Ticks";
 import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
 import type { WAMessage } from "@/whatsapp/types";
-import { clock, menuOptions, menuText } from "@/whatsapp/util";
+import { clock, menuOptions, menuText, templateParts } from "@/whatsapp/util";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
@@ -60,7 +60,8 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
   const fill = note ? "bg-wa-note" : out ? "bg-wa-out" : "bg-wa-in";
   const tail = note ? "text-wa-note" : out ? "text-wa-out" : "text-wa-in";
   const options = m.kind === "interactive" && out ? menuOptions(m) : [];
-  const body = m.kind === "interactive" && out ? menuText(m) : m.body;
+  const tpl = m.kind === "template" ? templateParts(m.body) : null;
+  const body = m.kind === "interactive" && out ? menuText(m) : tpl ? tpl.text : m.body;
   const media = !!m.media && ["image", "video", "sticker"].includes(m.kind);
 
   return (
@@ -103,6 +104,25 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
               {m.direction === "out" && <Ticks status={m.status} className={cn(!body && media && "text-white")} />}
             </span>
           </div>
+          {tpl && tpl.buttons.length > 0 && (
+            <div className="mt-2 -mx-2 -mb-1 flex flex-col border-t border-foreground/10">
+              {tpl.buttons.map((b, i) => {
+                const Icon = b.kind === "phone" ? Phone : b.kind === "link" ? ExternalLink : Reply;
+                const inner = (
+                  <>
+                    <span className="flex items-center justify-center gap-1.5 text-[0.82rem] font-medium text-sky-600 dark:text-sky-400"><Icon className="size-3.5" /> {b.label}</span>
+                    {b.kind !== "reply" && <span className="block truncate px-3 text-[0.68rem] text-wa-meta">{b.kind === "phone" ? b.href!.slice(4) : b.href}</span>}
+                  </>
+                );
+                const cls = "block border-b border-foreground/10 py-1.5 text-center last:border-0";
+                return b.href ? (
+                  <a key={i} href={b.href} target={b.kind === "link" ? "_blank" : undefined} rel="noopener noreferrer" data-tip={b.kind === "phone" ? "Müşteri bu düğmeye basınca bu numarayı arar" : "Müşteri bu düğmeye basınca bu adres açılır"} className={cn(cls, "hover:bg-foreground/5")}>{inner}</a>
+                ) : (
+                  <span key={i} className={cls} data-tip="Müşteri bu düğmeye basınca cevap olarak gelir">{inner}</span>
+                );
+              })}
+            </div>
+          )}
           {options.length > 0 && (
             <div className="mt-2 -mx-2 -mb-1 flex flex-col border-t border-foreground/10">
               {options.map((o, i) => <span key={i} className="border-b border-foreground/10 py-1.5 text-center text-[0.82rem] font-medium text-sky-600 last:border-0 dark:text-sky-400">{o.title}</span>)}
