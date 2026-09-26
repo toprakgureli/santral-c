@@ -8,6 +8,7 @@ import { areaCls, FormField, inputCls, Words } from "@/components/whatsapp/setti
 import { cn } from "@/lib/utils";
 import type { BotData, BotNode, WAIntegration, WATeam } from "@/whatsapp/types";
 import { KINDS, OP_WORD, rid } from "@/components/whatsapp/bot/nodes";
+import { DayChips, TimeInput } from "@/components/whatsapp/settings/TimeParts";
 import { PRIORITY_WORD } from "@/whatsapp/util";
 
 export default function NodeEditor({
@@ -85,17 +86,31 @@ export default function NodeEditor({
             </div>
             {(d.rules ?? []).map((r, i) => {
               const setRule = (p: Partial<typeof r>) => set({ rules: (d.rules ?? []).map((x, j) => (j === i ? { ...x, ...p } : x)) }, `rule${i}`);
-              const timeRule = r.op === "hours_open" || r.op === "hours_closed";
+              const timeRule = r.op === "hours_open" || r.op === "hours_closed" || r.op === "time_between";
               return (
                 <div key={i} className="space-y-2 rounded-2xl bg-orange-500/6 p-3 ring-1 ring-orange-500/20">
                   <div className="flex items-center gap-2">
-                    <select className={cn(inputCls, "h-9 flex-1")} value={timeRule ? r.op : "var"} onChange={(e) => setRule(e.target.value === "var" ? { op: "equals", var: vars[0] ?? "" } : { op: e.target.value, var: "", value: "" })}>
+                    <select className={cn(inputCls, "h-9 flex-1")} value={timeRule ? r.op : "var"} onChange={(e) => setRule(e.target.value === "var" ? { op: "equals", var: vars[0] ?? "", from: undefined, to: undefined, days: undefined } : e.target.value === "time_between" ? { op: "time_between", var: "", value: "", from: r.from ?? "12:00", to: r.to ?? "13:00", days: r.days ?? [0, 1, 2, 3, 4] } : { op: e.target.value, var: "", value: "", from: undefined, to: undefined, days: undefined })}>
                       <option value="hours_open">Mesai içindeyse</option>
                       <option value="hours_closed">Mesai dışındaysa</option>
+                      <option value="time_between">Belirli saatlerdeyse</option>
                       <option value="var">Bir bilgiye göre</option>
                     </select>
                     <button type="button" onClick={() => set({ rules: (d.rules ?? []).filter((_, j) => j !== i) }, "rules")} className="rounded-lg p-1.5 text-muted-foreground hover:text-destructive" aria-label="Kaldır"><X className="size-4" /></button>
                   </div>
+                  {(r.op === "hours_open" || r.op === "hours_closed") && <p className="text-[0.7rem] leading-relaxed text-muted-foreground">Cihaz ayarlarındaki mesai saatleri ve tatil günleri kullanılır (Türkiye saati).</p>}
+                  {r.op === "time_between" && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <TimeInput value={r.from ?? "12:00"} onChange={(from) => setRule({ from })} label="Başlangıç" />
+                        <span className="text-muted-foreground">–</span>
+                        <TimeInput value={r.to ?? "13:00"} onChange={(to) => setRule({ to })} label="Bitiş" />
+                        <span className="text-[0.7rem] text-muted-foreground">{r.from && r.to && r.to < r.from ? "ertesi sabaha kadar" : "arası"}</span>
+                      </div>
+                      <DayChips value={r.days ?? []} onChange={(days) => setRule({ days })} />
+                      <p className="text-[0.7rem] leading-relaxed text-muted-foreground">Müşteri bu saatlerde yazarsa "evet" yolundan, değilse "hayır" yolundan devam eder. Türkiye saati.</p>
+                    </div>
+                  )}
                   {!timeRule && (
                     <div className="grid grid-cols-2 gap-2">
                       <select className={cn(inputCls, "h-9 font-mono text-xs")} value={r.var} onChange={(e) => setRule({ var: e.target.value })}>

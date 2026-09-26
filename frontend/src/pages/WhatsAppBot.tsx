@@ -13,7 +13,7 @@ import Canvas, { type Selection } from "@/components/whatsapp/bot/Canvas";
 import NodeEditor from "@/components/whatsapp/bot/NodeEditor";
 import { KINDS, portsOf, rid } from "@/components/whatsapp/bot/nodes";
 import Simulator from "@/components/whatsapp/bot/Simulator";
-import { BOT_TRIGGER, BotSettingsDialog } from "@/components/whatsapp/settings/BotsTab";
+import { BOT_TRIGGER, BotSettingsDialog, scheduleText } from "@/components/whatsapp/settings/BotsTab";
 import { DeviceChips } from "@/components/whatsapp/settings/parts";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -270,7 +270,7 @@ export function WhatsAppBot() {
             {bot && (bot.active ? <span className="rounded-full bg-success/12 px-2 py-0.5 text-[0.62rem] font-semibold text-success">Çalışıyor</span> : <span className="rounded-full bg-muted px-2 py-0.5 text-[0.62rem] font-semibold text-muted-foreground">Kapalı</span>)}
           </p>
           <p className="flex items-center gap-2 text-[0.7rem] text-muted-foreground">
-            {T && <span>{T.label}</span>}
+            {T && <span>{T.label}{bot && scheduleText(bot) ? ` · ${scheduleText(bot)}` : ""}</span>}
             {bot && <span className="hidden sm:inline-flex"><DeviceChips channels={channels} ids={bot.channelIds} /></span>}
           </p>
         </div>

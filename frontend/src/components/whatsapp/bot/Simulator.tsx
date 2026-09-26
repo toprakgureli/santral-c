@@ -2,7 +2,8 @@
 // sending anything to anyone. Outside-system questions are really asked.
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Moon, PhoneCall, RotateCcw, SendHorizontal, Star, Sun, Tag, UserRound, X, Flag, Globe } from "lucide-react";
+import { Clock3, Moon, PhoneCall, RotateCcw, SendHorizontal, Star, Sun, Tag, UserRound, X, Flag, Globe } from "lucide-react";
+import { DAY_SHORT, TimeInput } from "@/components/whatsapp/settings/TimeParts";
 import { ApiError } from "@/api/client";
 import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,9 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
   const [state, setState] = useState<{ nodeId: string; vars: Record<string, string>; tries: number; done: boolean } | null>(null);
   const [text, setText] = useState("");
   const [hoursOpen, setHoursOpen] = useState(true);
+  // the moment the test pretends it is, for "belirli saatlerdeyse"; null is now
+  const [at, setAt] = useState<{ clock: string; day: number } | null>(null);
+  const [clockOpen, setClockOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -27,7 +31,7 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
     setBusy(true);
     setError(null);
     try {
-      const r = await waApi.simulate({ graph, nodeId: input.start ? "" : state?.nodeId ?? "", vars: input.start ? undefined : state?.vars, tries: input.start ? 0 : state?.tries ?? 0, text: input.text, choiceId: input.choiceId, start: input.start, hoursOpen });
+      const r = await waApi.simulate({ graph, nodeId: input.start ? "" : state?.nodeId ?? "", vars: input.start ? undefined : state?.vars, tries: input.start ? 0 : state?.tries ?? 0, text: input.text, choiceId: input.choiceId, start: input.start, hoursOpen, clock: at?.clock, day: at?.day });
       if (my !== seq.current) return;
       setLines((cur) => [...cur, ...r.outputs.map((o) => ({ side: "bot" as const, out: o }))]);
       setState({ nodeId: r.nodeId, vars: r.vars, tries: r.tries, done: r.done });
@@ -74,9 +78,23 @@ export default function Simulator({ graph, onAt, onClose }: { graph: BotGraph; o
         <button type="button" onClick={() => { setHoursOpen((v) => !v); }} data-tip={hoursOpen ? "Şu an mesai içi sayılıyor" : "Şu an mesai dışı sayılıyor"} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", hoursOpen ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
           {hoursOpen ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />} {hoursOpen ? "Mesai içi" : "Mesai dışı"}
         </button>
+        <button type="button" onClick={() => setClockOpen((v) => !v)} data-tip="Denemede saat kaç olsun" className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", at ? "text-violet-600 ring-violet-500/30 dark:text-violet-400" : "text-muted-foreground ring-border/60")}>
+          <Clock3 className="size-3.5" /> {at ? `${DAY_SHORT[at.day]} ${at.clock}` : "Şimdi"}
+        </button>
         <button type="button" onClick={restart} data-tip="Baştan başlat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><RotateCcw className="size-4" /></button>
         <button type="button" onClick={onClose} aria-label="Kapat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></button>
       </header>
+      {clockOpen && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-muted/40 px-4 py-2.5 text-xs">
+          <span className="text-muted-foreground">Deneme için saat:</span>
+          <select value={at?.day ?? nowDay()} onChange={(e) => setAt({ clock: at?.clock ?? nowClock(), day: Number(e.target.value) })} className="h-9 rounded-lg border border-border/60 bg-card px-2 text-sm">
+            {DAY_SHORT.map((d, i) => <option key={d} value={i}>{d}</option>)}
+          </select>
+          <TimeInput value={at?.clock ?? nowClock()} onChange={(clock) => setAt({ clock, day: at?.day ?? nowDay() })} label="Saat" />
+          {at && <button type="button" onClick={() => setAt(null)} className="font-medium text-primary hover:underline">Şimdiye dön</button>}
+          <span className="basis-full text-[0.68rem] text-muted-foreground">Koşul kutusundaki "belirli saatlerdeyse" buna bakar. Mesai içi/dışı düğmesi ayrıca cihazın mesai saatlerini taklit eder. Değiştirince baştan başlatın.</span>
+        </div>
+      )}
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#efe7dd] px-3 py-4 dark:bg-[#0b141a]">
         {lines.map((l, i) => l.side === "me" ? (
           <div key={i} className="flex justify-end"><p className="max-w-[80%] rounded-xl rounded-tr-sm bg-[#d9fdd3] px-3 py-1.5 text-sm text-slate-900 shadow-sm dark:bg-[#005c4b] dark:text-slate-50">{l.text}</p></div>
@@ -151,4 +169,14 @@ function BotLine({ out, onPick, active }: { out: SimOutput; onPick: (o: BotOptio
       );
     }
   }
+}
+
+// Now in Turkey time, whatever the computer's clock is set to.
+function nowClock(): string {
+  return new Date().toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function nowDay(): number {
+  const w = new Date().toLocaleDateString("en-GB", { timeZone: "Europe/Istanbul", weekday: "short" });
+  return Math.max(0, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(w));
 }

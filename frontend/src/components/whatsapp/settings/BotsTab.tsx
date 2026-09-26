@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, Copy, Moon, Pencil, Plus, Sparkles, Tag, Trash2, Workflow } from "lucide-react";
+import { Bot, Clock3, Copy, Moon, Pencil, Plus, Sparkles, Tag, Trash2, Workflow } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
@@ -12,7 +12,8 @@ import { DeviceChips, DevicePicker, FormField, inputCls, Switch, Words } from "@
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
-import type { WABot, WAChannel } from "@/whatsapp/types";
+import { SpanList, spanText } from "@/components/whatsapp/settings/TimeParts";
+import type { BotSchedule, WABot, WAChannel } from "@/whatsapp/types";
 import { since } from "@/whatsapp/util";
 
 export const BOT_TRIGGER: Record<string, { label: string; sub: string; icon: typeof Bot }> = {
@@ -20,6 +21,48 @@ export const BOT_TRIGGER: Record<string, { label: string; sub: string; icon: typ
   after_hours: { label: "Sadece mesai dışında", sub: "Mesai saatleri dışında gelen sohbetleri karşılar.", icon: Moon },
   keyword: { label: "Belirli kelimelerle", sub: "Müşteri şu kelimelerden birini yazınca başlar.", icon: Tag },
 };
+
+const ALWAYS: BotSchedule = { mode: "always", spans: [] };
+
+const SCHEDULE_WORD: Record<BotSchedule["mode"], string> = {
+  always: "Her zaman",
+  hours: "Mesai saatlerinde",
+  off_hours: "Mesai dışında",
+  custom: "Belirlediğim saatlerde",
+};
+
+// scheduleText is a chatbot's hours in a few words, or "" when it is always on.
+export function scheduleText(b: Pick<WABot, "trigger" | "schedule">): string {
+  const sc = b.schedule ?? ALWAYS;
+  if (b.trigger === "after_hours" || sc.mode === "always") return "";
+  if (sc.mode === "custom") return sc.spans.map(spanText).join(" · ");
+  return SCHEDULE_WORD[sc.mode];
+}
+
+// ScheduleChoice says in which hours a chatbot answers. After-hours
+// chatbots follow the device's working hours by definition.
+function ScheduleChoice({ trigger, value, onChange }: { trigger: WABot["trigger"]; value: BotSchedule; onChange: (v: BotSchedule) => void }) {
+  if (trigger === "after_hours") {
+    return <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Bu chatbot cihazın mesai saatleri dışında çalışır. Mesai saatlerini Ayarlar &gt; Cihaz ayarları'ndan değiştirebilirsiniz.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-muted/50 p-1 sm:grid-cols-4">
+        {(Object.keys(SCHEDULE_WORD) as BotSchedule["mode"][]).map((k) => (
+          <button key={k} type="button" onClick={() => onChange({ mode: k, spans: k === "custom" ? (value.spans.length ? value.spans : [{ days: [0, 1, 2, 3, 4], from: "12:00", to: "13:00" }]) : [] })} className={cn("rounded-xl px-2 py-1.5 text-xs font-medium transition-colors", value.mode === k ? "bg-card text-foreground shadow-sm ring-1 ring-border/60" : "text-muted-foreground hover:text-foreground")}>
+            {SCHEDULE_WORD[k]}
+          </button>
+        ))}
+      </div>
+      <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
+        {value.mode === "always" && "Saat fark etmeksizin çalışır."}
+        {(value.mode === "hours" || value.mode === "off_hours") && "Cihaz ayarlarındaki mesai saatleri ve tatil günleri kullanılır (Türkiye saati). Oradaki saatleri değiştirirseniz bu chatbot da ona göre çalışır."}
+        {value.mode === "custom" && "Sadece bu saatlerde çalışır (Türkiye saati). Bitişi başlangıçtan önce yazarsanız, örneğin 22:00–06:00, ertesi sabaha kadar sürer. Saatli chatbot, kendi saatlerinde her zaman açık olan chatbot'un önüne geçer."}
+      </p>
+      {value.mode === "custom" && <SpanList spans={value.spans} onChange={(spans) => onChange({ mode: "custom", spans })} />}
+    </div>
+  );
+}
 
 export default function BotsTab({ channels }: { channels: WAChannel[] }) {
   const { user } = useAuth();
@@ -40,7 +83,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
   const toggle = async (b: WABot) => {
     setMsg(null);
     try {
-      await waApi.updateBot(b.id, { name: b.name, description: b.description, trigger: b.trigger, keywords: b.keywords, channelIds: b.channelIds, active: !b.active });
+      await waApi.updateBot(b.id, { name: b.name, description: b.description, trigger: b.trigger, keywords: b.keywords, schedule: b.schedule, channelIds: b.channelIds, active: !b.active });
       void load();
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Değiştirilemedi.");
@@ -49,7 +92,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
 
   return (
     <Card title="Chatbot'lar" icon={Bot} actions={manage && <Button onClick={() => setCreating(true)}><Plus /> Yeni chatbot</Button>}>
-      <p className="mb-4 text-sm text-muted-foreground">Chatbot müşteriyi karşılar, menüden seçtirir, bilgi toplar ve gerektiğinde bir temsilciye aktarır. Her chatbot sadece seçtiğiniz cihazlarda çalışır. Bir cihazda aynı anda tek bir "her yeni sohbette" ve tek bir "mesai dışında" chatbot'u açık olabilir.</p>
+      <p className="mb-4 text-sm text-muted-foreground">Chatbot müşteriyi karşılar, menüden seçtirir, bilgi toplar ve gerektiğinde bir temsilciye aktarır. Her chatbot sadece seçtiğiniz cihazlarda çalışır. Bir cihazda aynı anda saat sınırı olmayan tek bir "her yeni sohbette" ve tek bir "mesai dışında" chatbot'u açık olabilir. Belirli saatlerde çalışan chatbot'lar bunların yanında açık kalabilir ve kendi saatlerinde önce onlar karşılar.</p>
       {msg && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{msg}</p>}
       {loading ? (
         <div className="grid gap-3 md:grid-cols-2">{[0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted/50" />)}</div>
@@ -73,6 +116,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
                 <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem]">
                   <span className="flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 font-medium text-sky-700 dark:text-sky-400"><T.icon className="size-3" /> {T.label}</span>
                   {b.trigger === "keyword" && b.keywords.slice(0, 4).map((k) => <span key={k} className="rounded-full bg-muted px-2 py-0.5">{k}</span>)}
+                  {scheduleText(b) && <span className="flex items-center gap-1 rounded-full bg-violet-500/10 px-2 py-0.5 font-medium text-violet-700 dark:text-violet-400"><Clock3 className="size-3" /> {scheduleText(b)}</span>}
                   {live ? <span className="rounded-full bg-success/10 px-2 py-0.5 font-medium text-success">Sürüm {b.publishedVersion} yayında</span> : <span className="rounded-full bg-warning/12 px-2 py-0.5 font-medium text-warning">Henüz yayınlanmadı</span>}
                   {b.draftChanged && live && <span className="rounded-full bg-warning/12 px-2 py-0.5 font-medium text-warning" data-tip="Taslakta yayınlanmamış değişiklikler var">Taslakta değişiklik var</span>}
                 </div>
@@ -118,13 +162,14 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [trigger, setTrigger] = useState<WABot["trigger"]>("entry");
+  const [schedule, setSchedule] = useState<BotSchedule>(ALWAYS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
     <Modal open onClose={onClose} title="Yeni chatbot" description="Hazır bir karşılama akışıyla başlar. Cihazları ve açılışı akışı bitirince seçersiniz." size="lg" footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
-      <Button disabled={busy || !name.trim()} onClick={() => { setBusy(true); waApi.createBot({ name, description, trigger }).then(onCreated).catch((e) => setError(e instanceof ApiError ? e.message : "Oluşturulamadı.")).finally(() => setBusy(false)); }}>{busy ? "Oluşturuluyor..." : "Oluştur ve akışı aç"}</Button>
+      <Button disabled={busy || !name.trim()} onClick={() => { setBusy(true); waApi.createBot({ name, description, trigger, schedule }).then(onCreated).catch((e) => setError(e instanceof ApiError ? e.message : "Oluşturulamadı.")).finally(() => setBusy(false)); }}>{busy ? "Oluşturuluyor..." : "Oluştur ve akışı aç"}</Button>
     </>}>
       <div className="space-y-4">
         <FormField label="Adı"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Destek karşılama" autoFocus /></FormField>
@@ -132,6 +177,10 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Ne zaman başlasın</p>
           <TriggerChoice value={trigger} onChange={setTrigger} />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Hangi saatlerde çalışsın <span className="font-normal">(isteğe bağlı)</span></p>
+          <ScheduleChoice trigger={trigger} value={schedule} onChange={setSchedule} />
         </div>
       </div>
     </Modal>
@@ -143,6 +192,7 @@ export function BotSettingsDialog({ bot, channels, canPublish, onClose, onSaved 
   const [description, setDescription] = useState(bot.description);
   const [trigger, setTrigger] = useState(bot.trigger);
   const [keywords, setKeywords] = useState(bot.keywords);
+  const [schedule, setSchedule] = useState<BotSchedule>(bot.schedule ?? ALWAYS);
   const [ids, setIds] = useState(bot.channelIds);
   const [active, setActive] = useState(bot.active);
   const [busy, setBusy] = useState(false);
@@ -151,7 +201,7 @@ export function BotSettingsDialog({ bot, channels, canPublish, onClose, onSaved 
     setBusy(true);
     setError(null);
     try {
-      const b = await waApi.updateBot(bot.id, { name, description, trigger, keywords, channelIds: ids, active });
+      const b = await waApi.updateBot(bot.id, { name, description, trigger, keywords, schedule, channelIds: ids, active });
       onSaved(b);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
@@ -173,6 +223,10 @@ export function BotSettingsDialog({ bot, channels, canPublish, onClose, onSaved 
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Ne zaman başlasın</p>
           <TriggerChoice value={trigger} onChange={setTrigger} />
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Hangi saatlerde çalışsın <span className="font-normal">(isteğe bağlı)</span></p>
+          <ScheduleChoice trigger={trigger} value={schedule} onChange={setSchedule} />
         </div>
         {trigger === "keyword" && <FormField label="Başlatan kelimeler" hint="Müşterinin mesajı bu kelimelerden birini içerirse başlar. Enter ile ekleyin."><Words values={keywords} onChange={setKeywords} placeholder="kampanya, sipariş" /></FormField>}
         <div className="space-y-1.5">

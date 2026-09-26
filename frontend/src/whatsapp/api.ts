@@ -3,6 +3,7 @@
 import { download, request } from "@/api/client";
 import type {
   BotGraph,
+  BotSchedule,
   BotStats,
   SimResult,
   WAAgent,
@@ -121,8 +122,8 @@ export const waApi = {
   // chatbots
   bots: () => request<WABot[]>("/wa/bots"),
   bot: (id: number) => request<WABot>(`/wa/bots/${id}`),
-  createBot: (body: { name: string; description?: string; trigger?: string }) => request<WABot>("/wa/bots", json("POST", body)),
-  updateBot: (id: number, body: { name: string; description: string; trigger: string; keywords: string[]; channelIds: number[]; active: boolean }) => request<WABot>(`/wa/bots/${id}`, json("PUT", body)),
+  createBot: (body: { name: string; description?: string; trigger?: string; schedule?: BotSchedule }) => request<WABot>("/wa/bots", json("POST", body)),
+  updateBot: (id: number, body: { name: string; description: string; trigger: string; keywords: string[]; schedule?: BotSchedule; channelIds: number[]; active: boolean }) => request<WABot>(`/wa/bots/${id}`, json("PUT", body)),
   saveDraft: (id: number, graph: BotGraph) => request<WABot>(`/wa/bots/${id}/draft`, json("PUT", graph)),
   publishBot: (id: number) => request<{ bot?: WABot; problems?: string[] }>(`/wa/bots/${id}/publish`, json("POST")),
   botVersions: (id: number) => request<{ version: number; publishedBy: string; createdAt: string }[]>(`/wa/bots/${id}/versions`),
@@ -130,7 +131,7 @@ export const waApi = {
   copyBot: (id: number, name: string, channelIds: number[]) => request<WABot>(`/wa/bots/${id}/copy`, json("POST", { name, channelIds })),
   deleteBot: (id: number) => request<void>(`/wa/bots/${id}`, json("DELETE")),
   botReport: (id: number, days: number) => request<BotStats>(`/wa/bots/${id}/report` + q({ days })),
-  simulate: (body: { graph: BotGraph; nodeId: string; vars?: Record<string, string>; tries: number; text?: string; choiceId?: string; start: boolean; hoursOpen: boolean }) =>
+  simulate: (body: { graph: BotGraph; nodeId: string; vars?: Record<string, string>; tries: number; text?: string; choiceId?: string; start: boolean; hoursOpen: boolean; clock?: string; day?: number }) =>
     request<SimResult>("/wa/bots/simulate", json("POST", body)),
 
   // outside systems

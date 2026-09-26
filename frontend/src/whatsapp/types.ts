@@ -294,6 +294,22 @@ export interface BotRule {
   var: string;
   op: string;
   value: string;
+  // time_between: Turkey time, on these weekdays (0 is Monday, none is every day)
+  from?: string;
+  to?: string;
+  days?: number[];
+}
+
+export interface TimeSpan {
+  days: number[];
+  from: string;
+  to: string;
+}
+
+// When a chatbot answers.
+export interface BotSchedule {
+  mode: "always" | "hours" | "off_hours" | "custom";
+  spans: TimeSpan[];
 }
 
 export interface BotData {
@@ -350,6 +366,7 @@ export interface WABot {
   channelIds: number[];
   trigger: "entry" | "after_hours" | "keyword";
   keywords: string[];
+  schedule: BotSchedule;
   draft: BotGraph;
   publishedVersion: number;
   publishedAt?: string;

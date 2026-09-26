@@ -118,6 +118,8 @@ func (o *liveIO) callAPI(id uint, vars map[string]string) (map[string]any, error
 	return o.s.callIntegration(o.ctx, id, vars)
 }
 
+func (o *liveIO) now() time.Time { return time.Now() }
+
 func (o *liveIO) hoursOpen() bool {
 	h := parseSettings(o.ch.Settings).Hours
 	return !h.Enabled || h.Open(time.Now())
@@ -149,11 +151,16 @@ func (s *Service) pickBot(ctx context.Context, ch *models.WAChannel, text string
 		return nil
 	}
 	h := parseSettings(ch.Settings).Hours
-	closed := h.Enabled && !h.Open(time.Now())
-	var entry, after, keyword *models.WABot
+	now := time.Now()
+	closed := h.Enabled && !h.Open(now)
+	var entry, timed, after, keyword *models.WABot
 	low := strings.ToLower(text)
 	for i := range bots {
 		b := &bots[i]
+		sc := parseSchedule(b.Schedule)
+		if b.Trigger != "after_hours" && !sc.Fits(h, now) {
+			continue
+		}
 		switch b.Trigger {
 		case "after_hours":
 			if after == nil {
@@ -166,7 +173,9 @@ func (s *Service) pickBot(ctx context.Context, ch *models.WAChannel, text string
 				}
 			}
 		default:
-			if entry == nil {
+			if sc.Mode != "always" && timed == nil {
+				timed = b
+			} else if sc.Mode == "always" && entry == nil {
 				entry = b
 			}
 		}
@@ -176,6 +185,8 @@ func (s *Service) pickBot(ctx context.Context, ch *models.WAChannel, text string
 		return after
 	case keyword != nil:
 		return keyword
+	case timed != nil:
+		return timed
 	}
 	return entry
 }
@@ -372,6 +383,7 @@ type BotView struct {
 	ChannelIDs       []uint          `json:"channelIds"`
 	Trigger          string          `json:"trigger"`
 	Keywords         []string        `json:"keywords"`
+	Schedule         BotSchedule     `json:"schedule"`
 	Draft            json.RawMessage `json:"draft"`
 	PublishedVersion int             `json:"publishedVersion"`
 	PublishedAt      *time.Time      `json:"publishedAt,omitempty"`
@@ -390,7 +402,7 @@ func parseIDs(raw string) []uint {
 
 func (s *Service) botView(ctx context.Context, b *models.WABot) BotView {
 	v := BotView{ID: b.ID, Name: b.Name, Description: b.Description, Active: b.Active, ChannelIDs: parseIDs(b.ChannelIDs), Trigger: b.Trigger,
-		Keywords: parseTags(b.Keywords), Draft: json.RawMessage(b.Draft), PublishedVersion: b.PublishedVersion, PublishedAt: b.PublishedAt, UpdatedAt: b.UpdatedAt}
+		Keywords: parseTags(b.Keywords), Schedule: parseSchedule(b.Schedule), Draft: json.RawMessage(b.Draft), PublishedVersion: b.PublishedVersion, PublishedAt: b.PublishedAt, UpdatedAt: b.UpdatedAt}
 	if b.PublishedVersion == 0 {
 		v.DraftChanged = true
 	} else {
@@ -446,12 +458,29 @@ func (s *Service) Bot(ctx context.Context, actorID, id uint) (*BotView, error) {
 
 // BotInput is the chatbot's card: name, when it runs and on which devices.
 type BotInput struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Trigger     string   `json:"trigger"`
-	Keywords    []string `json:"keywords"`
-	ChannelIDs  []uint   `json:"channelIds"`
-	Active      *bool    `json:"active"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Trigger     string       `json:"trigger"`
+	Keywords    []string     `json:"keywords"`
+	Schedule    *BotSchedule `json:"schedule"`
+	ChannelIDs  []uint       `json:"channelIds"`
+	Active      *bool        `json:"active"`
+}
+
+// schedule reads the hours of the form; after-hours chatbots always follow
+// the device's working hours, so they carry none of their own.
+func (in BotInput) schedule(trigger string) (BotSchedule, error) {
+	sc := BotSchedule{Mode: "always", Spans: []TimeSpan{}}
+	if in.Schedule != nil && trigger != "after_hours" {
+		sc = parseSchedule(jsonString(in.Schedule))
+		if sc.Mode != "custom" {
+			sc.Spans = []TimeSpan{}
+		}
+	}
+	if err := sc.check(); err != nil {
+		return sc, errs.Invalid("Çalışma saatleri: "+err.Error()+".", nil)
+	}
+	return sc, nil
 }
 
 func starterGraph() string {
@@ -481,14 +510,15 @@ func normTrigger(t string) string {
 	return "entry"
 }
 
-// checkBotConflict keeps one entry flow and one after-hours flow per
-// device, so it is never unclear which one answers.
-func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string, channels []uint, active bool) error {
-	if !active || trigger == "keyword" {
+// checkBotConflict keeps one always-on entry flow and one after-hours flow
+// per device, so it is never unclear which one answers. Entry flows with
+// their own hours may sit beside them; in their hours they come first.
+func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string, sc BotSchedule, channels []uint, active bool) error {
+	if !active || trigger == "keyword" || (trigger == "entry" && sc.Mode != "always") {
 		return nil
 	}
 	var others []models.WABot
-	_ = s.db.WithContext(ctx).Where("active AND trigger = ? AND id <> ?", trigger, id).Find(&others).Error
+	_ = s.db.WithContext(ctx).Where("active AND trigger = ? AND id <> ? AND (trigger <> 'entry' OR COALESCE(schedule->>'mode', 'always') = 'always')", trigger, id).Find(&others).Error
 	for _, o := range others {
 		for _, a := range parseIDs(o.ChannelIDs) {
 			for _, b := range channels {
@@ -520,8 +550,13 @@ func (s *Service) CreateBot(ctx context.Context, actorID uint, in BotInput) (*Bo
 	if name == "" {
 		return nil, errs.Invalid("Chatbot'a bir ad verin.", nil)
 	}
-	b := &models.WABot{Name: name, Description: strings.TrimSpace(in.Description), Trigger: normTrigger(in.Trigger), Keywords: jsonString(cleanTags(in.Keywords)),
-		ChannelIDs: "[]", Draft: starterGraph(), CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
+	trigger := normTrigger(in.Trigger)
+	sc, err := in.schedule(trigger)
+	if err != nil {
+		return nil, err
+	}
+	b := &models.WABot{Name: name, Description: strings.TrimSpace(in.Description), Trigger: trigger, Keywords: jsonString(cleanTags(in.Keywords)),
+		Schedule: jsonString(sc), ChannelIDs: "[]", Draft: starterGraph(), CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
 	if err := s.db.WithContext(ctx).Create(b).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -547,6 +582,13 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	fields["description"] = strings.TrimSpace(in.Description)
 	trigger := normTrigger(in.Trigger)
 	fields["trigger"] = trigger
+	sc := parseSchedule(b.Schedule)
+	if in.Schedule != nil || trigger == "after_hours" {
+		if sc, err = in.schedule(trigger); err != nil {
+			return nil, err
+		}
+	}
+	fields["schedule"] = jsonString(sc)
 	fields["keywords"] = jsonString(cleanTags(in.Keywords))
 	channels := in.ChannelIDs
 	if channels == nil {
@@ -556,14 +598,14 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	if in.Active != nil {
 		active = *in.Active
 	}
-	liveChange := active != b.Active || jsonString(channels) != jsonString(parseIDs(b.ChannelIDs)) || trigger != b.Trigger
+	liveChange := active != b.Active || jsonString(channels) != jsonString(parseIDs(b.ChannelIDs)) || trigger != b.Trigger || jsonString(sc) != jsonString(parseSchedule(b.Schedule))
 	if liveChange && !u.Can(enums.WABotPublish) {
 		return nil, errs.Forbidden("Chatbot'u açıp kapatma ya da cihaz seçme yetkiniz yok.")
 	}
 	if active && b.PublishedVersion == 0 {
 		return nil, errs.Invalid("Chatbot'u açmadan önce yayına alın.", nil)
 	}
-	if err := s.checkBotConflict(ctx, id, trigger, channels, active); err != nil {
+	if err := s.checkBotConflict(ctx, id, trigger, sc, channels, active); err != nil {
 		return nil, err
 	}
 	fields["channel_ids"] = jsonString(channels)
@@ -686,7 +728,7 @@ func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, ch
 	if channelIDs == nil {
 		channelIDs = []uint{}
 	}
-	b := &models.WABot{Name: name, Description: src.Description, Trigger: src.Trigger, Keywords: src.Keywords, ChannelIDs: jsonString(channelIDs),
+	b := &models.WABot{Name: name, Description: src.Description, Trigger: src.Trigger, Keywords: src.Keywords, Schedule: src.Schedule, ChannelIDs: jsonString(channelIDs),
 		Draft: src.Draft, CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
 	if err := s.db.WithContext(ctx).Create(b).Error; err != nil {
 		return nil, errs.Internal(err)
@@ -727,6 +769,23 @@ type SimInput struct {
 	ChoiceID  string            `json:"choiceId"`
 	Start     bool              `json:"start"`
 	HoursOpen bool              `json:"hoursOpen"`
+	// the moment the test pretends it is; empty means now
+	Clock string `json:"clock"` // "14:30"
+	Day   *int   `json:"day"`   // 0 is Monday
+}
+
+// simNow is the moment a test run pretends it is, in Turkey time.
+func (in SimInput) simNow() time.Time {
+	now := time.Now().In(istanbul)
+	if in.Day != nil && *in.Day >= 0 && *in.Day <= 6 {
+		today := (int(now.Weekday()) + 6) % 7
+		now = now.AddDate(0, 0, *in.Day-today)
+	}
+	if validClock(in.Clock) {
+		m := minuteOf(in.Clock)
+		now = time.Date(now.Year(), now.Month(), now.Day(), m/60, m%60, 0, 0, istanbul)
+	}
+	return now
 }
 
 // SimResult is what the flow did and where it stands.
@@ -748,7 +807,7 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 	if st.Vars == nil {
 		st.Vars = map[string]string{"musteri": "Ayşe", "numara": "+905xxxxxxxxx"}
 	}
-	io := &simIO{hours: in.HoursOpen, api: func(id uint, vars map[string]string) (map[string]any, error) {
+	io := &simIO{hours: in.HoursOpen, at: in.simNow(), api: func(id uint, vars map[string]string) (map[string]any, error) {
 		return s.callIntegration(ctx, id, vars)
 	}}
 	var input *botInput

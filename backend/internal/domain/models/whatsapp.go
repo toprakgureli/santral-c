@@ -261,6 +261,7 @@ type WABot struct {
 	ChannelIDs       string     `gorm:"column:channel_ids;type:jsonb"`
 	Trigger          string     `gorm:"column:trigger"`
 	Keywords         string     `gorm:"column:keywords;type:jsonb"`
+	Schedule         string     `gorm:"column:schedule;type:jsonb"`
 	Draft            string     `gorm:"column:draft;type:jsonb"`
 	PublishedVersion int        `gorm:"column:published_version"`
 	PublishedAt      *time.Time `gorm:"column:published_at"`

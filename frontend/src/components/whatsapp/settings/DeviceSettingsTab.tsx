@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WASettings, WATemplate } from "@/whatsapp/types";
 import { normalizeSettings } from "@/whatsapp/util";
+import { TimeInput } from "@/components/whatsapp/settings/TimeParts";
 
 const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
@@ -138,7 +139,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
           </FormField>
         </Block>
 
-        <Block icon={CalendarClock} title="Mesai saatleri" locked={!pGen} sub="Mesai dışı mesajlar, bekleme süresi ve mesai dışı chatbot bunu kullanır." wide>
+        <Block icon={CalendarClock} title="Mesai saatleri" locked={!pGen} sub="Türkiye saatiyle. Mesai dışı mesajlar, bekleme süresi ve chatbot'lardaki mesai ayarları bunu kullanır." wide>
           <SwitchRow title="Mesai saatleri uygulansın" sub="Kapalıyken her an mesai içi sayılır." on={s.hours.enabled} onChange={(v) => up((d) => { d.hours.enabled = v; })} disabled={!pGen} />
           <div className={cn("grid gap-1.5 sm:grid-cols-2", !s.hours.enabled && "pointer-events-none opacity-50")}>
             {s.hours.days.map((day, i) => (
@@ -147,9 +148,9 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
                 <span className="w-20 text-sm font-medium">{DAYS[i]}</span>
                 {day.open ? (
                   <span className="ml-auto flex items-center gap-1.5">
-                    <input type="time" className="h-8 rounded-lg border border-border/60 bg-card px-2 text-sm tabular-nums" value={day.from} onChange={(e) => up((d) => { d.hours.days[i].from = e.target.value; })} disabled={!pGen} />
+                    <TimeInput className="h-8" label={`${DAYS[i]} açılış`} value={day.from} onChange={(v) => up((d) => { d.hours.days[i].from = v; })} disabled={!pGen} />
                     <span className="text-muted-foreground">–</span>
-                    <input type="time" className="h-8 rounded-lg border border-border/60 bg-card px-2 text-sm tabular-nums" value={day.to} onChange={(e) => up((d) => { d.hours.days[i].to = e.target.value; })} disabled={!pGen} />
+                    <TimeInput className="h-8" label={`${DAYS[i]} kapanış`} value={day.to} onChange={(v) => up((d) => { d.hours.days[i].to = v; })} disabled={!pGen} />
                   </span>
                 ) : <span className="ml-auto text-xs text-muted-foreground">Kapalı</span>}
               </div>

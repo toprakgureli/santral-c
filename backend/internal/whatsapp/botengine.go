@@ -66,8 +66,13 @@ type BotOption struct {
 // BotRule is one test in a condition box.
 type BotRule struct {
 	Var   string `json:"var"`
-	Op    string `json:"op"` // equals | not_equals | contains | gt | lt | exists | empty | hours_open | hours_closed
+	Op    string `json:"op"` // equals | not_equals | contains | gt | lt | exists | empty | hours_open | hours_closed | time_between
 	Value string `json:"value"`
+	// time_between: Turkey time, on these weekdays (0 is Monday, none is
+	// every day)
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
+	Days []int  `json:"days,omitempty"`
 }
 
 // BotMap copies a field of an outside system's answer into a variable.
@@ -104,6 +109,7 @@ type botIO interface {
 	survey()
 	callAPI(integrationID uint, vars map[string]string) (map[string]any, error)
 	hoursOpen() bool
+	now() time.Time
 	mark(nodeID, kind string)
 }
 
@@ -183,6 +189,12 @@ func (g *BotGraph) Validate() []string {
 		case "ask":
 			if strings.TrimSpace(n.Data.Text) == "" || strings.TrimSpace(n.Data.Var) == "" {
 				problems = append(problems, "Soru kutusunda soru metni ve cevabın kaydedileceği değişken adı olmalı.")
+			}
+		case "condition":
+			for _, r := range n.Data.Rules {
+				if r.Op == "time_between" && (TimeSpan{Days: r.Days, From: r.From, To: r.To}).check() != nil {
+					problems = append(problems, "Koşul kutusundaki saat aralığı eksik ya da hatalı; saatleri 09:00 gibi yazın.")
+				}
 			}
 		case "api":
 			if n.Data.Integration == 0 {
@@ -499,6 +511,8 @@ func evalRule(r BotRule, vars map[string]string, io botIO) bool {
 		return io.hoursOpen()
 	case "hours_closed":
 		return !io.hoursOpen()
+	case "time_between":
+		return TimeSpan{Days: r.Days, From: r.From, To: r.To}.Covers(io.now())
 	case "exists":
 		return strings.TrimSpace(v) != ""
 	case "empty":
@@ -601,6 +615,7 @@ func truncate(s string, n int) string {
 type simIO struct {
 	Out   []SimOutput
 	hours bool
+	at    time.Time
 	api   func(uint, map[string]string) (map[string]any, error)
 }
 
@@ -651,7 +666,11 @@ func (o *simIO) callAPI(id uint, vars map[string]string) (map[string]any, error)
 	o.Out = append(o.Out, SimOutput{Kind: "api", Detail: detail})
 	return res, err
 }
-func (o *simIO) hoursOpen() bool          { return o.hours }
+func (o *simIO) hoursOpen() bool { return o.hours }
+func (o *simIO) now() time.Time {
+	if o.at.IsZero() {
+		return time.Now()
+	}
+	return o.at
+}
 func (o *simIO) mark(nodeID, kind string) {}
-
-var _ = time.Now

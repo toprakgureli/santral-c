@@ -84,8 +84,8 @@ const graph = {
   ],
 };
 const bots = [
-  { id: 1, name: "Destek karşılama", description: "Müşteriyi karşılar, konuyu sorar, doğru ekibe aktarır.", active: true, channelIds: [1], trigger: "entry", keywords: [], draft: graph, publishedVersion: 3, publishedAt: ago(2000), draftChanged: true, updatedAt: ago(15) },
-  { id: 2, name: "Mesai dışı", description: "", active: false, channelIds: [], trigger: "after_hours", keywords: [], draft: { nodes: [graph.nodes[0]], edges: [] }, publishedVersion: 0, draftChanged: true, updatedAt: ago(90) },
+  { id: 1, name: "Destek karşılama", description: "Müşteriyi karşılar, konuyu sorar, doğru ekibe aktarır.", active: true, channelIds: [1], trigger: "entry", keywords: [], schedule: { mode: "custom", spans: [{ days: [0, 1, 2, 3, 4], from: "12:00", to: "13:30" }] }, draft: graph, publishedVersion: 3, publishedAt: ago(2000), draftChanged: true, updatedAt: ago(15) },
+  { id: 2, name: "Mesai dışı", description: "", active: false, channelIds: [], trigger: "after_hours", keywords: [], schedule: { mode: "always", spans: [] }, draft: { nodes: [graph.nodes[0]], edges: [] }, publishedVersion: 0, draftChanged: true, updatedAt: ago(90) },
 ];
 const rules = [
   { id: 1, name: "Mesai dışı cevabı", active: true, lastError: "müşterinin son mesajının üzerinden 24 saat geçmiş; düz metin gönderilemedi, şablon kullanın", channelIds: [1, 2], trigger: "outside_hours", conditions: [], actions: [{ kind: "send_text", text: "Şu an mesai dışındayız." }], cooldownMin: 720, position: 0, runs: 142, lastRunAt: ago(300), updatedAt: ago(5000) },

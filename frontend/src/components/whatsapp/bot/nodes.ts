@@ -2,6 +2,7 @@
 // coloured and previewed, which exits it has, and what a new one holds.
 
 import { CircleDot, Flag, GitFork, Globe, HelpCircle, ListChecks, MessageSquareText, PhoneCall, Star, Tag, UserRound, type LucideIcon } from "lucide-react";
+import { spanText } from "@/components/whatsapp/settings/TimeParts";
 import type { BotData, BotNode, BotNodeType } from "@/whatsapp/types";
 
 export interface NodeKind {
@@ -77,7 +78,7 @@ export function preview(n: BotNode, names: { integrations: Record<number, string
     case "ask":
       return d.text ? `${d.text}${d.var ? ` → {${d.var}}` : ""}` : "Soru yazılmadı";
     case "condition":
-      return (d.rules ?? []).map((r) => (r.op === "hours_open" ? "mesai içiyse" : r.op === "hours_closed" ? "mesai dışıysa" : `{${r.var || "?"}} ${OPS[r.op] ?? r.op}${r.op === "exists" || r.op === "empty" ? "" : ` ${r.value}`}`)).join(d.match === "any" ? " ya da " : " ve ") || "Şart yok";
+      return (d.rules ?? []).map((r) => (r.op === "hours_open" ? "mesai içiyse" : r.op === "hours_closed" ? "mesai dışıysa" : r.op === "time_between" ? `${spanText({ days: r.days ?? [], from: r.from ?? "?", to: r.to ?? "?" })} arasıysa` : `{${r.var || "?"}} ${OPS[r.op] ?? r.op}${r.op === "exists" || r.op === "empty" ? "" : ` ${r.value}`}`)).join(d.match === "any" ? " ya da " : " ve ") || "Şart yok";
     case "api":
       return d.integration ? names.integrations[d.integration] ?? "Sorgu seçildi" : "Sorgu seçilmedi";
     case "tag":
