@@ -150,6 +150,11 @@ func preview(m *models.WAMessage) string {
 		return label
 	case m.Kind == "template" && body == "":
 		return "Şablon: " + m.SenderLabel
+	case m.Kind == "interactive" && m.Direction == "out":
+		// a menu: the question, without the numbered choices under it
+		if i := strings.Index(body, "\n1. "); i > 0 {
+			body = strings.TrimSpace(body[:i])
+		}
 	case m.Kind == "template":
 		// the template's buttons are not part of what it says
 		var keep []string

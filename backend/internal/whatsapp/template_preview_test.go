@@ -29,3 +29,10 @@ func TestTemplatePreviewButtons(t *testing.T) {
 		t.Errorf("list preview = %q", got)
 	}
 }
+
+func TestMenuPreviewIsTheQuestion(t *testing.T) {
+	m := &models.WAMessage{Kind: "interactive", Direction: "out", Body: "Lütfen bir konu seçin.\n1. Teknik Destek\n2. Satış Ekibi"}
+	if got := preview(m); got != "Lütfen bir konu seçin." {
+		t.Errorf("got %q", got)
+	}
+}

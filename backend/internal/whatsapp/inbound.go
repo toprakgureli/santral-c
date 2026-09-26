@@ -105,6 +105,28 @@ type inboundResult struct {
 	// a tap on a call survey button: the survey and the button
 	surveyID  uint
 	surveyIdx int
+	// a score picked from the satisfaction survey list: its ticket
+	rateTicket uint
+	rateScore  int
+}
+
+// ratingAnswer reads a score picked from the satisfaction survey list
+// ("rate-<ticket>-<score>").
+func ratingAnswer(m *hookMessage) (uint, int, bool) {
+	if m.Type != "interactive" || m.Interactive == nil || m.Interactive.ListReply == nil {
+		return 0, 0, false
+	}
+	id := strings.TrimPrefix(m.Interactive.ListReply.ID, "opt:")
+	parts := strings.Split(id, "-")
+	if len(parts) != 3 || parts[0] != "rate" {
+		return 0, 0, false
+	}
+	tid, err1 := strconv.Atoi(parts[1])
+	score, err2 := strconv.Atoi(parts[2])
+	if err1 != nil || err2 != nil || tid <= 0 || score < 1 || score > 5 {
+		return 0, 0, false
+	}
+	return uint(tid), score, true
 }
 
 func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMessage, profileName string) error {
@@ -169,6 +191,21 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			res.conv = conv
 			return nil
 		}
+		if tid, score, ok := ratingAnswer(m); ok {
+			// A score for a closed conversation: kept in its history, but it
+			// does not open the conversation again.
+			var owner uint
+			_ = tx.Raw("SELECT conversation_id FROM wa_tickets WHERE id = ?", tid).Scan(&owner).Error
+			if owner == conv.ID {
+				res.conv, res.rateTicket, res.rateScore = conv, tid, score
+				conv.LastInboundAt = at
+				if err := tx.Exec("UPDATE wa_messages SET ticket_id = ? WHERE id = ?", tid, msg.ID).Error; err != nil {
+					return err
+				}
+				msg.TicketID = uintPtr(tid)
+				return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
+			}
+		}
 		// Ticket: open one, or bring a resolved one back.
 		ticket, created, reopened, err := touchTicket(tx, conv, at)
 		if err != nil {
@@ -197,6 +234,12 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 	}
 	if res.surveyID > 0 {
 		s.onCallSurveyTap(ctx, ch, res.conv, res.contact, res.surveyID, res.surveyIdx)
+		return nil
+	}
+	if res.rateTicket > 0 {
+		s.recordRating(ctx, res.rateTicket, res.conv.ID, res.rateScore, "")
+		s.queueSystem(ctx, ch, res.conv.ID, res.rateTicket, "automation", "Değerlendirme anketi", "Değerlendirmeniz için teşekkür ederiz.")
+		s.publish(ctx, res.conv.ID, res.msg, nil)
 		return nil
 	}
 	s.afterInbound(ctx, ch, res)

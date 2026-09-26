@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -29,10 +28,23 @@ func (s *Service) surveyToken(ticketID uint) string {
 	return hex.EncodeToString(mac.Sum(nil))[:24]
 }
 
+// surveyDue says whether a resolved ticket should get the survey: once per
+// resolution. If the survey already went out and the customer has not
+// written since (other than answering it), it is not sent again.
+func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t *models.WATicket) bool {
+	if t.SurveySentAt == nil {
+		return true
+	}
+	var since int64
+	_ = s.db.WithContext(ctx).Raw(`SELECT count(*) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND created_at > ?
+		AND kind <> 'reaction' AND COALESCE(payload->>'id', '') NOT LIKE '%rate-%'`, conv.ID, *t.SurveySentAt).Scan(&since).Error
+	return since > 0
+}
+
 // sendSurvey sends the device's survey for a resolved ticket.
 func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, agentID uint) {
 	set := parseSettings(ch.Settings).Survey
-	if t.SurveySentAt != nil && time.Since(*t.SurveySentAt) < time.Hour {
+	if !s.surveyDue(ctx, conv, t) {
 		return
 	}
 	switch set.Mode {

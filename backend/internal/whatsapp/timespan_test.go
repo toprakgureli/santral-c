@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -108,5 +109,19 @@ func TestSimGateSunday(t *testing.T) {
 	monday := trAt(0, 11, 0)
 	if skip, _ := simGate(after, h, h.Open(monday), monday, "Destek"); skip == "" {
 		t.Error("after-hours bot should not greet on Monday morning")
+	}
+}
+
+func TestRatingAnswer(t *testing.T) {
+	var m hookMessage
+	if err := json.Unmarshal([]byte(`{"type":"interactive","interactive":{"type":"list_reply","list_reply":{"id":"opt:rate-42-5","title":"5 - Çok iyi"}}}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	if tid, score, ok := ratingAnswer(&m); !ok || tid != 42 || score != 5 {
+		t.Errorf("got %d %d %v", tid, score, ok)
+	}
+	_ = json.Unmarshal([]byte(`{"type":"interactive","interactive":{"type":"list_reply","list_reply":{"id":"opt:o2","title":"Satış"}}}`), &m)
+	if _, _, ok := ratingAnswer(&m); ok {
+		t.Error("a menu choice is not a rating")
 	}
 }

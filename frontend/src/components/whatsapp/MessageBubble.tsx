@@ -65,30 +65,29 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
   const media = !!m.media && ["image", "video", "sticker"].includes(m.kind);
 
   return (
-    <div id={`wa-m-${m.id}`} className={cn("group flex px-[4%] md:px-[7%]", out ? "justify-end" : "justify-start", head ? "mt-2.5" : "mt-0.5")}>
+    <div id={`wa-m-${m.id}`} className={cn("group flex px-[4%] md:px-[7%]", out ? "justify-end" : "justify-start", head ? "mt-3" : "mt-[3px]")}>
       <div className={cn("relative flex max-w-[min(34rem,85%)] flex-col md:max-w-[65%]", out ? "items-end" : "items-start")}>
-        <div onContextMenu={onMenu ? (e) => { e.preventDefault(); onMenu(m, e.clientX, e.clientY); } : undefined} className={cn("relative rounded-lg text-[0.9rem] leading-snug text-foreground shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] transition-shadow", fill, media ? "p-1" : "px-2 pt-1.5 pb-1", head && (out ? "rounded-tr-none" : "rounded-tl-none"), highlight && "ring-2 ring-wa-accent")}>
+        <div onContextMenu={onMenu ? (e) => { e.preventDefault(); onMenu(m, e.clientX, e.clientY); } : undefined} className={cn("relative rounded-[10px] text-[0.9rem] leading-[1.38] text-foreground [filter:drop-shadow(0_1px_0.6px_rgba(11,20,26,0.14))] dark:[filter:drop-shadow(0_1px_0.6px_rgba(0,0,0,0.35))]", fill, media ? "p-1" : "px-2.5 pt-[5px] pb-1.5", head && (out ? "rounded-tr-[3px]" : "rounded-tl-[3px]"), highlight && "ring-2 ring-wa-accent")}>
           {head && (
-            <svg viewBox="0 0 8 13" className={cn("absolute top-0 h-[13px] w-2", tail, out ? "-right-2" : "-left-2 -scale-x-100")} aria-hidden>
-              <path d="M0 0h8L1.5 9.2C.9 10.1 0 9.6 0 8.6V0Z" fill="currentColor" />
+            <svg viewBox="0 0 9 13" className={cn("absolute top-0 h-[13px] w-[9px]", tail, out ? "-right-[8px]" : "-left-[8px] -scale-x-100")} aria-hidden>
+              <path d="M0 0h6.6c1.5 0 2.3 1.6 1.4 2.8L1.9 10.6C1.2 11.5 0 11 0 9.9V0Z" fill="currentColor" />
             </svg>
           )}
           {head && out && who && (
-            <span className={cn("mb-0.5 flex items-center gap-1 px-0.5 text-[0.8rem] font-medium", note ? "text-amber-800 dark:text-amber-300" : bot ? "text-violet-700 dark:text-violet-300" : auto ? "text-sky-700 dark:text-sky-300" : nameColor(m.sender.userId), media && "px-1.5 pt-0.5")}>
+            <span className={cn("mb-[3px] flex items-center gap-1 text-[0.78rem] font-semibold tracking-[0.01em]", note ? "text-amber-800 dark:text-amber-300" : bot ? "text-violet-700 dark:text-violet-300" : auto ? "text-sky-700 dark:text-sky-300" : nameColor(m.sender.userId), media && "px-1.5 pt-0.5")}>
               {note ? <Lock className="size-3" /> : bot ? <Bot className="size-3" /> : auto ? <Zap className="size-3" /> : null}
               {note ? `İç not · ${who}` : who}
               {m.kind === "template" && <span className="rounded bg-foreground/8 px-1 py-px text-[0.6rem] font-medium text-wa-meta">şablon</span>}
             </span>
           )}
           {m.replyTo && (
-            <button type="button" onClick={() => document.getElementById(`wa-m-${m.replyTo!.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mb-1 block w-full rounded-md border-l-4 border-wa-accent bg-foreground/5 px-2 py-1 text-left">
-              <span className="block text-[0.72rem] font-semibold text-wa-accent">{m.replyTo.sender || "Mesaj"}</span>
-              <span className="block truncate text-[0.78rem] text-muted-foreground">{m.replyTo.body}</span>
+            <button type="button" onClick={() => document.getElementById(`wa-m-${m.replyTo!.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="mb-1.5 block w-full min-w-40 overflow-hidden rounded-md border-l-[3px] border-wa-accent bg-foreground/[0.06] px-2.5 py-1 text-left transition-colors hover:bg-foreground/10">
+              <span className="block text-[0.74rem] font-semibold text-wa-accent">{m.replyTo.sender || "Mesaj"}</span>
+              <span className="line-clamp-2 block text-[0.8rem] leading-snug text-muted-foreground">{m.replyTo.body}</span>
             </button>
           )}
           {m.referral && <AdSource r={m.referral} compact />}
           <Media m={m} onImage={onImage} />
-          {m.kind === "interactive" && !out && <span className="mb-0.5 flex items-center gap-1 px-0.5 text-[0.68rem] font-medium text-muted-foreground"><MousePointerClick className="size-3" /> Seçti</span>}
           {m.kind === "location" && (
             <a href={locationLink(m)} target="_blank" rel="noopener noreferrer" className="mb-1 flex items-center gap-2 rounded-md bg-foreground/5 px-2.5 py-2 text-xs font-medium hover:bg-foreground/10"><MapPin className="size-4 text-destructive" /> Haritada aç</a>
           )}
@@ -96,16 +95,18 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
           <div className={cn(media && "px-1 pb-0.5")}>
             {m.kind === "unsupported" ? (
               <span className="text-xs italic text-muted-foreground">{m.body}</span>
+            ) : m.kind === "interactive" && !out ? (
+              <span className="inline-flex items-center gap-1.5 font-medium" data-tip="Müşteri bu seçeneğe dokundu"><MousePointerClick className="size-3.5 shrink-0 text-wa-accent" />{body}</span>
             ) : body ? (
               <span className="whitespace-pre-wrap break-words">{waText(body)}</span>
             ) : null}
-            <span className={cn("relative top-1.5 float-right ml-3 flex items-center gap-1 text-[0.68rem] tabular-nums text-wa-meta", !body && media && "absolute right-2 bottom-2 top-auto rounded-full bg-black/35 px-1.5 text-white")}>
+            <span className={cn("relative top-[7px] float-right ml-2.5 flex items-center gap-0.5 text-[0.66rem] tabular-nums text-wa-meta", !body && media && "absolute right-2 bottom-2 top-auto rounded-full bg-black/35 px-1.5 text-white")}>
               {clock(m.createdAt)}
               {m.direction === "out" && <Ticks status={m.status} className={cn(!body && media && "text-white")} />}
             </span>
           </div>
           {tpl && tpl.buttons.length > 0 && (
-            <div className="mt-2 -mx-2 -mb-1 flex flex-col border-t border-foreground/10">
+            <div className="mt-2 -mx-2.5 -mb-1.5 flex flex-col border-t border-foreground/10">
               {tpl.buttons.map((b, i) => {
                 const Icon = b.kind === "phone" ? Phone : b.kind === "link" ? ExternalLink : Reply;
                 const inner = (
@@ -124,8 +125,8 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
             </div>
           )}
           {options.length > 0 && (
-            <div className="mt-2 -mx-2 -mb-1 flex flex-col border-t border-foreground/10">
-              {options.map((o, i) => <span key={i} className="border-b border-foreground/10 py-1.5 text-center text-[0.82rem] font-medium text-sky-600 last:border-0 dark:text-sky-400">{o.title}</span>)}
+            <div className="mt-2 -mx-2.5 -mb-1.5 flex flex-col border-t border-foreground/10">
+              {options.map((o, i) => <span key={i} className="border-b border-foreground/10 py-2 text-center text-[0.84rem] font-medium text-sky-600 last:border-0 dark:text-sky-400">{o.title}</span>)}
             </div>
           )}
           {m.reactions && m.reactions.length > 0 && (
