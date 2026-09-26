@@ -161,8 +161,13 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		if text == "" {
 			return nil
 		}
+		// Read the conversation again: the message that triggered the rule
+		// may have just opened the window.
+		if fresh, _, err := s.loadConv(ctx, conv.ID); err == nil {
+			conv = fresh
+		}
 		if !windowOpen(conv) {
-			return fmt.Errorf("24 saat penceresi kapalı, metin gönderilemedi")
+			return fmt.Errorf("müşterinin son mesajının üzerinden 24 saat geçmiş; düz metin gönderilemedi, şablon kullanın")
 		}
 		s.queueSystem(ctx, ch, conv.ID, ticket.ID, "automation", r.Name, text)
 	case "send_template":
@@ -304,6 +309,7 @@ type RuleView struct {
 	Position    int             `json:"position"`
 	Runs        int64           `json:"runs"`
 	LastRunAt   *time.Time      `json:"lastRunAt,omitempty"`
+	LastError   string          `json:"lastError,omitempty"` // why the last run failed, if it did
 	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
@@ -323,6 +329,16 @@ func (s *Service) ruleView(ctx context.Context, r *models.WAAutomation) RuleView
 	}
 	_ = s.db.WithContext(ctx).Raw("SELECT count(*) AS n, max(created_at) AS last FROM wa_automation_runs WHERE automation_id = ?", r.ID).Scan(&st).Error
 	v.Runs, v.LastRunAt = st.N, st.Last
+	var last struct {
+		OK     bool
+		Detail string
+	}
+	if err := s.db.WithContext(ctx).Raw("SELECT ok, detail FROM wa_automation_runs WHERE automation_id = ? ORDER BY id DESC LIMIT 1", r.ID).Scan(&last).Error; err == nil && !last.OK {
+		v.LastError = last.Detail
+		if v.LastError == "" {
+			v.LastError = "Bilinmeyen bir hata oldu."
+		}
+	}
 	return v
 }
 

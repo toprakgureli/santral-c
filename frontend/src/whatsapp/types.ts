@@ -280,6 +280,7 @@ export interface WARule {
   position: number;
   runs: number;
   lastRunAt?: string;
+  lastError?: string;
   updatedAt: string;
 }
 

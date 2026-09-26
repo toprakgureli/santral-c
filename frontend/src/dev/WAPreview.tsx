@@ -88,7 +88,7 @@ const bots = [
   { id: 2, name: "Mesai dışı", description: "", active: false, channelIds: [], trigger: "after_hours", keywords: [], draft: { nodes: [graph.nodes[0]], edges: [] }, publishedVersion: 0, draftChanged: true, updatedAt: ago(90) },
 ];
 const rules = [
-  { id: 1, name: "Mesai dışı cevabı", active: true, channelIds: [1, 2], trigger: "outside_hours", conditions: [], actions: [{ kind: "send_text", text: "Şu an mesai dışındayız." }], cooldownMin: 720, position: 0, runs: 142, lastRunAt: ago(300), updatedAt: ago(5000) },
+  { id: 1, name: "Mesai dışı cevabı", active: true, lastError: "müşterinin son mesajının üzerinden 24 saat geçmiş; düz metin gönderilemedi, şablon kullanın", channelIds: [1, 2], trigger: "outside_hours", conditions: [], actions: [{ kind: "send_text", text: "Şu an mesai dışındayız." }], cooldownMin: 720, position: 0, runs: 142, lastRunAt: ago(300), updatedAt: ago(5000) },
   { id: 2, name: "Bekleme bilgisi", active: true, channelIds: [1], trigger: "no_reply", conditions: [{ kind: "after_minutes", value: "10" }], actions: [{ kind: "send_text", text: "Biraz gecikiyoruz." }], cooldownMin: 0, position: 1, runs: 12, updatedAt: ago(200) },
   { id: 3, name: "Fiyat soruları satışa", active: false, channelIds: [2], trigger: "message_in", conditions: [{ kind: "text_contains", value: "fiyat, ücret" }, { kind: "no_owner", value: "" }], actions: [{ kind: "assign_team", teamId: 2 }, { kind: "add_tag", value: "satış" }], cooldownMin: 0, position: 2, runs: 0, updatedAt: ago(20) },
 ];

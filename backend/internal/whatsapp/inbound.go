@@ -162,6 +162,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			// An answer to the survey after a phone call: kept in the
 			// conversation, but it opens no support ticket.
 			res.conv, res.surveyID, res.surveyIdx = conv, id, idx
+			conv.LastInboundAt = at
 			return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
 		}
 		if kind == "reaction" {
@@ -182,6 +183,9 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			unread = unread + 1, ticket_id = ? WHERE id = ?`, *at, msg.ID, time.Now(), ticket.ID, conv.ID).Error; err != nil {
 			return err
 		}
+		// What follows (chatbot, automatic messages) must see this message:
+		// it is what opens the 24-hour window.
+		conv.LastInboundAt, conv.TicketID = at, uintPtr(ticket.ID)
 		res.conv = conv
 		return nil
 	})

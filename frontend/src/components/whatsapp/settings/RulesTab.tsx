@@ -2,7 +2,7 @@
 // hold, do that". Rules run top to bottom; each number has its own.
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Bot, Copy, Pencil, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { AlertCircle, ArrowDown, ArrowUp, Bot, Copy, Pencil, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
 import { areaCls, DeviceChips, DevicePicker, FormField, inputCls, Switch } from "@/components/whatsapp/settings/parts";
@@ -36,7 +36,7 @@ const ACTIONS: Record<string, string> = {
   webhook: "Başka bir sisteme haber ver",
 };
 
-type Draft = Omit<WARule, "id" | "runs" | "lastRunAt" | "updatedAt" | "position">;
+type Draft = Omit<WARule, "id" | "runs" | "lastRunAt" | "lastError" | "updatedAt" | "position">;
 
 const RECIPES: { title: string; sub: string; make: (ids: number[]) => Draft }[] = [
   {
@@ -137,6 +137,12 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
                     <span>{r.runs > 0 ? `${r.runs} kez çalıştı` : "Henüz çalışmadı"}{r.lastRunAt ? `, en son ${since(r.lastRunAt, now)} önce` : ""}</span>
                     {r.cooldownMin > 0 && <span>· aynı müşteriye {r.cooldownMin >= 60 ? `${Math.round(r.cooldownMin / 60)} saatte` : `${r.cooldownMin} dakikada`} bir</span>}
                   </div>
+                  {r.lastError && (
+                    <p className="flex items-start gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[0.72rem] text-destructive">
+                      <AlertCircle className="mt-px size-3.5 shrink-0" />
+                      <span>Son çalıştığında yapılamadı: {r.lastError}</span>
+                    </p>
+                  )}
                 </div>
                 <span className="flex shrink-0 items-center gap-1">
                   <span data-tip={r.active ? "Açık" : "Kapalı"}><Switch on={r.active} onChange={() => void toggle(r)} label="Açık" /></span>
