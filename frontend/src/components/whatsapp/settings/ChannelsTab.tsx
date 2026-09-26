@@ -204,7 +204,15 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
           )}
         </div>
         <FormField label="Uygulama gizli anahtarı (App secret)" hint={channel?.hasAppSecret ? "Kayıtlı. Değiştirmek için yenisini yapıştırın." : existing && f.acceptUnsigned ? "İsteğe bağlı. Girerseniz bildirimlerin imzası kontrol edilir." : "Meta'dan gelen bildirimlerin gerçekten Meta'dan geldiğini doğrulamak için."}>
-          <input className={cn(inputCls, "font-mono")} type="password" autoComplete="off" value={f.appSecret} onChange={(e) => set("appSecret", e.target.value)} placeholder={channel?.hasAppSecret ? "••••••••" : ""} />
+          <span className="flex gap-2">
+            <input className={cn(inputCls, "font-mono")} type="password" autoComplete="off" value={f.appSecret === "-" ? "" : f.appSecret} disabled={f.appSecret === "-"} onChange={(e) => set("appSecret", e.target.value)} placeholder={f.appSecret === "-" ? "Kaydedince silinecek" : channel?.hasAppSecret ? "••••••••" : ""} />
+            {channel?.hasAppSecret && existing && f.acceptUnsigned && (
+              <Button variant="ghost" className="shrink-0" onClick={() => set("appSecret", f.appSecret === "-" ? "" : "-")}>{f.appSecret === "-" ? "Vazgeç" : "Kayıtlı anahtarı sil"}</Button>
+            )}
+          </span>
+          {channel?.hasAppSecret && existing && f.acceptUnsigned && f.appSecret !== "-" && (
+            <span className="block text-[0.7rem] leading-relaxed text-warning">Anahtar kayıtlıyken bildirimlerin imzası bu anahtarla kontrol edilir. Anahtar Meta'daki gerçek anahtar değilse bütün bildirimler reddedilir.</span>
+          )}
         </FormField>
         {channel && (
           <label className="flex items-center gap-2 text-sm sm:col-span-2">

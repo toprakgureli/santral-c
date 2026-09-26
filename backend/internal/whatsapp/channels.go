@@ -218,7 +218,16 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 		}
 		fields["access_token_enc"] = enc
 	}
-	if t := strings.TrimSpace(in.AppSecret); t != "" {
+	switch t := strings.TrimSpace(in.AppSecret); t {
+	case "":
+	case "-":
+		// dropping the secret is only possible where unsigned notices are allowed
+		if !(strings.TrimSpace(in.ExistingHookURL) != "" && in.AcceptUnsigned) {
+			return nil, errs.Invalid("Uygulama gizli anahtarı sadece \"Meta'da zaten kayıtlı bir webhook\" seçiliyken ve imzasız bildirimler kabul edilirken silinebilir.", nil)
+		}
+		fields["app_secret_enc"] = ""
+		ch.AppSecretEnc = ""
+	default:
 		enc, err := s.seal(t)
 		if err != nil {
 			return nil, errs.Internal(err)

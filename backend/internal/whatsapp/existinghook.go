@@ -83,6 +83,14 @@ func (s *Service) channelsOnPath(ctx context.Context, path string) ([]models.WAC
 	return list, nil
 }
 
+// rejected notes on the numbers that a notice was turned away, so the
+// panel says why nothing arrives. It is written at most once a minute.
+func (s *Service) rejected(ctx context.Context, list []models.WAChannel, why string) {
+	for _, ch := range list {
+		_ = s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ? AND (last_error_at IS NULL OR last_error_at < now() - interval '1 minute' OR last_error <> ?)", why, ch.ID, why).Error
+	}
+}
+
 // VerifyExisting answers Meta's check on a registered address.
 func (s *Service) VerifyExisting(ctx context.Context, path, mode, token, challenge string) (string, error) {
 	list, err := s.channelsOnPath(ctx, path)
@@ -128,9 +136,11 @@ func (s *Service) ReceiveExisting(ctx context.Context, path, signature string, b
 			}
 		}
 		if !ok {
+			s.rejected(ctx, list, "Meta'dan bildirim geldi ama imza tutmadı. Girilen uygulama gizli anahtarı (App secret) yanlış olabilir.")
 			return errs.Unauthorized("İmza doğrulanamadı.")
 		}
 	case !unsigned:
+		s.rejected(ctx, list, "Meta'dan bildirim geldi ama kabul edilmedi: uygulama gizli anahtarı girilmemiş. Cihazı düzenleyip anahtarı girin ya da \"imzasız bildirimleri kabul et\" kutusunu işaretleyin.")
 		return errs.Forbidden("Cihazın uygulama gizli anahtarı girilmemiş.")
 	}
 	if !json.Valid(body) {

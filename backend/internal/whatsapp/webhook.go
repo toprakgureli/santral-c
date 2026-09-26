@@ -56,12 +56,14 @@ func (s *Service) Receive(ctx context.Context, key, signature string, body []byt
 	}
 	secret := s.open(ch.AppSecretEnc)
 	if secret == "" {
+		s.rejected(ctx, []models.WAChannel{*ch}, "Meta'dan bildirim geldi ama kabul edilmedi: uygulama gizli anahtarı (App secret) girilmemiş.")
 		return errs.Forbidden("Cihazın uygulama gizli anahtarı girilmemiş.")
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(strings.TrimSpace(signature)), []byte(want)) {
+		s.rejected(ctx, []models.WAChannel{*ch}, "Meta'dan bildirim geldi ama imza tutmadı. Girilen uygulama gizli anahtarı (App secret) yanlış olabilir.")
 		return errs.Unauthorized("İmza doğrulanamadı.")
 	}
 	if !json.Valid(body) {
