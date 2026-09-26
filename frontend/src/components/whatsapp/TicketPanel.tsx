@@ -34,6 +34,11 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
   const [muteOpen, setMuteOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const muted = wa.muted(conv.id);
+  // shown at once; the server's answer confirms it a moment later
+  const [status, setStatus] = useState(t?.status);
+  const [priority, setPriority] = useState(t?.priority);
+  useEffect(() => setStatus(t?.status), [t?.status]);
+  useEffect(() => setPriority(t?.priority), [t?.priority]);
   const canCall = can(user, "call.originate") && phone.status === "registered";
 
   useEffect(() => {
@@ -115,29 +120,41 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
         {/* the conversation */}
         {t && (
           <Card title={`Sohbet #${t.number}`}>
-            <div className="divide-y divide-border/50">
-              <Field label="Durum">
+            <div className="space-y-4">
+              <div>
+                <Label>Durum</Label>
                 {canEditTicket && (t.status === "open" || t.status === "pending") ? (
-                  <select value={t.status} onChange={(e) => void saveTicket({ status: e.target.value })} className="h-8 rounded-lg bg-muted/70 px-2 text-sm outline-none">
-                    <option value="open">Açık</option>
-                    <option value="pending">Müşteri bekleniyor</option>
-                  </select>
-                ) : <span className="text-sm font-medium">{STATUS_WORD[t.status] ?? t.status}</span>}
-              </Field>
-              <Field label="Öncelik">
+                  <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
+                    {(["open", "pending"] as const).map((k) => (
+                      <button key={k} type="button" onClick={() => { setStatus(k); void saveTicket({ status: k }); }} className={cn("flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[0.8rem] font-medium transition-colors", status === k ? STATUS_ON[k] : "text-muted-foreground hover:bg-card/60 hover:text-foreground")}>
+                        <span className={cn("size-2 rounded-full", STATUS_DOT[k])} /> {STATUS_WORD[k]}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1 text-[0.8rem] font-medium"><span className={cn("size-2 rounded-full", STATUS_DOT[t.status] ?? "bg-muted-foreground")} /> {STATUS_WORD[t.status] ?? t.status}</span>
+                )}
+              </div>
+              <div>
+                <Label>Öncelik</Label>
                 {canEditTicket ? (
-                  <select value={t.priority} onChange={(e) => void saveTicket({ priority: e.target.value })} className={cn("h-8 rounded-lg bg-muted/70 px-2 text-sm outline-none", (t.priority === "high" || t.priority === "urgent") && "text-destructive")}>
-                    {Object.entries(PRIORITY_WORD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                ) : <span className="text-sm font-medium">{PRIORITY_WORD[t.priority]}</span>}
-              </Field>
-              <Field label="Konu">
-                {canEditTicket
-                  ? <input defaultValue={t.category} key={t.category} onBlur={(e) => e.target.value !== t.category && void saveTicket({ category: e.target.value })} placeholder="Örn. Fatura" className="h-8 w-36 rounded-lg bg-muted/70 px-2 text-right text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30" />
-                  : <span className="text-sm font-medium">{t.category || "—"}</span>}
-              </Field>
-              <div className="py-2.5">
-                <p className="mb-1.5 text-xs text-muted-foreground">Etiketler</p>
+                  <div className="grid grid-cols-4 gap-1 rounded-xl bg-muted/70 p-1">
+                    {(["low", "normal", "high", "urgent"] as const).map((k) => (
+                      <button key={k} type="button" onClick={() => { setPriority(k); void saveTicket({ priority: k }); }} className={cn("flex items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[0.75rem] font-medium transition-colors", priority === k ? PRIORITY_ON[k] : "text-muted-foreground hover:bg-card/60 hover:text-foreground")}>
+                        <span className={cn("size-1.5 rounded-full", PRIORITY_DOT[k])} /> {PRIORITY_WORD[k]}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className={cn("inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1 text-[0.8rem] font-medium", PRIORITY_TEXT[t.priority])}><span className={cn("size-2 rounded-full", PRIORITY_DOT[t.priority])} /> {PRIORITY_WORD[t.priority]}</span>
+                )}
+              </div>
+              <div>
+                <Label>Konu</Label>
+                <Subject value={t.category} editable={canEditTicket} onSave={(v) => void saveTicket({ category: v })} />
+              </div>
+              <div>
+                <Label>Etiketler</Label>
                 <Tags values={t.tags} editable={canEditTicket} onChange={(tags) => void saveTicket({ tags })} />
               </div>
             </div>
@@ -248,12 +265,45 @@ function Fold({ title, count, children }: { title: string; count?: number; child
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+const STATUS_DOT: Record<string, string> = { open: "bg-emerald-500", pending: "bg-sky-500", bot: "bg-violet-500", resolved: "bg-muted-foreground/60" };
+const PRIORITY_DOT: Record<string, string> = { low: "bg-slate-400", normal: "bg-sky-500", high: "bg-amber-500", urgent: "bg-red-500" };
+const STATUS_ON: Record<string, string> = { open: "bg-emerald-500/15 text-emerald-700 shadow-sm dark:text-emerald-300", pending: "bg-sky-500/15 text-sky-700 shadow-sm dark:text-sky-300" };
+const PRIORITY_ON: Record<string, string> = {
+  low: "bg-slate-500/15 text-foreground shadow-sm",
+  normal: "bg-sky-500/15 text-sky-700 shadow-sm dark:text-sky-300",
+  high: "bg-amber-500/15 text-amber-700 shadow-sm dark:text-amber-300",
+  urgent: "bg-red-500/15 text-red-700 shadow-sm dark:text-red-300",
+};
+const PRIORITY_TEXT: Record<string, string> = { low: "text-foreground/70", normal: "text-foreground", high: "text-amber-600 dark:text-amber-400", urgent: "text-red-600 dark:text-red-400" };
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <p className="mb-1.5 text-xs font-medium text-muted-foreground">{children}</p>;
+}
+
+// Subject reads as plain text; a click turns it into a box, Enter or
+// leaving the box saves it.
+function Subject({ value, editable, onSave }: { value: string; editable: boolean; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const done = () => {
+    setEditing(false);
+    const v = draft.trim();
+    if (v !== value) onSave(v);
+  };
+  if (!editable) return <p className="text-sm">{value || "—"}</p>;
+  if (editing) {
+    return (
+      <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={done}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
+        placeholder="Örn. Fatura, arıza, iade" className="h-9 w-full rounded-lg bg-muted/70 px-3 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30" />
+    );
+  }
   return (
-    <div className="flex min-h-11 items-center justify-between gap-3 py-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      {children}
-    </div>
+    <button type="button" onClick={() => setEditing(true)} className={cn("group flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm transition-colors hover:bg-muted/70", value ? "bg-muted/40" : "border border-dashed border-border text-muted-foreground")}>
+      <span className="min-w-0 flex-1 truncate">{value || "+ Konu ekle"}</span>
+      <Pencil className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
   );
 }
 

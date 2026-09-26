@@ -17,7 +17,11 @@ import type { WAChannel, WAConversation } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { type Bucket } from "@/whatsapp/util";
 
-const PANEL_KEY = "santral.wa-info";
+// The contact card opens beside the chat when a conversation opens, as long
+// as the chat keeps at least this much room next to the list and the card.
+const LIST_W = 384;
+const CARD_W = 352;
+const CHAT_MIN = 480;
 const BUCKET_KEY = "santral.wa-bucket";
 
 export function WhatsApp() {
@@ -26,14 +30,9 @@ export function WhatsApp() {
   const { user } = useAuth();
   const wa = useWhatsApp();
   const [channels, setChannels] = useState<WAChannel[]>([]);
-  const [panel, setPanel] = useState(() => {
-    try {
-      if (window.innerWidth < 1280) return false;
-      return localStorage.getItem(PANEL_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const frame = useRef<HTMLDivElement>(null);
+  const [wide, setWide] = useState(true);
+  const [panel, setPanel] = useState(false);
   const [bucket, setBucket] = useState<Bucket>(() => {
     try {
       return (localStorage.getItem(BUCKET_KEY) as Bucket) || "mine";
@@ -52,6 +51,24 @@ export function WhatsApp() {
     wa.setOpenId(openId);
     return () => wa.setOpenId(null);
   }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Is there room for the card beside the chat? Measured, not guessed.
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    const check = () => setWide(el.clientWidth >= LIST_W + CARD_W + CHAT_MIN);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Every conversation opens with its card, where it fits.
+  useEffect(() => {
+    if (!openId) return;
+    const el = frame.current;
+    setPanel(!!el && el.clientWidth >= LIST_W + CARD_W + CHAT_MIN);
+  }, [openId]);
 
   // A chat opened by link that is not in the list yet (an old resolved one).
   const inList = openId ? wa.byId(openId) : undefined;
@@ -73,16 +90,7 @@ export function WhatsApp() {
       // storage unavailable
     }
   };
-  const togglePanel = () => {
-    setPanel((v) => {
-      try {
-        localStorage.setItem(PANEL_KEY, v ? "0" : "1");
-      } catch {
-        // storage unavailable
-      }
-      return !v;
-    });
-  };
+  const togglePanel = () => setPanel((v) => !v);
 
   const canSettings = canAny(user, ["whatsapp.channel_manage", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_read_receipts", "whatsapp.ai_manage", "whatsapp.call_survey_manage"]);
 
@@ -114,7 +122,7 @@ export function WhatsApp() {
   );
 
   return (
-    <div className="relative -mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden bg-card md:-mx-6 lg:-mx-8">
+    <div ref={frame} className="relative -mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden bg-card md:-mx-6 lg:-mx-8">
       <div className={cn("flex min-h-0 max-md:w-full", openId && "max-md:hidden")}>
         <ConversationList channels={channels} activeId={openId} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} bucket={bucket} onBucket={chooseBucket} header={header} />
       </div>
@@ -122,7 +130,7 @@ export function WhatsApp() {
         <>
           <ChatPane key={conv.id} conv={conv} channel={channel} panel={panel} onPanel={togglePanel} onBack={() => navigate("/whatsapp")} />
           {panel && (
-            <div className="flex max-xl:absolute max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:w-[min(22rem,100%)] max-xl:shadow-2xl">
+            <div className={cn("flex", !wide && "absolute inset-y-0 right-0 z-30 w-[min(22rem,100%)] shadow-2xl")}>
               <TicketPanel conv={conv} canEditContact={can(user, "whatsapp.contact_manage")} canEditTicket={can(user, "whatsapp.reply")} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} onClose={togglePanel} />
             </div>
           )}
