@@ -151,9 +151,9 @@ export function WhatsAppBot() {
     commit({ ...g, nodes: g.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)) });
   }, [commit]);
 
-  const addNode = useCallback((type: BotNodeType, x: number, y: number) => {
+  const addNode = useCallback((type: BotNodeType, x: number, y: number, data?: BotData) => {
     snapshot();
-    const n = { id: `${type}-${rid()}`, type, x: Math.round(x), y: Math.round(y), data: KINDS[type].data() };
+    const n = { id: `${type}-${rid()}`, type, x: Math.round(x), y: Math.round(y), data: data ?? KINDS[type].data() };
     const g = graphRef.current;
     commit({ ...g, nodes: [...g.nodes, n] });
     setSelection({ kind: "node", id: n.id });

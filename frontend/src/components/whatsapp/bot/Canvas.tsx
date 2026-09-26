@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, Maximize2, Minus, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { BotGraph, BotNode, BotNodeType, BotStats } from "@/whatsapp/types";
+import type { BotData, BotGraph, BotNode, BotNodeType, BotStats } from "@/whatsapp/types";
 import { BODY, HEAD, heightOf, inPoint, KINDS, PALETTE, portPoint, portsOf, preview, ROW, W } from "@/components/whatsapp/bot/nodes";
 
 export type Selection = { kind: "node" | "edge"; id: string } | null;
@@ -36,7 +36,7 @@ export default function Canvas({
   onSelect: (s: Selection) => void;
   onSnapshot: () => void;
   onChange: (g: BotGraph) => void;
-  onAdd: (type: BotNodeType, x: number, y: number) => void;
+  onAdd: (type: BotNodeType, x: number, y: number, data?: BotData) => void;
   onConnect: (from: string, port: string, to: string) => void;
   onDeleteEdge: (id: string) => void;
   readOnly: boolean;
@@ -196,11 +196,11 @@ export default function Canvas({
       onPointerDown={startPan}
       onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
       onDrop={(e) => {
-        const t = e.dataTransfer.getData("text/bot-node") as BotNodeType;
-        if (!t || readOnly) return;
+        const item = PALETTE.find((x) => x.key === e.dataTransfer.getData("text/bot-node"));
+        if (!item || readOnly) return;
         e.preventDefault();
         const p = toCanvas(e.clientX, e.clientY);
-        onAdd(t, p.x - W / 2, p.y - HEAD / 2);
+        onAdd(item.type, p.x - W / 2, p.y - HEAD / 2, item.data());
       }}
     >
       <div className="absolute top-0 left-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
@@ -310,19 +310,18 @@ export default function Canvas({
             <span className="flex-1">Kutu ekle</span>
             <button type="button" onClick={() => setPalette(false)} data-tip="Gizle" aria-label="Gizle" className="rounded-md p-0.5 hover:bg-accent hover:text-foreground"><ChevronLeft className="size-3.5" /></button>
           </p>
-          {PALETTE.map((t) => {
-            const k = KINDS[t];
+          {PALETTE.map((k) => {
             return (
               <button
-                key={t}
+                key={k.key}
                 type="button"
                 draggable
-                onDragStart={(e) => { e.dataTransfer.setData("text/bot-node", t); e.dataTransfer.effectAllowed = "copy"; }}
+                onDragStart={(e) => { e.dataTransfer.setData("text/bot-node", k.key); e.dataTransfer.effectAllowed = "copy"; }}
                 onClick={() => {
                   const el = box.current!;
                   const v = viewRef.current;
                   const cx = (el.clientWidth / 2 - v.x) / v.z, cy = (el.clientHeight / 2 - v.y) / v.z;
-                  onAdd(t, cx - W / 2 + (Math.random() * 40 - 20), cy - 40 + (Math.random() * 40 - 20));
+                  onAdd(k.type, cx - W / 2 + (Math.random() * 40 - 20), cy - 40 + (Math.random() * 40 - 20), k.data());
                   if (el.clientWidth < 700) setPalette(false);
                 }}
                 data-tip={k.hint}

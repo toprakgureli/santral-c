@@ -1,7 +1,7 @@
 // The kinds of boxes a chatbot flow is drawn with: how each is named,
 // coloured and previewed, which exits it has, and what a new one holds.
 
-import { CircleDot, Flag, GitFork, Globe, HelpCircle, ListChecks, MessageSquareText, PhoneCall, Star, Tag, UserRound, type LucideIcon } from "lucide-react";
+import { CircleDot, Clock3, Flag, GitFork, Globe, HelpCircle, ListChecks, MessageSquareText, PhoneCall, Star, Tag, UserRound, type LucideIcon } from "lucide-react";
 import { spanText } from "@/components/whatsapp/settings/TimeParts";
 import type { BotData, BotNode, BotNodeType } from "@/whatsapp/types";
 
@@ -29,7 +29,29 @@ export const KINDS: Record<BotNodeType, NodeKind> = {
   end: { label: "Bitir", hint: "Chatbot'u bitirir. İsterseniz sohbeti de kapatır.", icon: Flag, chip: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300", bar: "bg-zinc-500", data: () => ({ text: "", resolve: true }) },
 };
 
-export const PALETTE: BotNodeType[] = ["message", "menu", "ask", "condition", "api", "tag", "handoff", "callback", "survey", "end"];
+// PaletteItem is an entry of the "Kutu ekle" list. Most are plain box kinds;
+// "Saat koşulu" is a condition box that starts out as a time range, so it
+// can be found without opening the condition's options.
+export interface PaletteItem extends NodeKind {
+  key: string;
+  type: BotNodeType;
+}
+
+const plain = (t: BotNodeType): PaletteItem => ({ key: t, type: t, ...KINDS[t] });
+
+export const PALETTE: PaletteItem[] = [
+  ...(["message", "menu", "ask", "condition"] as const).map(plain),
+  {
+    ...KINDS.condition,
+    key: "time",
+    type: "condition",
+    label: "Saat koşulu",
+    hint: "Müşteri belirli saatlerde yazdıysa bir yoldan, diğer saatlerde öbür yoldan devam eder.",
+    icon: Clock3,
+    data: () => ({ match: "all", rules: [{ var: "", op: "time_between", value: "", from: "09:00", to: "18:00", days: [0, 1, 2, 3, 4] }] }),
+  },
+  ...(["api", "tag", "handoff", "callback", "survey", "end"] as const).map(plain),
+];
 
 export interface Port {
   id: string;
