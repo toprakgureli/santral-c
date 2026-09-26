@@ -75,3 +75,23 @@ func TestBuildTemplateQuickAndFile(t *testing.T) {
 		t.Error("a media header with no file should fail")
 	}
 }
+
+func TestExistingPath(t *testing.T) {
+	cases := map[string]string{
+		"https://ornek.com/webhook/whatsapp":   "/webhook/whatsapp",
+		"https://ornek.com/webhook/whatsapp/":  "/webhook/whatsapp",
+		"http://1.2.3.4:5001/webhook/whatsapp": "/webhook/whatsapp",
+		"":                                     "",
+	}
+	for in, want := range cases {
+		got, err := existingPath(in)
+		if err != nil || got != want {
+			t.Errorf("existingPath(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"webhook/whatsapp", "https://ornek.com/", "https://ornek.com/api/v1/wa/hook/x", "ftp://ornek.com/x"} {
+		if _, err := existingPath(bad); err == nil {
+			t.Errorf("existingPath(%q) should fail", bad)
+		}
+	}
+}

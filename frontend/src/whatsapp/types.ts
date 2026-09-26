@@ -177,6 +177,10 @@ export interface WAChannel {
   hasAppSecret: boolean;
   verifyToken?: string;
   hookPath?: string;
+  // a webhook already registered in Meta, used instead of hookPath
+  existingHookUrl?: string;
+  existingVerifyToken?: string;
+  acceptUnsigned: boolean;
   surveyHookPath?: string;
   active: boolean;
   settings: WASettings;

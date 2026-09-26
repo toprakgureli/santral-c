@@ -172,7 +172,10 @@ func run() error {
 	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
 	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, configs.Cnf.Auth.Secret)
-	whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard).Routes(api)
+	waRouter := whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard)
+	waRouter.Routes(api)
+	// A webhook already registered in Meta may live outside /api.
+	waRouter.Root(app)
 	// A finished phone call may be followed by a survey on WhatsApp.
 	callLogSvc.OnEnded = func(ctx context.Context, log models.CallLog) {
 		escalationSvc.AutoLog(ctx, log)

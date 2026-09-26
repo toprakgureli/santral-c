@@ -50,6 +50,9 @@ type ChannelView struct {
 	HasAppSecret    bool            `json:"hasAppSecret"`
 	VerifyToken     string          `json:"verifyToken,omitempty"`
 	HookPath        string          `json:"hookPath,omitempty"`
+	ExistingHookURL string          `json:"existingHookUrl,omitempty"`
+	ExistingToken   string          `json:"existingVerifyToken,omitempty"`
+	AcceptUnsigned  bool            `json:"acceptUnsigned"`
 	SurveyHookPath  string          `json:"surveyHookPath,omitempty"`
 	Active          bool            `json:"active"`
 	Settings        ChannelSettings `json:"settings"`
@@ -72,6 +75,7 @@ func (s *Service) channelView(ctx context.Context, ch *models.WAChannel, full bo
 		Active: ch.Active, HasSurveySecret: set.Survey.SecretEnc != "", VerifiedName: ch.VerifiedName,
 		QualityRating: ch.QualityRating, MessagingLimit: ch.MessagingLimit, LastWebhookAt: ch.LastWebhookAt,
 		LastError: ch.LastError, LastErrorAt: ch.LastErrorAt, CreatedAt: ch.CreatedAt, MemberIDs: []uint{},
+		ExistingHookURL: ch.ExistingHookURL, AcceptUnsigned: ch.AcceptUnsigned,
 	}
 	set.Survey.SecretEnc = ""
 	v.Settings = set
@@ -79,6 +83,7 @@ func (s *Service) channelView(ctx context.Context, ch *models.WAChannel, full bo
 		v.VerifyToken = ch.VerifyToken
 		v.HookPath = "/api/v1/wa/hook/" + ch.HookKey
 		v.SurveyHookPath = "/api/v1/wa/survey/" + ch.HookKey
+		v.ExistingToken = ch.ExistingVerifyToken
 	}
 	_ = s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_channel_members WHERE channel_id = ? ORDER BY user_id", ch.ID).Scan(&v.MemberIDs).Error
 	if v.MemberIDs == nil {
@@ -123,6 +128,10 @@ type ChannelInput struct {
 	AccessToken   string `json:"accessToken"`
 	AppSecret     string `json:"appSecret"`
 	Active        *bool  `json:"active"`
+	// a webhook already registered in Meta; empty means the panel's own
+	ExistingHookURL     string `json:"existingHookUrl"`
+	ExistingVerifyToken string `json:"existingVerifyToken"`
+	AcceptUnsigned      bool   `json:"acceptUnsigned"`
 }
 
 func cleanID(s string) string {
@@ -139,8 +148,15 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 	if strings.TrimSpace(in.Name) == "" || in.PhoneNumberID == "" || in.WABAID == "" {
 		return nil, errs.Invalid("Ad, numara kimliği (Phone number ID) ve işletme hesabı kimliği (WABA ID) zorunlu.", nil)
 	}
-	if in.AccessToken == "" || in.AppSecret == "" {
-		return nil, errs.Invalid("Erişim anahtarı (token) ve uygulama gizli anahtarı (App secret) zorunlu.", nil)
+	if in.AccessToken == "" {
+		return nil, errs.Invalid("Erişim anahtarı (token) zorunlu.", nil)
+	}
+	hookPath, err := existingPath(in.ExistingHookURL)
+	if err != nil {
+		return nil, err
+	}
+	if in.AppSecret == "" && !(hookPath != "" && in.AcceptUnsigned) {
+		return nil, errs.Invalid("Uygulama gizli anahtarı (App secret) zorunlu. Meta'da kayıtlı bir webhook kullanıyorsanız ve anahtar elinizde değilse imzasız bildirimleri kabul etmeyi seçebilirsiniz.", nil)
 	}
 	tok, err := s.seal(strings.TrimSpace(in.AccessToken))
 	if err != nil {
@@ -155,6 +171,8 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 		WABAID: in.WABAID, AppID: cleanID(in.AppID), GraphVersion: strings.TrimSpace(in.GraphVersion),
 		AccessTokenEnc: tok, AppSecretEnc: sec, VerifyToken: randomKey(16), HookKey: randomKey(20),
 		Active: true, Settings: defaultSettings().encode(), CreatedBy: uintPtr(actorID),
+		ExistingHookURL: strings.TrimSpace(in.ExistingHookURL), ExistingHookPath: hookPath,
+		ExistingVerifyToken: strings.TrimSpace(in.ExistingVerifyToken), AcceptUnsigned: hookPath != "" && in.AcceptUnsigned,
 	}
 	if err := s.db.WithContext(ctx).Create(ch).Error; err != nil {
 		if strings.Contains(err.Error(), "wa_channels_phone_number_idx") {
@@ -165,6 +183,7 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 	// The one who adds a device works on it from the start.
 	_ = s.db.WithContext(ctx).Exec("INSERT INTO wa_channel_members (channel_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", ch.ID, actorID).Error
 	s.forget()
+	s.forgetHookPaths()
 	s.refreshNumber(ctx, ch)
 	v := s.channelView(ctx, ch, true)
 	return &v, nil
@@ -209,12 +228,24 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 	if in.Active != nil {
 		fields["active"] = *in.Active
 	}
+	hookPath, err := existingPath(in.ExistingHookURL)
+	if err != nil {
+		return nil, err
+	}
+	fields["existing_hook_url"] = strings.TrimSpace(in.ExistingHookURL)
+	fields["existing_hook_path"] = hookPath
+	fields["existing_verify_token"] = strings.TrimSpace(in.ExistingVerifyToken)
+	fields["accept_unsigned"] = hookPath != "" && in.AcceptUnsigned
+	if hookPath == "" && ch.AppSecretEnc == "" && strings.TrimSpace(in.AppSecret) == "" {
+		return nil, errs.Invalid("Panelin kendi webhook adresi için uygulama gizli anahtarı (App secret) gerekli.", nil)
+	}
 	if err := s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Updates(fields).Error; err != nil {
 		if strings.Contains(err.Error(), "wa_channels_phone_number_idx") {
 			return nil, errs.Conflict("Bu numara başka bir cihazda kayıtlı.", err)
 		}
 		return nil, errs.Internal(err)
 	}
+	s.forgetHookPaths()
 	ch, _ = s.channel(ctx, id)
 	s.refreshNumber(ctx, ch)
 	v := s.channelView(ctx, ch, true)

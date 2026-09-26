@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -101,6 +102,31 @@ func (h *Handler) Receive(c *fiber.Ctx) error {
 	}
 	return c.SendStatus(fiber.StatusOK)
 }
+
+// Existing serves a webhook already registered in Meta: requests on its
+// path are handled like the panel's own address; everything else passes.
+func (h *Handler) Existing(c *fiber.Ctx) error {
+	if (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodPost) || strings.HasPrefix(c.Path(), "/api/") || !h.s.IsExistingHook(c.UserContext(), c.Path()) {
+		return c.Next()
+	}
+	if c.Method() == fiber.MethodGet {
+		out, err := h.s.VerifyExisting(c.UserContext(), c.Path(), c.Query("hub.mode"), c.Query("hub.verify_token"), c.Query("hub.challenge"))
+		if err != nil {
+			return err
+		}
+		c.Set("Content-Type", "text/plain")
+		return c.SendString(out)
+	}
+	raw := append([]byte(nil), c.Body()...)
+	if err := h.s.ReceiveExisting(c.UserContext(), c.Path(), c.Get("X-Hub-Signature-256"), raw); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusOK)
+}
+
+// Root mounts the handler for webhooks already registered in Meta on the
+// server's root, outside /api.
+func (r *Router) Root(app fiber.Router) { app.Use(r.h.Existing) }
 
 // Tally receives a survey answer.
 func (h *Handler) Tally(c *fiber.Ctx) error {

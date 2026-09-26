@@ -67,6 +67,11 @@ func (s *Service) Receive(ctx context.Context, key, signature string, body []byt
 	if !json.Valid(body) {
 		return errs.Invalid("Geçersiz içerik.", nil)
 	}
+	return s.storeEvent(ctx, ch, body)
+}
+
+// storeEvent keeps a notice for the worker and answers Meta right away.
+func (s *Service) storeEvent(ctx context.Context, ch *models.WAChannel, body []byte) error {
 	ev := &models.WAWebhookEvent{ChannelID: uintPtr(ch.ID), Payload: string(body), Status: "pending", NextTryAt: time.Now()}
 	if err := s.db.WithContext(ctx).Create(ev).Error; err != nil {
 		return errs.Internal(err)

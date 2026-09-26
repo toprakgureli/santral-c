@@ -6,28 +6,33 @@ import "time"
 // Secrets are stored encrypted; Settings is the device's own configuration
 // as JSON, so a new device starts from nothing.
 type WAChannel struct {
-	ID             uint       `gorm:"column:id;primarykey"`
-	Name           string     `gorm:"column:name"`
-	DisplayPhone   string     `gorm:"column:display_phone"`
-	PhoneNumberID  string     `gorm:"column:phone_number_id"`
-	WABAID         string     `gorm:"column:waba_id"`
-	AppID          string     `gorm:"column:app_id"`
-	GraphVersion   string     `gorm:"column:graph_version"`
-	AccessTokenEnc string     `gorm:"column:access_token_enc"`
-	AppSecretEnc   string     `gorm:"column:app_secret_enc"`
-	VerifyToken    string     `gorm:"column:verify_token"`
-	HookKey        string     `gorm:"column:hook_key"`
-	Active         bool       `gorm:"column:active"`
-	Settings       string     `gorm:"column:settings;type:jsonb"`
-	VerifiedName   string     `gorm:"column:verified_name"`
-	QualityRating  string     `gorm:"column:quality_rating"`
-	MessagingLimit string     `gorm:"column:messaging_limit"`
-	LastWebhookAt  *time.Time `gorm:"column:last_webhook_at"`
-	LastError      string     `gorm:"column:last_error"`
-	LastErrorAt    *time.Time `gorm:"column:last_error_at"`
-	CreatedBy      *uint      `gorm:"column:created_by"`
-	CreatedAt      time.Time  `gorm:"column:created_at"`
-	UpdatedAt      time.Time  `gorm:"column:updated_at"`
+	ID             uint   `gorm:"column:id;primarykey"`
+	Name           string `gorm:"column:name"`
+	DisplayPhone   string `gorm:"column:display_phone"`
+	PhoneNumberID  string `gorm:"column:phone_number_id"`
+	WABAID         string `gorm:"column:waba_id"`
+	AppID          string `gorm:"column:app_id"`
+	GraphVersion   string `gorm:"column:graph_version"`
+	AccessTokenEnc string `gorm:"column:access_token_enc"`
+	AppSecretEnc   string `gorm:"column:app_secret_enc"`
+	VerifyToken    string `gorm:"column:verify_token"`
+	HookKey        string `gorm:"column:hook_key"`
+	// a webhook already registered in Meta, used instead of HookKey's address
+	ExistingHookURL     string     `gorm:"column:existing_hook_url"`
+	ExistingHookPath    string     `gorm:"column:existing_hook_path"`
+	ExistingVerifyToken string     `gorm:"column:existing_verify_token"`
+	AcceptUnsigned      bool       `gorm:"column:accept_unsigned"`
+	Active              bool       `gorm:"column:active"`
+	Settings            string     `gorm:"column:settings;type:jsonb"`
+	VerifiedName        string     `gorm:"column:verified_name"`
+	QualityRating       string     `gorm:"column:quality_rating"`
+	MessagingLimit      string     `gorm:"column:messaging_limit"`
+	LastWebhookAt       *time.Time `gorm:"column:last_webhook_at"`
+	LastError           string     `gorm:"column:last_error"`
+	LastErrorAt         *time.Time `gorm:"column:last_error_at"`
+	CreatedBy           *uint      `gorm:"column:created_by"`
+	CreatedAt           time.Time  `gorm:"column:created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at"`
 }
 
 // TableName pins the table name.
