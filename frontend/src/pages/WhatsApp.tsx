@@ -22,6 +22,10 @@ import { type Bucket } from "@/whatsapp/util";
 const LIST_W = 384;
 const CARD_W = 352;
 const CHAT_MIN = 480;
+// The list's width is the person's to choose, by dragging its edge.
+const LIST_KEY = "santral.wa-list-width";
+const LIST_MIN = 280;
+const LIST_MAX = 640;
 const BUCKET_KEY = "santral.wa-bucket";
 
 export function WhatsApp() {
@@ -31,6 +35,17 @@ export function WhatsApp() {
   const wa = useWhatsApp();
   const [channels, setChannels] = useState<WAChannel[]>([]);
   const frame = useRef<HTMLDivElement>(null);
+  const [listW, setListW] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(LIST_KEY));
+      return v >= LIST_MIN && v <= LIST_MAX ? v : LIST_W;
+    } catch {
+      return LIST_W;
+    }
+  });
+  const listRef = useRef(listW);
+  listRef.current = listW;
+  const [dragging, setDragging] = useState(false);
   const [wide, setWide] = useState(true);
   const [panel, setPanel] = useState(false);
   const [bucket, setBucket] = useState<Bucket>(() => {
@@ -56,18 +71,47 @@ export function WhatsApp() {
   useEffect(() => {
     const el = frame.current;
     if (!el) return;
-    const check = () => setWide(el.clientWidth >= LIST_W + CARD_W + CHAT_MIN);
+    const check = () => setWide(el.clientWidth >= listRef.current + CARD_W + CHAT_MIN);
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [listW]);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = listRef.current;
+    const room = (frame.current?.clientWidth ?? 1400) - CHAT_MIN;
+    setDragging(true);
+    const move = (ev: PointerEvent) => setListW(Math.round(Math.max(LIST_MIN, Math.min(LIST_MAX, room, w0 + ev.clientX - x0))));
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      try {
+        localStorage.setItem(LIST_KEY, String(listRef.current));
+      } catch {
+        // storage unavailable
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resetWidth = () => {
+    setListW(LIST_W);
+    try {
+      localStorage.removeItem(LIST_KEY);
+    } catch {
+      // storage unavailable
+    }
+  };
 
   // Every conversation opens with its card, where it fits.
   useEffect(() => {
     if (!openId) return;
     const el = frame.current;
-    setPanel(!!el && el.clientWidth >= LIST_W + CARD_W + CHAT_MIN);
+    setPanel(!!el && el.clientWidth >= listRef.current + CARD_W + CHAT_MIN);
   }, [openId]);
 
   // A chat opened by link that is not in the list yet (an old resolved one).
@@ -102,7 +146,7 @@ export function WhatsApp() {
           <p className="text-base font-semibold">Henüz bağlı bir WhatsApp numarası yok</p>
           <p className="mx-auto max-w-md text-sm text-muted-foreground">{can(user, "whatsapp.channel_manage") ? "Ayarlardan bir numara ekleyin; Meta'dan gelen bilgileri girdikten sonra mesajlar burada görünür." : "Yöneticiniz bir numara bağladığında ve sizi o numaraya eklediğinde sohbetler burada görünür."}</p>
         </div>
-        {canSettings && <Link to="/whatsapp/settings" className="rounded-full bg-wa-accent px-4 py-2 text-sm font-semibold text-white shadow-sm">Ayarlara git</Link>}
+        {canSettings && <Link to="/whatsapp/settings" className="rounded-full bg-wa-accent px-4 py-2 text-sm font-semibold text-wa-on-accent shadow-sm">Ayarlara git</Link>}
       </div>
     );
   }
@@ -122,9 +166,12 @@ export function WhatsApp() {
   );
 
   return (
-    <div ref={frame} className="relative -mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden bg-card md:-mx-6 lg:-mx-8">
-      <div className={cn("flex min-h-0 max-md:w-full", openId && "max-md:hidden")}>
+    <div ref={frame} className={cn("relative -mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden bg-card md:-mx-6 lg:-mx-8", dragging && "cursor-col-resize select-none")}>
+      <div style={{ "--list-w": `${listW}px` } as React.CSSProperties} className={cn("relative flex min-h-0 shrink-0 max-md:w-full md:w-[var(--list-w)]", openId && "max-md:hidden")}>
         <ConversationList channels={channels} activeId={openId} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} bucket={bucket} onBucket={chooseBucket} header={header} />
+        <div onPointerDown={startResize} onDoubleClick={resetWidth} data-tip="Sürükleyerek genişletin, çift tıklayınca eski haline döner" className="group absolute inset-y-0 -right-1.5 z-20 hidden w-3 cursor-col-resize md:block">
+          <span className={cn("mx-auto block h-full w-0.5 rounded-full transition-colors", dragging ? "bg-wa-accent" : "bg-transparent group-hover:bg-wa-accent/60")} />
+        </div>
       </div>
       {conv ? (
         <>

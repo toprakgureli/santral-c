@@ -4,16 +4,17 @@
 // its ticks as WhatsApp reports them.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, Bell, BellOff, Bot, ChevronDown, ChevronRight, CircleCheck, Download, EllipsisVertical, Hand, Hourglass, Info, Mail, Phone, Pin, PinOff, RotateCcw, Search, UserCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Bell, BellOff, Bot, ChevronDown, ChevronRight, CircleCheck, Download, EllipsisVertical, Hand, Hourglass, Info, Mail, Paperclip, Phone, Pin, PinOff, RotateCcw, Search, UserCheck, X } from "lucide-react";
 import { MUTES } from "@/components/whatsapp/ConversationList";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ui";
 import UserAvatar from "@/components/ui/UserAvatar";
 import AssignDialog from "@/components/whatsapp/AssignDialog";
-import Composer, { type ComposerSend } from "@/components/whatsapp/Composer";
+import Composer, { MAX_FILES, type ComposerSend } from "@/components/whatsapp/Composer";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
+import { MessageInfo, MessageMenu } from "@/components/whatsapp/MessageInfo";
 import TemplatePicker, { type TemplateChoice } from "@/components/whatsapp/TemplatePicker";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -158,36 +159,106 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     }
   };
 
-  const send = useCallback(async (s: ComposerSend) => {
-    setError(null);
-    stick.current = true;
+  // One message out: shown at once, then replaced by what the server keeps.
+  const sendOne = useCallback(async (mode: "message" | "note", text: string, file: File | undefined, reply: number | undefined) => {
     const clientId = newClientId();
+    const kind = !file ? "text" : file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "document";
     const base: WAMessage = {
-      id: -Date.now(), conversationId: conv.id, clientId, direction: s.mode === "note" ? "note" : "out", kind: s.file ? "document" : "text",
-      body: s.text, status: "queued", pending: true, createdAt: new Date().toISOString(),
+      id: -Date.now() - Math.random(), conversationId: conv.id, clientId, direction: mode === "note" ? "note" : "out", kind,
+      body: text, status: "queued", pending: true, createdAt: new Date().toISOString(),
       sender: { kind: "agent", userId: me, name: user?.name, hasAvatar: user?.hasAvatar, avatarVersion: user?.avatarVersion },
     };
-    if (s.file) base.media = { url: "", mime: s.file.type, name: s.file.name, size: s.file.size };
+    if (file) base.media = { url: file.type.startsWith("image/") ? URL.createObjectURL(file) : "", mime: file.type, name: file.name, size: file.size };
     setMessages((cur) => [...cur, base]);
-    const reply = replyTo?.id;
-    setReplyTo(null);
     try {
-      const saved = s.mode === "note"
-        ? await waApi.note(conv.id, s.text)
-        : s.file
-          ? await waApi.sendMedia(conv.id, s.file, s.text, clientId, reply)
-          : await waApi.send(conv.id, { clientId, kind: "text", body: s.text, replyTo: reply });
+      const saved = mode === "note"
+        ? await waApi.note(conv.id, text)
+        : file
+          ? await waApi.sendMedia(conv.id, file, text, clientId, reply)
+          : await waApi.send(conv.id, { clientId, kind: "text", body: text, replyTo: reply });
       setMessages((cur) => upsert(cur.filter((m) => m.clientId !== clientId || m.id === saved.id), { ...saved, clientId }));
     } catch (e) {
       setMessages((cur) => cur.filter((m) => m.clientId !== clientId));
+      throw e;
+    }
+  }, [conv.id, me, user]);
+
+  const send = useCallback(async (s: ComposerSend) => {
+    setError(null);
+    stick.current = true;
+    const reply = replyTo?.id;
+    setReplyTo(null);
+    const files = s.mode === "message" ? s.files ?? [] : [];
+    try {
+      if (files.length === 0) {
+        await sendOne(s.mode, s.text, undefined, reply);
+        return;
+      }
+      // Files go one after another so they arrive in the order chosen; the
+      // text rides with the first as its caption.
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await sendOne("message", i === 0 ? s.text : "", files[i], i === 0 ? reply : undefined);
+        } catch (e) {
+          // hand back only what did not go
+          throw Object.assign(e instanceof Error ? e : new Error("Gönderilemedi."), { remaining: files.slice(i), textSent: i > 0 });
+        }
+      }
+    } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
       throw e;
     }
-  }, [conv.id, me, user, replyTo]);
+  }, [sendOne, replyTo]);
+
+  // Right click on a message, and its info panel.
+  const [msgMenu, setMsgMenu] = useState<{ m: WAMessage; x: number; y: number } | null>(null);
+  const [info, setInfo] = useState<WAMessage | null>(null);
+
+  // Files dragged onto the chat go to the composer.
+  const [drag, setDrag] = useState(false);
+  const [dropped, setDropped] = useState<{ files: File[]; n: number }>({ files: [], n: 0 });
+  const dragDepth = useRef(0);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const onDragEnter = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current++;
+    setDrag(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDrag(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDrag(false);
+    if (!canReply || !open || conv.contact.blocked) return;
+    const list = Array.from(e.dataTransfer.files ?? []);
+    if (list.length) setDropped((d) => ({ files: list, n: d.n + 1 }));
+  };
 
   const sendTemplate = async (c: TemplateChoice) => {
     const saved = await waApi.send(conv.id, { clientId: newClientId(), kind: "template", templateId: c.templateId, params: c.params });
     setMessages((cur) => upsert(cur, saved));
+  };
+
+  // A resolved conversation closes; the list stays where it was.
+  const resolveNow = async () => {
+    setBusy("resolve");
+    setError(null);
+    try {
+      await waApi.resolve(conv.id);
+      setConfirmResolve(false);
+      onBack?.();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Çözülemedi.");
+      setConfirmResolve(false);
+    } finally {
+      setBusy(null);
+    }
   };
 
   const react = (m: WAMessage, emoji: string) => void act("react", () => waApi.send(conv.id, { clientId: newClientId(), kind: "reaction", targetId: m.id, emoji }));
@@ -235,7 +306,22 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     : `Bu sohbeti kimse üstlenmedi.${greeting ? " Karşıla dersen sohbet sana geçer ve karşılama mesajın gönderilir." : " Üstlenirsen sohbet sana geçer."}`;
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-card">
+    <section className="relative flex min-w-0 flex-1 flex-col bg-card" onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={(e) => hasFiles(e) && e.preventDefault()} onDrop={onDrop}>
+      {drag && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-card/80 p-6 backdrop-blur-sm">
+          <div className="flex max-w-md flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-wa-accent/60 bg-card px-10 py-12 text-center shadow-xl">
+            <span className="flex size-16 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent"><Paperclip className="size-7" /></span>
+            {canReply && open && !conv.contact.blocked ? (
+              <>
+                <p className="text-lg font-semibold">Dosyaları buraya bırakın</p>
+                <p className="text-sm text-muted-foreground">Görsel, video, ses ya da belge. Tek seferde en fazla {MAX_FILES} dosya; her biri ayrı mesaj olarak gider.</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">{!open ? "Müşterinin son mesajının üzerinden 24 saat geçti; dosya gönderilemez, önce şablonla yazın." : "Bu sohbete dosya gönderemezsiniz."}</p>
+            )}
+          </div>
+        </div>
+      )}
       <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border/60 bg-card px-3 md:px-4">
         {onBack && <button type="button" onClick={onBack} aria-label="Sohbet listesine dön" className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent md:hidden"><ArrowLeft className="size-5" /></button>}
         <button type="button" onClick={onPanel} data-tip="Kişi bilgisi" className="flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1 pr-2 text-left">
@@ -321,6 +407,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
                 onReact={canReply && open && m.direction !== "event" && !m.pending ? react : undefined}
                 onRetry={canReply ? retry : undefined}
                 onImage={setViewer}
+                onMenu={m.pending ? undefined : (msg, x, y) => setMsgMenu({ m: msg, x, y })}
               />
             </div>
           );
@@ -339,7 +426,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
           <div className="mx-auto flex max-w-2xl items-center gap-3 rounded-2xl bg-card px-4 py-2.5 shadow-sm">
             {t.owner ? <UserAvatar userId={t.owner.id} name={t.owner.name} hasAvatar={t.owner.hasAvatar} version={t.owner.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" /> : <span className="flex size-8 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent">{t.status === "bot" ? <Bot className="size-4" /> : <UserCheck className="size-4" />}</span>}
             <p className="min-w-0 flex-1 text-xs text-foreground/80">{claimHint}</p>
-            <button type="button" disabled={busy === "greet"} onClick={() => void act("greet", () => waApi.greet(conv.id))} className="flex shrink-0 items-center gap-1.5 rounded-full bg-wa-accent px-4 py-2 text-xs font-semibold text-white shadow-sm transition-transform hover:scale-105 disabled:opacity-60">
+            <button type="button" disabled={busy === "greet"} onClick={() => void act("greet", () => waApi.greet(conv.id))} className="flex shrink-0 items-center gap-1.5 rounded-full bg-wa-accent px-4 py-2 text-xs font-semibold text-wa-on-accent shadow-sm transition-transform hover:scale-105 disabled:opacity-60">
               <Hand className="size-3.5" /> {busy === "greet" ? "Bekleyin..." : claimLabel}
             </button>
           </div>
@@ -358,6 +445,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         onSend={send}
         onTemplate={() => setTemplates(true)}
         onTyping={() => void waApi.typing(conv.id).catch(() => undefined)}
+        dropped={dropped}
         onSuggest={wa.ai ? async (draft) => {
           try {
             return (await waApi.suggest(conv.id, draft)).text;
@@ -370,8 +458,14 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
 
       <TemplatePicker channelId={conv.channelId} open={templates} onClose={() => setTemplates(false)} onSend={sendTemplate} defaults={vars} />
       <AssignDialog conv={conv} open={assign} onClose={() => setAssign(false)} />
+      {msgMenu && (
+        <MessageMenu m={msgMenu.m} x={msgMenu.x} y={msgMenu.y} onClose={() => setMsgMenu(null)} onInfo={() => setInfo(msgMenu.m)}
+          onReply={canReply && msgMenu.m.direction !== "note" ? () => setReplyTo(msgMenu.m) : undefined}
+          onReact={canReply && open && msgMenu.m.direction !== "note" && msgMenu.m.status !== "queued" ? (e) => react(msgMenu.m, e) : undefined} />
+      )}
+      {info && <MessageInfo m={info} onClose={() => setInfo(null)} />}
       <ConfirmDialog open={confirmResolve} title="Sohbet çözüldü mü?" description={channel?.settings.survey.mode && channel.settings.survey.mode !== "off" ? "Sohbet kapanır ve müşteriye değerlendirme anketi gider. Müşteri tekrar yazarsa sohbet yeniden açılır." : "Sohbet kapanır. Müşteri tekrar yazarsa yeniden açılır."} confirmLabel="Çözüldü olarak kapat" tone="warning" busy={busy === "resolve"}
-        onConfirm={() => void act("resolve", () => waApi.resolve(conv.id)).then(() => setConfirmResolve(false))} onCancel={() => setConfirmResolve(false)} />
+        onConfirm={() => void resolveNow()} onCancel={() => setConfirmResolve(false)} />
       {viewer?.media && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-6" onClick={() => setViewer(null)}>
           <img src={viewer.media.url} alt="" className="max-h-full max-w-full rounded-xl object-contain shadow-2xl" />

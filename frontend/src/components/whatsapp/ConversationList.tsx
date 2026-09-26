@@ -107,7 +107,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
   };
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border/60 bg-card md:w-[24rem]">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border/60 bg-card">
       {header}
       <div className="space-y-2.5 px-3 pb-2">
         <div className="relative">
@@ -125,7 +125,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
                 className={cn("flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-[0.8rem] font-medium transition-colors",
                   on ? "bg-wa-accent/15 text-wa-accent" : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground")}>
                 {t.label}
-                {n > 0 && t.key !== "resolved" && <span className={cn("min-w-[1.1rem] rounded-full px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] tabular-nums", urgent ? "bg-destructive text-white" : on ? "bg-wa-accent text-white" : "bg-foreground/10")}>{n > 99 ? "99+" : n}</span>}
+                {n > 0 && t.key !== "resolved" && <span className={cn("min-w-[1.1rem] rounded-full px-1 text-center text-[0.65rem] font-bold leading-[1.1rem] tabular-nums", urgent ? "bg-destructive text-white" : on ? "bg-wa-accent text-wa-on-accent" : "bg-foreground/10")}>{n > 99 ? "99+" : n}</span>}
               </button>
             );
           })}
@@ -211,7 +211,7 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
             {owner && <span data-tip={`Sorumlu: ${owner.id === me ? "sen" : owner.name}`}><UserAvatar userId={owner.id} name={owner.name} hasAvatar={owner.hasAvatar} version={owner.avatarVersion} className="size-4.5" fallbackClassName="bg-primary/10 text-[0.45rem] text-primary" /></span>}
             {muted && <BellOff className="size-3.5 text-muted-foreground" aria-label="Sessizde" />}
             {pinned && <Pin className="size-3.5 rotate-45 text-muted-foreground" aria-label="Sabitlendi" />}
-            {unread && <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[0.68rem] font-bold leading-5 tabular-nums", muted ? "bg-muted-foreground/40 text-white" : "bg-wa-accent text-white")}>{c.unread > 99 ? "99+" : c.unread}</span>}
+            {unread && <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[0.68rem] font-bold leading-5 tabular-nums", muted ? "bg-muted-foreground/25 text-foreground/80" : "bg-wa-accent text-wa-on-accent")}>{c.unread > 99 ? "99+" : c.unread}</span>}
           </span>
         </span>
         {showChannel && <span className="mt-0.5 block truncate text-[0.65rem] text-muted-foreground/80">{c.channelName}{t && t.status !== "resolved" && !owner && t.status !== "bot" ? " · havuzda" : ""}</span>}

@@ -15,13 +15,31 @@ import { clock, menuOptions, menuText } from "@/whatsapp/util";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
+// Each person's name keeps one colour, readable on the green bubble in
+// both themes, so a glance tells who wrote what.
+const NAME_COLORS = [
+  "text-sky-700 dark:text-sky-300",
+  "text-orange-700 dark:text-orange-300",
+  "text-pink-700 dark:text-pink-300",
+  "text-violet-700 dark:text-violet-300",
+  "text-blue-700 dark:text-blue-300",
+  "text-rose-700 dark:text-rose-300",
+  "text-fuchsia-700 dark:text-fuchsia-300",
+  "text-amber-800 dark:text-amber-200",
+  "text-indigo-700 dark:text-indigo-300",
+  "text-cyan-800 dark:text-cyan-300",
+];
+export function nameColor(id?: number): string {
+  return NAME_COLORS[Math.abs(id ?? 0) % NAME_COLORS.length];
+}
+
 function size(n?: number): string {
   if (!n) return "";
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function MessageBubble({ m, head, onReply, onReact, onRetry, onImage, highlight }: { m: WAMessage; head: boolean; onReply?: (m: WAMessage) => void; onReact?: (m: WAMessage, emoji: string) => void; onRetry?: (m: WAMessage) => void; onImage?: (m: WAMessage) => void; highlight?: boolean }) {
+export default function MessageBubble({ m, head, onReply, onReact, onRetry, onImage, onMenu, highlight }: { m: WAMessage; head: boolean; onReply?: (m: WAMessage) => void; onReact?: (m: WAMessage, emoji: string) => void; onRetry?: (m: WAMessage) => void; onImage?: (m: WAMessage) => void; onMenu?: (m: WAMessage, x: number, y: number) => void; highlight?: boolean }) {
   const [emoji, setEmoji] = useState(false);
 
   if (m.direction === "event") {
@@ -48,17 +66,17 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
   return (
     <div id={`wa-m-${m.id}`} className={cn("group flex px-[4%] md:px-[7%]", out ? "justify-end" : "justify-start", head ? "mt-2.5" : "mt-0.5")}>
       <div className={cn("relative flex max-w-[min(34rem,85%)] flex-col md:max-w-[65%]", out ? "items-end" : "items-start")}>
-        <div className={cn("relative rounded-lg text-[0.9rem] leading-snug text-foreground shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] transition-shadow", fill, media ? "p-1" : "px-2 pt-1.5 pb-1", head && (out ? "rounded-tr-none" : "rounded-tl-none"), highlight && "ring-2 ring-wa-accent")}>
+        <div onContextMenu={onMenu ? (e) => { e.preventDefault(); onMenu(m, e.clientX, e.clientY); } : undefined} className={cn("relative rounded-lg text-[0.9rem] leading-snug text-foreground shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] transition-shadow", fill, media ? "p-1" : "px-2 pt-1.5 pb-1", head && (out ? "rounded-tr-none" : "rounded-tl-none"), highlight && "ring-2 ring-wa-accent")}>
           {head && (
             <svg viewBox="0 0 8 13" className={cn("absolute top-0 h-[13px] w-2", tail, out ? "-right-2" : "-left-2 -scale-x-100")} aria-hidden>
               <path d="M0 0h8L1.5 9.2C.9 10.1 0 9.6 0 8.6V0Z" fill="currentColor" />
             </svg>
           )}
           {head && out && who && (
-            <span className={cn("mb-0.5 flex items-center gap-1 px-0.5 text-[0.78rem] font-semibold", note ? "text-amber-700 dark:text-amber-300" : bot ? "text-violet-600 dark:text-violet-300" : auto ? "text-sky-600 dark:text-sky-300" : "text-emerald-700 dark:text-emerald-200", media && "px-1.5 pt-0.5")}>
+            <span className={cn("mb-0.5 flex items-center gap-1 px-0.5 text-[0.8rem] font-medium", note ? "text-amber-800 dark:text-amber-300" : bot ? "text-violet-700 dark:text-violet-300" : auto ? "text-sky-700 dark:text-sky-300" : nameColor(m.sender.userId), media && "px-1.5 pt-0.5")}>
               {note ? <Lock className="size-3" /> : bot ? <Bot className="size-3" /> : auto ? <Zap className="size-3" /> : null}
               {note ? `İç not · ${who}` : who}
-              {m.kind === "template" && <span className="rounded bg-foreground/8 px-1 py-px text-[0.6rem] font-medium text-muted-foreground">şablon</span>}
+              {m.kind === "template" && <span className="rounded bg-foreground/8 px-1 py-px text-[0.6rem] font-medium text-wa-meta">şablon</span>}
             </span>
           )}
           {m.replyTo && (
@@ -80,7 +98,7 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
             ) : body ? (
               <span className="whitespace-pre-wrap break-words">{waText(body)}</span>
             ) : null}
-            <span className={cn("relative top-1.5 float-right ml-3 flex items-center gap-1 text-[0.68rem] tabular-nums text-muted-foreground", !body && media && "absolute right-2 bottom-2 top-auto rounded-full bg-black/35 px-1.5 text-white")}>
+            <span className={cn("relative top-1.5 float-right ml-3 flex items-center gap-1 text-[0.68rem] tabular-nums text-wa-meta", !body && media && "absolute right-2 bottom-2 top-auto rounded-full bg-black/35 px-1.5 text-white")}>
               {clock(m.createdAt)}
               {m.direction === "out" && <Ticks status={m.status} className={cn(!body && media && "text-white")} />}
             </span>

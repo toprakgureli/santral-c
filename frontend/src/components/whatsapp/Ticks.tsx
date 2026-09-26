@@ -9,13 +9,13 @@ export default function Ticks({ status, className }: { status: string; className
   const size = cn("size-3.5 shrink-0", className);
   switch (status) {
     case "queued":
-      return <Clock3 className={cn(size, "text-muted-foreground/70")} aria-label="Gönderiliyor" />;
+      return <Clock3 className={cn(size, "text-wa-meta/80")} aria-label="Gönderiliyor" />;
     case "sent":
-      return <Check className={cn(size, "text-muted-foreground")} aria-label="Gönderildi" />;
+      return <Check className={cn(size, "text-wa-meta")} aria-label="Gönderildi" />;
     case "delivered":
-      return <CheckCheck className={cn(size, "text-muted-foreground")} aria-label="İletildi" />;
+      return <CheckCheck className={cn(size, "text-wa-meta")} aria-label="İletildi" />;
     case "read":
-      return <CheckCheck className={cn(size, "text-sky-500")} aria-label="Okundu" />;
+      return <CheckCheck className={cn(size, "text-[#53bdeb]")} aria-label="Okundu" />;
     case "failed":
       return <AlertCircle className={cn(size, "text-destructive")} aria-label="Gönderilemedi" />;
   }

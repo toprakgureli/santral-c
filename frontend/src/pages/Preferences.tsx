@@ -82,7 +82,7 @@ export function Preferences() {
               <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-warning/10 px-4 py-3">
                 <BellOff className="size-5 shrink-0 text-warning" />
                 <p className="min-w-0 flex-1 text-sm">Sessizde, <b>{until(wa.prefs.mutedUntil)}</b>. Mesajlar gelmeye devam eder ama ses ve bildirim çıkmaz.</p>
-                <button type="button" onClick={() => void run(() => wa.setPrefs({ mute: "off" }))} className="rounded-full bg-wa-accent px-4 py-1.5 text-sm font-semibold text-white shadow-sm">Sesi aç</button>
+                <button type="button" onClick={() => void run(() => wa.setPrefs({ mute: "off" }))} className="rounded-full bg-wa-accent px-4 py-1.5 text-sm font-semibold text-wa-on-accent shadow-sm">Sesi aç</button>
               </div>
             ) : (
               <>

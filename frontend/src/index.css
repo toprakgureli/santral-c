@@ -38,6 +38,8 @@
   --color-wa-out: var(--wa-out);
   --color-wa-note: var(--wa-note);
   --color-wa-accent: var(--wa-accent);
+  --color-wa-on-accent: var(--wa-on-accent);
+  --color-wa-meta: var(--wa-meta);
   --color-wa-bar: var(--wa-bar);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -554,7 +556,9 @@ body[data-drag="grab"] { cursor: grabbing; }
   --wa-in: #ffffff;
   --wa-out: #d9fdd3;
   --wa-note: #fff3c4;
-  --wa-accent: #00a884;
+  --wa-accent: #008069;
+  --wa-on-accent: #ffffff;
+  --wa-meta: #667781;
   --wa-bar: #f0f2f5;
 }
 .dark {
@@ -562,7 +566,9 @@ body[data-drag="grab"] { cursor: grabbing; }
   --wa-in: #202c33;
   --wa-out: #005c4b;
   --wa-note: #4a3f16;
-  --wa-accent: #21c063;
+  --wa-accent: #00a884;
+  --wa-on-accent: #0b141a;
+  --wa-meta: #aebac1;
   --wa-bar: #202c33;
 }
 .wa-wall {

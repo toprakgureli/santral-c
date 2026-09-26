@@ -46,7 +46,7 @@ const agent = (id: number, name: string) => ({ kind: "agent", userId: id, name, 
 const messages = [
   { id: 1, conversationId: 1, direction: "in", kind: "text", body: "Merhaba, internetim yarım saattir çalışmıyor.", status: "received", sender: { kind: "customer", name: "Zeynep Arslan" }, createdAt: ago(30), referral: ad },
   { id: 2, conversationId: 1, direction: "event", kind: "text", body: "Toprak sohbeti karşıladı.", status: "received", sender: { kind: "system" }, createdAt: ago(28) },
-  { id: 3, conversationId: 1, direction: "out", kind: "text", body: "Merhaba Zeynep, ben teknik destek uzmanınız Toprak. Sizinle ben ilgileniyorum.", status: "read", sender: agent(1, "Toprak Şahin Güreli"), createdAt: ago(28), readAt: ago(27) },
+  { id: 3, conversationId: 1, direction: "out", kind: "text", body: "Merhaba Zeynep, ben teknik destek uzmanınız Toprak. Sizinle ben ilgileniyorum.", status: "read", sender: agent(1, "Toprak Şahin Güreli"), createdAt: ago(28), sentAt: ago(28), deliveredAt: ago(28), readAt: ago(27) },
   { id: 4, conversationId: 1, direction: "note", kind: "text", body: "Bölgede arıza kaydı var, saha ekibine sordum.", status: "received", sender: agent(2, "Ayşe Kaya"), createdAt: ago(10) },
   { id: 6, conversationId: 1, direction: "out", kind: "text", body: "Bölgenizde *genel bir arıza* var, ekiplerimiz çalışıyor. Yaklaşık 1 saat içinde düzelmesi bekleniyor.", status: "delivered", sender: agent(1, "Toprak Şahin Güreli"), createdAt: ago(5), reactions: [{ emoji: "👍", ours: false }] },
   { id: 5, conversationId: 1, direction: "in", kind: "text", body: "Tamam teşekkürler, bekliyorum", status: "received", sender: { kind: "customer", name: "Zeynep Arslan" }, createdAt: ago(3) },
@@ -145,6 +145,7 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (p === "/events") return [{ id: 7, channelId: 1, status: "failed", attempts: 8, lastError: "medya indirilemedi: 404", receivedAt: ago(90), summary: "1 mesaj" }];
   if (p === "/reports") return report;
   if (p === "/ai/status") return { available: true };
+  if (/^\/conversations\/\d+\/reads$/.test(p)) return [{ user: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, messageId: 99, readAt: ago(29) }, { user: { id: 2, name: "Ayşe Kaya", hasAvatar: false }, messageId: 1, readAt: ago(12) }];
   if (p === "/me") {
     const b = (body ?? {}) as { sound?: boolean; desktop?: boolean; mute?: string };
     if (method === "PUT") {
