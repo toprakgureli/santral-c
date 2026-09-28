@@ -11,7 +11,7 @@ import { PhoneMissed, Settings2, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import WhatsAppTemplateDialog from "@/components/WhatsAppTemplateDialog";
-import { Button } from "@/components/ui";
+import { Button, Layer } from "@/components/ui";
 import { setWhatsAppPromptOpen } from "@/lib/overlays";
 import { whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 import { displayNumber } from "@/softphone/dial";
@@ -56,6 +56,7 @@ export default function UnreachedPrompt() {
   }
 
   return (
+    <Layer.Provider value={58}>
     <div className="fixed inset-0 z-[58] flex items-center justify-center bg-background/60 p-4 backdrop-blur-sm">
       <WhatsAppTemplateDialog open={editing} onClose={() => setEditing(false)} previewNumber={shown} />
       <div
@@ -115,5 +116,6 @@ export default function UnreachedPrompt() {
         </div>
       </div>
     </div>
+    </Layer.Provider>
   );
 }

@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { Clock, Crown, Pause, Trophy, UserPlus, X } from "lucide-react";
-import { Button, ConfirmDialog, Modal } from "@/components/ui";
+import { Button, ConfirmDialog, Layer, Modal } from "@/components/ui";
 import PeoplePicker from "@/components/teams/PeoplePicker";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { ICONS } from "@/games/StartGameDialog";
@@ -46,6 +46,7 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
   const emptySeats = g ? Math.max(need, g.maxPlayers > 0 ? Math.min(3, g.maxPlayers - seated.length - g.invited.length) : Math.min(3, need)) : 0;
 
   return (
+    <Layer.Provider value={85}>
     <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm" onClick={onClose}>
       <div className="flex h-[min(92svh,820px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <header className="relative flex h-16 shrink-0 items-center gap-3 overflow-hidden bg-gradient-to-r from-violet-600 via-indigo-600 to-primary px-4 text-white">
@@ -241,5 +242,6 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
         </Modal>
       )}
     </div>
+    </Layer.Provider>
   );
 }

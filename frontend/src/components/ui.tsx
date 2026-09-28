@@ -1,4 +1,5 @@
-import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createContext, forwardRef, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, TriangleAlert, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -181,6 +182,17 @@ export function Badge({ tone = "slate", children }: { tone?: "slate" | "green" |
   return <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-medium", badgeTones[tone])}>{children}</span>;
 }
 
+// Windows are drawn at the top of the page, not where they are opened, so a
+// parent that clips or transforms its content (a chat composer, a card
+// with a blur) cannot trap them. An overlay that opens windows of its own
+// says how high it sits through Layer, and a window opened from it (or
+// from another window) stays above it.
+export const Layer = createContext(0);
+
+function useLayer(base: number): number {
+  return Math.max(base, useContext(Layer) + 1);
+}
+
 export function Modal({
   open,
   onClose,
@@ -198,10 +210,12 @@ export function Modal({
   footer?: ReactNode;
   children: ReactNode;
 }) {
+  const z = useLayer(50);
   if (!open) return null;
   const width = size === "lg" ? "max-w-3xl" : "max-w-md";
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+  return createPortal(
+    <Layer.Provider value={z}>
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: z }} onClick={onClose}>
       <div
         className={cn("flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl", width)}
         onClick={(e) => e.stopPropagation()}
@@ -214,6 +228,8 @@ export function Modal({
         {footer && <footer className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3">{footer}</footer>}
       </div>
     </div>
+    </Layer.Provider>,
+    document.body,
   );
 }
 
@@ -356,6 +372,7 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const z = useLayer(80);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -365,8 +382,8 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, busy, onCancel]);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={() => !busy && onCancel()}>
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: z }} onClick={() => !busy && onCancel()}>
       <div
         role="alertdialog"
         aria-modal="true"
@@ -390,6 +407,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
