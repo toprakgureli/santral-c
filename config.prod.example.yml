@@ -4,7 +4,8 @@
 app:
   name: santral-c
   development: live
-  port: "8090"              # internal only; nginx proxies to it
+  host: "127.0.0.1"         # only nginx on this machine reaches the backend
+  port: "8090"
   # nginx runs on the same host, so trust the loopback proxy. This makes the
   # backend read the real client IP from X-Forwarded-For (set by nginx from
   # Cloudflare's CF-Connecting-IP) for audit trails and lockouts.

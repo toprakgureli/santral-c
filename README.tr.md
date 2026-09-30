@@ -27,7 +27,7 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
 
 | | |
 |---|---|
-| Arka uç | ~37.000 satır Go, 16 modül, 32 SQL migration |
+| Arka uç | ~37.000 satır Go, 16 modül, 38 SQL migration |
 | Ön yüz | ~30.000 satır TypeScript / React |
 | Yetki | Modüllere ayrılmış 75 yetki, her özellik bir yetkiye bağlı |
 | Canlı veri | Çağrı, durum, sohbet ve WhatsApp için Server-Sent Events |
@@ -119,7 +119,8 @@ değiştirmeniz istenir.
 
 | Anahtar | Ne yazılacak |
 |---|---|
-| `auth.secret` | Uzun, rastgele bir metin. **Panelden girilen bütün gizli bilgileri de bu şifreler: bir kez belirleyin, sonra değiştirmeyin**, yoksa o bilgiler bir daha okunamaz. |
+| `auth.secret` | Uzun, rastgele bir metin; oturum anahtarlarını imzalar. |
+| `security.dataKey` | 64 karakterlik rastgele değer; panelden girilen bütün gizli bilgileri şifreler. Bir kopyasını güvenli bir yerde saklayın. Değiştirmek için eskisini `security.previousDataKeys` alanına taşıyıp servisi yeniden başlatın ([DEPLOY.md](DEPLOY.md)). |
 | `security.mfaKey` | Tam 32 bayt rastgele değer; TOTP sırlarını şifreler. |
 | `owner.*` | İlk yönetici hesabı. |
 | `database.*`, `redis.*` | PostgreSQL ve Redis bağlantınız. |
@@ -131,7 +132,7 @@ değiştirmeniz istenir.
 | `bulutsantralim.sipKey` | Tam 32 bayt rastgele değer; kayıtlı SIP şifrelerini şifreler. |
 | `drive.clientId`, `clientSecret`, `redirectUrl` | Google Cloud'da bir OAuth istemcisi (Web application). Yönlendirme adresi tam olarak `https://<panel>/api/v1/teams/drive/callback` olmalı. |
 
-Rastgele değerler için: `openssl rand -base64 48` (secret) ve
+Rastgele değerler için: `openssl rand -hex 32` (secret ve dataKey) ve
 `openssl rand -hex 16` (32 baytlık anahtarlar).
 
 ### Panelden yapılan ayarlar (config'e yazılmaz)
@@ -159,9 +160,15 @@ Rastgele değerler için: `openssl rand -base64 48` (secret) ve
 ### Göndermeden önce
 
 ```bash
-cd backend && gofmt -l . && go vet ./... && go test ./...
+cd backend && gofmt -l . && go vet ./... && golangci-lint run ./... && go test ./...
 cd frontend && npx tsc --noEmit && npm run build
 ```
+
+Aynı kontroller GitHub'da her push'ta da çalışır; orada ek olarak yarış
+durumu kontrolü, bilinen açık taraması ve veritabanlı testler de koşar
+(`.github/workflows/ci.yml`). Veritabanlı testleri yerelde çalıştırmak için
+`SANTRAL_TEST_DSN` (PostgreSQL bağlantı bilgisi) ve `SANTRAL_TEST_REDIS`
+(`localhost:6379`) tanımlı olmalı.
 
 ## Canlı ortam
 

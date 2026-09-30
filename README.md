@@ -27,7 +27,7 @@ everything an agent and a team lead actually work in.
 
 | | |
 |---|---|
-| Backend | ~37,000 lines of Go, 16 domain modules, 32 SQL migrations |
+| Backend | ~37,000 lines of Go, 16 domain modules, 38 SQL migrations |
 | Frontend | ~30,000 lines of TypeScript / React |
 | Access control | 75 permissions grouped by module, every feature behind one |
 | Real time | Server-Sent Events for calls, presence, chat and WhatsApp |
@@ -122,7 +122,8 @@ example.
 
 | Key | What to put |
 |---|---|
-| `auth.secret` | A long random string. **It also encrypts every credential entered in the panel: set it once and never change it**, or those credentials can no longer be read. |
+| `auth.secret` | A long random string; signs session tokens. |
+| `security.dataKey` | 64 random hex characters; seals every credential entered in the panel. Keep a copy somewhere safe. To replace it, move the old value to `security.previousDataKeys` and restart ([DEPLOY.md](DEPLOY.md)). |
 | `security.mfaKey` | Exactly 32 random bytes; encrypts TOTP secrets. |
 | `owner.*` | The first admin account. |
 | `database.*`, `redis.*` | Your PostgreSQL and Redis. |
@@ -134,7 +135,7 @@ example.
 | `bulutsantralim.sipKey` | Exactly 32 random bytes; encrypts stored SIP passwords. |
 | `drive.clientId`, `clientSecret`, `redirectUrl` | A Google Cloud OAuth client (Web application). The redirect URI must be exactly `https://<panel>/api/v1/teams/drive/callback`. |
 
-Generate the random values with `openssl rand -base64 48` (secret) and
+Generate the random values with `openssl rand -hex 32` (secret, data key) and
 `openssl rand -hex 16` (32-byte keys).
 
 ### What you set in the panel (not in the config)
@@ -163,9 +164,14 @@ Generate the random values with `openssl rand -base64 48` (secret) and
 ### Checks before pushing
 
 ```bash
-cd backend && gofmt -l . && go vet ./... && go test ./...
+cd backend && gofmt -l . && go vet ./... && golangci-lint run ./... && go test ./...
 cd frontend && npx tsc --noEmit && npm run build
 ```
+
+The same checks, plus the race detector, govulncheck and the database tests,
+run on GitHub for every push (`.github/workflows/ci.yml`). The database
+tests run locally too when `SANTRAL_TEST_DSN` (a PostgreSQL connection
+string) and `SANTRAL_TEST_REDIS` (`localhost:6379`) are set.
 
 ## Production
 

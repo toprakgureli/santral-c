@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -98,12 +99,12 @@ func run() error {
 	srv.start(ctx, &workers)
 
 	go func() {
-		if err := app.Listen(":" + configs.Cnf.App.Port); err != nil {
+		if err := app.Listen(net.JoinHostPort(configs.Cnf.App.Host, configs.Cnf.App.Port)); err != nil {
 			slog.Error("server stopped", "error", err)
 			stop()
 		}
 	}()
-	slog.Info("server started", "port", configs.Cnf.App.Port, "env", string(configs.Cnf.App.Development), "version", version, "buildTime", buildTime)
+	slog.Info("server started", "host", configs.Cnf.App.Host, "port", configs.Cnf.App.Port, "env", string(configs.Cnf.App.Development), "version", version, "buildTime", buildTime)
 
 	<-ctx.Done()
 	slog.Info("shutdown signal received")

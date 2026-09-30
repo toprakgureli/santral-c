@@ -30,12 +30,15 @@ const (
 
 // App holds general application settings.
 type App struct {
-	Name           string      `mapstructure:"name"`
-	Development    Development `mapstructure:"development"`
-	Port           string      `mapstructure:"port"`
-	TrustedProxies string      `mapstructure:"trustedProxies"`
-	CORSOrigins    string      `mapstructure:"corsOrigins"`
-	PublicURL      string      `mapstructure:"publicUrl"`
+	Name        string      `mapstructure:"name"`
+	Development Development `mapstructure:"development"`
+	// Host is the address the server listens on; empty means every
+	// interface. Behind nginx on the same machine it is 127.0.0.1.
+	Host           string `mapstructure:"host"`
+	Port           string `mapstructure:"port"`
+	TrustedProxies string `mapstructure:"trustedProxies"`
+	CORSOrigins    string `mapstructure:"corsOrigins"`
+	PublicURL      string `mapstructure:"publicUrl"`
 }
 
 // Auth holds token and cookie settings.
