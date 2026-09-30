@@ -2,12 +2,14 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -290,13 +292,20 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 	if !v.can(enums.WATake) {
 		return errs.Forbidden("Sohbeti devralma yetkiniz yok.")
 	}
-	if ticket.OwnerID != nil && *ticket.OwnerID == actorID {
-		return nil
-	}
 	before := s.audience(ctx, ticket)
+	var previous *uint
+	taken := false
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if ticket.OwnerID != nil {
-			if err := tx.Exec("UPDATE wa_ticket_participants SET role = 'helper' WHERE ticket_id = ? AND user_id = ?", ticket.ID, *ticket.OwnerID).Error; err != nil {
+		fresh, err := lockTicket(tx, ticket.ID)
+		if err != nil {
+			return err
+		}
+		if fresh.OwnerID != nil && *fresh.OwnerID == actorID {
+			return nil
+		}
+		previous, taken = fresh.OwnerID, true
+		if previous != nil {
+			if err := tx.Exec("UPDATE wa_ticket_participants SET role = 'helper' WHERE ticket_id = ? AND user_id = ?", ticket.ID, *previous).Error; err != nil {
 				return err
 			}
 		}
@@ -307,14 +316,17 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 			ON CONFLICT (ticket_id, user_id) DO UPDATE SET role = 'owner'`, ticket.ID, actorID).Error; err != nil {
 			return err
 		}
-		return tx.Exec("INSERT INTO wa_assignments (ticket_id, kind, from_user, to_user, by_user) VALUES (?, 'take', ?, ?, ?)", ticket.ID, ticket.OwnerID, actorID, actorID).Error
+		return tx.Exec("INSERT INTO wa_assignments (ticket_id, kind, from_user, to_user, by_user) VALUES (?, 'take', ?, ?, ?)", ticket.ID, previous, actorID, actorID).Error
 	})
 	if err != nil {
 		return errs.Internal(err)
 	}
+	if !taken {
+		return nil
+	}
 	s.event(ctx, nil, conv, ticket.ID, actorID, s.userName(ctx, actorID)+" sohbeti devraldı.")
-	if ticket.OwnerID != nil {
-		s.push.Push([]uint{*ticket.OwnerID}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.userName(ctx, actorID) + " bir sohbetinizi devraldı. Siz yardımcı olarak kaldınız.", Level: "info"})
+	if previous != nil {
+		s.push.Push([]uint{*previous}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.userName(ctx, actorID) + " bir sohbetinizi devraldı. Siz yardımcı olarak kaldınız.", Level: "info"})
 	}
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
@@ -352,7 +364,15 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 	}
 	before := s.audience(ctx, ticket)
 	var teamName, userName string
+	wasBot := false
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Work from the row as it is now: someone may have taken or moved
+		// the ticket since it was read.
+		fresh, err := lockTicket(tx, ticket.ID)
+		if err != nil {
+			return err
+		}
+		wasBot = fresh.Status == "bot"
 		var team *uint
 		if in.TeamID > 0 {
 			team = uintPtr(in.TeamID)
@@ -361,14 +381,14 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 				return errs.NotFound("Ekip bulunamadı.")
 			}
 		} else {
-			team = ticket.TeamID
+			team = fresh.TeamID
 		}
 		var owner *uint
 		if in.UserID > 0 {
 			owner = uintPtr(in.UserID)
 		}
-		if ticket.OwnerID != nil && (owner == nil || *ticket.OwnerID != *owner) {
-			if err := tx.Exec("UPDATE wa_ticket_participants SET role = 'helper' WHERE ticket_id = ? AND user_id = ?", ticket.ID, *ticket.OwnerID).Error; err != nil {
+		if fresh.OwnerID != nil && (owner == nil || *fresh.OwnerID != *owner) {
+			if err := tx.Exec("UPDATE wa_ticket_participants SET role = 'helper' WHERE ticket_id = ? AND user_id = ?", ticket.ID, *fresh.OwnerID).Error; err != nil {
 				return err
 			}
 		}
@@ -382,10 +402,11 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 			}
 		}
 		return tx.Exec("INSERT INTO wa_assignments (ticket_id, kind, from_user, to_user, team_id, by_user, note) VALUES (?, 'transfer', ?, ?, ?, ?, ?)",
-			ticket.ID, ticket.OwnerID, owner, team, actorID, strings.TrimSpace(in.Note)).Error
+			ticket.ID, fresh.OwnerID, owner, team, actorID, strings.TrimSpace(in.Note)).Error
 	})
 	if err != nil {
-		if e, ok := err.(*errs.Error); ok {
+		var e *errs.Error
+		if errors.As(err, &e) {
 			return e
 		}
 		return errs.Internal(err)
@@ -408,11 +429,22 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 		s.event(ctx, nil, conv, ticket.ID, actorID, line)
 		s.distribute(ctx, ch, ticket.ID)
 	}
-	if ticket.Status == "bot" {
+	if wasBot {
 		s.endBot(ctx, conv.ID, "handoff")
 	}
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
+}
+
+// lockTicket reads a ticket's current state and holds its row until the
+// transaction ends, so two people changing it at once take turns instead
+// of overwriting each other.
+func lockTicket(tx *gorm.DB, id uint) (*models.WATicket, error) {
+	var t models.WATicket
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&t, id).Error; err != nil {
+		return nil, fmt.Errorf("ticket %d could not be locked: %w", id, err)
+	}
+	return &t, nil
 }
 
 // Resolve closes a ticket; the survey goes out if the device asks for one.
@@ -439,9 +471,15 @@ func (s *Service) resolve(ctx context.Context, conv *models.WAConversation, tick
 	if actorID > 0 {
 		by = uintPtr(actorID)
 	}
-	if err := s.db.WithContext(ctx).Exec(`UPDATE wa_tickets SET status = 'resolved', resolved_at = now(), resolved_by = ?,
-		awaiting_since = NULL, waiting_listed_at = NULL, updated_at = now() WHERE id = ?`, by, ticket.ID).Error; err != nil {
-		return errs.Internal(err)
+	// Only the first of two people closing at once goes on, so the survey
+	// and the closing rules run once.
+	res := s.db.WithContext(ctx).Exec(`UPDATE wa_tickets SET status = 'resolved', resolved_at = now(), resolved_by = ?,
+		awaiting_since = NULL, waiting_listed_at = NULL, updated_at = now() WHERE id = ? AND status <> 'resolved'`, by, ticket.ID)
+	if res.Error != nil {
+		return errs.Internal(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil
 	}
 	s.endBot(ctx, conv.ID, "end")
 	if actorID > 0 {
@@ -471,8 +509,12 @@ func (s *Service) Reopen(ctx context.Context, actorID, conversationID uint) erro
 		return nil
 	}
 	before := s.audience(ctx, ticket)
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open', reopen_count = reopen_count + 1, resolved_at = NULL, updated_at = now() WHERE id = ?", ticket.ID).Error; err != nil {
-		return errs.Internal(err)
+	res := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open', reopen_count = reopen_count + 1, resolved_at = NULL, updated_at = now() WHERE id = ? AND status = 'resolved'", ticket.ID)
+	if res.Error != nil {
+		return errs.Internal(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil
 	}
 	s.event(ctx, nil, conv, ticket.ID, actorID, s.userName(ctx, actorID)+" sohbeti yeniden açtı.")
 	s.publish(ctx, conv.ID, nil, before)
@@ -529,8 +571,18 @@ func (s *Service) UpdateTicket(ctx context.Context, actorID, conversationID uint
 	if in.Tags != nil {
 		fields["tags"] = jsonString(cleanTags(*in.Tags))
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WATicket{}).Where("id = ?", ticket.ID).Updates(fields).Error; err != nil {
-		return errs.Internal(err)
+	q := s.db.WithContext(ctx).Model(&models.WATicket{}).Where("id = ?", ticket.ID)
+	if _, changesStatus := fields["status"]; changesStatus {
+		// A status change must not bring back a ticket someone closed
+		// in the meantime.
+		q = q.Where("status <> 'resolved'")
+	}
+	res := q.Updates(fields)
+	if res.Error != nil {
+		return errs.Internal(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return errs.Conflict("Sohbet bu arada kapatıldı. Değiştirmek için önce yeniden açın.", nil)
 	}
 	for _, l := range lines {
 		s.event(ctx, nil, conv, ticket.ID, actorID, l)

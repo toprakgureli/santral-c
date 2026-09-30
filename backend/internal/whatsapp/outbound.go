@@ -320,7 +320,13 @@ func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *model
 
 // markAnswered records that a person answered: the wait is over, the
 // person joins the ticket, and a template brings a resolved ticket back.
-func markAnswered(tx *gorm.DB, ticket *models.WATicket, userID uint, template bool) error {
+// It works on the locked current row, so two people answering an unowned
+// ticket at once do not both become its owner.
+func markAnswered(tx *gorm.DB, stale *models.WATicket, userID uint, template bool) error {
+	ticket, err := lockTicket(tx, stale.ID)
+	if err != nil {
+		return err
+	}
 	if ticket.WaitingListedAt != nil && ticket.AwaitingSince != nil {
 		wait := int(time.Since(*ticket.AwaitingSince).Seconds())
 		if wait > ticket.LongestWaitSec {
