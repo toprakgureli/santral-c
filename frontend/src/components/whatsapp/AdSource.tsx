@@ -4,6 +4,7 @@
 import { ExternalLink, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WAReferral } from "@/whatsapp/types";
+import { safeHref } from "@/whatsapp/util";
 
 export function asReferral(v: unknown): WAReferral | null {
   if (!v || typeof v !== "object") return null;
@@ -28,8 +29,8 @@ export default function AdSource({ r, compact }: { r: WAReferral; compact?: bool
           {r.body && <span className={cn("block text-[0.7rem] text-muted-foreground", compact ? "line-clamp-1" : "line-clamp-3")}>{r.body}</span>}
         </span>
       </div>
-      {r.source_url && (
-        <a href={r.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 border-t border-foreground/10 py-1.5 text-[0.7rem] font-medium text-primary hover:bg-foreground/5">
+      {safeHref(r.source_url) && (
+        <a href={safeHref(r.source_url)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 border-t border-foreground/10 py-1.5 text-[0.7rem] font-medium text-primary hover:bg-foreground/5">
           <ExternalLink className="size-3" /> {r.source_type === "post" ? "Gönderiyi aç" : "Reklamı aç"}
         </a>
       )}

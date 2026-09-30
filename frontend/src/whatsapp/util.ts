@@ -202,10 +202,23 @@ export function templateParts(body: string): { text: string; buttons: TemplateBu
     const m = /^\[([^\]]+)\](?:\(([^)]*)\))?$/.exec(lines[lines.length - 1].trim());
     if (!m) break;
     lines.pop();
-    const href = m[2] || undefined;
+    const href = safeHref(m[2]);
     buttons.unshift({ label: m[1], href, kind: href?.startsWith("tel:") ? "phone" : href ? "link" : "reply" });
   }
   return { text: lines.join("\n").trimEnd(), buttons };
+}
+
+// safeHref lets a link from a message through only when it opens a web page
+// over https or dials a number; anything else (javascript:, data:, a file)
+// could run code in the panel, so it is dropped.
+export function safeHref(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === "https:" || url.protocol === "tel:" ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // waitShown is what the "Cevap bekliyor" badge counts from: the customer's

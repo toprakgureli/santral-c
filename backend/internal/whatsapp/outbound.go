@@ -228,14 +228,14 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 				}
 				switch f {
 				case "customer":
-					params.Body[i] = firstName(contactView(contact).Display)
+					params.Body[i] = oneLine(firstName(contactView(contact).Display))
 				case "agent":
 					if sender != nil {
-						params.Body[i] = firstName(sender.Name)
+						params.Body[i] = oneLine(firstName(sender.Name))
 					}
 				case "agent_full":
 					if sender != nil {
-						params.Body[i] = sender.Name
+						params.Body[i] = oneLine(sender.Name)
 					}
 				}
 			}

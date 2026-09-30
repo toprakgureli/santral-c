@@ -447,8 +447,31 @@ func templateStatusWord(e string) string {
 	return strings.ToLower(e)
 }
 
+// checkParams refuses template variables Meta would refuse: a line break,
+// a tab or more than four spaces in a row.
+func checkParams(vals []string) error {
+	for _, v := range vals {
+		if strings.ContainsAny(v, "\n\r\t") || strings.Contains(v, "     ") {
+			return errs.Invalid("Şablon değişkenleri satır sonu, sekme ya da art arda dörtten fazla boşluk içeremez.", nil)
+		}
+	}
+	return nil
+}
+
+// oneLine turns a value filled in automatically (a customer's name, an
+// answer a chatbot collected) into what a template variable accepts.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // buildTemplate prepares a template for sending and a readable preview.
 func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, string, error) {
+	if err := checkParams(p.Header); err != nil {
+		return nil, "", err
+	}
+	if err := checkParams(p.Body); err != nil {
+		return nil, "", err
+	}
 	var comps []struct {
 		Type    string `json:"type"`
 		Format  string `json:"format"`

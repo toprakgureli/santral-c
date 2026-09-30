@@ -1,9 +1,7 @@
 package verimor
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -22,6 +20,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
 )
 
 // IActorResolver loads the acting user for authorization.
@@ -578,11 +577,10 @@ func (s *Service) ExportCalls(ctx context.Context, actorID uint, filter Filter) 
 	if !actor.Can(enums.CDRExport) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını dışa aktarma yetkiniz yok.")
 	}
-	var buf bytes.Buffer
-	buf.WriteString("ï»¿") // UTF-8 BOM so Excel detects the encoding
-	w := csv.NewWriter(&buf)
-	w.Comma = ';'
-	_ = w.Write([]string{"Zaman", "Yön", "Kimden", "Kime", "Durum", "Süre (sn)", "Kayıt", "UUID"})
+	out := sheet.NewWriter()
+	if err := out.Row("Zaman", "Yön", "Kimden", "Kime", "Durum", "Süre (sn)", "Kayıt", "UUID"); err != nil {
+		return nil, errs.Internal(err)
+	}
 	filter.Limit = exportPageSize
 	for page := 1; page <= exportPages; page++ {
 		filter.Page = page
@@ -595,17 +593,19 @@ func (s *Service) ExportCalls(ctx context.Context, actorID uint, filter Filter) 
 			if c.Recording {
 				rec = "evet"
 			}
-			_ = w.Write([]string{c.StartedAt, c.Direction, c.FromNumber, c.ToNumber, c.Disposition, strconv.Itoa(c.DurationSeconds), rec, c.UUID})
+			if err := out.Row(c.StartedAt, c.Direction, c.FromNumber, c.ToNumber, c.Disposition, strconv.Itoa(c.DurationSeconds), rec, c.UUID); err != nil {
+				return nil, errs.Internal(err)
+			}
 		}
 		if len(list.Items) < exportPageSize || page >= list.TotalPages {
 			break
 		}
 	}
-	w.Flush()
-	if err := w.Error(); err != nil {
+	data, err := out.Bytes()
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	return buf.Bytes(), nil
+	return data, nil
 }
 
 // Calls returns a page of call records from the local mirror. Verimor's own

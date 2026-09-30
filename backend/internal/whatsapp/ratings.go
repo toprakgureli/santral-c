@@ -1,9 +1,7 @@
 package whatsapp
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,6 +9,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
 )
 
 // Ratings brings together every score customers gave: the survey at the end
@@ -334,10 +333,7 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 	if err != nil {
 		return nil, "", err
 	}
-	var buf bytes.Buffer
-	buf.Write([]byte{0xEF, 0xBB, 0xBF}) // so spreadsheet programs read Turkish letters right
-	w := csv.NewWriter(&buf)
-	w.Comma = ';'
+	w := sheet.NewWriter()
 	items := s.ratingItems(ctx, rows)
 	// one column per question, in the order they first appear
 	var questions []string
@@ -352,7 +348,9 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 	}
 	head := []string{"Tarih", "Kaynak", "Puan (ortalama)"}
 	head = append(head, questions...)
-	_ = w.Write(append(head, "Yorum", "Müşteri", "Numara", "Sohbet no", "Cihaz", "Temsilci"))
+	if err := w.Row(append(head, "Yorum", "Müşteri", "Numara", "Sohbet no", "Cihaz", "Temsilci")...); err != nil {
+		return nil, "", errs.Internal(err)
+	}
 	for _, it := range items {
 		src := "WhatsApp sohbeti"
 		if it.Source == "call" {
@@ -376,8 +374,13 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 			}
 			row = append(row, cell)
 		}
-		_ = w.Write(append(row, it.Comment, it.Customer, "+"+it.Phone, num, it.Channel, agent))
+		if err := w.Row(append(row, it.Comment, it.Customer, "+"+it.Phone, num, it.Channel, agent)...); err != nil {
+			return nil, "", errs.Internal(err)
+		}
 	}
-	w.Flush()
-	return buf.Bytes(), fmt.Sprintf("puanlamalar_%s_%s.csv", f.From, f.To), nil
+	data, err := w.Bytes()
+	if err != nil {
+		return nil, "", errs.Internal(err)
+	}
+	return data, fmt.Sprintf("puanlamalar_%s_%s.csv", f.From, f.To), nil
 }

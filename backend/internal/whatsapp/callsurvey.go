@@ -379,7 +379,7 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 	fill := strings.NewReplacer("{musteri}", customer, "{temsilci}", agent, "{tarih}", r.CreatedAt.In(istanbul).Format("02.01.2006"), "{link}", link)
 	params := TemplateParams{}
 	for _, p := range set.Params {
-		v := strings.TrimSpace(fill.Replace(p))
+		v := oneLine(fill.Replace(p))
 		if v == "" {
 			v = "-"
 		}

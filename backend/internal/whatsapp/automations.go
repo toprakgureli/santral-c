@@ -177,7 +177,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		}
 		params := make([]string, len(a.Params))
 		for i, p := range a.Params {
-			params[i] = fillVars(p, vars)
+			params[i] = oneLine(fillVars(p, vars))
 		}
 		obj, preview, err := buildTemplate(tpl, TemplateParams{Body: params})
 		if err != nil {
