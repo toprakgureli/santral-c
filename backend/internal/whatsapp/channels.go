@@ -367,7 +367,7 @@ type SettingsInput struct {
 // UpdateSettings saves a device's settings. Each section needs its own
 // permission; a section nobody touched needs none.
 func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in SettingsInput) (*ChannelView, error) {
-	u, err := s.users.GetByID(ctx, actorID)
+	u, err := s.settingsEditor(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
@@ -456,9 +456,48 @@ func validateSettings(s *ChannelSettings) error {
 
 var dayNames = [7]string{"Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"}
 
+// settingsSections are the parts of a device's settings that can be copied.
+var settingsSections = map[string]bool{
+	"readReceipts": true, "greeting": true, "distribution": true, "waiting": true,
+	"hours": true, "survey": true, "bot": true, "optout": true,
+}
+
+// settingsEditor loads the actor and checks that they use WhatsApp and may
+// change at least one part of a device's settings. Which parts they may
+// change is checked against what actually changes.
+func (s *Service) settingsEditor(ctx context.Context, actorID uint) (*models.User, error) {
+	u, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	if !u.Can(enums.WAView) {
+		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkiniz yok.")
+	}
+	for _, p := range []enums.Permission{enums.WASetReadReceipts, enums.WASetGreeting, enums.WASetDistribution, enums.WASetGeneral} {
+		if u.Can(p) {
+			return u, nil
+		}
+	}
+	return nil, errs.Forbidden("Cihaz ayarlarını değiştirme yetkiniz yok.")
+}
+
 // CopySettings copies chosen sections of another device's settings onto
 // this one. The copy is independent from then on.
 func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sections []string) (*ChannelView, error) {
+	if _, err := s.settingsEditor(ctx, actorID); err != nil {
+		return nil, err
+	}
+	if len(sections) == 0 {
+		return nil, errs.Invalid("Kopyalanacak en az bir bölüm seçin.", nil)
+	}
+	for _, sec := range sections {
+		if !settingsSections[sec] {
+			return nil, errs.Invalid("Bilinmeyen ayar bölümü: "+sec, nil)
+		}
+	}
+	if id == from {
+		return nil, errs.Invalid("Bir cihazın ayarları kendisine kopyalanamaz.", nil)
+	}
 	src, err := s.channel(ctx, from)
 	if err != nil {
 		return nil, err
