@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
+import RequirePermission from "./components/layout/RequirePermission";
+import { menuPermission, PAGE_PERMISSIONS } from "./lib/menu";
 import { Spinner } from "./components/ui";
 import { Audit } from "./pages/Audit";
 import { Calls } from "./pages/Calls";
@@ -47,27 +49,27 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/calls" element={<Calls />} />
-        <Route path="/performance" element={<TeamPerformance />} />
-        <Route path="/escalation-search" element={<EscalationSearch />} />
-        <Route path="/escalations" element={<Escalations />} />
-        <Route path="/roles" element={<Roles />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/teams" element={<Teams />} />
-        <Route path="/teams/:id" element={<Teams />} />
-        <Route path="/games/admin" element={<GamesAdmin />} />
+        <Route path="/calls" element={<RequirePermission need={menuPermission("/calls")}><Calls /></RequirePermission>} />
+        <Route path="/performance" element={<RequirePermission need={menuPermission("/performance")}><TeamPerformance /></RequirePermission>} />
+        <Route path="/escalation-search" element={<RequirePermission need={menuPermission("/escalation-search")}><EscalationSearch /></RequirePermission>} />
+        <Route path="/escalations" element={<RequirePermission need={menuPermission("/escalations")}><Escalations /></RequirePermission>} />
+        <Route path="/roles" element={<RequirePermission need={menuPermission("/roles")}><Roles /></RequirePermission>} />
+        <Route path="/users" element={<RequirePermission need={menuPermission("/users")}><Users /></RequirePermission>} />
+        <Route path="/settings" element={<RequirePermission need={menuPermission("/settings")}><Settings /></RequirePermission>} />
+        <Route path="/teams" element={<RequirePermission need={menuPermission("/teams")}><Teams /></RequirePermission>} />
+        <Route path="/teams/:id" element={<RequirePermission need={menuPermission("/teams")}><Teams /></RequirePermission>} />
+        <Route path="/games/admin" element={<RequirePermission need={PAGE_PERMISSIONS.gamesAdmin}><GamesAdmin /></RequirePermission>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/preferences" element={<Preferences />} />
         <Route path="/profile/:id" element={<Profile />} />
-        <Route path="/audit" element={<Audit />} />
-        <Route path="/whatsapp/settings" element={<WhatsAppSettings />} />
-        <Route path="/whatsapp/bots/:id" element={<WhatsAppBot />} />
-        <Route path="/whatsapp/reports" element={<WhatsAppReports />} />
-        <Route path="/whatsapp/ratings" element={<WhatsAppRatings />} />
-        <Route path="/whatsapp/callbacks" element={<WhatsAppCallbacks />} />
-        <Route path="/whatsapp" element={<WhatsApp />} />
-        <Route path="/whatsapp/:id" element={<WhatsApp />} />
+        <Route path="/audit" element={<RequirePermission need={menuPermission("/audit")}><Audit /></RequirePermission>} />
+        <Route path="/whatsapp/settings" element={<RequirePermission need={PAGE_PERMISSIONS.whatsappSettings}><WhatsAppSettings /></RequirePermission>} />
+        <Route path="/whatsapp/bots/:id" element={<RequirePermission need={PAGE_PERMISSIONS.whatsappBot}><WhatsAppBot /></RequirePermission>} />
+        <Route path="/whatsapp/reports" element={<RequirePermission need={PAGE_PERMISSIONS.whatsappReports}><WhatsAppReports /></RequirePermission>} />
+        <Route path="/whatsapp/ratings" element={<RequirePermission need={PAGE_PERMISSIONS.whatsappRatings}><WhatsAppRatings /></RequirePermission>} />
+        <Route path="/whatsapp/callbacks" element={<RequirePermission need={PAGE_PERMISSIONS.whatsappCallbacks}><WhatsAppCallbacks /></RequirePermission>} />
+        <Route path="/whatsapp" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />
+        <Route path="/whatsapp/:id" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

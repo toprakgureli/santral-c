@@ -42,6 +42,32 @@ export const MENU: MenuGroup[] = [
   },
 ];
 
+// Permissions of pages that are not in the side menu. Opening any of them
+// needs one of the listed permissions, the same ones the links to them ask.
+export const PAGE_PERMISSIONS = {
+  whatsappSettings: [
+    "whatsapp.channel_manage", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting",
+    "whatsapp.setting_distribution", "whatsapp.setting_read_receipts", "whatsapp.template_manage", "whatsapp.template_send",
+    "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish",
+    "whatsapp.ai_manage", "whatsapp.call_survey_manage",
+  ],
+  whatsappBot: ["whatsapp.bot_manage", "whatsapp.bot_publish"],
+  whatsappReports: "whatsapp.reports",
+  whatsappRatings: "whatsapp.ratings",
+  whatsappCallbacks: "whatsapp.callbacks",
+  gamesAdmin: "games.manage",
+} satisfies Record<string, string | string[]>;
+
+// menuPermission is what a side-menu page needs, looked up by its path.
+export function menuPermission(path: string): string | string[] | undefined {
+  for (const group of MENU) {
+    for (const item of group.items) {
+      if (item.path === path) return item.permission;
+    }
+  }
+  return undefined;
+}
+
 export function allows(can: (permission: string) => boolean, permission?: string | string[]) {
   if (!permission) return true;
   return Array.isArray(permission) ? permission.some(can) : can(permission);
