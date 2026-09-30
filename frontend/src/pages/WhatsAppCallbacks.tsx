@@ -32,10 +32,10 @@ export function WhatsAppCallbacks() {
     waApi.callbacks(all).then(setRows).catch((e) => setError(e instanceof ApiError ? e.message : "Yüklenemedi.")).finally(() => setLoading(false));
   };
   useEffect(load, [all]); // eslint-disable-line react-hooks/exhaustive-deps
-  // A new request arrives with a notice; refresh the list with it.
+  // A new request arrives on the live stream; refresh the list with it.
   useEffect(() => {
-    if (wa.alerts.some((a) => a.text.includes("geri aranmak"))) load();
-  }, [wa.alerts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (wa.callbackTick > 0) load();
+  }, [wa.callbackTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const open = useMemo(() => rows.filter((r) => r.status === "open"), [rows]);
   const done = useMemo(() => rows.filter((r) => r.status !== "open"), [rows]);

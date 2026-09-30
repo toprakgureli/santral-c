@@ -5,6 +5,7 @@
 // and stay out of the badge.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import type { TeamsEvent, TeamsGroup, TeamsInvite, TeamsMessage } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
@@ -93,6 +94,11 @@ const POLL_MS = 30000;
 
 export function TeamsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  // Opening a notification moves inside the app: a full page load would
+  // drop a call in progress and every live connection.
+  const navigate = useNavigate();
+  const goTo = useRef(navigate);
+  goTo.current = navigate;
   const enabled = can(user, "teams.view");
   const [groups, setGroups] = useState<TeamsGroup[]>([]);
   const [invites, setInvites] = useState<TeamsInvite[]>([]);
@@ -151,7 +157,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           const n = new Notification(`${name} tepki verdi${g ? ` · ${g.name}` : ""}`, { body: `${emoji} mesajına`, tag: `teams-react-${e.groupId}`, silent: true });
           n.onclick = () => {
             window.focus();
-            window.location.assign(`/teams/${e.groupId}`);
+            goTo.current(`/teams/${e.groupId}`);
             n.close();
           };
         } catch {
@@ -288,7 +294,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           const n = new Notification(title, { body: previewLabel(m.body, m.attachments, m.kind).slice(0, 140), tag: tagged ? `teams-mention-${m.id}` : `teams-${m.groupId}`, silent: true, requireInteraction: tagged });
           n.onclick = () => {
             window.focus();
-            window.location.assign(`/teams/${m.groupId}`);
+            goTo.current(`/teams/${m.groupId}`);
             n.close();
           };
         } catch {

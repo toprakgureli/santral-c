@@ -119,16 +119,30 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     if (el.scrollTop < 60 && older && !loading && messages.length > 0) void loadOlder();
   };
 
+  // One page request at a time, and a page for a conversation left
+  // meanwhile is dropped.
+  const paging = useRef(false);
+  const shown = useRef(conv.id);
+  shown.current = conv.id;
   const loadOlder = async () => {
     const first = messages.find((m) => !m.pending);
-    if (!first) return;
+    if (!first || paging.current) return;
+    paging.current = true;
+    const from = conv.id;
     setLoading(true);
     try {
-      const page = await waApi.messages(conv.id, { before: first.id });
+      const page = await waApi.messages(from, { before: first.id });
+      if (shown.current !== from) return;
       keepFrom.current = (list.current?.scrollHeight ?? 0) - (list.current?.scrollTop ?? 0);
-      setMessages((cur) => [...page, ...cur]);
+      setMessages((cur) => {
+        const known = new Set(cur.map((m) => m.id));
+        return [...page.filter((m) => !known.has(m.id)), ...cur];
+      });
       setOlder(page.length >= 60);
+    } catch (e) {
+      if (shown.current === from) setError(e instanceof ApiError ? e.message : "Eski mesajlar alınamadı.");
     } finally {
+      paging.current = false;
       setLoading(false);
     }
   };

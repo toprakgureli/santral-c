@@ -6,6 +6,7 @@
 // version is fetched, so nothing is missed and nothing is loaded twice.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
 import { tones } from "@/softphone/tones";
@@ -36,6 +37,9 @@ interface WAState {
   counts: { unread: number; mineUnread: number; waiting: number; pool: number; badge: number };
   alerts: WAAlert[];
   dismissAlert: (id: number) => void;
+  // goes up by one for every new callback request, so the callbacks list
+  // can refresh itself
+  callbackTick: number;
   reload: () => Promise<void>;
   // the reply assistant is set up and this person may use it
   ai: boolean;
@@ -60,6 +64,11 @@ const Ctx = createContext<WAState | undefined>(undefined);
 
 export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  // Opening a notification moves inside the app: a full page load would
+  // drop a call in progress and every live connection.
+  const navigate = useNavigate();
+  const goTo = useRef(navigate);
+  goTo.current = navigate;
   const teams = useTeams();
   const enabled = can(user, "whatsapp.view");
   const me = user?.id ?? 0;
@@ -70,6 +79,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const openRef = useRef<number | null>(null);
   const [typingMap, setTyping] = useState<Record<number, { name: string; until: number }>>({});
   const [alerts, setAlerts] = useState<WAAlert[]>([]);
+  const [callbackTick, setCallbackTick] = useState(0);
   const listeners = useRef(new Set<(m: WAMessage) => void>());
   const [prefs, setPrefsState] = useState<WAPrefs>(NO_PREFS);
   const prefsRef = useRef(prefs);
@@ -159,7 +169,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
       const n = new Notification(title, { body, tag: `wa-${conversationId}` });
       n.onclick = () => {
         window.focus();
-        window.location.assign(`/whatsapp/${conversationId}`);
+        goTo.current(`/whatsapp/${conversationId}`);
         n.close();
       };
     } catch {
@@ -232,6 +242,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
           if (e.conversationId && quiet(e.conversationId).desktop) notifyBrowser("WhatsApp", e.text ?? "Size bir sohbet atandı.", e.conversationId);
           break;
         case "wa.callback":
+          setCallbackTick((n) => n + 1);
           if (quiet().sound) tones.notify();
           alert(e.text ?? "Yeni geri arama talebi.", "info", e.conversationId);
           break;
@@ -363,8 +374,8 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
   const startChat = useCallback((opts?: { number?: string; name?: string }) => setChat(opts ?? {}), []);
 
   const value = useMemo<WAState>(
-    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead }),
-    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead],
+    () => ({ enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, callbackTick, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead }),
+    [enabled, loaded, me, conversations, byId, upsert, openId, setOpenId, typing, onMessage, counts, alerts, dismissAlert, callbackTick, reload, ai, startChat, prefs, muted, pinned, mutedAll, setPrefs, setConvPref, markUnread, markRead],
   );
   return (
     <Ctx.Provider value={value}>

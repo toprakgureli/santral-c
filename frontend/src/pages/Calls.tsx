@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftRight, Download, History, PhoneIncoming, PhoneOutgoing, Play, X } from "lucide-react";
 import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
@@ -73,14 +73,26 @@ export function Calls() {
   // so it rides the "all" scope with the extension as the number match.
   const extMode = scope === "ext";
 
-  function load() {
-    const q = extMode ? ext.trim() : number.trim();
-    if (extMode && !q) { setCalls([]); setTotal(0); setTotalPages(1); setError(null); setLoading(false); return; }
+  // What is typed is applied to the list after a pause (or on Enter). The
+  // list follows the applied values, so one change means one request.
+  const [applied, setApplied] = useState({ number: "", ext: "" });
+  // Enter on an unchanged search still asks again.
+  const [again, setAgain] = useState(0);
+  const term = extMode ? applied.ext.trim() : applied.number.trim();
+
+  useEffect(() => {
+    if (extMode && !term) {
+      setCalls([]); setTotal(0); setTotalPages(1); setError(null); setLoading(false);
+      return;
+    }
+    // A reply that arrives after the filters changed again is dropped, so
+    // an older, slower request cannot overwrite a newer list.
+    let current = true;
     setLoading(true);
     api
       .listCalls({
         direction: direction || undefined,
-        number: q || undefined,
+        number: term || undefined,
         scope: extMode ? "all" : scope,
         from: from || undefined,
         to: to || undefined,
@@ -88,25 +100,27 @@ export function Calls() {
         perPage,
       })
       .then((r) => {
+        if (!current) return;
         setCalls(r.items);
         setTotal(r.total);
         setTotalPages(r.totalPages);
         setError(null);
       })
-      .catch((e) => { setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."); setCalls([]); setTotal(0); setTotalPages(1); })
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, [page, direction, scope, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch((e) => {
+        if (!current) return;
+        setError(e instanceof ApiError ? e.message : "Çağrılar yüklenemedi."); setCalls([]); setTotal(0); setTotalPages(1);
+      })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [page, direction, scope, extMode, term, from, to, again]);
 
   // exportCsv downloads the current filter (all pages, bounded server-side) as CSV.
   async function exportCsv() {
-    const q = extMode ? ext.trim() : number.trim();
     setExporting(true);
     try {
       await api.exportCalls({
         direction: direction || undefined,
-        number: q || undefined,
+        number: term || undefined,
         scope: extMode ? "all" : scope,
         from: from || undefined,
         to: to || undefined,
@@ -118,32 +132,35 @@ export function Calls() {
     }
   }
 
+  // applyNumber puts the typed number into effect. Looking up a number means
+  // "find this caller", so the default "today" preset widens to all dates the
+  // first time a number is applied.
+  function applyNumber() {
+    setPage(1);
+    if (number.trim() && preset === "today") {
+      setPreset("all");
+      setFrom("");
+      setTo("");
+    }
+    setApplied((cur) => (cur.number === number ? cur : { ...cur, number }));
+  }
+
   // Debounce the extension filter so typing a dahili searches without Enter.
   useEffect(() => {
-    if (!extMode) return;
-    const t = window.setTimeout(() => { setPage(1); load(); }, 350);
-    return () => window.clearTimeout(t);
-  }, [ext, extMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Same for the number search. Looking up a number means "find this caller",
-  // so the default "today" preset widens to all dates the first time a number
-  // is typed; the date change itself triggers the load.
-  const searched = useRef("");
-  useEffect(() => {
-    if (extMode || number === searched.current) return;
+    if (!extMode || ext === applied.ext) return;
     const t = window.setTimeout(() => {
-      searched.current = number;
       setPage(1);
-      if (number.trim() && preset === "today") {
-        setPreset("all");
-        setFrom("");
-        setTo("");
-        return;
-      }
-      load();
+      setApplied((cur) => ({ ...cur, ext }));
     }, 350);
     return () => window.clearTimeout(t);
-  }, [number, extMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ext, extMode, applied.ext]);
+
+  // Same for the number search.
+  useEffect(() => {
+    if (extMode || number === applied.number) return;
+    const t = window.setTimeout(applyNumber, 350);
+    return () => window.clearTimeout(t);
+  }, [number, extMode, applied.number]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -183,7 +200,11 @@ export function Calls() {
                 placeholder="Numara / dahili ara"
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (setPage(1), load())}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  applyNumber();
+                  setAgain((n) => n + 1);
+                }}
                 className="w-44"
               />
             )}

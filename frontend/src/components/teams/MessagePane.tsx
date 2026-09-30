@@ -112,33 +112,50 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
     void load();
   }, [load]);
 
+  // One page request at a time: the scroll handler fires again and again
+  // while the edge is in view, and each request would add the same page.
+  const paging = useRef(false);
+  // The room a reply belongs to; a reply for a room left meanwhile is dropped.
+  const room = useRef(group.id);
+  room.current = group.id;
+
   async function loadOlder() {
-    if (!items.length) return;
+    if (!items.length || paging.current) return;
+    paging.current = true;
+    const from = group.id;
     const el = list.current;
     const before = el ? el.scrollHeight - el.scrollTop : 0;
     try {
-      const r = await api.teamsMessages(group.id, { before: items[0].id });
-      setItems((cur) => [...r.items, ...cur]);
+      const r = await api.teamsMessages(from, { before: items[0].id });
+      if (room.current !== from) return;
+      setItems((cur) => withoutKnown(r.items, cur).concat(cur));
       setMore(r.more);
       stickToBottom.current = false;
       requestAnimationFrame(() => {
         if (el) el.scrollTop = el.scrollHeight - before;
       });
     } catch {
-      // keep what we have
+      // keep what we have; scrolling up again retries
+    } finally {
+      paging.current = false;
     }
   }
 
   async function loadNewer() {
-    if (!items.length || !moreNewer) return;
+    if (!items.length || !moreNewer || paging.current) return;
+    paging.current = true;
+    const from = group.id;
     try {
-      const r = await api.teamsMessages(group.id, { after: items[items.length - 1].id });
-      setItems((cur) => [...cur, ...r.items]);
+      const r = await api.teamsMessages(from, { after: items[items.length - 1].id });
+      if (room.current !== from) return;
+      setItems((cur) => cur.concat(withoutKnown(r.items, cur)));
       setMoreNewer(r.moreNewer);
       stickToBottom.current = false;
-      if (!r.moreNewer && r.items.length) void api.teamsMarkRead(group.id, r.items[r.items.length - 1].id).catch(() => undefined);
+      if (!r.moreNewer && r.items.length) void api.teamsMarkRead(from, r.items[r.items.length - 1].id).catch(() => undefined);
     } catch {
-      // keep what we have
+      // keep what we have; scrolling down again retries
+    } finally {
+      paging.current = false;
     }
   }
 
@@ -652,4 +669,11 @@ function ReactionPeople({ x, y, emoji, people, selfId, onPerson, onClose }: { x:
       {people.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">Kimse yok</p>}
     </div>
   );
+}
+
+// withoutKnown drops the lines already in the list, so a page that overlaps
+// what is shown never repeats a message.
+function withoutKnown(page: TeamsMessage[], cur: TeamsMessage[]): TeamsMessage[] {
+  const known = new Set(cur.map((m) => m.id));
+  return page.filter((m) => !known.has(m.id));
 }
