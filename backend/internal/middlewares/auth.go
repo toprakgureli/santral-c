@@ -14,6 +14,11 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/logctx"
 )
 
+// IAccounts tells whether an account may still act.
+type IAccounts interface {
+	Active(ctx context.Context, userID uint) (bool, error)
+}
+
 // IDenylist checks token and per-user revocation.
 type IDenylist interface {
 	Has(ctx context.Context, id string) (bool, error)
@@ -66,8 +71,11 @@ func SessionFrom(c *fiber.Ctx) *Session {
 	return s
 }
 
-// Auth authenticates a request from the access cookie or bearer header.
-func Auth(cfg configs.Auth, list IDenylist) fiber.Handler {
+// Auth authenticates a request from the access cookie or bearer header. The
+// token must not be revoked and the account must still be active; the
+// second check catches a deactivated account even if revoking its tokens
+// failed.
+func Auth(cfg configs.Auth, list IDenylist, accounts IAccounts) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := c.Cookies(cfg.CookieName)
 		if token == "" {
@@ -94,6 +102,13 @@ func Auth(cfg configs.Auth, list IDenylist) fiber.Handler {
 		}
 		if err := session.Check(c.UserContext()); err != nil {
 			return err
+		}
+		active, err := accounts.Active(c.UserContext(), claims.UserID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return errSessionEnded
 		}
 
 		c.Locals(UserIDKey, claims.UserID)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/validator"
 )
@@ -83,20 +84,21 @@ func (h *Handler) UpdateBreakLimit(c *fiber.Ctx) error {
 type Router struct {
 	handler *Handler
 	guard   fiber.Handler
+	need    middlewares.Requirer
 }
 
 // NewRouter builds a settings router.
-func NewRouter(handler *Handler, guard fiber.Handler) *Router {
-	return &Router{handler: handler, guard: guard}
+func NewRouter(handler *Handler, guard fiber.Handler, need middlewares.Requirer) *Router {
+	return &Router{handler: handler, guard: guard, need: need}
 }
 
 // Routes registers the settings routes onto g.
 func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/settings", r.guard)
 	group.Get("/", r.handler.Get)
-	group.Put("/", r.handler.Update)
+	group.Put("/", r.need(enums.SystemSettings), r.handler.Update)
 	group.Get("/break-limit", r.handler.BreakLimit)
-	group.Put("/break-limit", r.handler.UpdateBreakLimit)
+	group.Put("/break-limit", r.need(enums.AgentBreakLimit), r.handler.UpdateBreakLimit)
 }
 
 func actor(c *fiber.Ctx) (uint, error) {

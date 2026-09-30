@@ -28,11 +28,14 @@ type Service struct {
 	repo    *Repository
 	audit   IAudit
 	revoker ISessionRevoker
+	// actors caches users for permission checks; an account change here
+	// drops the user from it so the change counts at once.
+	actors *Actors
 }
 
 // NewService builds a user service.
-func NewService(repo *Repository, auditor IAudit, revoker ISessionRevoker) *Service {
-	return &Service{repo: repo, audit: auditor, revoker: revoker}
+func NewService(repo *Repository, auditor IAudit, revoker ISessionRevoker, actors *Actors) *Service {
+	return &Service{repo: repo, audit: auditor, revoker: revoker, actors: actors}
 }
 
 // GetByEmail loads a user by email, or nil when absent.
@@ -69,6 +72,7 @@ func (s *Service) MarkOnboarded(ctx context.Context, id uint) error {
 	if err := s.repo.MarkOnboarded(ctx, id, time.Now()); err != nil {
 		return errs.Internal(err)
 	}
+	s.actors.Forget(id)
 	return nil
 }
 
@@ -77,6 +81,7 @@ func (s *Service) SetMFA(ctx context.Context, id uint, secret *string, enabled b
 	if err := s.repo.SetMFA(ctx, id, secret, enabled); err != nil {
 		return errs.Internal(err)
 	}
+	s.actors.Forget(id)
 	return nil
 }
 
@@ -92,6 +97,7 @@ func (s *Service) ChangePassword(ctx context.Context, id uint, pw string) error 
 	if err := s.repo.SetPassword(ctx, id, hashed, false); err != nil {
 		return errs.Internal(err)
 	}
+	s.actors.Forget(id)
 	return nil
 }
 
@@ -219,6 +225,7 @@ func (s *Service) SetActive(ctx context.Context, actorID, targetID uint, active 
 	if err := s.repo.SetActive(ctx, target.ID, active); err != nil {
 		return errs.Internal(err)
 	}
+	s.actors.Forget(target.ID)
 
 	action := enums.AuditUserActivated
 	if !active {
@@ -254,6 +261,7 @@ func (s *Service) SetRoles(ctx context.Context, actorID, targetID uint, roleIDs 
 	if err := s.repo.ReplaceRoles(ctx, target, roles); err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.actors.Forget(target.ID)
 	s.audit.Record(ctx, audit.Entry{
 		ActorID:    &actorID,
 		Action:     enums.AuditUserRolesUpdated,
@@ -322,6 +330,7 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, targetID uint, req re
 	if err := s.repo.UpdateCore(ctx, target.ID, fields); err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.actors.Forget(target.ID)
 	if rolesChanged {
 		if err := s.repo.ReplaceRoles(ctx, target, roles); err != nil {
 			return nil, errs.Internal(err)
@@ -371,6 +380,7 @@ func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, pw 
 	if err := s.repo.SetPassword(ctx, target.ID, hashed, true); err != nil {
 		return errs.Internal(err)
 	}
+	s.actors.Forget(target.ID)
 	if err := s.revoker.RevokeUserSessions(ctx, target.ID, time.Now()); err != nil {
 		return errs.Internal(err)
 	}

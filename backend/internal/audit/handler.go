@@ -5,6 +5,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -40,14 +41,15 @@ func (h *Handler) List(c *fiber.Ctx) error {
 type Router struct {
 	handler *Handler
 	guard   fiber.Handler
+	need    middlewares.Requirer
 }
 
 // NewRouter builds an audit router.
-func NewRouter(handler *Handler, guard fiber.Handler) *Router {
-	return &Router{handler: handler, guard: guard}
+func NewRouter(handler *Handler, guard fiber.Handler, need middlewares.Requirer) *Router {
+	return &Router{handler: handler, guard: guard, need: need}
 }
 
 // Routes registers the audit routes onto g.
 func (r *Router) Routes(g fiber.Router) {
-	g.Get("/audit", r.guard, r.handler.List)
+	g.Get("/audit", r.guard, r.need(enums.SystemAuditView), r.handler.List)
 }

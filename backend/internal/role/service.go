@@ -30,14 +30,20 @@ type Meta struct {
 
 // Service is the role application service.
 type Service struct {
-	repo  *Repository
-	users IActorResolver
-	audit IAudit
+	repo   *Repository
+	users  IActorResolver
+	audit  IAudit
+	actors IActorCache
+}
+
+// IActorCache drops cached users, so a role's new permissions count at once.
+type IActorCache interface {
+	ForgetAll()
 }
 
 // NewService builds a role service.
-func NewService(repo *Repository, users IActorResolver, auditor IAudit) *Service {
-	return &Service{repo: repo, users: users, audit: auditor}
+func NewService(repo *Repository, users IActorResolver, auditor IAudit, actors IActorCache) *Service {
+	return &Service{repo: repo, users: users, audit: auditor, actors: actors}
 }
 
 // List returns the assignable roles with their permission sets and user counts.
@@ -170,6 +176,7 @@ func (s *Service) Update(ctx context.Context, actorID, id uint, req requests.Rol
 	if err := s.repo.ReplacePermissions(ctx, role, perms); err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.actors.ForgetAll()
 	updated, err := s.repo.GetByID(ctx, id)
 	if err != nil || updated == nil {
 		return nil, errs.Internal(err)

@@ -63,6 +63,7 @@ func (s *Service) SetAvatar(ctx context.Context, actorID uint, avatar string) (*
 	if err := s.repo.UpdateCore(ctx, actorID, map[string]any{"avatar": avatar}); err != nil {
 		return nil, errs.Internal(err)
 	}
+	s.actors.Forget(actorID)
 	updated, err := s.repo.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
