@@ -89,12 +89,21 @@ func (r *Repository) UpdateCore(ctx context.Context, id uint, fields map[string]
 	return nil
 }
 
-// SoftDelete marks a contact deleted.
-func (r *Repository) SoftDelete(ctx context.Context, id uint) error {
-	if err := r.db.WithContext(ctx).Delete(&models.Contact{}, id).Error; err != nil {
-		return fmt.Errorf("contact could not be deleted: %w", err)
-	}
-	return nil
+// SoftDelete marks a contact deleted and frees its phone numbers, so they
+// can be saved on another contact and no longer resolve to a deleted one.
+// It returns the numbers it freed.
+func (r *Repository) SoftDelete(ctx context.Context, id uint) ([]string, error) {
+	var freed []string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Raw("DELETE FROM contact_phones WHERE contact_id = ? RETURNING number_e164", id).Scan(&freed).Error; err != nil {
+			return fmt.Errorf("contact phones could not be freed: %w", err)
+		}
+		if err := tx.Delete(&models.Contact{}, id).Error; err != nil {
+			return fmt.Errorf("contact could not be deleted: %w", err)
+		}
+		return nil
+	})
+	return freed, err
 }
 
 // PhoneExists reports whether any contact already holds the number.

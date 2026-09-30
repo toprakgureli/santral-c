@@ -126,10 +126,12 @@ func (s *Service) Delete(ctx context.Context, actorID, id uint, meta Meta) error
 	if _, err := s.load(ctx, id); err != nil {
 		return err
 	}
-	if err := s.repo.SoftDelete(ctx, id); err != nil {
+	freed, err := s.repo.SoftDelete(ctx, id)
+	if err != nil {
 		return errs.Internal(err)
 	}
-	s.record(ctx, actorID, enums.AuditContactDeleted, id, meta, nil)
+	// The audit entry keeps the numbers, since the contact no longer has them.
+	s.record(ctx, actorID, enums.AuditContactDeleted, id, meta, map[string]any{"phones": freed})
 	return nil
 }
 
