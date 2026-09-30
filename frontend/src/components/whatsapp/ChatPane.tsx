@@ -183,7 +183,10 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
       body: text, status: "queued", pending: true, createdAt: new Date().toISOString(),
       sender: { kind: "agent", userId: me, name: user?.name, hasAvatar: user?.hasAvatar, avatarVersion: user?.avatarVersion },
     };
-    if (file) base.media = { url: file.type.startsWith("image/") ? URL.createObjectURL(file) : "", mime: file.type, name: file.name, size: file.size };
+    // A picture shows from memory until the server's copy replaces it; the
+    // memory is given back once that happens or the send fails.
+    const preview = file?.type.startsWith("image/") ? URL.createObjectURL(file) : "";
+    if (file) base.media = { url: preview, mime: file.type, name: file.name, size: file.size };
     setMessages((cur) => [...cur, base]);
     try {
       const saved = mode === "note"
@@ -195,6 +198,8 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     } catch (e) {
       setMessages((cur) => cur.filter((m) => m.clientId !== clientId));
       throw e;
+    } finally {
+      if (preview) URL.revokeObjectURL(preview);
     }
   }, [conv.id, me, user]);
 

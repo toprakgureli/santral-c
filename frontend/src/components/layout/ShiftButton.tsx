@@ -3,11 +3,7 @@ import { LogIn, LogOut } from "lucide-react";
 import { useShift } from "@/shift/ShiftContext";
 import { formatClock } from "@/pages/callFormat";
 import { cn } from "@/lib/utils";
-
-function hhmm(iso?: string) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
-}
+import { clockTime } from "@/lib/time";
 
 // ShiftButton starts and ends the agent's shift from the topbar. While on
 // shift it shows the elapsed time, and after the working day is over it warns
@@ -50,10 +46,10 @@ export default function ShiftButton() {
     <div className="flex items-center gap-2">
       {overtime && (
         <span className="hidden items-center rounded-lg bg-warning/15 px-2 py-1 text-xs font-medium text-warning md:flex" data-tip="Mesai saati doldu">
-          {hhmm(shift.status?.reminderAt)} geçti · {hhmm(shift.status?.autoEndAt)}&apos;de otomatik biter
+          {clockTime(shift.status?.reminderAt)} geçti · {clockTime(shift.status?.autoEndAt)} olunca otomatik biter
         </span>
       )}
-      <span className="hidden font-mono text-sm tabular-nums text-muted-foreground sm:block" data-tip={`Mesai ${hhmm(open.startedAt)} başladı`}>
+      <span className="hidden font-mono text-sm tabular-nums text-muted-foreground sm:block" data-tip={`Mesai ${clockTime(open.startedAt)} başladı`}>
         {formatClock(elapsed)}
       </span>
       <button

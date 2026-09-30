@@ -1,6 +1,7 @@
 // Shift state shared by the topbar button and the softphone: the dialer stays
 // closed until the agent starts a shift, and the server closes a forgotten
-// shift at 19:20, so the panel re-reads the state periodically.
+// shift in the evening (the time comes with the state), so the panel
+// re-reads the state periodically.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, ApiError } from "@/api/client";

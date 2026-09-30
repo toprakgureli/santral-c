@@ -84,14 +84,18 @@ func (s *Service) Current(ctx context.Context, userID uint) (*responses.ShiftSta
 		return nil, errs.Internal(err)
 	}
 	out := &responses.ShiftStatus{Shift: responses.NewShift(open)}
+	// Off shift the times are those a shift started now would get, so the
+	// panel can tell the agent when the day ends.
+	started := time.Now()
 	if open != nil {
-		auto := autoEndFor(open.StartedAt)
-		// The reminder sits on the same evening as the automatic close, so a
-		// shift opened late at night is not flagged as overtime right away.
-		reminder := at(auto, reminderHour, reminderMinute)
-		out.ReminderAt = &reminder
-		out.AutoEndAt = &auto
+		started = open.StartedAt
 	}
+	auto := autoEndFor(started)
+	// The reminder sits on the same evening as the automatic close, so a
+	// shift opened late at night is not flagged as overtime right away.
+	reminder := at(auto, reminderHour, reminderMinute)
+	out.ReminderAt = &reminder
+	out.AutoEndAt = &auto
 	return out, nil
 }
 

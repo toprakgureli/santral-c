@@ -43,6 +43,7 @@ import { Badge, Button, Card, Select } from "../components/ui";
 import { cn } from "../lib/utils";
 import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { callQuality, formatClock, formatDuration, formatStamp } from "./callFormat";
+import { clockTime } from "../lib/time";
 
 const statusLabel: Record<string, string> = {
   connecting: "Bağlanıyor...",
@@ -469,7 +470,10 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
           <div className="space-y-1">
             <p className="text-sm font-medium">Mesai başlatılmadı</p>
             <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
-              Mesai başlamadan çağrı gelmez ve arama yapılamaz. Mesai 18:30&apos;da biter, bitirilmezse 19:20&apos;de sistem kapatır.
+              Mesai başlamadan çağrı gelmez ve arama yapılamaz.
+              {shift.status?.reminderAt && shift.status.autoEndAt && (
+                <> Mesai bitiş saati {clockTime(shift.status.reminderAt)}. Bitirilmezse sistem saat {clockTime(shift.status.autoEndAt)} olunca kapatır.</>
+              )}
             </p>
           </div>
           {shift.error && <p className="text-xs text-destructive">{shift.error}</p>}

@@ -18,9 +18,10 @@ type Shift struct {
 // the day's cutoffs, so the panel can warn before the automatic close.
 type ShiftStatus struct {
 	Shift *Shift `json:"shift"`
-	// ReminderAt is the nominal end of the working day (18:30 Istanbul).
+	// ReminderAt is the nominal end of the working day (18:30 Istanbul), of
+	// the open shift or of one started now.
 	ReminderAt *time.Time `json:"reminderAt,omitempty"`
-	// AutoEndAt is when the server closes the open shift on its own (19:20).
+	// AutoEndAt is when the server closes the shift on its own (19:20).
 	AutoEndAt *time.Time `json:"autoEndAt,omitempty"`
 }
 

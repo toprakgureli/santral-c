@@ -377,11 +377,22 @@ export function useSoftphone(enabled: boolean): Phone {
             },
           },
         });
-        uaRef.current = ua;
         await ua.start();
+        // The panel may have closed (sign-out, page change) while starting;
+        // a phone registered after that would keep ringing with nobody there.
+        if (cancelled) {
+          ua.stop().catch(() => undefined);
+          return;
+        }
         registerer = new Registerer(ua);
         await registerer.register();
-        if (!cancelled) setStatus("registered");
+        if (cancelled) {
+          registerer.unregister().catch(() => undefined);
+          ua.stop().catch(() => undefined);
+          return;
+        }
+        uaRef.current = ua;
+        setStatus("registered");
         // Ask for the microphone now, so the permission prompt is answered
         // before the first call rings instead of during it. A refusal is shown
         // as a warning; the phone stays registered so calls still come in.
