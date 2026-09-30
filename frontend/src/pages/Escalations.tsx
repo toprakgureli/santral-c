@@ -4,7 +4,7 @@ import { IconChip } from "../components/ui/rows";
 import { cn } from "../lib/utils";
 import { api, ApiError } from "../api/client";
 import type { EscalationCategory } from "../api/types";
-import { Button, Card, ErrorText, Input } from "../components/ui";
+import { Button, Card, ConfirmDialog, ErrorText, Input } from "../components/ui";
 
 export function Escalations() {
   const [categories, setCategories] = useState<EscalationCategory[]>([]);
@@ -127,7 +127,12 @@ function CategoryCard({
   onError: (msg: string | null) => void;
 }) {
   const [newReason, setNewReason] = useState("");
+  const [adding, setAdding] = useState(false);
   const [reasons, setReasons] = useState(category.reasons);
+  // What is about to be deleted, asked first because it cannot be undone.
+  const [confirm, setConfirm] = useState<{ kind: "category" } | { kind: "reason"; id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   useEffect(() => setReasons(category.reasons), [category.reasons]);
 
   async function moveReason(i: number, dir: -1 | 1) {
@@ -144,13 +149,39 @@ function CategoryCard({
     onChange();
   }
 
+  // addReason keeps what was typed when saving fails, so it can be fixed
+  // and sent again.
   async function addReason(e: React.FormEvent) {
     e.preventDefault();
     const name = newReason.trim();
-    if (!name) return;
-    await api.createEscalationReason(category.id, name).catch(() => undefined);
-    setNewReason("");
-    onChange();
+    if (!name || adding) return;
+    setAdding(true);
+    try {
+      await api.createEscalationReason(category.id, name);
+      setNewReason("");
+      onError(null);
+      onChange();
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : "Durum eklenemedi.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function remove() {
+    if (!confirm) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      if (confirm.kind === "category") await api.deleteEscalationCategory(category.id);
+      else await api.deleteEscalationReason(confirm.id);
+      setConfirm(null);
+      onChange();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : "Silinemedi.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -167,8 +198,10 @@ function CategoryCard({
           <OrderButton dir={-1} disabled={index === 0} onClick={() => onMove(-1)} title="Bir üste taşı" />
           <OrderButton dir={1} disabled={index === count - 1} onClick={() => onMove(1)} title="Bir alta taşı" />
           <button
-            onClick={async () => { await api.deleteEscalationCategory(category.id).catch(() => undefined); onChange(); }}
+            type="button"
+            onClick={() => { setDeleteError(null); setConfirm({ kind: "category" }); }}
             data-tip="Kategoriyi sil"
+            aria-label="Kategoriyi sil"
             className="ml-1 text-muted-foreground transition hover:text-destructive"
           >
             <Trash2 className="size-4" />
@@ -186,8 +219,10 @@ function CategoryCard({
               <OrderButton dir={-1} small disabled={i === 0} onClick={() => moveReason(i, -1)} title="Bir üste taşı" />
               <OrderButton dir={1} small disabled={i === reasons.length - 1} onClick={() => moveReason(i, 1)} title="Bir alta taşı" />
               <button
-                onClick={async () => { await api.deleteEscalationReason(r.id).catch(() => undefined); onChange(); }}
+                type="button"
+                onClick={() => { setDeleteError(null); setConfirm({ kind: "reason", id: r.id, name: r.name }); }}
                 data-tip="Durumu sil"
+                aria-label="Durumu sil"
                 className="ml-1 text-muted-foreground transition hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
@@ -199,8 +234,20 @@ function CategoryCard({
       </ul>
       <form className="flex gap-2" onSubmit={addReason}>
         <Input value={newReason} onChange={(e) => setNewReason(e.target.value)} placeholder="Yeni durum" className="h-9" />
-        <Button type="submit" variant="secondary" className="h-9 shrink-0 px-3"><Plus className="size-4" /></Button>
+        <Button type="submit" variant="secondary" disabled={adding} className="h-9 shrink-0 px-3" aria-label="Durumu ekle"><Plus className="size-4" /></Button>
       </form>
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm?.kind === "category" ? "Kategori silinsin mi?" : "Durum silinsin mi?"}
+        description={confirm?.kind === "category"
+          ? `"${category.name}" ve içindeki ${reasons.length} durum listeden kalkar. Daha önce girilmiş eskalasyon kayıtları silinmez.`
+          : `"${confirm?.kind === "reason" ? confirm.name : ""}" listeden kalkar. Daha önce girilmiş eskalasyon kayıtları silinmez.`}
+        confirmLabel="Sil"
+        busy={deleting}
+        error={deleteError}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => void remove()}
+      />
     </div>
   );
 }

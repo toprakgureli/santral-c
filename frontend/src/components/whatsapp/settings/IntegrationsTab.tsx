@@ -17,6 +17,8 @@ export default function IntegrationsTab() {
   const [edit, setEdit] = useState<WAIntegration | "new" | null>(null);
   const [test, setTest] = useState<WAIntegration | null>(null);
   const [del, setDel] = useState<WAIntegration | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const load = () => waApi.integrations().then(setItems).catch(() => setItems([]));
   useEffect(() => { void load(); }, []);
   return (
@@ -41,8 +43,17 @@ export default function IntegrationsTab() {
       )}
       {edit && <Form item={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />}
       {test && <TestDialog item={test} onClose={() => setTest(null)} />}
-      <ConfirmDialog open={!!del} title="Bağlantı silinsin mi?" description={`${del?.name} silinir. Bunu kullanan chatbot adımları hata verir ve müşteri temsilciye aktarılır.`} confirmLabel="Sil" onCancel={() => setDel(null)}
-        onConfirm={() => del && void waApi.deleteIntegration(del.id).then(() => { setDel(null); void load(); })} />
+      <ConfirmDialog open={!!del} title="Bağlantı silinsin mi?" description={`${del?.name} silinir. Bunu kullanan chatbot adımları hata verir ve müşteri temsilciye aktarılır.`} confirmLabel="Sil" onCancel={() => { setDel(null); setDeleteError(null); }}
+        busy={deleting} error={deleteError}
+        onConfirm={() => {
+          if (!del) return;
+          setDeleting(true);
+          setDeleteError(null);
+          waApi.deleteIntegration(del.id)
+            .then(() => { setDel(null); void load(); })
+            .catch((e) => setDeleteError(e instanceof ApiError ? e.message : "Bağlantı silinemedi."))
+            .finally(() => setDeleting(false));
+        }} />
     </Card>
   );
 }

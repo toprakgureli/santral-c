@@ -8,6 +8,7 @@ import { Crown, MailPlus, MicOff, Shield, UserPlus } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMember } from "@/api/types";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { ConfirmDialog } from "@/components/ui";
 import { OnlineDot, presenceTone, seenLabel } from "@/components/teams/Presence";
 import ProfilePopover, { type PopoverAnchor } from "@/components/teams/ProfilePopover";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -19,6 +20,9 @@ const RANK: Record<string, number> = { owner: 0, admin: 1, member: 2 };
 export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite }: { group: TeamsGroupDetail; selfId: number; onChanged: (g: TeamsGroupDetail) => void; onAdd: () => void; onInvite: () => void }) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A step that cannot be taken back, waiting for a yes.
+  const [ask, setAsk] = useState<{ title: string; text: string; label: string; act: () => Promise<TeamsGroupDetail | void> } | null>(null);
+  const [asking, setAsking] = useState(false);
   const [profile, setProfile] = useState<PopoverAnchor | null>(null);
   const { presenceOf } = useTeams();
   const isOwner = group.myRole === "owner";
@@ -49,9 +53,28 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
     }
     if (isOwner && m.role !== "owner") {
       items.push({ label: m.role === "admin" ? "Yöneticilikten al" : "Yönetici yap", onClick: () => void run(api.teamsUpdateMember(group.id, m.id, { role: m.role === "admin" ? "member" : "admin" })) });
-      items.push({ label: "Sahipliği devret", onClick: () => void run(api.teamsUpdateMember(group.id, m.id, { role: "owner" })) });
+      items.push({
+        label: "Sahipliği devret",
+        onClick: () => setAsk({
+          title: "Sahiplik devredilsin mi?",
+          text: `${m.name} grubun sahibi olur, sen yönetici olarak kalırsın. Geri almak için yeni sahibin devretmesi gerekir.`,
+          label: "Devret",
+          act: () => api.teamsUpdateMember(group.id, m.id, { role: "owner" }),
+        }),
+      });
     }
-    if (m.role !== "owner") items.push({ label: "Gruptan çıkar", danger: true, onClick: () => void run(api.teamsRemoveMember(group.id, m.id)) });
+    if (m.role !== "owner") {
+      items.push({
+        label: "Gruptan çıkar",
+        danger: true,
+        onClick: () => setAsk({
+          title: "Gruptan çıkarılsın mı?",
+          text: `${m.name} gruptan çıkar ve mesajları artık göremez. Yeniden eklemek mümkün.`,
+          label: "Çıkar",
+          act: () => api.teamsRemoveMember(group.id, m.id),
+        }),
+      });
+    }
     if (items.length === 0) return;
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
@@ -155,6 +178,19 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
       {error && <p className="px-4 pb-3 text-xs text-destructive">{error}</p>}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {profile && <ProfilePopover anchor={profile} selfId={selfId} onClose={() => setProfile(null)} />}
+      <ConfirmDialog
+        open={!!ask}
+        title={ask?.title}
+        description={ask?.text ?? ""}
+        confirmLabel={ask?.label}
+        busy={asking}
+        onCancel={() => setAsk(null)}
+        onConfirm={() => {
+          if (!ask) return;
+          setAsking(true);
+          void run(ask.act()).finally(() => { setAsking(false); setAsk(null); });
+        }}
+      />
     </aside>
   );
 }

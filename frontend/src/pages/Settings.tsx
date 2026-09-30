@@ -9,7 +9,7 @@ import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings }
 import { formatSize } from "../lib/attachments";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
-import { Badge, Button, Card, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
 import { cn, formatDateTime } from "../lib/utils";
 
 const REASONS: Record<string, string> = {
@@ -55,9 +55,23 @@ export function Settings() {
     void load();
   }, [load]);
 
-  const unban = async (id: number) => {
-    await api.removeBan(id).catch(() => undefined);
-    void load();
+  // The ban about to be lifted, waiting for a yes.
+  const [unbanning, setUnbanning] = useState<IPBan | null>(null);
+  const [unbanBusy, setUnbanBusy] = useState(false);
+  const [unbanError, setUnbanError] = useState<string | null>(null);
+  const unban = async () => {
+    if (!unbanning) return;
+    setUnbanBusy(true);
+    setUnbanError(null);
+    try {
+      await api.removeBan(unbanning.id);
+      setUnbanning(null);
+      void load();
+    } catch (e) {
+      setUnbanError(e instanceof ApiError ? e.message : "Ban kaldırılamadı.");
+    } finally {
+      setUnbanBusy(false);
+    }
   };
 
   return (
@@ -103,7 +117,7 @@ export function Settings() {
                         <td className="py-2.5 tabular-nums">{b.attempts}</td>
                         <td className="py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(b.until)}</td>
                         <td className="py-2.5 text-right">
-                          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => unban(b.id)}>Kaldır</Button>
+                          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => { setUnbanError(null); setUnbanning(b); }}>Kaldır</Button>
                         </td>
                       </tr>
                     ))}
@@ -175,6 +189,18 @@ export function Settings() {
           <EmptyState title="Bu sayfa için yetkin yok" />
         </Card>
       )}
+
+      <ConfirmDialog
+        open={!!unbanning}
+        tone="warning"
+        title="IP banı kaldırılsın mı?"
+        description={`${unbanning?.ip ?? ""} adresi yeniden giriş deneyebilir. Deneme sınırı aşılırsa yine banlanır.`}
+        confirmLabel="Banı kaldır"
+        busy={unbanBusy}
+        error={unbanError}
+        onCancel={() => setUnbanning(null)}
+        onConfirm={() => void unban()}
+      />
     </div>
   );
 }

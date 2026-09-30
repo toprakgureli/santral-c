@@ -65,6 +65,8 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
   const [rules, setRules] = useState<WARule[]>([]);
   const [edit, setEdit] = useState<Draft & { id?: number } | null>(null);
   const [del, setDel] = useState<WARule | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [device, setDevice] = useState(0);
   const [copy, setCopy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -168,8 +170,17 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
 
       {edit && <RuleForm draft={edit} channels={channels} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />}
       {copy && <CopyRules channels={channels} onClose={() => setCopy(false)} onDone={(n) => { setCopy(false); setMsg(null); setInfo(`${n} kural kopyalandı. Kopyalar kapalı olarak eklendi, kontrol edip açabilirsiniz.`); void load(); }} />}
-      <ConfirmDialog open={!!del} title="Kural silinsin mi?" description={`"${del?.name}" silinir.`} confirmLabel="Sil" onCancel={() => setDel(null)}
-        onConfirm={() => del && void waApi.deleteRule(del.id).then(() => { setDel(null); void load(); })} />
+      <ConfirmDialog open={!!del} title="Kural silinsin mi?" description={`"${del?.name}" silinir.`} confirmLabel="Sil" onCancel={() => { setDel(null); setDeleteError(null); }}
+        busy={deleting} error={deleteError}
+        onConfirm={() => {
+          if (!del) return;
+          setDeleting(true);
+          setDeleteError(null);
+          waApi.deleteRule(del.id)
+            .then(() => { setDel(null); void load(); })
+            .catch((e) => setDeleteError(e instanceof ApiError ? e.message : "Kural silinemedi."))
+            .finally(() => setDeleting(false));
+        }} />
     </div>
   );
 }

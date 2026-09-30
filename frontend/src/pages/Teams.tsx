@@ -19,7 +19,7 @@ import ProfilePopover, { type PopoverAnchor } from "../components/teams/ProfileP
 import MessagePane from "../components/teams/MessagePane";
 import { OnlineDot, presenceTone, seenLabel, Ticks } from "../components/teams/Presence";
 import { previewLabel } from "../lib/attachments";
-import { Badge, Button } from "../components/ui";
+import { Badge, Button, ConfirmDialog } from "../components/ui";
 import { can } from "../lib/permissions";
 import { cn } from "../lib/utils";
 import { useTeams } from "../teams/TeamsContext";
@@ -47,6 +47,26 @@ export function Teams() {
   const [plus, setPlus] = useState<{ x: number; y: number } | null>(null);
   const [q, setQ] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  // The group about to be left, waiting for a yes.
+  const [leaving, setLeaving] = useState<TeamsGroup | null>(null);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  const leave = async () => {
+    if (!leaving) return;
+    setLeaveBusy(true);
+    setLeaveError(null);
+    try {
+      await api.teamsRemoveMember(leaving.id, selfId);
+      if (groupId === leaving.id) navigate("/teams");
+      setLeaving(null);
+      void teams.refresh();
+    } catch (e) {
+      setLeaveError(e instanceof ApiError ? e.message : "Gruptan ayrılamadın.");
+    } finally {
+      setLeaveBusy(false);
+    }
+  };
   const [newGroup, setNewGroup] = useState(false);
   const [newDM, setNewDM] = useState(false);
   const [settings, setSettings] = useState(false);
@@ -124,7 +144,7 @@ export function Teams() {
       ...(g.mute !== "mentions" ? [{ label: "Sessize al (yalnızca etiketler bildirir)", onClick: () => void api.teamsMute(g.id, "mentions").then(() => teams.refresh()) }] : []),
       ...(g.mute !== "all" ? [{ label: "Tamamen sessize al", onClick: () => void api.teamsMute(g.id, "all").then(() => teams.refresh()) }] : []),
     ];
-    if (g.kind === "group" && g.myRole !== "owner") items.push({ label: "Gruptan ayrıl", danger: true, onClick: () => void api.teamsRemoveMember(g.id, selfId).then(() => { teams.refresh(); if (groupId === g.id) navigate("/teams"); }) });
+    if (g.kind === "group" && g.myRole !== "owner") items.push({ label: "Gruptan ayrıl", danger: true, onClick: () => { setLeaveError(null); setLeaving(g); } });
     setMenu({ x: e.clientX, y: e.clientY, items });
   }
 
@@ -322,6 +342,16 @@ export function Teams() {
       </section>
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      <ConfirmDialog
+        open={!!leaving}
+        title="Gruptan ayrılınsın mı?"
+        description={`${leaving?.name ?? ""} grubundaki mesajları artık göremezsin. Geri dönmek için birinin seni yeniden eklemesi gerekir.`}
+        confirmLabel="Ayrıl"
+        busy={leaveBusy}
+        error={leaveError}
+        onCancel={() => setLeaving(null)}
+        onConfirm={() => void leave()}
+      />
       {plus && (
         <ContextMenu
           x={plus.x}
