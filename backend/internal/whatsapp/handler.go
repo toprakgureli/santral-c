@@ -106,12 +106,22 @@ func (h *Handler) Receive(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
-// Existing serves a webhook already registered in Meta: requests on its
-// path are handled like the panel's own address; everything else passes.
-func (h *Handler) Existing(c *fiber.Ctx) error {
-	if (c.Method() != fiber.MethodGet && c.Method() != fiber.MethodPost) || strings.HasPrefix(c.Path(), "/api/") || !h.s.IsExistingHook(c.UserContext(), c.Path()) {
-		return c.Next()
+// existingHookKey marks a request for a webhook already registered in Meta.
+const existingHookKey = "waExistingHook"
+
+// markExisting flags requests for a webhook already registered in Meta, so
+// the limits and the handler after it only act on those.
+func (h *Handler) markExisting(c *fiber.Ctx) error {
+	if (c.Method() == fiber.MethodGet || c.Method() == fiber.MethodPost) &&
+		!strings.HasPrefix(c.Path(), "/api/") && h.s.IsExistingHook(c.UserContext(), c.Path()) {
+		c.Locals(existingHookKey, true)
 	}
+	return c.Next()
+}
+
+// Existing serves a webhook already registered in Meta, like the panel's own
+// address. Root mounts it behind markExisting.
+func (h *Handler) Existing(c *fiber.Ctx) error {
 	if c.Method() == fiber.MethodGet {
 		out, err := h.s.VerifyExisting(c.UserContext(), c.Path(), c.Query("hub.mode"), c.Query("hub.verify_token"), c.Query("hub.challenge"))
 		if err != nil {
@@ -128,8 +138,22 @@ func (h *Handler) Existing(c *fiber.Ctx) error {
 }
 
 // Root mounts the handler for webhooks already registered in Meta on the
-// server's root, outside /api.
-func (r *Router) Root(app fiber.Router) { app.Use(r.h.Existing) }
+// server's root, outside /api, with the same size and rate limits as the
+// panel's own webhook address. Other requests pass through untouched.
+func (r *Router) Root(app fiber.Router) {
+	only := func(next fiber.Handler) fiber.Handler {
+		return func(c *fiber.Ctx) error {
+			if c.Locals(existingHookKey) != true {
+				return c.Next()
+			}
+			return next(c)
+		}
+	}
+	app.Use(r.h.markExisting,
+		only(middlewares.RateLimit(hookRatePerMin, time.Minute)),
+		only(middlewares.MaxBody(hookMaxBody)),
+		only(r.h.Existing))
+}
 
 // Tally receives a survey answer.
 func (h *Handler) Tally(c *fiber.Ctx) error {
@@ -346,14 +370,23 @@ type Router struct {
 // NewRouter builds the router.
 func NewRouter(h *Handler, guard fiber.Handler) *Router { return &Router{h: h, guard: guard} }
 
+// Limits for the endpoints Meta and Tally call without a panel session. A
+// notice is a few kilobytes; the rate leaves room for Meta's bursts.
+const (
+	hookMaxBody      = 1 << 20
+	hookRatePerMin   = 600
+	surveyRatePerMin = 60
+)
+
 // Routes registers everything under /wa.
 func (r *Router) Routes(g fiber.Router) {
 	h, s := r.h, r.h.s
 	// Meta and Tally call these without a panel session; they are
-	// checked by signature instead.
-	g.Get("/wa/hook/:key", h.Verify)
-	g.Post("/wa/hook/:key", h.Receive)
-	g.Post("/wa/survey/:key", h.Tally)
+	// checked by signature instead, and kept small and slow.
+	hookGuard := []fiber.Handler{middlewares.RateLimit(hookRatePerMin, time.Minute), middlewares.MaxBody(hookMaxBody)}
+	g.Get("/wa/hook/:key", append(hookGuard, h.Verify)...)
+	g.Post("/wa/hook/:key", append(hookGuard, h.Receive)...)
+	g.Post("/wa/survey/:key", middlewares.RateLimit(surveyRatePerMin, time.Minute), middlewares.MaxBody(hookMaxBody), h.Tally)
 
 	a := g.Group("/wa", r.guard)
 	a.Get("/stream", h.Stream)

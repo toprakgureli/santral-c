@@ -19,6 +19,7 @@ const (
 	CodeConflict     Code = "CONFLICT"
 	CodeLocked       Code = "LOCKED"
 	CodeTooMany      Code = "TOO_MANY_REQUESTS"
+	CodeTooLarge     Code = "TOO_LARGE"
 	CodeInternal     Code = "INTERNAL"
 )
 
@@ -79,6 +80,11 @@ func Locked(message string) *Error {
 // TooMany is a 429 error.
 func TooMany(message string) *Error {
 	return New(CodeTooMany, http.StatusTooManyRequests, message, nil)
+}
+
+// TooLarge is a 413 error.
+func TooLarge(message string) *Error {
+	return New(CodeTooLarge, http.StatusRequestEntityTooLarge, message, nil)
 }
 
 // Internal is a 500 error with a safe generic message.
