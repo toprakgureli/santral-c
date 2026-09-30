@@ -53,7 +53,10 @@ type Service struct {
 	push    IPusher
 	storage IStorage
 	audit   IAudit
-	secret  string
+	// ring encrypts the secrets kept in the database; secret only signs
+	// survey links.
+	ring   *crypt.Keyring
+	secret string
 
 	wakeWebhook chan struct{}
 	wakeOutbox  chan struct{}
@@ -66,14 +69,16 @@ type Service struct {
 	metaFiles map[string]metaFile
 }
 
-// NewService builds the module. secret encrypts tokens at rest.
-func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, auditor IAudit, secret string) *Service {
+// NewService builds the module. ring encrypts stored secrets; secret signs
+// the links sent in surveys.
+func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, auditor IAudit, ring *crypt.Keyring, secret string) *Service {
 	return &Service{
 		db:          db,
 		users:       users,
 		push:        push,
 		storage:     storage,
 		audit:       auditor,
+		ring:        ring,
 		secret:      "wa:" + secret,
 		wakeWebhook: make(chan struct{}, 1),
 		wakeOutbox:  make(chan struct{}, 1),
@@ -98,19 +103,19 @@ func wake(ch chan struct{}) {
 
 // ---------------------------------------------------------------- secrets
 
+// SealPurpose is the keyring label of WhatsApp's stored secrets.
+const SealPurpose = "whatsapp"
+
 func (s *Service) seal(plain string) (string, error) {
-	if plain == "" {
-		return "", nil
-	}
-	return crypt.Encrypt(s.secret, plain)
+	return s.ring.Seal(SealPurpose, plain)
 }
 
+// open decrypts a stored secret. A value that cannot be opened reads as
+// not set, and the failure is logged so a wrong data key is noticed.
 func (s *Service) open(enc string) string {
-	if enc == "" {
-		return ""
-	}
-	out, err := crypt.Decrypt(s.secret, enc)
+	out, err := s.ring.Open(SealPurpose, enc)
 	if err != nil {
+		slog.Error("stored whatsapp secret could not be decrypted", "error", err)
 		return ""
 	}
 	return out

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -52,7 +53,8 @@ const (
 // Drive talks to Google Drive on behalf of the connected account.
 type Drive struct {
 	cfg    configs.Drive
-	secret string // signs OAuth state and encrypts the refresh token
+	secret string         // signs the OAuth state
+	ring   *crypt.Keyring // encrypts the refresh token
 	db     *gorm.DB
 	http   *http.Client
 
@@ -63,12 +65,18 @@ type Drive struct {
 
 // NewDrive builds the Drive client. It is usable even when nothing is
 // configured: every call then fails with a clear message.
-func NewDrive(cfg configs.Drive, secret string, db *gorm.DB) *Drive {
+func NewDrive(cfg configs.Drive, secret string, ring *crypt.Keyring, db *gorm.DB) *Drive {
 	if cfg.FolderName == "" {
 		cfg.FolderName = "SantralC"
 	}
-	return &Drive{cfg: cfg, secret: secret, db: db, http: &http.Client{Timeout: 60 * time.Second}}
+	return &Drive{cfg: cfg, secret: secret, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}}
 }
+
+// DriveSealPurpose is the keyring label of the stored Drive refresh token.
+const DriveSealPurpose = "drive"
+
+// DriveTokenSetting is the system setting holding the sealed refresh token.
+const DriveTokenSetting = keyDriveToken
 
 // Configured reports whether the OAuth client is set in config.yml.
 func (d *Drive) Configured() bool {
@@ -79,7 +87,9 @@ func (d *Drive) Configured() bool {
 
 func (d *Drive) setting(ctx context.Context, key string) string {
 	var value string
-	_ = d.db.WithContext(ctx).Raw("SELECT value FROM system_settings WHERE key = ?", key).Scan(&value).Error
+	if err := d.db.WithContext(ctx).Raw("SELECT value FROM system_settings WHERE key = ?", key).Scan(&value).Error; err != nil {
+		slog.WarnContext(ctx, "drive setting could not be read", "key", key, "error", err)
+	}
 	return value
 }
 
@@ -181,7 +191,7 @@ func (d *Drive) Exchange(ctx context.Context, code string) (string, error) {
 		resp.Body.Close()
 		email = info.Email
 	}
-	enc, err := crypt.Encrypt(d.secret, tok.RefreshToken)
+	enc, err := d.ring.Seal(DriveSealPurpose, tok.RefreshToken)
 	if err != nil {
 		return "", fmt.Errorf("anahtar şifrelenemedi: %w", err)
 	}
@@ -202,7 +212,7 @@ func (d *Drive) Exchange(ctx context.Context, code string) (string, error) {
 // Disconnect forgets the account and revokes the token at Google.
 func (d *Drive) Disconnect(ctx context.Context) error {
 	if enc := d.setting(ctx, keyDriveToken); enc != "" {
-		if refresh, err := crypt.Decrypt(d.secret, enc); err == nil {
+		if refresh, err := d.ring.Open(DriveSealPurpose, enc); err == nil {
 			form := url.Values{}
 			form.Set("token", refresh)
 			_ = d.postForm(ctx, driveRevokeURL, form, nil)
@@ -255,8 +265,9 @@ func (d *Drive) token(ctx context.Context) (string, error) {
 	if enc == "" {
 		return "", errors.New("Google Drive hesabı bağlı değil")
 	}
-	refresh, err := crypt.Decrypt(d.secret, enc)
+	refresh, err := d.ring.Open(DriveSealPurpose, enc)
 	if err != nil {
+		slog.ErrorContext(ctx, "stored drive token could not be decrypted", "error", err)
 		return "", fmt.Errorf("anahtar çözülemedi: %w", err)
 	}
 	form := url.Values{}

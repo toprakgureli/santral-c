@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -37,6 +38,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/verimor"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp"
 	"github.com/toprakgureli/santral-c/backend/migrations"
+	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/denylist"
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
@@ -85,6 +87,20 @@ func run() error {
 		return err
 	}
 	if err := setup.Seed(db); err != nil {
+		return err
+	}
+	// Integration secrets in the database are sealed with the data key,
+	// which is kept apart from the session signing key.
+	if strings.Contains(configs.Cnf.Security.DataKey, "change-me") {
+		return errors.New("security.dataKey is still the example value; generate one with: openssl rand -hex 32")
+	}
+	ring, err := crypt.NewKeyring(configs.Cnf.Security.DataKey, strings.Split(configs.Cnf.Security.PreviousDataKeys, ",")...)
+	if err != nil {
+		return fmt.Errorf("security.dataKey: %w", err)
+	}
+	if err := setup.RewrapSecrets(context.Background(), db, ring,
+		setup.SecretPurposes{WhatsApp: whatsapp.SealPurpose, Drive: teams.DriveSealPurpose},
+		setup.LegacyKeys{WhatsApp: "wa:" + configs.Cnf.Auth.Secret, Drive: configs.Cnf.Auth.Secret}); err != nil {
 		return err
 	}
 
@@ -168,12 +184,12 @@ func run() error {
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
-	drive := teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, db)
+	drive := teams.NewDrive(configs.Cnf.Drive, configs.Cnf.Auth.Secret, ring, db)
 	teamsSvc := teams.NewService(teams.NewRepository(db), userSvc, teams.NewHub(), drive)
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
-	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, auditSvc, configs.Cnf.Auth.Secret)
+	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, auditSvc, ring, configs.Cnf.Auth.Secret)
 	waRouter := whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard)
 	waRouter.Routes(api)
 	// A webhook already registered in Meta may live outside /api.

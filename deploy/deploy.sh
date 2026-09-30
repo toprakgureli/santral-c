@@ -27,6 +27,19 @@ fi
 # land in a writable place).
 run_as_app() { sudo -u santral env HOME="$APP_DIR" "$@"; }
 
+# The backend refuses to start without a data key (it encrypts the stored
+# integration secrets). Stop here, with the old version still running, if
+# the server config has none yet.
+if ! sudo grep -E '^[[:space:]]*dataKey:[[:space:]]*"?[^"[:space:]]{32,}' "$APP_DIR/config.yml" | grep -qv 'change-me'; then
+  echo "ERROR: security.dataKey is missing from $APP_DIR/config.yml." >&2
+  echo "       This command adds a freshly generated one under 'security:':" >&2
+  cat >&2 <<EOF
+         sudo sed -i "/^security:/a\\  dataKey: \"\$(openssl rand -hex 32)\"" $APP_DIR/config.yml
+EOF
+  echo "       Nothing was changed; the running version keeps running." >&2
+  exit 1
+fi
+
 echo "==> Pulling origin/$BRANCH"
 run_as_app git -C "$APP_DIR" fetch --all --prune
 run_as_app git -C "$APP_DIR" reset --hard "origin/$BRANCH"

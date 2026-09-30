@@ -28,6 +28,12 @@ security:
   distinctIPLimit: 5
   attemptWindow: 15m
   mfaKey: "change-me-to-a-32-byte-mfa-key"       # openssl rand -hex 16
+  # Encrypts integration secrets kept in the database (WhatsApp tokens, the
+  # Google Drive link); separate from auth.secret. openssl rand -hex 32
+  # To replace it, put the old key in previousDataKeys and restart: stored
+  # secrets are sealed again with the new key at start.
+  dataKey: "change-me-to-a-64-character-random-data-key"
+  previousDataKeys: ""
   trustedIPs: ""
   requireMFA: true          # force TOTP MFA enrollment at first login
 

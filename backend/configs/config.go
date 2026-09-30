@@ -59,6 +59,12 @@ type Security struct {
 	MFAKey              string        `mapstructure:"mfaKey"`
 	TrustedIPs          string        `mapstructure:"trustedIPs"`
 	RequireMFA          bool          `mapstructure:"requireMFA"`
+	// DataKey encrypts integration secrets kept in the database (WhatsApp
+	// tokens, the Drive link). It is separate from the session signing key.
+	DataKey string `mapstructure:"dataKey"`
+	// PreviousDataKeys (comma separated) still open values made before the
+	// data key was replaced; they are sealed again with DataKey at start.
+	PreviousDataKeys string `mapstructure:"previousDataKeys"`
 }
 
 // Owner holds the bootstrap invisible-admin credentials.
