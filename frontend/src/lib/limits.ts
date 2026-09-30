@@ -12,7 +12,3 @@ export const LIMITS = {
   email: 255,
   sipExtension: 32,
 };
-
-export function charCount(value: string) {
-  return [...value].length;
-}

@@ -26,6 +26,7 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Get("/calls/export", r.guard, r.handler.ExportCalls) // before /:uuid so it is not shadowed
 	g.Get("/calls/:uuid/recording", r.guard, r.handler.Recording)
 	g.Post("/calls/originate", r.guard, r.handler.Originate)
+	g.Post("/calls/transfer", r.guard, r.handler.Transfer)
 	g.Get("/pbx/extensions", r.guard, r.handler.Extensions)
 	g.Get("/pbx/stream", r.guard, r.handler.Stream)
 	g.Get("/pbx/queues", r.guard, r.handler.Queues)

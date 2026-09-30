@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
-	"log"
 	"log/slog"
 	"net/http"
 	"path"
@@ -430,7 +429,7 @@ func (s *Service) sweepOrphans(ctx context.Context) {
 	for _, a := range rows {
 		if a.DriveID != "" {
 			if err := s.drive.Delete(ctx, a.DriveID); err != nil {
-				log.Printf("teams: orphan attachment %d could not be removed from Drive: %v", a.ID, err)
+				slog.WarnContext(ctx, "orphan attachment could not be removed from drive", "attachment", a.ID, "error", err)
 				continue
 			}
 		}

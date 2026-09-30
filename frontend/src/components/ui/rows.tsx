@@ -60,8 +60,3 @@ export function ListRow({ icon, tone, leading, title, sub, trailing, onClick, ac
 export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap items-center gap-2 rounded-2xl bg-muted/40 p-2", className)}>{children}</div>;
 }
-
-// Mono is a right-aligned figure in the row's trailing slot.
-export function Mono({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cn("font-mono text-xs tabular-nums text-muted-foreground", className)}>{children}</span>;
-}

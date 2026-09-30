@@ -1085,13 +1085,31 @@ func (s *Service) computeStats(ctx context.Context) (*Stats, error) {
 	return &Stats{Total: total, Missed: missed}, nil
 }
 
+// AuthorizeTransfer is asked by the softphone before it hands a call over
+// to another number, and logs the hand-over. The transfer itself travels
+// from the browser to the PBX, so this is where the panel says yes or no.
+func (s *Service) AuthorizeTransfer(ctx context.Context, actorID uint, callID, target string) error {
+	if err := s.authorizeTransfer(ctx, actorID); err != nil {
+		return err
+	}
+	if !transferTarget.MatchString(target) {
+		return errs.Invalid("Aktarılacak numara anlaşılamadı.", nil)
+	}
+	slog.InfoContext(ctx, "call transfer allowed", "call", callID, "target", target)
+	return nil
+}
+
+// transferTarget is an extension or a phone number, digits with an
+// optional leading plus.
+var transferTarget = regexp.MustCompile(`^\+?[0-9]{2,20}$`)
+
 func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return err
 	}
 	if !actor.Can(enums.CallTransfer) {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return errs.Forbidden("Çağrı aktarma yetkiniz yok.")
 	}
 	return nil
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Inviter, Invitation, Registerer, SessionState, UserAgent, type Session } from "sip.js";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue";
 import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
@@ -578,8 +578,17 @@ export function useSoftphone(enabled: boolean): Phone {
   const transfer = useCallback(async (raw: string) => {
     const s = sessionRef.current;
     if (!s || s.state !== SessionState.Established) return;
-    const uri = UserAgent.makeURI(`sip:${normalizeDial(raw)}@${domainRef.current}`);
+    const target = normalizeDial(raw);
+    const uri = UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
     if (!uri) return;
+    // The panel decides who may hand a call over, also when the browser
+    // extension asks; the PBX only carries it out.
+    try {
+      await api.authorizeTransfer(callIdRef.current, target);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Çağrı aktarılamadı.");
+      return;
+    }
     await s.refer(uri).catch(() => undefined);
   }, []);
 

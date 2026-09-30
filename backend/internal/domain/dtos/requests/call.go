@@ -5,6 +5,12 @@ type CallOriginate struct {
 	To string `json:"to" validate:"required,min=3,max=32"`
 }
 
+// CallTransfer asks to hand the call in progress over to another number.
+type CallTransfer struct {
+	CallID string `json:"callId" validate:"max=80"`
+	Target string `json:"target" validate:"required,min=2,max=32"`
+}
+
 // SIPCredentials sets a user's Bulutsantralim SIP extension and password.
 type SIPCredentials struct {
 	Extension string `json:"extension" validate:"required,numeric,min=2,max=32"`

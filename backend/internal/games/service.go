@@ -11,9 +11,7 @@ package games
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/rand"
 	"sort"
@@ -538,12 +536,12 @@ func (s *Service) playable(ctx context.Context, actor *models.User) error {
 func (s *Service) Warm(ctx context.Context) {
 	rows, err := s.repo.OpenGames(ctx)
 	if err != nil {
-		log.Printf("games: could not warm: %v", err)
+		slog.WarnContext(ctx, "games could not be warmed", "error", err)
 		return
 	}
 	for i := range rows {
 		if _, err := s.load(ctx, &rows[i]); err != nil {
-			log.Printf("games: match %d could not be restored: %v", rows[i].ID, err)
+			slog.WarnContext(ctx, "game match could not be restored", "game", rows[i].ID, "error", err)
 		}
 	}
 }
@@ -630,7 +628,7 @@ func (s *Service) save(ctx context.Context, m *Match) {
 	raw, _ := json.Marshal(p)
 	m.G.State = string(raw)
 	if err := s.repo.SaveGame(ctx, m.G); err != nil {
-		log.Printf("games: match %d could not be saved: %v", m.G.ID, err)
+		slog.WarnContext(ctx, "game match could not be saved", "game", m.G.ID, "error", err)
 	}
 }
 
@@ -1311,5 +1309,3 @@ func (s *Service) UserRecord(ctx context.Context, actorID, userID uint) (*Record
 	}
 	return out, nil
 }
-
-var errNotYourTurn = errors.New("sıra sizde değil")

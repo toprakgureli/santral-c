@@ -379,6 +379,25 @@ func (h *Handler) Originate(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"callUuid": uuid})
 }
 
+// Transfer lets the softphone hand the call in progress to another number.
+func (h *Handler) Transfer(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.CallTransfer
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	if err := h.service.AuthorizeTransfer(c.UserContext(), id, req.CallID, strings.TrimSpace(req.Target)); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {

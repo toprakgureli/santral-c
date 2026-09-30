@@ -302,6 +302,10 @@ export const api = {
   exportCalls: (params: { direction?: string; number?: string; scope?: string; from?: string; to?: string } = {}) =>
     download("/calls/export" + query(params), "cagrilar.csv"),
   originate: (to: string) => request<{ callUuid: string }>("/calls/originate", { method: "POST", body: JSON.stringify({ to }) }),
+  // The softphone asks before handing a call over; the server checks the
+  // permission and logs the hand-over.
+  authorizeTransfer: (callId: string, target: string) =>
+    request<void>("/calls/transfer", { method: "POST", body: JSON.stringify({ callId, target }) }),
 
   // Call log (our own store, used for the panel history — today, per agent)
   recentCalls: () => request<TodayCalls>("/calls/log/"),

@@ -402,5 +402,3 @@ func jsonString(v any) string {
 func strPtr(s string) *string { return &s }
 
 func uintPtr(u uint) *uint { return &u }
-
-func now() time.Time { return time.Now() }
