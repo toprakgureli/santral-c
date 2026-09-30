@@ -97,7 +97,7 @@ func (s *Service) people(ctx context.Context, ids []uint) map[uint]PersonView {
 		HasAvatar bool
 		Version   int64
 	}
-	_ = s.db.WithContext(ctx).Raw("SELECT id, name, avatar <> '' AS has_avatar, extract(epoch from updated_at)::bigint AS version FROM users WHERE id IN ?", ids).Scan(&rows).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT id, name, avatar <> '' AS has_avatar, extract(epoch from updated_at)::bigint AS version FROM users WHERE id IN ?", ids).Scan(&rows).Error)
 	for _, r := range rows {
 		p := PersonView{ID: r.ID, Name: r.Name, HasAvatar: r.HasAvatar}
 		if r.HasAvatar {
@@ -196,7 +196,9 @@ func (s *Service) summaries(ctx context.Context, convs []models.WAConversation) 
 		cm[contacts[i].ID] = &contacts[i]
 	}
 	var chans []models.WAChannel
-	_ = s.db.WithContext(ctx).Select("id, name").Where("id IN ?", channelIDs).Find(&chans).Error
+	if err := s.db.WithContext(ctx).Select("id, name").Where("id IN ?", channelIDs).Find(&chans).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	chName := map[uint]string{}
 	for _, c := range chans {
 		chName[c.ID] = c.Name
@@ -205,12 +207,16 @@ func (s *Service) summaries(ctx context.Context, convs []models.WAConversation) 
 	parts := map[uint][]models.WAParticipant{}
 	if len(ticketIDs) > 0 {
 		var list []models.WATicket
-		_ = s.db.WithContext(ctx).Where("id IN ?", ticketIDs).Find(&list).Error
+		if err := s.db.WithContext(ctx).Where("id IN ?", ticketIDs).Find(&list).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		for i := range list {
 			tickets[list[i].ID] = &list[i]
 		}
 		var ps []models.WAParticipant
-		_ = s.db.WithContext(ctx).Where("ticket_id IN ?", ticketIDs).Order("joined_at").Find(&ps).Error
+		if err := s.db.WithContext(ctx).Where("ticket_id IN ?", ticketIDs).Order("joined_at").Find(&ps).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		for _, p := range ps {
 			parts[p.TicketID] = append(parts[p.TicketID], p)
 		}
@@ -218,7 +224,9 @@ func (s *Service) summaries(ctx context.Context, convs []models.WAConversation) 
 	lasts := map[uint]*models.WAMessage{}
 	if len(lastIDs) > 0 {
 		var list []models.WAMessage
-		_ = s.db.WithContext(ctx).Where("id IN ?", lastIDs).Find(&list).Error
+		if err := s.db.WithContext(ctx).Where("id IN ?", lastIDs).Find(&list).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		for i := range list {
 			lasts[list[i].ID] = &list[i]
 		}
@@ -245,7 +253,9 @@ func (s *Service) summaries(ctx context.Context, convs []models.WAConversation) 
 	people := s.people(ctx, userIDs)
 	teamNames := map[uint]string{}
 	var teams []models.WATeam
-	_ = s.db.WithContext(ctx).Find(&teams).Error
+	if err := s.db.WithContext(ctx).Find(&teams).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	for _, t := range teams {
 		teamNames[t.ID] = t.Name
 	}
@@ -425,7 +435,9 @@ func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]
 			convIDs = append(convIDs, id)
 		}
 		var rs []models.WAMessage
-		_ = s.db.WithContext(ctx).Where("conversation_id IN ? AND kind = 'reaction'", convIDs).Order("id").Find(&rs).Error
+		if err := s.db.WithContext(ctx).Where("conversation_id IN ? AND kind = 'reaction'", convIDs).Order("id").Find(&rs).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		want := map[string]bool{}
 		for _, w := range wamids {
 			want[w] = true
@@ -454,7 +466,9 @@ func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]
 	quoted := map[string]*models.WAMessage{}
 	if len(replyTo) > 0 {
 		var qs []models.WAMessage
-		_ = s.db.WithContext(ctx).Where("wamid IN ?", replyTo).Find(&qs).Error
+		if err := s.db.WithContext(ctx).Where("wamid IN ?", replyTo).Find(&qs).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		for i := range qs {
 			quoted[*qs[i].WAMID] = &qs[i]
 			if qs[i].SenderUserID != nil {
@@ -568,7 +582,9 @@ func (s *Service) Conversations(ctx context.Context, actorID uint, since int64) 
 		return nil, errs.Internal(err)
 	}
 	var top int64
-	_ = s.db.WithContext(ctx).Raw("SELECT COALESCE(max(version), 0) FROM wa_conversations").Scan(&top).Error
+	if err := s.db.WithContext(ctx).Raw("SELECT COALESCE(max(version), 0) FROM wa_conversations").Scan(&top).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	return &ListResult{Items: items, Hidden: hidden, Version: top, Me: actorID}, nil
 }
 
@@ -583,12 +599,12 @@ func (s *Service) filterVisible(ctx context.Context, v *viewer, convs []models.W
 	parts := map[uint]map[uint]bool{}
 	if len(ticketIDs) > 0 {
 		var list []models.WATicket
-		_ = s.db.WithContext(ctx).Where("id IN ?", ticketIDs).Find(&list).Error
+		warnDB(ctx, s.db.WithContext(ctx).Where("id IN ?", ticketIDs).Find(&list).Error)
 		for i := range list {
 			tickets[list[i].ID] = &list[i]
 		}
 		var ps []models.WAParticipant
-		_ = s.db.WithContext(ctx).Where("ticket_id IN ?", ticketIDs).Find(&ps).Error
+		warnDB(ctx, s.db.WithContext(ctx).Where("ticket_id IN ?", ticketIDs).Find(&ps).Error)
 		for _, p := range ps {
 			if parts[p.TicketID] == nil {
 				parts[p.TicketID] = map[uint]bool{}
@@ -665,8 +681,12 @@ func (s *Service) Messages(ctx context.Context, actorID, conversationID, before,
 	switch {
 	case around > 0:
 		var older, newer []models.WAMessage
-		_ = s.db.WithContext(ctx).Where("conversation_id = ? AND kind <> 'reaction' AND id <= ?", conversationID, around).Order("id DESC").Limit(page / 2).Find(&older).Error
-		_ = s.db.WithContext(ctx).Where("conversation_id = ? AND kind <> 'reaction' AND id > ?", conversationID, around).Order("id").Limit(page / 2).Find(&newer).Error
+		if err := s.db.WithContext(ctx).Where("conversation_id = ? AND kind <> 'reaction' AND id <= ?", conversationID, around).Order("id DESC").Limit(page / 2).Find(&older).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
+		if err := s.db.WithContext(ctx).Where("conversation_id = ? AND kind <> 'reaction' AND id > ?", conversationID, around).Order("id").Limit(page / 2).Find(&newer).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		for i := len(older) - 1; i >= 0; i-- {
 			list = append(list, older[i])
 		}
@@ -729,7 +749,9 @@ func (s *Service) Search(ctx context.Context, actorID uint, text string, convers
 		ids = append(ids, id)
 	}
 	var convs []models.WAConversation
-	_ = s.db.WithContext(ctx).Where("id IN ?", ids).Find(&convs).Error
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&convs).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	visible, _ := s.filterVisible(ctx, v, convs)
 	ok := map[uint]models.WAConversation{}
 	var contactIDs []uint
@@ -738,7 +760,9 @@ func (s *Service) Search(ctx context.Context, actorID uint, text string, convers
 		contactIDs = append(contactIDs, c.ContactID)
 	}
 	var contacts []models.WAContact
-	_ = s.db.WithContext(ctx).Where("id IN ?", contactIDs).Find(&contacts).Error
+	if err := s.db.WithContext(ctx).Where("id IN ?", contactIDs).Find(&contacts).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	names := map[uint]string{}
 	for i := range contacts {
 		names[contacts[i].ID] = contactView(&contacts[i]).Display

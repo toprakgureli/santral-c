@@ -38,7 +38,9 @@ func (s *Service) Teams(ctx context.Context, actorID uint) ([]TeamView, error) {
 	out := make([]TeamView, 0, len(list))
 	for _, t := range list {
 		v := TeamView{ID: t.ID, Name: t.Name, Color: t.Color, MemberIDs: []uint{}}
-		_ = s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_team_members WHERE team_id = ? ORDER BY user_id", t.ID).Scan(&v.MemberIDs).Error
+		if err := s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_team_members WHERE team_id = ? ORDER BY user_id", t.ID).Scan(&v.MemberIDs).Error; err != nil {
+			return nil, errs.Internal(err)
+		}
 		if v.MemberIDs == nil {
 			v.MemberIDs = []uint{}
 		}
@@ -128,8 +130,10 @@ func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentView, error)
 	people := s.people(ctx, ids)
 	online := s.push.OnlineUsers(ids)
 	var avail []uint
-	_ = s.db.WithContext(ctx).Raw(`SELECT sh.user_id FROM shifts sh LEFT JOIN agent_presence ap ON ap.user_id = sh.user_id
-		WHERE sh.ended_at IS NULL AND COALESCE(ap.state, 'available') = 'available'`).Scan(&avail).Error
+	if err := s.db.WithContext(ctx).Raw(`SELECT sh.user_id FROM shifts sh LEFT JOIN agent_presence ap ON ap.user_id = sh.user_id
+		WHERE sh.ended_at IS NULL AND COALESCE(ap.state, 'available') = 'available'`).Scan(&avail).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	am := map[uint]bool{}
 	for _, a := range avail {
 		am[a] = true
@@ -242,7 +246,9 @@ func (s *Service) CopyToChannel(ctx context.Context, actorID, from, to uint, wha
 			return 0, err
 		}
 		var list []models.WAAutomation
-		_ = s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", from)).Find(&list).Error
+		if err := s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", from)).Find(&list).Error; err != nil {
+			return 0, errs.Internal(err)
+		}
 		for _, r := range list {
 			c := models.WAAutomation{Name: r.Name, Active: false, ChannelIDs: jsonString([]uint{to}), Trigger: r.Trigger, Conditions: r.Conditions, Actions: r.Actions,
 				CooldownMin: r.CooldownMin, Position: r.Position, CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
@@ -307,7 +313,7 @@ func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in Contac
 		return nil, err
 	}
 	var convs []uint
-	_ = s.db.WithContext(ctx).Raw("SELECT id FROM wa_conversations WHERE contact_id = ?", id).Scan(&convs).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT id FROM wa_conversations WHERE contact_id = ?", id).Scan(&convs).Error)
 	for _, cid := range convs {
 		s.publish(ctx, cid, nil, nil)
 	}
@@ -460,7 +466,9 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 			return err
 		}
 		if n := strings.TrimSpace(name); n != "" && c.Name == "" {
-			_ = tx.Exec("UPDATE wa_contacts SET name = ? WHERE id = ?", n, c.ID).Error
+			if err := tx.Exec("UPDATE wa_contacts SET name = ? WHERE id = ?", n, c.ID).Error; err != nil {
+				return err
+			}
 		}
 		conv, _, err := upsertConversation(tx, channelID, c.ID)
 		if err != nil {

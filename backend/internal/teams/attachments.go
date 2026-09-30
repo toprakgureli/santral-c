@@ -152,21 +152,23 @@ func (s *Service) BeginUpload(ctx context.Context, actorID, groupID uint, in Upl
 	driveName := fmt.Sprintf("att-%d-%s", row.ID, name)
 	folder, err := s.roomFolder(ctx, g)
 	if err != nil {
-		_ = s.repo.DeleteAttachmentRow(ctx, row.ID)
+		s.dropUploadRow(ctx, row.ID)
 		return nil, errs.Invalid("Drive klasörü hazırlanamadı: "+err.Error(), nil)
 	}
 	loc, err := s.drive.StartUpload(ctx, folder, driveName, mime, in.Size, origin)
 	if err != nil && g.DriveFolder != "" {
 		// The room folder may have been removed by hand in Drive: forget it,
 		// make it again and try once more.
-		_ = s.repo.UpdateGroup(ctx, g.ID, map[string]any{"drive_folder": ""})
+		if err := s.repo.UpdateGroup(ctx, g.ID, map[string]any{"drive_folder": ""}); err != nil {
+			slog.WarnContext(ctx, "stale room folder could not be cleared", "group", g.ID, "error", err)
+		}
 		g.DriveFolder = ""
 		if folder, err = s.roomFolder(ctx, g); err == nil {
 			loc, err = s.drive.StartUpload(ctx, folder, driveName, mime, in.Size, origin)
 		}
 	}
 	if err != nil {
-		_ = s.repo.DeleteAttachmentRow(ctx, row.ID)
+		s.dropUploadRow(ctx, row.ID)
 		return nil, errs.Invalid("Yükleme başlatılamadı: "+err.Error(), nil)
 	}
 	return &UploadSession{AttachmentID: row.ID, UploadURL: loc, ChunkBytes: 8 << 20}, nil
@@ -348,7 +350,9 @@ func (s *Service) dropAttachments(ctx context.Context, messageID uint) {
 	if err != nil {
 		return
 	}
-	_ = s.repo.SoftDeleteAttachments(ctx, messageID)
+	if err := s.repo.SoftDeleteAttachments(ctx, messageID); err != nil {
+		slog.WarnContext(ctx, "attachments could not be marked deleted", "message", messageID, "error", err)
+	}
 	for _, a := range rows[messageID] {
 		if a.DriveID != "" {
 			s.deleteDriveLater(ctx, a.DriveID)
@@ -430,7 +434,15 @@ func (s *Service) sweepOrphans(ctx context.Context) {
 				continue
 			}
 		}
-		_ = s.repo.DeleteAttachmentRow(ctx, a.ID)
+		s.dropUploadRow(ctx, a.ID)
+	}
+}
+
+// dropUploadRow deletes an upload that will never become a message. A
+// failure leaves a row the next sweep removes, so it is only logged.
+func (s *Service) dropUploadRow(ctx context.Context, id uint) {
+	if err := s.repo.DeleteAttachmentRow(ctx, id); err != nil {
+		slog.WarnContext(ctx, "upload row could not be deleted", "attachment", id, "error", err)
 	}
 }
 
@@ -500,7 +512,9 @@ func (s *Service) DriveCallback(ctx context.Context, actorID uint, state, code s
 		return "", errs.Invalid("Google bağlantısı tamamlanamadı: "+err.Error(), nil)
 	}
 	// A new account means new folders: the old ids point into the old Drive.
-	_ = s.repo.ClearDriveFolders(ctx)
+	if err := s.repo.ClearDriveFolders(ctx); err != nil {
+		return "", errs.Internal(fmt.Errorf("old drive folders could not be cleared: %w", err))
+	}
 	// Warm the root so the first upload does not pay for it.
 	if _, err := s.drive.Folder(ctx); err != nil {
 		return "", errs.Invalid("Drive klasörü oluşturulamadı: "+err.Error(), nil)

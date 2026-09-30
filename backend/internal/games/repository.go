@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"gorm.io/gorm"
@@ -25,7 +26,9 @@ func NewRepository(db *gorm.DB) *Repository {
 
 func (r *Repository) Setting(ctx context.Context, key string) string {
 	var value string
-	_ = r.db.WithContext(ctx).Raw("SELECT value FROM system_settings WHERE key = ?", key).Scan(&value).Error
+	if err := r.db.WithContext(ctx).Raw("SELECT value FROM system_settings WHERE key = ?", key).Scan(&value).Error; err != nil {
+		slog.WarnContext(ctx, "games setting could not be read", "key", key, "error", err)
+	}
 	return value
 }
 
@@ -248,7 +251,9 @@ func (r *Repository) RecentLines(ctx context.Context, groupID uint, userIDs []ui
 // PresenceState reads a person's live status (available, break, ...).
 func (r *Repository) PresenceState(ctx context.Context, userID uint) string {
 	var state string
-	_ = r.db.WithContext(ctx).Raw("SELECT state FROM agent_presence WHERE user_id = ?", userID).Scan(&state).Error
+	if err := r.db.WithContext(ctx).Raw("SELECT state FROM agent_presence WHERE user_id = ?", userID).Scan(&state).Error; err != nil {
+		slog.WarnContext(ctx, "presence could not be read", "user", userID, "error", err)
+	}
 	return state
 }
 

@@ -91,8 +91,10 @@ func (s *Service) MyPrefs(ctx context.Context, actorID uint) (*Prefs, error) {
 		MutedUntil     *time.Time
 		PinnedAt       *time.Time
 	}
-	_ = s.db.WithContext(ctx).Raw(`SELECT conversation_id, muted_until, pinned_at FROM wa_user_conversations
-		WHERE user_id = ? AND (pinned_at IS NOT NULL OR muted_until > now())`, actorID).Scan(&convs).Error
+	if err := s.db.WithContext(ctx).Raw(`SELECT conversation_id, muted_until, pinned_at FROM wa_user_conversations
+		WHERE user_id = ? AND (pinned_at IS NOT NULL OR muted_until > now())`, actorID).Scan(&convs).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	for _, c := range convs {
 		p := ConvPref{ID: c.ConversationID, PinnedAt: c.PinnedAt}
 		if c.MutedUntil != nil && c.MutedUntil.After(time.Now()) {
@@ -145,7 +147,7 @@ func (s *Service) SaveConvPref(ctx context.Context, actorID, conversationID uint
 		return nil, errs.Internal(err)
 	}
 	if setMute {
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET muted_until = ? WHERE user_id = ? AND conversation_id = ?", until, actorID, conversationID).Error
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET muted_until = ? WHERE user_id = ? AND conversation_id = ?", until, actorID, conversationID).Error)
 	}
 	if in.Pin != nil {
 		var pinned *time.Time
@@ -153,8 +155,8 @@ func (s *Service) SaveConvPref(ctx context.Context, actorID, conversationID uint
 			now := time.Now()
 			pinned = &now
 		}
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET pinned_at = ? WHERE user_id = ? AND conversation_id = ?", pinned, actorID, conversationID).Error
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET pinned_at = ? WHERE user_id = ? AND conversation_id = ?", pinned, actorID, conversationID).Error)
 	}
-	_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_user_conversations WHERE user_id = ? AND pinned_at IS NULL AND (muted_until IS NULL OR muted_until < now())", actorID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_user_conversations WHERE user_id = ? AND pinned_at IS NULL AND (muted_until IS NULL OR muted_until < now())", actorID).Error)
 	return s.MyPrefs(ctx, actorID)
 }

@@ -86,7 +86,9 @@ func (s *Service) MarkUnread(ctx context.Context, actorID, conversationID uint) 
 		return err
 	}
 	var lastIn uint
-	_ = s.db.WithContext(ctx).Raw("SELECT COALESCE(max(id), 0) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND kind <> 'reaction'", conv.ID).Scan(&lastIn).Error
+	if err := s.db.WithContext(ctx).Raw("SELECT COALESCE(max(id), 0) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND kind <> 'reaction'", conv.ID).Scan(&lastIn).Error; err != nil {
+		return errs.Internal(err)
+	}
 	if lastIn == 0 {
 		return nil
 	}

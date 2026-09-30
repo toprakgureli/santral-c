@@ -127,7 +127,9 @@ func (s *Service) ShiftStarted(ctx context.Context, userID uint) {
 		slog.WarnContext(ctx, "presence could not be reset at shift start", "user", userID, "error", err)
 		return
 	}
-	_ = s.repo.RecordTransition(ctx, userID, "available")
+	if err := s.repo.RecordTransition(ctx, userID, "available"); err != nil {
+		slog.WarnContext(ctx, "presence change could not be logged", "user", userID, "error", err)
+	}
 	s.broadcastExtensions(ctx)
 	if ext := s.extensionOf(ctx, userID); ext != "" {
 		if err := s.client.SetDND(ctx, ext, false); err != nil {
@@ -144,7 +146,9 @@ func (s *Service) ShiftEnded(ctx context.Context, userID uint) {
 		slog.WarnContext(ctx, "presence could not be set at shift end", "user", userID, "error", err)
 		return
 	}
-	_ = s.repo.CloseOpenEvent(ctx, userID)
+	if err := s.repo.CloseOpenEvent(ctx, userID); err != nil {
+		slog.WarnContext(ctx, "presence stretch could not be closed", "user", userID, "error", err)
+	}
 	s.broadcastExtensions(ctx)
 	if ext := s.extensionOf(ctx, userID); ext != "" {
 		if err := s.client.SetDND(ctx, ext, true); err != nil {
@@ -919,7 +923,9 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 		return errs.Internal(err)
 	}
 	// Log the transition so per-state durations accumulate (best effort).
-	_ = s.repo.RecordTransition(ctx, actorID, state)
+	if err := s.repo.RecordTransition(ctx, actorID, state); err != nil {
+		slog.WarnContext(ctx, "presence change could not be logged", "user", actorID, "error", err)
+	}
 	// Reflect the change on every open agent list instantly.
 	s.broadcastExtensions(ctx)
 	if err := s.client.SetDND(ctx, *actor.SIPExtension, state != "available"); err != nil {
@@ -967,10 +973,13 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 	}
 	state, since, err := s.repo.GetPresence(ctx, actorID)
 	if err != nil {
+		slog.WarnContext(ctx, "presence could not be read", "user", actorID, "error", err)
 		return &Presence{State: "available", Totals: map[string]int64{}}, nil
 	}
 	// Start the clock the first time the agent appears, so totals accumulate.
-	_ = s.repo.EnsureOpenEvent(ctx, actorID, state)
+	if err := s.repo.EnsureOpenEvent(ctx, actorID, state); err != nil {
+		slog.WarnContext(ctx, "presence stretch could not be opened", "user", actorID, "error", err)
+	}
 	// Prefer the open stretch's start as "since" so the timer is stable across
 	// page navigation (agent_presence.updated_at is absent until a manual change).
 	if started, ok, _ := s.repo.OpenEventStartedAt(ctx, actorID); ok {

@@ -237,12 +237,12 @@ func (s *Service) viewerOf(ctx context.Context, userID uint) (*viewer, error) {
 	}
 	v := &viewer{user: u, channels: map[uint]bool{}, teams: map[uint]bool{}}
 	var chans []uint
-	_ = s.db.WithContext(ctx).Raw("SELECT channel_id FROM wa_channel_members WHERE user_id = ?", userID).Scan(&chans).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT channel_id FROM wa_channel_members WHERE user_id = ?", userID).Scan(&chans).Error)
 	for _, c := range chans {
 		v.channels[c] = true
 	}
 	var teams []uint
-	_ = s.db.WithContext(ctx).Raw("SELECT team_id FROM wa_team_members WHERE user_id = ?", userID).Scan(&teams).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT team_id FROM wa_team_members WHERE user_id = ?", userID).Scan(&teams).Error)
 	for _, t := range teams {
 		v.teams[t] = true
 	}
@@ -263,7 +263,7 @@ func (s *Service) require(ctx context.Context, userID uint, p enums.Permission, 
 
 func (s *Service) participantSet(ctx context.Context, ticketID uint) map[uint]bool {
 	var ids []uint
-	_ = s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_ticket_participants WHERE ticket_id = ?", ticketID).Scan(&ids).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_ticket_participants WHERE ticket_id = ?", ticketID).Scan(&ids).Error)
 	out := make(map[uint]bool, len(ids))
 	for _, id := range ids {
 		out[id] = true
@@ -319,7 +319,7 @@ type Event struct {
 // bump moves a conversation's version forward so reconnecting panels see
 // the change.
 func (s *Service) bump(ctx context.Context, conversationID uint) {
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_conversations SET version = nextval('wa_version_seq') WHERE id = ?", conversationID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_conversations SET version = nextval('wa_version_seq') WHERE id = ?", conversationID).Error)
 }
 
 // publish sends a conversation's fresh summary (and optionally a message)

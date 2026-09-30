@@ -37,8 +37,8 @@ func (s *Service) surveyToken(ticketID uint) string {
 func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t *models.WATicket, repeatHours int) bool {
 	if repeatHours > 0 {
 		var recent int64
-		_ = s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE contact_id = ? AND survey_sent_at > now() - make_interval(hours => ?)",
-			t.ContactID, repeatHours).Scan(&recent).Error
+		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE contact_id = ? AND survey_sent_at > now() - make_interval(hours => ?)",
+			t.ContactID, repeatHours).Scan(&recent).Error)
 		if recent > 0 {
 			return false
 		}
@@ -47,8 +47,8 @@ func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t 
 		return true
 	}
 	var since int64
-	_ = s.db.WithContext(ctx).Raw(`SELECT count(*) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND created_at > ?
-		AND kind <> 'reaction' AND COALESCE(payload->>'id', '') NOT LIKE '%rate-%'`, conv.ID, *t.SurveySentAt).Scan(&since).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw(`SELECT count(*) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND created_at > ?
+		AND kind <> 'reaction' AND COALESCE(payload->>'id', '') NOT LIKE '%rate-%'`, conv.ID, *t.SurveySentAt).Scan(&since).Error)
 	return since > 0
 }
 
@@ -96,7 +96,7 @@ func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *mo
 	default:
 		return
 	}
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error)
 }
 
 // surveyText fills {musteri} and {temsilci} in the survey message.
@@ -130,7 +130,7 @@ func (s *Service) sendNativeSurvey(ctx context.Context, ch *models.WAChannel, co
 	}
 	msg := menuMessage("list", text, "Puan ver", opts)
 	s.queueObject(ctx, ch, conv.ID, t.ID, "automation", "Değerlendirme anketi", "interactive", text, msg)
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error)
 }
 
 // handleSurveyReply records a score picked from the native survey list.
@@ -381,7 +381,7 @@ func (s *Service) keepTexts(ctx context.Context, table string, id uint, texts []
 	if table == "wa_call_surveys" {
 		col = "texts"
 	}
-	_ = s.db.WithContext(ctx).Exec("UPDATE "+table+" SET "+col+" = ? WHERE id = ?", jsonString(texts), id).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE "+table+" SET "+col+" = ? WHERE id = ?", jsonString(texts), id).Error)
 }
 
 // questionTitle is a question's title as the form gave it, trimmed to fit.

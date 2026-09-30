@@ -235,7 +235,7 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 	}
 	if set.UseQuickReplies {
 		var qs []models.WAQuickReply
-		_ = s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", conv.ChannelID)).Order("shortcut").Limit(40).Find(&qs).Error
+		warnDB(ctx, s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", conv.ChannelID)).Order("shortcut").Limit(40).Find(&qs).Error)
 		if len(qs) > 0 {
 			sys.WriteString("\nEkibin hazır cevapları (bilgi kaynağı ve üslup örneği olarak kullan):\n")
 			for _, q := range qs {

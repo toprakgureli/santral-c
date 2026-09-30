@@ -271,11 +271,11 @@ func (s *Service) runStep(ctx context.Context, ch *models.WAChannel, conv *model
 	io := &liveIO{s: s, ctx: ctx, ch: ch, conv: conv, ticket: ticket, bot: bot, version: version}
 	step(g, st, in, io)
 	if !st.Done {
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_bot_sessions SET node_id = ?, vars = ?, tries = ?, updated_at = now() WHERE conversation_id = ?",
-			st.NodeID, jsonString(st.Vars), st.Tries, conv.ID).Error
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_bot_sessions SET node_id = ?, vars = ?, tries = ?, updated_at = now() WHERE conversation_id = ?",
+			st.NodeID, jsonString(st.Vars), st.Tries, conv.ID).Error)
 		return
 	}
-	_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conv.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conv.ID).Error)
 	summary := botSummary(st.Vars)
 	switch {
 	case io.handed:
@@ -314,11 +314,11 @@ func (s *Service) botToHuman(ctx context.Context, ch *models.WAChannel, conv *mo
 	if teamID > 0 {
 		fields["team_id"] = teamID
 	}
-	_ = s.db.WithContext(ctx).Model(&models.WATicket{}).Where("id = ? AND status = 'bot'", ticket.ID).Updates(fields).Error
+	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WATicket{}).Where("id = ? AND status = 'bot'", ticket.ID).Updates(fields).Error)
 	line := "Chatbot sohbeti bir temsilciye aktardı."
 	if teamID > 0 {
 		var name string
-		_ = s.db.WithContext(ctx).Raw("SELECT name FROM wa_teams WHERE id = ?", teamID).Scan(&name).Error
+		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT name FROM wa_teams WHERE id = ?", teamID).Scan(&name).Error)
 		if name != "" {
 			line = "Chatbot sohbeti " + name + " ekibine aktardı."
 		}
@@ -328,7 +328,7 @@ func (s *Service) botToHuman(ctx context.Context, ch *models.WAChannel, conv *mo
 	}
 	s.event(ctx, nil, conv, ticket.ID, 0, line)
 	// The waiting clock starts only now that a person is needed.
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET awaiting_since = now(), waiting_listed_at = NULL WHERE id = ?", ticket.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET awaiting_since = now(), waiting_listed_at = NULL WHERE id = ?", ticket.ID).Error)
 	s.distribute(ctx, ch, ticket.ID)
 	s.publish(ctx, conv.ID, nil, nil)
 }
@@ -339,9 +339,9 @@ func (s *Service) endBot(ctx context.Context, conversationID uint, kind string) 
 	if s.db.WithContext(ctx).Where("conversation_id = ?", conversationID).First(&sess).Error != nil {
 		return
 	}
-	_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conversationID).Error
-	_ = s.db.WithContext(ctx).Exec("INSERT INTO wa_bot_events (bot_id, version, conversation_id, node_id, kind) VALUES (?, ?, ?, ?, ?)", sess.BotID, sess.Version, conversationID, sess.NodeID, kind).Error
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open' WHERE status = 'bot' AND conversation_id = ?", conversationID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conversationID).Error)
+	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_bot_events (bot_id, version, conversation_id, node_id, kind) VALUES (?, ?, ?, ?, ?)", sess.BotID, sess.Version, conversationID, sess.NodeID, kind).Error)
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open' WHERE status = 'bot' AND conversation_id = ?", conversationID).Error)
 }
 
 // sweepBots ends flows whose customer went quiet; the ticket is closed
@@ -352,8 +352,8 @@ func (s *Service) sweepBots(ctx context.Context) {
 		ChannelID      uint
 		UpdatedAt      time.Time
 	}
-	_ = s.db.WithContext(ctx).Raw(`SELECT s.conversation_id, c.channel_id, s.updated_at FROM wa_bot_sessions s JOIN wa_conversations c ON c.id = s.conversation_id
-		WHERE s.updated_at < now() - interval '5 minutes'`).Scan(&rows).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw(`SELECT s.conversation_id, c.channel_id, s.updated_at FROM wa_bot_sessions s JOIN wa_conversations c ON c.id = s.conversation_id
+		WHERE s.updated_at < now() - interval '5 minutes'`).Scan(&rows).Error)
 	for _, r := range rows {
 		ch, err := s.channel(ctx, r.ChannelID)
 		if err != nil {
@@ -407,7 +407,7 @@ func (s *Service) botView(ctx context.Context, b *models.WABot) BotView {
 		v.DraftChanged = true
 	} else {
 		var pub string
-		_ = s.db.WithContext(ctx).Raw("SELECT graph::text FROM wa_bot_versions WHERE bot_id = ? AND version = ?", b.ID, b.PublishedVersion).Scan(&pub).Error
+		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT graph::text FROM wa_bot_versions WHERE bot_id = ? AND version = ?", b.ID, b.PublishedVersion).Scan(&pub).Error)
 		var a, c any
 		_ = json.Unmarshal([]byte(pub), &a)
 		_ = json.Unmarshal([]byte(b.Draft), &c)
@@ -518,13 +518,17 @@ func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string,
 		return nil
 	}
 	var others []models.WABot
-	_ = s.db.WithContext(ctx).Where("active AND trigger = ? AND id <> ? AND (trigger <> 'entry' OR COALESCE(schedule->>'mode', 'always') = 'always')", trigger, id).Find(&others).Error
+	if err := s.db.WithContext(ctx).Where("active AND trigger = ? AND id <> ? AND (trigger <> 'entry' OR COALESCE(schedule->>'mode', 'always') = 'always')", trigger, id).Find(&others).Error; err != nil {
+		return errs.Internal(err)
+	}
 	for _, o := range others {
 		for _, a := range parseIDs(o.ChannelIDs) {
 			for _, b := range channels {
 				if a == b {
 					var name string
-					_ = s.db.WithContext(ctx).Raw("SELECT name FROM wa_channels WHERE id = ?", a).Scan(&name).Error
+					if err := s.db.WithContext(ctx).Raw("SELECT name FROM wa_channels WHERE id = ?", a).Scan(&name).Error; err != nil {
+						return errs.Internal(err)
+					}
 					return errs.Conflict(fmt.Sprintf("%s cihazında zaten açık bir %s var: %s. Önce onu kapatın ya da cihazdan çıkarın.", name, triggerWord(trigger), o.Name), nil)
 				}
 			}
@@ -886,7 +890,9 @@ func (s *Service) BotReport(ctx context.Context, actorID, id uint, days int) (*B
 	out := &BotStats{Nodes: map[string]int64{}, Fails: map[string]int64{}, Drops: map[string]int64{}}
 	var g BotGraph
 	var draft string
-	_ = s.db.WithContext(ctx).Raw("SELECT draft::text FROM wa_bots WHERE id = ?", id).Scan(&draft).Error
+	if err := s.db.WithContext(ctx).Raw("SELECT draft::text FROM wa_bots WHERE id = ?", id).Scan(&draft).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	_ = json.Unmarshal([]byte(draft), &g)
 	start := ""
 	if n := g.start(); n != nil {

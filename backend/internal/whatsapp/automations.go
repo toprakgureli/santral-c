@@ -51,7 +51,7 @@ var ruleTriggers = map[string]string{
 
 func (s *Service) rulesFor(ctx context.Context, channelID uint, trigger string) []models.WAAutomation {
 	var list []models.WAAutomation
-	_ = s.db.WithContext(ctx).Where("active AND trigger = ? AND channel_ids @> ?::jsonb", trigger, fmt.Sprintf("[%d]", channelID)).Order("position, id").Find(&list).Error
+	warnDB(ctx, s.db.WithContext(ctx).Where("active AND trigger = ? AND channel_ids @> ?::jsonb", trigger, fmt.Sprintf("[%d]", channelID)).Order("position, id").Find(&list).Error)
 	return list
 }
 
@@ -75,8 +75,8 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 	}
 	if r.CooldownMin > 0 {
 		var recent int64
-		_ = s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND contact_id = ? AND created_at > now() - make_interval(mins => ?)",
-			r.ID, conv.ContactID, r.CooldownMin).Scan(&recent).Error
+		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND contact_id = ? AND created_at > now() - make_interval(mins => ?)",
+			r.ID, conv.ContactID, r.CooldownMin).Scan(&recent).Error)
 		if recent > 0 {
 			return
 		}
@@ -88,7 +88,7 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 			slog.WarnContext(ctx, "whatsapp rule action failed", "rule", r.ID, "action", a.Kind, "error", err)
 		}
 	}
-	_ = s.db.WithContext(ctx).Exec("INSERT INTO wa_automation_runs (automation_id, contact_id, ticket_id, ok, detail) VALUES (?, ?, ?, ?, ?)", r.ID, conv.ContactID, ticket.ID, ok, detail).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_automation_runs (automation_id, contact_id, ticket_id, ok, detail) VALUES (?, ?, ?, ?, ?)", r.ID, conv.ContactID, ticket.ID, ok, detail).Error)
 }
 
 func (s *Service) conditionsHold(ctx context.Context, ch *models.WAChannel, conds []RuleCondition, ticket *models.WATicket, msg *models.WAMessage) bool {
@@ -185,32 +185,46 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		}
 		s.queueObject(ctx, ch, conv.ID, ticket.ID, "automation", r.Name+" · "+tpl.Name, "template", preview, map[string]any{"type": "template", "template": obj})
 	case "assign_team":
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET team_id = ? WHERE id = ?", a.TeamID, ticket.ID).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET team_id = ? WHERE id = ?", a.TeamID, ticket.ID).Error; err != nil {
+			return err
+		}
 		if ticket.OwnerID == nil {
 			s.distribute(ctx, ch, ticket.ID)
 		}
 		s.publish(ctx, conv.ID, nil, nil)
 	case "assign_user":
 		before := s.audience(ctx, ticket)
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET owner_id = ? WHERE id = ? AND owner_id IS NULL", a.UserID, ticket.ID).Error
-		_ = s.db.WithContext(ctx).Exec("INSERT INTO wa_ticket_participants (ticket_id, user_id, role) VALUES (?, ?, 'owner') ON CONFLICT DO NOTHING", ticket.ID, a.UserID).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET owner_id = ? WHERE id = ? AND owner_id IS NULL", a.UserID, ticket.ID).Error; err != nil {
+			return err
+		}
+		if err := s.db.WithContext(ctx).Exec("INSERT INTO wa_ticket_participants (ticket_id, user_id, role) VALUES (?, ?, 'owner') ON CONFLICT DO NOTHING", ticket.ID, a.UserID).Error; err != nil {
+			return err
+		}
 		s.publish(ctx, conv.ID, nil, before)
 	case "add_tag":
 		t := s.ticketFresh(ctx, ticket.ID)
 		if t != nil {
-			_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET tags = ? WHERE id = ?", jsonString(cleanTags(append(parseTags(t.Tags), a.Value))), ticket.ID).Error
+			if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET tags = ? WHERE id = ?", jsonString(cleanTags(append(parseTags(t.Tags), a.Value))), ticket.ID).Error; err != nil {
+				return err
+			}
 			s.publish(ctx, conv.ID, nil, nil)
 		}
 	case "set_priority":
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET priority = ? WHERE id = ? AND ? IN ('low','normal','high','urgent')", a.Value, ticket.ID, a.Value).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET priority = ? WHERE id = ? AND ? IN ('low','normal','high','urgent')", a.Value, ticket.ID, a.Value).Error; err != nil {
+			return err
+		}
 		s.publish(ctx, conv.ID, nil, nil)
 	case "set_category":
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET category = ? WHERE id = ?", strings.TrimSpace(a.Value), ticket.ID).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET category = ? WHERE id = ?", strings.TrimSpace(a.Value), ticket.ID).Error; err != nil {
+			return err
+		}
 		s.publish(ctx, conv.ID, nil, nil)
 	case "note":
 		m := &models.WAMessage{ChannelID: ch.ID, ConversationID: conv.ID, TicketID: uintPtr(ticket.ID), Direction: "note", Kind: "text", SenderKind: "automation",
 			SenderLabel: r.Name, Body: fillVars(a.Text, vars), Status: "received", CreatedAt: time.Now()}
-		_ = s.db.WithContext(ctx).Create(m).Error
+		if err := s.db.WithContext(ctx).Create(m).Error; err != nil {
+			return err
+		}
 		s.publish(ctx, conv.ID, m, nil)
 	case "resolve":
 		fresh := s.ticketFresh(ctx, ticket.ID)
@@ -252,7 +266,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 // sweepTimedRules runs "no reply for N minutes" rules.
 func (s *Service) sweepTimedRules(ctx context.Context) {
 	var rules []models.WAAutomation
-	_ = s.db.WithContext(ctx).Where("active AND trigger = 'no_reply'").Find(&rules).Error
+	warnDB(ctx, s.db.WithContext(ctx).Where("active AND trigger = 'no_reply'").Find(&rules).Error)
 	for i := range rules {
 		r := &rules[i]
 		var conds []RuleCondition
@@ -273,14 +287,14 @@ func (s *Service) sweepTimedRules(ctx context.Context) {
 			}
 			h := parseSettings(ch.Settings).Hours
 			var list []models.WATicket
-			_ = s.db.WithContext(ctx).Where("channel_id = ? AND awaiting_since IS NOT NULL AND status IN ('open','pending')", chID).Find(&list).Error
+			warnDB(ctx, s.db.WithContext(ctx).Where("channel_id = ? AND awaiting_since IS NOT NULL AND status IN ('open','pending')", chID).Find(&list).Error)
 			for j := range list {
 				t := &list[j]
 				if h.Elapsed(*t.AwaitingSince, time.Now()) < time.Duration(minutes)*time.Minute {
 					continue
 				}
 				var done int64
-				_ = s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND ticket_id = ? AND created_at >= ?", r.ID, t.ID, *t.AwaitingSince).Scan(&done).Error
+				warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND ticket_id = ? AND created_at >= ?", r.ID, t.ID, *t.AwaitingSince).Scan(&done).Error)
 				if done > 0 {
 					continue
 				}
@@ -327,7 +341,7 @@ func (s *Service) ruleView(ctx context.Context, r *models.WAAutomation) RuleView
 		N    int64
 		Last *time.Time
 	}
-	_ = s.db.WithContext(ctx).Raw("SELECT count(*) AS n, max(created_at) AS last FROM wa_automation_runs WHERE automation_id = ?", r.ID).Scan(&st).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) AS n, max(created_at) AS last FROM wa_automation_runs WHERE automation_id = ?", r.ID).Scan(&st).Error)
 	v.Runs, v.LastRunAt = st.N, st.Last
 	var last struct {
 		OK     bool
@@ -426,7 +440,7 @@ func (s *Service) SaveRule(ctx context.Context, actorID, id uint, in RuleInput) 
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	_ = s.db.WithContext(ctx).First(r, r.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).First(r, r.ID).Error)
 	v := s.ruleView(ctx, r)
 	return &v, nil
 }
@@ -445,7 +459,9 @@ func (s *Service) ReorderRules(ctx context.Context, actorID uint, ids []uint) er
 		return err
 	}
 	for i, id := range ids {
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_automations SET position = ? WHERE id = ?", i, id).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_automations SET position = ? WHERE id = ?", i, id).Error; err != nil {
+			return errs.Internal(err)
+		}
 	}
 	return nil
 }

@@ -83,7 +83,7 @@ func (s *Service) mediaRef(msg *models.WAMessage) MediaRef {
 }
 
 func (s *Service) saveRef(ctx context.Context, msgID uint, ref MediaRef) {
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_messages SET media = ? WHERE id = ?", jsonString(ref), msgID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_messages SET media = ? WHERE id = ?", jsonString(ref), msgID).Error)
 }
 
 // keepMedia copies a customer's file to storage.
@@ -138,7 +138,7 @@ func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uin
 		}
 	}
 	s.saveRef(ctx, msgID, ref)
-	_ = s.db.WithContext(ctx).First(&msg, msgID).Error
+	warnDB(ctx, s.db.WithContext(ctx).First(&msg, msgID).Error)
 	s.publish(ctx, msg.ConversationID, &msg, nil)
 }
 

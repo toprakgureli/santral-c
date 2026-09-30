@@ -97,7 +97,9 @@ func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay stri
 		N      int64
 	}
 	mq := "SELECT m.sender_user_id AS user_id, count(*) AS n FROM wa_messages m JOIN wa_tickets t ON t.id = m.ticket_id WHERE m.direction = 'out' AND m.sender_user_id IS NOT NULL AND m.created_at >= ? AND m.created_at < ?" + chFilter + " GROUP BY m.sender_user_id"
-	_ = s.db.WithContext(ctx).Raw(mq, append([]any{from, to}, args...)...).Scan(&msgs).Error
+	if err := s.db.WithContext(ctx).Raw(mq, append([]any{from, to}, args...)...).Scan(&msgs).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	mm := map[uint]int64{}
 	var ids []uint
 	for _, m := range msgs {
@@ -147,7 +149,9 @@ func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay stri
 		hq += " AND m.channel_id = ?"
 		hargs = append(hargs, channelID)
 	}
-	_ = s.db.WithContext(ctx).Raw(hq+" GROUP BY h", hargs...).Scan(&hours).Error
+	if err := s.db.WithContext(ctx).Raw(hq+" GROUP BY h", hargs...).Scan(&hours).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	for _, h := range hours {
 		if h.H >= 0 && h.H < 24 {
 			out.Hours[h.H] = h.N

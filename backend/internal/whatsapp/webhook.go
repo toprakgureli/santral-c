@@ -79,7 +79,7 @@ func (s *Service) storeEvent(ctx context.Context, ch *models.WAChannel, body []b
 	if err := s.db.WithContext(ctx).Create(ev).Error; err != nil {
 		return errs.Internal(err)
 	}
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_webhook_at = now() WHERE id = ?", ch.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_webhook_at = now() WHERE id = ?", ch.ID).Error)
 	wake(s.wakeWebhook)
 	return nil
 }
@@ -114,7 +114,7 @@ func (s *Service) processBatch(ctx context.Context) bool {
 		// rest of the batch goes on.
 		err := safe.Call(func() error { return s.processEvent(ctx, ev) })
 		if err == nil {
-			_ = s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'done', processed_at = now(), attempts = attempts + 1, last_error = '' WHERE id = ?", ev.ID).Error
+			warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'done', processed_at = now(), attempts = attempts + 1, last_error = '' WHERE id = ?", ev.ID).Error)
 			continue
 		}
 		attempts := ev.Attempts + 1
@@ -127,8 +127,8 @@ func (s *Service) processBatch(ctx context.Context) bool {
 		if p := (*safe.PanicError)(nil); errors.As(err, &p) {
 			slog.ErrorContext(ctx, "whatsapp webhook event panicked", "event", ev.ID, "panic", fmt.Sprint(p.Value), "stack", string(p.Stack))
 		}
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ? WHERE id = ?",
-			status, attempts, err.Error(), time.Now().Add(wait), ev.ID).Error
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ? WHERE id = ?",
+			status, attempts, err.Error(), time.Now().Add(wait), ev.ID).Error)
 		slog.WarnContext(ctx, "whatsapp webhook event failed", "event", ev.ID, "attempt", attempts, "error", err)
 		if status == "failed" && ev.ChannelID != nil {
 			s.alert(ctx, *ev.ChannelID, "Meta'dan gelen bir bildirim işlenemedi. Ayarlar > İşlenemeyen bildirimler ekranından tekrar deneyebilirsiniz.")
@@ -312,7 +312,7 @@ func (s *Service) onMessages(ctx context.Context, raw json.RawMessage) error {
 }
 
 func (s *Service) recordChannelError(ctx context.Context, channelID uint, text string) {
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", text, channelID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", text, channelID).Error)
 	s.alert(ctx, channelID, "WhatsApp cihazında hata: "+text)
 }
 
@@ -326,12 +326,16 @@ func (s *Service) onQuality(ctx context.Context, wabaID string, raw json.RawMess
 		return nil
 	}
 	var chans []models.WAChannel
-	_ = s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error
+	if err := s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error; err != nil {
+		return err
+	}
 	for _, ch := range chans {
 		if v.DisplayPhoneNumber != "" && digitsOnly(ch.DisplayPhone) != "" && !strings.HasSuffix(digitsOnly(v.DisplayPhoneNumber), digitsOnly(ch.DisplayPhone)) && !strings.HasSuffix(digitsOnly(ch.DisplayPhone), digitsOnly(v.DisplayPhoneNumber)) {
 			continue
 		}
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_channels SET messaging_limit = ? WHERE id = ?", v.CurrentLimit, ch.ID).Error
+		if err := s.db.WithContext(ctx).Exec("UPDATE wa_channels SET messaging_limit = ? WHERE id = ?", v.CurrentLimit, ch.ID).Error; err != nil {
+			return err
+		}
 		switch v.Event {
 		case "DOWNGRADE", "FLAGGED":
 			s.alert(ctx, ch.ID, fmt.Sprintf("%s numarasının kalitesi düştü (%s). Gönderim sınırı: %s.", ch.Name, qualityWord(v.Event), v.CurrentLimit))
@@ -351,13 +355,13 @@ func qualityWord(event string) string {
 
 func (s *Service) onAccountNotice(ctx context.Context, wabaID, field string, raw json.RawMessage) {
 	var chans []models.WAChannel
-	_ = s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error
+	warnDB(ctx, s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error)
 	text := strings.TrimSpace(string(raw))
 	if len(text) > 400 {
 		text = text[:400]
 	}
 	for _, ch := range chans {
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", "Meta hesap bildirimi ("+field+"): "+text, ch.ID).Error
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", "Meta hesap bildirimi ("+field+"): "+text, ch.ID).Error)
 		s.alert(ctx, ch.ID, "Meta, "+ch.Name+" hesabı hakkında bir bildirim gönderdi. Cihaz ayarlarında ayrıntısını görebilirsiniz.")
 	}
 }

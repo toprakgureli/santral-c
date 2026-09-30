@@ -86,7 +86,7 @@ func (s *Service) channelView(ctx context.Context, ch *models.WAChannel, full bo
 		v.SurveyHookPath = "/api/v1/wa/survey/" + ch.HookKey
 		v.ExistingToken = ch.ExistingVerifyToken
 	}
-	_ = s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_channel_members WHERE channel_id = ? ORDER BY user_id", ch.ID).Scan(&v.MemberIDs).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_channel_members WHERE channel_id = ? ORDER BY user_id", ch.ID).Scan(&v.MemberIDs).Error)
 	if v.MemberIDs == nil {
 		v.MemberIDs = []uint{}
 	}
@@ -182,7 +182,7 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 		return nil, errs.Internal(err)
 	}
 	// The one who adds a device works on it from the start.
-	_ = s.db.WithContext(ctx).Exec("INSERT INTO wa_channel_members (channel_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", ch.ID, actorID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_channel_members (channel_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", ch.ID, actorID).Error)
 	s.forget()
 	s.forgetHookPaths()
 	s.refreshNumber(ctx, ch)
@@ -352,7 +352,7 @@ func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *Nu
 	if ch.DisplayPhone == "" && info.DisplayPhoneNumber != "" {
 		fields["display_phone"] = info.DisplayPhoneNumber
 	}
-	_ = s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", ch.ID).Updates(fields).Error
+	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", ch.ID).Updates(fields).Error)
 }
 
 // ---------------------------------------------------------------- settings

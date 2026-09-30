@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -715,7 +716,9 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 	mid, err := s.rooms.PostGame(ctx, groupID, actorID, g.ID)
 	if err != nil {
 		g.Status = statusCancelled
-		_ = s.repo.SaveGame(ctx, g)
+		if err := s.repo.SaveGame(ctx, g); err != nil {
+			slog.WarnContext(ctx, "cancelled game could not be saved", "game", g.ID, "error", err)
+		}
 		s.forget(g.ID)
 		return nil, errs.Internal(fmt.Errorf("game card could not be posted: %w", err))
 	}
@@ -803,7 +806,9 @@ func (s *Service) Join(ctx context.Context, actorID, gameID uint) (*GameView, er
 		}
 		m.Players = append(m.Players, Player{UserID: actorID, Name: actor.Name})
 		delete(m.Invited, actorID)
-		_ = s.repo.AddPlayer(ctx, &models.GamePlayer{GameID: m.G.ID, UserID: actorID, JoinedAt: time.Now()})
+		if err := s.repo.AddPlayer(ctx, &models.GamePlayer{GameID: m.G.ID, UserID: actorID, JoinedAt: time.Now()}); err != nil {
+			slog.WarnContext(ctx, "game player could not be saved", "game", m.G.ID, "user", actorID, "error", err)
+		}
 		if m.G.Status == statusPlaying {
 			if j, ok := m.Kind.(lateJoiner); ok {
 				j.Joined(m, s, ctx, actorID)
@@ -841,7 +846,9 @@ func (s *Service) Leave(ctx context.Context, actorID, gameID uint) (*GameView, e
 			}
 		}
 		m.Players = out
-		_ = s.repo.RemovePlayer(ctx, m.G.ID, actorID)
+		if err := s.repo.RemovePlayer(ctx, m.G.ID, actorID); err != nil {
+			slog.WarnContext(ctx, "game player could not be removed", "game", m.G.ID, "user", actorID, "error", err)
+		}
 		if len(m.Players) == 0 {
 			m.G.Status = statusCancelled
 		} else if m.G.HostID == actorID {
@@ -1091,8 +1098,12 @@ func (s *Service) finish(ctx context.Context, m *Match, winners []uint, note str
 		scores[p.UserID] = p.Score
 		rows = append(rows, models.GameResult{GameID: m.G.ID, UserID: p.UserID, Kind: m.G.Kind, Won: won[p.UserID], Score: p.Score, FinishedAt: now})
 	}
-	_ = s.repo.SetScores(ctx, m.G.ID, scores)
-	_ = s.repo.RecordResults(ctx, rows)
+	if err := s.repo.SetScores(ctx, m.G.ID, scores); err != nil {
+		slog.ErrorContext(ctx, "game scores could not be saved", "game", m.G.ID, "error", err)
+	}
+	if err := s.repo.RecordResults(ctx, rows); err != nil {
+		slog.ErrorContext(ctx, "game results could not be saved", "game", m.G.ID, "error", err)
+	}
 	names := []string{}
 	for _, w := range winners {
 		if p := m.player(w); p != nil {

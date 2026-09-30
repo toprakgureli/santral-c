@@ -34,7 +34,7 @@ func (s *Service) event(ctx context.Context, tx *gorm.DB, conv *models.WAConvers
 
 func (s *Service) userName(ctx context.Context, id uint) string {
 	var name string
-	_ = s.db.WithContext(ctx).Raw("SELECT name FROM users WHERE id = ?", id).Scan(&name).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT name FROM users WHERE id = ?", id).Scan(&name).Error)
 	if name == "" {
 		return "Biri"
 	}
@@ -80,7 +80,7 @@ func (s *Service) eligible(ctx context.Context, ch *models.WAChannel, teamID *ui
 		}
 		if set.Distribution.MaxOpen > 0 {
 			var open int64
-			_ = s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE owner_id = ? AND status IN ('open','pending')", id).Scan(&open).Error
+			warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE owner_id = ? AND status IN ('open','pending')", id).Scan(&open).Error)
 			if open >= int64(set.Distribution.MaxOpen) {
 				continue
 			}
@@ -149,7 +149,7 @@ func (s *Service) ticketFresh(ctx context.Context, id uint) *models.WATicket {
 // role.
 func (s *Service) titleOf(ctx context.Context, u *models.User) string {
 	var headline string
-	_ = s.db.WithContext(ctx).Raw("SELECT headline FROM users WHERE id = ?", u.ID).Scan(&headline).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT headline FROM users WHERE id = ?", u.ID).Scan(&headline).Error)
 	if h := strings.TrimSpace(headline); h != "" {
 		if i := strings.IndexAny(h, "·|,"); i > 0 {
 			h = strings.TrimSpace(h[:i])
@@ -248,7 +248,7 @@ func (s *Service) sendGreeting(ctx context.Context, u *models.User, ch *models.W
 		return
 	}
 	var greeted bool
-	_ = s.db.WithContext(ctx).Raw("SELECT greeted FROM wa_ticket_participants WHERE ticket_id = ? AND user_id = ?", ticket.ID, u.ID).Scan(&greeted).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT greeted FROM wa_ticket_participants WHERE ticket_id = ? AND user_id = ?", ticket.ID, u.ID).Scan(&greeted).Error)
 	if greeted {
 		return
 	}
@@ -280,7 +280,7 @@ func (s *Service) sendGreeting(ctx context.Context, u *models.User, ch *models.W
 		slog.WarnContext(ctx, "whatsapp greeting could not be sent", "ticket", ticket.ID, "error", err)
 		return
 	}
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_ticket_participants SET greeted = true WHERE ticket_id = ? AND user_id = ?", ticket.ID, u.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_ticket_participants SET greeted = true WHERE ticket_id = ? AND user_id = ?", ticket.ID, u.ID).Error)
 }
 
 // Take makes the person the owner; the previous owner stays as a helper.
@@ -376,7 +376,9 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 		var team *uint
 		if in.TeamID > 0 {
 			team = uintPtr(in.TeamID)
-			_ = tx.Raw("SELECT name FROM wa_teams WHERE id = ?", in.TeamID).Scan(&teamName).Error
+			if err := tx.Raw("SELECT name FROM wa_teams WHERE id = ?", in.TeamID).Scan(&teamName).Error; err != nil {
+				return err
+			}
 			if teamName == "" {
 				return errs.NotFound("Ekip bulunamadı.")
 			}

@@ -579,7 +579,7 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	if err := s.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'queued', next_try_at = now(), attempts = 0, error_code = NULL, error_text = '', failed_at = NULL WHERE id = ?", msg.ID).Error; err != nil {
 		return errs.Internal(err)
 	}
-	_ = s.db.WithContext(ctx).First(&msg, msg.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).First(&msg, msg.ID).Error)
 	s.publish(ctx, msg.ConversationID, &msg, nil)
 	wake(s.wakeOutbox)
 	return nil

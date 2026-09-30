@@ -257,8 +257,10 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 		Average float64
 		Low     int64
 	}
-	_ = s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, count(*) AS count, avg(r.score) AS average, count(*) FILTER (WHERE r.score <= 2) AS low`,
-		"", ` AND r.agent_id IS NOT NULL GROUP BY r.agent_id ORDER BY count(*) DESC`), args).Scan(&agents).Error
+	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, count(*) AS count, avg(r.score) AS average, count(*) FILTER (WHERE r.score <= 2) AS low`,
+		"", ` AND r.agent_id IS NOT NULL GROUP BY r.agent_id ORDER BY count(*) DESC`), args).Scan(&agents).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 
 	// per question, and per person and question
 	const answerJoin = "CROSS JOIN LATERAL jsonb_array_elements(r.answers) a"
@@ -268,10 +270,12 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 		Average            float64
 		S1, S2, S3, S4, S5 int64
 	}
-	_ = s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average,
+	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average,
 		count(*) FILTER (WHERE (a->>'score')::int = 1) AS s1, count(*) FILTER (WHERE (a->>'score')::int = 2) AS s2,
 		count(*) FILTER (WHERE (a->>'score')::int = 3) AS s3, count(*) FILTER (WHERE (a->>'score')::int = 4) AS s4,
-		count(*) FILTER (WHERE (a->>'score')::int = 5) AS s5`, answerJoin, ` GROUP BY 1 ORDER BY count(*) DESC, 1`), args).Scan(&qs).Error
+		count(*) FILTER (WHERE (a->>'score')::int = 5) AS s5`, answerJoin, ` GROUP BY 1 ORDER BY count(*) DESC, 1`), args).Scan(&qs).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	out.Questions = make([]RatingQuestion, 0, len(qs))
 	for _, q := range qs {
 		out.Questions = append(out.Questions, RatingQuestion{Question: q.Question, Count: q.Count, Average: q.Average, Dist: [5]int64{q.S1, q.S2, q.S3, q.S4, q.S5}})
@@ -282,8 +286,10 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 		Count    int64
 		Average  float64
 	}
-	_ = s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average`,
-		answerJoin, ` AND r.agent_id IS NOT NULL GROUP BY 1, 2`), args).Scan(&aq).Error
+	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average`,
+		answerJoin, ` AND r.agent_id IS NOT NULL GROUP BY 1, 2`), args).Scan(&aq).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	byAgent := map[uint][]RatingAgentQuestion{}
 	for _, x := range aq {
 		byAgent[x.AgentID] = append(byAgent[x.AgentID], RatingAgentQuestion{Question: x.Question, Count: x.Count, Average: x.Average})

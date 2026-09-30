@@ -200,7 +200,9 @@ func (s *Service) PostGame(ctx context.Context, groupID, userID, gameID uint) (u
 	if err := s.repo.CreateMessage(ctx, msg); err != nil {
 		return 0, errs.Internal(err)
 	}
-	_ = s.repo.MarkRead(ctx, groupID, userID, msg.ID)
+	if err := s.repo.MarkRead(ctx, groupID, userID, msg.ID); err != nil {
+		slog.WarnContext(ctx, "own message could not be marked read", "group", groupID, "error", err)
+	}
 	if _, err := s.broadcastMessage(ctx, g, msg, nil, nil); err != nil {
 		return 0, err
 	}
@@ -1400,10 +1402,14 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		return nil, err
 	}
 	if body == "" && len(files) == 0 {
-		_ = s.repo.SoftDeleteMessage(ctx, msg.ID, actorID)
+		if err := s.repo.SoftDeleteMessage(ctx, msg.ID, actorID); err != nil {
+			slog.WarnContext(ctx, "empty message could not be withdrawn", "message", msg.ID, "error", err)
+		}
 		return nil, errs.Invalid("Ekler hazır değil, mesaj gönderilmedi.", nil)
 	}
-	_ = s.repo.MarkRead(ctx, groupID, actorID, msg.ID)
+	if err := s.repo.MarkRead(ctx, groupID, actorID, msg.ID); err != nil {
+		slog.WarnContext(ctx, "own message could not be marked read", "group", groupID, "error", err)
+	}
 	view, err := s.broadcastMessage(ctx, g, msg, tagged, files)
 	if err != nil {
 		return nil, err
@@ -1782,7 +1788,9 @@ func (s *Service) Subscribe(ctx context.Context, actorID uint) (chan []byte, err
 	}
 	ch, first := s.hub.Subscribe(actorID)
 	if first {
-		_ = s.repo.TouchSeen(context.Background(), actorID)
+		if err := s.repo.TouchSeen(context.WithoutCancel(ctx), actorID); err != nil {
+			slog.WarnContext(ctx, "last seen could not be saved", "user", actorID, "error", err)
+		}
 		on := true
 		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &on})
 	}
@@ -1792,7 +1800,12 @@ func (s *Service) Subscribe(ctx context.Context, actorID uint) (chan []byte, err
 // Unsubscribe closes a live stream; the last tab going away means offline.
 func (s *Service) Unsubscribe(actorID uint, ch chan []byte) {
 	if s.hub.Unsubscribe(actorID, ch) {
-		_ = s.repo.TouchSeen(context.Background(), actorID)
+		// The stream is already gone, so this runs on its own clock.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.repo.TouchSeen(ctx, actorID); err != nil {
+			slog.WarnContext(ctx, "last seen could not be saved", "user", actorID, "error", err)
+		}
 		off := false
 		s.hub.Broadcast(Event{Type: "presence", UserID: actorID, Online: &off, LastSeen: stamp(time.Now())})
 	}

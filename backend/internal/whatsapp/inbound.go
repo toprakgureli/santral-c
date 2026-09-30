@@ -109,6 +109,8 @@ type inboundResult struct {
 	// a score picked from the satisfaction survey list: its ticket
 	rateTicket uint
 	rateScore  int
+	// the customer asked to leave marketing messages with this message
+	optedOut bool
 }
 
 // ratingAnswer reads a score picked from the satisfaction survey list
@@ -181,6 +183,14 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			return nil
 		}
 		res.msg = msg
+		// "DUR": leaving marketing messages is stored together with the
+		// message, so it can never be lost to a later step failing.
+		if kind == "text" && matchesWord(strings.TrimSpace(body), parseSettings(ch.Settings).OptOutKeywords) {
+			if err := tx.Exec("UPDATE wa_contacts SET opted_out = true WHERE id = ?", contact.ID).Error; err != nil {
+				return err
+			}
+			res.optedOut = true
+		}
 		if id, idx, ok := callSurveyAnswer(m); ok {
 			// An answer to the survey after a phone call: kept in the
 			// conversation, but it opens no support ticket.
@@ -196,7 +206,9 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			// A score for a closed conversation: kept in its history, but it
 			// does not open the conversation again.
 			var owner uint
-			_ = tx.Raw("SELECT conversation_id FROM wa_tickets WHERE id = ?", tid).Scan(&owner).Error
+			if err := tx.Raw("SELECT conversation_id FROM wa_tickets WHERE id = ?", tid).Scan(&owner).Error; err != nil {
+				return err
+			}
 			if owner == conv.ID {
 				res.conv, res.rateTicket, res.rateScore = conv, tid, score
 				conv.LastInboundAt = at
@@ -260,14 +272,10 @@ func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *i
 		safe.Go(bg, "whatsapp keep media", func() { s.keepMedia(bg, ch, id) })
 	}
 	set := parseSettings(ch.Settings)
-	text := strings.TrimSpace(msg.Body)
 
-	// "DUR": the customer leaves marketing messages.
-	if msg.Kind == "text" && matchesWord(text, set.OptOutKeywords) {
-		_ = s.db.WithContext(ctx).Exec("UPDATE wa_contacts SET opted_out = true WHERE id = ?", res.contact.ID).Error
-		if strings.TrimSpace(set.OptOutReply) != "" {
-			s.queueSystem(ctx, ch, res.conv.ID, res.ticket.ID, "automation", "Kampanya izni", set.OptOutReply)
-		}
+	// "DUR": the choice is already stored; confirm it to the customer.
+	if res.optedOut && strings.TrimSpace(set.OptOutReply) != "" {
+		s.queueSystem(ctx, ch, res.conv.ID, res.ticket.ID, "automation", "Kampanya izni", set.OptOutReply)
 	}
 
 	ticket := res.ticket
@@ -338,7 +346,9 @@ func upsertConversation(tx *gorm.DB, channelID, contactID uint) (*models.WAConve
 		return nil, false, fmt.Errorf("sohbet kaydedilemedi: %w", err)
 	}
 	var inserted bool
-	_ = tx.Raw("SELECT last_message_id IS NULL FROM wa_conversations WHERE id = ?", c.ID).Scan(&inserted).Error
+	if err := tx.Raw("SELECT last_message_id IS NULL FROM wa_conversations WHERE id = ?", c.ID).Scan(&inserted).Error; err != nil {
+		return nil, false, err
+	}
 	// Lock the row for the rest of the transaction.
 	if err := tx.Raw("SELECT * FROM wa_conversations WHERE id = ? FOR UPDATE", c.ID).Scan(&c).Error; err != nil {
 		return nil, false, err
@@ -381,7 +391,9 @@ func touchTicket(tx *gorm.DB, conv *models.WAConversation, at *time.Time) (*mode
 		}
 		t.AwaitingSince = at
 	default:
-		_ = tx.Exec("UPDATE wa_tickets SET updated_at = now() WHERE id = ?", t.ID).Error
+		if err := tx.Exec("UPDATE wa_tickets SET updated_at = now() WHERE id = ?", t.ID).Error; err != nil {
+			return nil, false, false, err
+		}
 	}
 	return &t, created, reopened, nil
 }
@@ -461,13 +473,13 @@ func (s *Service) applyStatus(ctx context.Context, msg *models.WAMessage, st *ho
 		if st.Status == "read" {
 			lower = []string{"sent", "delivered"}
 		}
-		_ = s.db.WithContext(ctx).Exec(`UPDATE wa_messages SET status = ?,
+		warnDB(ctx, s.db.WithContext(ctx).Exec(`UPDATE wa_messages SET status = ?,
 			delivered_at = COALESCE(delivered_at, ?),
 			read_at = CASE WHEN ? = 'read' THEN COALESCE(read_at, ?) ELSE read_at END
 			WHERE conversation_id = ? AND direction = 'out' AND id < ? AND wamid IS NOT NULL AND status IN ?`,
-			st.Status, *at, st.Status, *at, msg.ConversationID, msg.ID, lower).Error
+			st.Status, *at, st.Status, *at, msg.ConversationID, msg.ID, lower).Error)
 	}
-	_ = s.db.WithContext(ctx).First(msg, msg.ID).Error
+	warnDB(ctx, s.db.WithContext(ctx).First(msg, msg.ID).Error)
 	s.publish(ctx, msg.ConversationID, msg, nil)
 }
 
@@ -479,7 +491,7 @@ func (s *Service) applyPending(ctx context.Context, msg *models.WAMessage) {
 	var rows []struct {
 		Payload string
 	}
-	_ = s.db.WithContext(ctx).Raw("DELETE FROM wa_pending_statuses WHERE wamid = ? RETURNING payload", *msg.WAMID).Scan(&rows).Error
+	warnDB(ctx, s.db.WithContext(ctx).Raw("DELETE FROM wa_pending_statuses WHERE wamid = ? RETURNING payload", *msg.WAMID).Scan(&rows).Error)
 	for _, r := range rows {
 		var st hookStatus
 		if json.Unmarshal([]byte(r.Payload), &st) == nil {
@@ -498,7 +510,7 @@ func (s *Service) publishReaction(ctx context.Context, conversationID uint, reac
 	}
 	var target models.WAMessage
 	if p.MessageID != "" {
-		_ = s.db.WithContext(ctx).Where("wamid = ?", p.MessageID).Limit(1).Find(&target).Error
+		warnDB(ctx, s.db.WithContext(ctx).Where("wamid = ?", p.MessageID).Limit(1).Find(&target).Error)
 	}
 	if target.ID == 0 {
 		s.publish(ctx, conversationID, nil, nil)

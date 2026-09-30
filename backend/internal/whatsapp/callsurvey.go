@@ -233,8 +233,8 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 	status, note := "queued", ""
 	if set.QuietDays > 0 {
 		var n int64
-		_ = s.db.WithContext(ctx).Model(&models.WACallSurvey{}).
-			Where("peer_key = ? AND status IN ('queued','sent','answered') AND created_at > ?", key, time.Now().AddDate(0, 0, -set.QuietDays)).Count(&n).Error
+		warnDB(ctx, s.db.WithContext(ctx).Model(&models.WACallSurvey{}).
+			Where("peer_key = ? AND status IN ('queued','sent','answered') AND created_at > ?", key, time.Now().AddDate(0, 0, -set.QuietDays)).Count(&n).Error)
 		if n > 0 {
 			status, note = "skipped", fmt.Sprintf("Son %d günde zaten soruldu", set.QuietDays)
 		}
@@ -283,7 +283,7 @@ func (s *Service) finishCallSurvey(ctx context.Context, id uint, status, note st
 	if msgID != nil {
 		fields["message_id"] = *msgID
 	}
-	_ = s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ?", id).Updates(fields).Error
+	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ?", id).Updates(fields).Error)
 }
 
 func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r *models.WACallSurvey) error {
@@ -506,7 +506,7 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		Queued, Sent, Answered, Failed, Skipped int64
 		Average                                 float64
 	}
-	_ = s.db.WithContext(ctx).Raw(`SELECT
+	if err := s.db.WithContext(ctx).Raw(`SELECT
 		count(*) FILTER (WHERE cs.status = 'queued') AS queued,
 		count(*) FILTER (WHERE cs.status IN ('sent','answered') AND COALESCE(m.status,'') <> 'failed') AS sent,
 		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
@@ -514,7 +514,9 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		count(*) FILTER (WHERE cs.status = 'skipped') AS skipped,
 		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average
 		FROM wa_call_surveys cs LEFT JOIN wa_messages m ON m.id = cs.message_id
-		WHERE cs.created_at >= ? AND cs.created_at < ?`, from, to).Scan(&totals).Error
+		WHERE cs.created_at >= ? AND cs.created_at < ?`, from, to).Scan(&totals).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	out.Queued, out.Sent, out.Answered, out.Failed, out.Skipped, out.Average = totals.Queued, totals.Sent, totals.Answered, totals.Failed, totals.Skipped, totals.Average
 
 	var agents []struct {
@@ -524,13 +526,15 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		Average  float64
 		Low      int64
 	}
-	_ = s.db.WithContext(ctx).Raw(`SELECT cs.user_id,
+	if err := s.db.WithContext(ctx).Raw(`SELECT cs.user_id,
 		count(*) FILTER (WHERE cs.status IN ('sent','answered')) AS sent,
 		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
 		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average,
 		count(*) FILTER (WHERE cs.score <= 2) AS low
 		FROM wa_call_surveys cs WHERE cs.user_id IS NOT NULL AND cs.created_at >= ? AND cs.created_at < ?
-		GROUP BY cs.user_id ORDER BY answered DESC`, from, to).Scan(&agents).Error
+		GROUP BY cs.user_id ORDER BY answered DESC`, from, to).Scan(&agents).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	ids := []uint{}
 	for _, a := range agents {
 		ids = append(ids, a.UserID)
@@ -549,8 +553,10 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		ConversationID *uint
 		AnsweredAt     time.Time
 	}
-	_ = s.db.WithContext(ctx).Raw(`SELECT id, user_id, wa_id, score, comment, conversation_id, answered_at FROM wa_call_surveys
-		WHERE status = 'answered' AND created_at >= ? AND created_at < ? ORDER BY answered_at DESC LIMIT 30`, from, to).Scan(&recent).Error
+	if err := s.db.WithContext(ctx).Raw(`SELECT id, user_id, wa_id, score, comment, conversation_id, answered_at FROM wa_call_surveys
+		WHERE status = 'answered' AND created_at >= ? AND created_at < ? ORDER BY answered_at DESC LIMIT 30`, from, to).Scan(&recent).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	rids := []uint{}
 	for _, r := range recent {
 		if r.UserID != nil {

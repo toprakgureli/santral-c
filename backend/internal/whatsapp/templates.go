@@ -158,7 +158,9 @@ func (s *Service) syncTemplates(ctx context.Context, ch *models.WAChannel) (int,
 		seen = append(seen, t.ID)
 	}
 	if len(seen) > 0 {
-		_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_templates WHERE waba_id = ? AND meta_id <> '' AND meta_id NOT IN ?", ch.WABAID, seen).Error
+		if err := s.db.WithContext(ctx).Exec("DELETE FROM wa_templates WHERE waba_id = ? AND meta_id <> '' AND meta_id NOT IN ?", ch.WABAID, seen).Error; err != nil {
+			return 0, err
+		}
 	}
 	return len(list), nil
 }
@@ -172,7 +174,7 @@ func cleanReason(r string) string {
 
 func (s *Service) syncAllTemplates(ctx context.Context) {
 	var chans []models.WAChannel
-	_ = s.db.WithContext(ctx).Where("active").Find(&chans).Error
+	warnDB(ctx, s.db.WithContext(ctx).Where("active").Find(&chans).Error)
 	done := map[string]bool{}
 	for i := range chans {
 		if done[chans[i].WABAID] {
@@ -330,8 +332,12 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 			fill = append(fill, f)
 		}
 	}
-	_ = s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE waba_id = ? AND name = ? AND language = ?", jsonString(fill), t.WABAID, t.Name, t.Language).Error
-	_ = s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ?", t.WABAID, t.Name, t.Language).First(t).Error
+	if err := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE waba_id = ? AND name = ? AND language = ?", jsonString(fill), t.WABAID, t.Name, t.Language).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
+	if err := s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ?", t.WABAID, t.Name, t.Language).First(t).Error; err != nil {
+		return nil, errs.Internal(err)
+	}
 	v := templateView(t)
 	return &v, nil
 }
