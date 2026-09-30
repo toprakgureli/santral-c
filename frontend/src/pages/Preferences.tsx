@@ -1,12 +1,14 @@
 // Preferences ("Ayarlarım"): each person's own settings. They change
-// nothing for anybody else: WhatsApp sounds, desktop notices, a mute for
-// everything for a while, and the conversations muted or pinned one by one.
+// nothing for anybody else: the account's password and sign-ins, and for
+// WhatsApp sounds, desktop notices, a mute for everything for a while, and
+// the conversations muted or pinned one by one.
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, BellOff, MessageCircle, Pin, SlidersHorizontal } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { Card, EmptyState } from "@/components/ui";
+import AccountSecurityCard from "@/components/profile/AccountSecurityCard";
+import { Card } from "@/components/ui";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
 import { MUTES } from "@/components/whatsapp/ConversationList";
 import { SwitchRow } from "@/components/whatsapp/settings/parts";
@@ -61,9 +63,9 @@ export function Preferences() {
       </div>
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
-      {!wa.enabled ? (
-        <Card><EmptyState icon={<SlidersHorizontal />} title="Şimdilik değiştirilecek bir ayar yok" /></Card>
-      ) : (
+      <AccountSecurityCard />
+
+      {wa.enabled && (
         <>
           <Card title="WhatsApp bildirimleri" icon={Bell}>
             <div className="space-y-2">

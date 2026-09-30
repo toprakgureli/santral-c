@@ -123,7 +123,7 @@ func run() error {
 	settingSvc := setting.NewService(db, actors, auditSvc)
 	settingHandler := setting.NewHandler(settingSvc)
 	auditHandler := audit.NewHandler(audit.NewReader(db, actors))
-	authSvc := auth.NewService(configs.Cnf.Auth, configs.Cnf.Security, sessionRepo, userSvc, secSvc, deny, settingSvc, lockout.New())
+	authSvc := auth.NewService(configs.Cnf.Auth, configs.Cnf.Security, sessionRepo, userSvc, secSvc, deny, settingSvc, lockout.New(), revoker)
 	authHandler := auth.NewHandler(configs.Cnf.Auth, authSvc)
 	userHandler := user.NewHandler(userSvc)
 	roleSvc := role.NewService(role.NewRepository(db), actors, auditSvc, actors)

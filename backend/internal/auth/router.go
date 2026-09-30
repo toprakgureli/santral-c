@@ -33,6 +33,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Post("/mfa/enroll", credentials(), r.handler.MFAEnroll)
 	group.Post("/mfa/enroll/verify", credentials(), r.handler.MFAEnrollVerify)
 	group.Post("/password/change", credentials(), r.handler.PasswordChange)
+	group.Post("/password", r.guard, credentials(), r.handler.ChangeOwnPassword)
+	group.Post("/logout/everywhere", r.guard, r.handler.LogoutEverywhere)
 	group.Post("/mfa/setup", r.guard, r.handler.MFASetup)
 	group.Post("/mfa/enable", r.guard, r.handler.MFAEnable)
 }

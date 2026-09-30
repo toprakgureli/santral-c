@@ -175,6 +175,40 @@ func (h *Handler) PasswordChange(c *fiber.Ctx) error {
 	return h.session(c, result)
 }
 
+// ChangeOwnPassword sets a new password for the signed-in user. Their other
+// devices are signed out; this one gets a new session.
+func (h *Handler) ChangeOwnPassword(c *fiber.Ctx) error {
+	id, ok := c.Locals(middlewares.UserIDKey).(uint)
+	if !ok {
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+	}
+	var req requests.OwnPasswordChange
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	result, err := h.service.ChangeOwnPassword(c.UserContext(), id, req.Current, req.Password, metaFrom(c))
+	if err != nil {
+		return err
+	}
+	return h.session(c, result)
+}
+
+// LogoutEverywhere signs the user out on every device, this one included.
+func (h *Handler) LogoutEverywhere(c *fiber.Ctx) error {
+	id, ok := c.Locals(middlewares.UserIDKey).(uint)
+	if !ok {
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+	}
+	if err := h.service.LogoutEverywhere(c.UserContext(), id); err != nil {
+		return err
+	}
+	h.clearSession(c)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func (h *Handler) session(c *fiber.Ctx, result *LoginResult) error {
 	if result.PasswordChangeRequired {
 		return c.JSON(responses.LoginChallenge{

@@ -66,4 +66,8 @@ type IService interface {
 	MFAEnroll(ctx context.Context, token string) (*responses.MFASetup, error)
 	MFAEnrollVerify(ctx context.Context, token, code string, meta RequestMeta) (*LoginResult, error)
 	PasswordChange(ctx context.Context, req requests.PasswordChange, meta RequestMeta) (*LoginResult, error)
+	ChangeOwnPassword(ctx context.Context, userID uint, current, next string, meta RequestMeta) (*LoginResult, error)
+	LogoutEverywhere(ctx context.Context, userID uint) error
 }
+
+var _ IService = (*Service)(nil)

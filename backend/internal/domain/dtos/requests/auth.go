@@ -35,6 +35,12 @@ type PasswordChange struct {
 	Password string `json:"password" validate:"required,min=8,max=16"`
 }
 
+// OwnPasswordChange is a signed-in user choosing a new password.
+type OwnPasswordChange struct {
+	Current  string `json:"current" validate:"required"`
+	Password string `json:"password" validate:"required,min=8,max=16"`
+}
+
 // SIPSetup is the forced first-login SIP step; skipped when a manager
 // pre-provisioned the extension.
 type SIPSetup struct {

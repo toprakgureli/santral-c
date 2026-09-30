@@ -64,11 +64,64 @@ type Service struct {
 	denylist IDenylist
 	settings ISettingService
 	attempts IAttempts
+	revoker  *Revoker
 }
 
 // NewService builds an auth service.
-func NewService(cfg configs.Auth, sec configs.Security, repo IRepository, user IUserService, secSvc ISecurityService, deny IDenylist, settings ISettingService, attempts IAttempts) *Service {
-	return &Service{cfg: cfg, sec: sec, repo: repo, user: user, security: secSvc, denylist: deny, settings: settings, attempts: attempts}
+func NewService(cfg configs.Auth, sec configs.Security, repo IRepository, user IUserService, secSvc ISecurityService, deny IDenylist, settings ISettingService, attempts IAttempts, revoker *Revoker) *Service {
+	return &Service{cfg: cfg, sec: sec, repo: repo, user: user, security: secSvc, denylist: deny, settings: settings, attempts: attempts, revoker: revoker}
+}
+
+// ChangeOwnPassword lets a signed-in user choose a new password after
+// giving the current one. Every other sign-in of the user ends; the device
+// that asked gets a fresh session, returned like a login. Wrong current
+// passwords count as failed sign-ins, so they cannot be guessed here.
+func (s *Service) ChangeOwnPassword(ctx context.Context, userID uint, current, next string, meta RequestMeta) (*LoginResult, error) {
+	u, err := s.user.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !u.Active {
+		return nil, errs.Forbidden("Hesabınız pasif durumda.")
+	}
+	if err := s.security.Guard(ctx, u.Email, meta.IP); err != nil {
+		return nil, err
+	}
+	if !hash.Compare(u.Password, current) {
+		s.security.Failure(ctx, attempt(u.Email, &u.ID, meta, security.ReasonBadCredentials))
+		return nil, errs.Invalid("Mevcut şifre yanlış.", nil)
+	}
+	if current == next {
+		return nil, errs.Invalid("Yeni şifre eskisiyle aynı olamaz.", nil)
+	}
+	if err := s.user.ChangePassword(ctx, u.ID, next); err != nil {
+		return nil, err
+	}
+	if err := s.revoker.RevokeUserSessions(ctx, u.ID, time.Now()); err != nil {
+		return nil, errs.Internal(err)
+	}
+	u.MustChangePassword = false
+	// The cutoff above covers tokens issued up to the end of this second;
+	// the fresh session must come after it.
+	sleepPastSecond()
+	return s.issue(ctx, u, meta, nil)
+}
+
+// LogoutEverywhere ends every sign-in of the user, on every device,
+// including the one that asked.
+func (s *Service) LogoutEverywhere(ctx context.Context, userID uint) error {
+	if err := s.revoker.RevokeUserSessions(ctx, userID, time.Now()); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// sleepPastSecond waits until the next whole second. Token times are whole
+// seconds and a revocation covers its own second, so a token issued right
+// after one must carry a later second to stay valid.
+func sleepPastSecond() {
+	now := time.Now()
+	time.Sleep(now.Truncate(time.Second).Add(time.Second).Sub(now) + 10*time.Millisecond)
 }
 
 // Login validates credentials and returns a session or a challenge.

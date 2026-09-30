@@ -178,6 +178,11 @@ export const api = {
     parseLogin(request<Record<string, unknown>>("/auth/mfa/enroll/verify", { method: "POST", body: JSON.stringify({ token, code }) })),
   me: () => request<User>("/auth/me"),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
+  // The user's own password; other devices are signed out, this one gets a
+  // fresh session.
+  changeOwnPassword: (current: string, password: string) =>
+    parseLogin(request<Record<string, unknown>>("/auth/password", { method: "POST", body: JSON.stringify({ current, password }) })),
+  logoutEverywhere: () => request<void>("/auth/logout/everywhere", { method: "POST" }),
 
   // Build stamp of the running backend (public), to compare against the frontend.
   version: () => request<{ version: string; buildTime: string }>("/version"),
