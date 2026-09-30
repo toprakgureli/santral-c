@@ -1,4 +1,6 @@
 /backend/bin/
+# the server binary deploy.sh builds into the checkout
+/santral
 *.exe
 *.test
 *.out
