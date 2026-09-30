@@ -29,6 +29,9 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
   const [setup, setSetup] = useState<WAChannel | null>(null);
   const [people, setPeople] = useState<WAChannel | null>(null);
   const [del, setDel] = useState<WAChannel | null>(null);
+  const [purge, setPurge] = useState<WAChannel | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [check, setCheck] = useState<Record<number, WAChannelCheck | "busy">>({});
   const [error, setError] = useState<string | null>(null);
   const now = Date.now();
@@ -48,6 +51,7 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
     <Card title="Cihazlar" icon={Smartphone} actions={manage && <Button onClick={() => setEdit("new")}><Plus className="size-4" /> Numara ekle</Button>}>
       <p className="mb-4 text-sm text-muted-foreground">Her WhatsApp numarası ayrı bir cihazdır. Yeni eklenen cihazın ayarları sıfırdan başlar; başka bir cihazın chatbot'u, hazır yanıtı ya da kuralı ona kendiliğinden geçmez.</p>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+      {notice && <p className="mb-3 rounded-xl bg-success/10 px-3 py-2 text-sm text-success">{notice}</p>}
       {channels.length === 0 ? (
         <EmptyState icon={<Smartphone />} title="Henüz numara yok" description={manage ? "Meta'dan aldığınız numara kimliği ve erişim anahtarıyla ilk numarayı ekleyin." : "Numara eklemek için yetkiniz yok."} />
       ) : (
@@ -78,7 +82,9 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
                       {manage && <Chip onClick={() => void test(c)} tip="Meta'ya bağlanıp bilgileri kontrol et">{ck === "busy" ? "Deneniyor..." : "Bağlantıyı test et"}</Chip>}
                       {members && <IconChipBtn tip="Bu numarada kim çalışır" onClick={() => setPeople(c)}><Users className="size-3.5" /><span className="text-[0.65rem] tabular-nums">{c.memberIds.length}</span></IconChipBtn>}
                       {manage && <IconChipBtn tip="Düzenle" onClick={() => setEdit(c)}><Pencil className="size-3.5" /></IconChipBtn>}
-                      {manage && <IconChipBtn tip="Sil" danger onClick={() => setDel(c)}><Trash2 className="size-3.5" /></IconChipBtn>}
+                      {manage && (c.active
+                        ? <IconChipBtn tip="Kaldır" danger onClick={() => setDel(c)}><Trash2 className="size-3.5" /></IconChipBtn>
+                        : <IconChipBtn tip="Geçmişiyle birlikte tamamen sil" danger onClick={() => setPurge(c)}><Trash2 className="size-3.5" /></IconChipBtn>)}
                     </>
                   }
                 />
@@ -106,8 +112,30 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
       {edit && <ChannelForm channel={edit === "new" ? null : edit} onClose={() => setEdit(null)} onSaved={(c) => { setEdit(null); reload(); if (edit === "new") setSetup(c); }} />}
       {setup && <SetupDialog channel={setup} onClose={() => setSetup(null)} />}
       {people && <MembersDialog channel={people} onClose={() => setPeople(null)} onSaved={() => { setPeople(null); reload(); }} />}
-      <ConfirmDialog open={!!del} title="Numara silinsin mi?" description={`${del?.name} ve üzerindeki bütün sohbetler, mesajlar ve kayıtlar silinir. Bu geri alınamaz.`} confirmLabel="Sil" onCancel={() => setDel(null)}
-        onConfirm={() => del && void waApi.deleteChannel(del.id).then(() => { setDel(null); reload(); }).catch((e) => setError(e instanceof ApiError ? e.message : "Silinemedi."))} />
+      <ConfirmDialog open={!!del} title="Numara kaldırılsın mı?" busy={busy}
+        description={`${del?.name} artık mesaj almaz ve gönderemez. Sohbet geçmişi varsa numara silinmez, kapatılır; eski yazışmalar okunmaya devam eder.`}
+        confirmLabel="Kaldır" onCancel={() => setDel(null)}
+        onConfirm={() => {
+          if (!del) return;
+          setBusy(true);
+          setError(null);
+          waApi.removeChannel(del.id)
+            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı, geçmişi duruyor. Tamamen silmek için yeniden çöp kutusuna basın.` : `${del.name} silindi.`); setDel(null); reload(); })
+            .catch((e) => setError(e instanceof ApiError ? e.message : "Kaldırılamadı."))
+            .finally(() => setBusy(false));
+        }} />
+      <ConfirmDialog open={!!purge} title="Numara geçmişiyle birlikte silinsin mi?" busy={busy} confirmText={purge?.name}
+        description={`${purge?.name} ve üzerindeki bütün sohbetler, mesajlar ve kayıtlar kalıcı olarak silinir. Bu geri alınamaz.`}
+        confirmLabel="Tamamen sil" onCancel={() => setPurge(null)}
+        onConfirm={() => {
+          if (!purge) return;
+          setBusy(true);
+          setError(null);
+          waApi.purgeChannel(purge.id, purge.name)
+            .then(() => { setNotice(`${purge.name} geçmişiyle birlikte silindi.`); setPurge(null); reload(); })
+            .catch((e) => setError(e instanceof ApiError ? e.message : "Silinemedi."))
+            .finally(() => setBusy(false));
+        }} />
     </Card>
   );
 }

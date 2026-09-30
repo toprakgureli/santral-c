@@ -76,6 +76,9 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
   const [copying, setCopying] = useState<WABot | null>(null);
   const [del, setDel] = useState<WABot | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [purge, setPurge] = useState<WABot | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const now = Date.now();
   const load = () => waApi.bots().then(setBots).catch(() => setBots([])).finally(() => setLoading(false));
   useEffect(() => { void load(); }, []);
@@ -94,6 +97,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
     <Card title="Chatbot'lar" icon={Bot} actions={manage && <Button onClick={() => setCreating(true)}><Plus /> Yeni chatbot</Button>}>
       <p className="mb-4 text-sm text-muted-foreground">Chatbot müşteriyi karşılar, menüden seçtirir, bilgi toplar ve gerektiğinde bir temsilciye aktarır. Her chatbot sadece seçtiğiniz cihazlarda çalışır. Bir cihazda aynı anda saat sınırı olmayan tek bir "her yeni sohbette" ve tek bir "mesai dışında" chatbot'u açık olabilir. Belirli saatlerde çalışan chatbot'lar bunların yanında açık kalabilir ve kendi saatlerinde önce onlar karşılar.</p>
       {msg && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{msg}</p>}
+      {notice && <p className="mb-3 rounded-xl bg-success/10 px-3 py-2 text-sm text-success">{notice}</p>}
       {loading ? (
         <div className="grid gap-3 md:grid-cols-2">{[0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted/50" />)}</div>
       ) : bots.length === 0 ? (
@@ -128,7 +132,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
                   <Button className="h-8 px-3 text-xs" onClick={() => navigate(`/whatsapp/bots/${b.id}`)}><Workflow /> Akışı aç</Button>
                   {manage && <Button variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setSettings(b)}><Pencil /> Ayarlar</Button>}
                   {manage && <Button variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setCopying(b)}><Copy /> Kopyala</Button>}
-                  {manage && <button type="button" data-tip="Sil" onClick={() => setDel(b)} className="ml-auto flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>}
+                  {manage && <button type="button" data-tip={b.active ? "Kaldır" : "Tamamen sil"} aria-label={b.active ? "Kaldır" : "Tamamen sil"} onClick={() => (b.active ? setDel(b) : setPurge(b))} className="ml-auto flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>}
                 </div>
               </div>
             );
@@ -138,8 +142,30 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
       {creating && <CreateDialog onClose={() => setCreating(false)} onCreated={(b) => navigate(`/whatsapp/bots/${b.id}`)} />}
       {settings && <BotSettingsDialog bot={settings} channels={channels} canPublish={publish} onClose={() => setSettings(null)} onSaved={() => { setSettings(null); void load(); }} />}
       {copying && <CopyDialog bot={copying} channels={channels} onClose={() => setCopying(null)} onDone={() => { setCopying(null); void load(); }} />}
-      <ConfirmDialog open={!!del} title="Chatbot silinsin mi?" description={`${del?.name} ve bütün sürümleri silinir. Şu an bu chatbot'la konuşan müşteriler temsilciye aktarılır.`} confirmLabel="Sil" onCancel={() => setDel(null)}
-        onConfirm={() => del && void waApi.deleteBot(del.id).then(() => { setDel(null); void load(); }).catch((e) => { setMsg(e instanceof ApiError ? e.message : "Silinemedi."); setDel(null); })} />
+      <ConfirmDialog open={!!del} title="Chatbot kaldırılsın mı?" busy={busy}
+        description={`Şu an ${del?.name} ile konuşan müşteriler temsilciye aktarılır. Yayınlanmış ya da çalışmış bir chatbot silinmez, kapatılır; sürümleri ve raporu durur.`}
+        confirmLabel="Kaldır" onCancel={() => setDel(null)}
+        onConfirm={() => {
+          if (!del) return;
+          setBusy(true);
+          setMsg(null);
+          waApi.removeBot(del.id)
+            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı. Tamamen silmek için yeniden çöp kutusuna basın.` : `${del.name} silindi.`); setDel(null); void load(); })
+            .catch((e) => { setMsg(e instanceof ApiError ? e.message : "Kaldırılamadı."); setDel(null); })
+            .finally(() => setBusy(false));
+        }} />
+      <ConfirmDialog open={!!purge} title="Chatbot tamamen silinsin mi?" busy={busy} confirmText={purge?.name}
+        description={`${purge?.name}, bütün sürümleri ve raporu kalıcı olarak silinir. Bu geri alınamaz.`}
+        confirmLabel="Tamamen sil" onCancel={() => setPurge(null)}
+        onConfirm={() => {
+          if (!purge) return;
+          setBusy(true);
+          setMsg(null);
+          waApi.purgeBot(purge.id, purge.name)
+            .then(() => { setNotice(`${purge.name} silindi.`); setPurge(null); void load(); })
+            .catch((e) => { setMsg(e instanceof ApiError ? e.message : "Silinemedi."); setPurge(null); })
+            .finally(() => setBusy(false));
+        }} />
     </Card>
   );
 }

@@ -737,28 +737,6 @@ func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, ch
 	return &v, nil
 }
 
-// DeleteBot removes a chatbot; customers inside it go to a person.
-func (s *Service) DeleteBot(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot silme yetkiniz yok."); err != nil {
-		return err
-	}
-	var convs []uint
-	_ = s.db.WithContext(ctx).Raw("SELECT conversation_id FROM wa_bot_sessions WHERE bot_id = ?", id).Scan(&convs).Error
-	if err := s.db.WithContext(ctx).Delete(&models.WABot{}, id).Error; err != nil {
-		return errs.Internal(err)
-	}
-	for _, c := range convs {
-		conv, ticket, err := s.loadConv(ctx, c)
-		if err != nil || ticket == nil {
-			continue
-		}
-		if ch, err := s.channel(ctx, conv.ChannelID); err == nil {
-			s.botToHuman(ctx, ch, conv, ticket, 0, "Chatbot silindi.")
-		}
-	}
-	return nil
-}
-
 // SimInput is one turn in the test screen.
 type SimInput struct {
 	Graph     BotGraph          `json:"graph"`

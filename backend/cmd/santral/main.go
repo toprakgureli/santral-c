@@ -172,7 +172,7 @@ func run() error {
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), userSvc, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
-	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, configs.Cnf.Auth.Secret)
+	waSvc := whatsapp.NewService(db, userSvc, teamsSvc, drive, auditSvc, configs.Cnf.Auth.Secret)
 	waRouter := whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard)
 	waRouter.Routes(api)
 	// A webhook already registered in Meta may live outside /api.

@@ -358,6 +358,7 @@ export function ConfirmDialog({
   tone = "danger",
   busy = false,
   error,
+  confirmText,
   onConfirm,
   onCancel,
 }: {
@@ -369,10 +370,18 @@ export function ConfirmDialog({
   tone?: "danger" | "warning";
   busy?: boolean;
   error?: string | null;
+  // confirmText, when set, must be typed back before the action unlocks; for
+  // steps that cannot be undone.
+  confirmText?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const z = useLayer(80);
+  const [typed, setTyped] = useState("");
+  useEffect(() => {
+    if (open) setTyped("");
+  }, [open]);
+  const locked = !!confirmText && typed.trim().toLocaleLowerCase("tr") !== confirmText.trim().toLocaleLowerCase("tr");
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -399,10 +408,16 @@ export function ConfirmDialog({
             <div className="text-sm leading-relaxed text-muted-foreground">{description}</div>
           </div>
         </div>
+        {confirmText && (
+          <label className="mt-4 block space-y-1.5 text-xs text-muted-foreground">
+            <span>Onaylamak için <b className="font-semibold text-foreground">{confirmText}</b> yazın</span>
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" onKeyDown={(e) => { if (e.key === "Enter" && !locked && !busy) onConfirm(); }} />
+          </label>
+        )}
         {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</Button>
-          <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={busy} className={tone === "warning" ? "bg-warning text-black hover:bg-warning/90" : undefined}>
+          <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={busy || locked} className={tone === "warning" ? "bg-warning text-black hover:bg-warning/90" : undefined}>
             {busy ? "Bekleyin..." : confirmLabel}
           </Button>
         </div>

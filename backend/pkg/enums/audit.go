@@ -26,4 +26,11 @@ const (
 	AuditContactDeleted     string = "contact.deleted"
 	AuditContactPhoneAdded  string = "contact.phone_added"
 	AuditContactPhoneRemove string = "contact.phone_removed"
+
+	AuditWAChannelDeactivated string = "whatsapp.channel_deactivated"
+	AuditWAChannelDeleted     string = "whatsapp.channel_deleted"
+	AuditWAChannelPurged      string = "whatsapp.channel_purged"
+	AuditWABotDeactivated     string = "whatsapp.bot_deactivated"
+	AuditWABotDeleted         string = "whatsapp.bot_deleted"
+	AuditWABotPurged          string = "whatsapp.bot_purged"
 )

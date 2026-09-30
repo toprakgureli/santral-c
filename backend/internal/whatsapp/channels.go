@@ -261,18 +261,6 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 	return &v, nil
 }
 
-// DeleteChannel removes a device and everything on it.
-func (s *Service) DeleteChannel(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz silme yetkiniz yok."); err != nil {
-		return err
-	}
-	if err := s.db.WithContext(ctx).Delete(&models.WAChannel{}, id).Error; err != nil {
-		return errs.Internal(err)
-	}
-	s.forget()
-	return nil
-}
-
 // ChannelCheck is the result of "Bağlantıyı test et".
 type ChannelCheck struct {
 	OK             bool   `json:"ok"`

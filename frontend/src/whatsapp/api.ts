@@ -83,7 +83,9 @@ export const waApi = {
   channels: () => request<WAChannel[]>("/wa/channels"),
   createChannel: (body: Record<string, unknown>) => request<WAChannel>("/wa/channels", json("POST", body)),
   updateChannel: (id: number, body: Record<string, unknown>) => request<WAChannel>(`/wa/channels/${id}`, json("PATCH", body)),
-  deleteChannel: (id: number) => request<void>(`/wa/channels/${id}`, json("DELETE")),
+  // Removing keeps history: a device that has conversations is turned off.
+  removeChannel: (id: number) => request<{ deactivated: boolean }>(`/wa/channels/${id}`, json("DELETE")),
+  purgeChannel: (id: number, confirm: string) => request<void>(`/wa/channels/${id}/purge`, json("POST", { confirm })),
   testChannel: (id: number) => request<WAChannelCheck>(`/wa/channels/${id}/test`, json("POST")),
   subscribe: (id: number) => request<void>(`/wa/channels/${id}/subscribe`, json("POST")),
   saveSettings: (id: number, settings: WASettings, surveySecret = "") => request<WAChannel>(`/wa/channels/${id}/settings`, json("PUT", { settings, surveySecret })),
@@ -131,7 +133,9 @@ export const waApi = {
   botVersions: (id: number) => request<{ version: number; publishedBy: string; createdAt: string }[]>(`/wa/bots/${id}/versions`),
   restoreVersion: (id: number, version: number) => request<WABot>(`/wa/bots/${id}/restore`, json("POST", { version })),
   copyBot: (id: number, name: string, channelIds: number[]) => request<WABot>(`/wa/bots/${id}/copy`, json("POST", { name, channelIds })),
-  deleteBot: (id: number) => request<void>(`/wa/bots/${id}`, json("DELETE")),
+  // Removing keeps history: a chatbot that was published or ran is turned off.
+  removeBot: (id: number) => request<{ deactivated: boolean }>(`/wa/bots/${id}`, json("DELETE")),
+  purgeBot: (id: number, confirm: string) => request<void>(`/wa/bots/${id}/purge`, json("POST", { confirm })),
   botReport: (id: number, days: number) => request<BotStats>(`/wa/bots/${id}/report` + q({ days })),
   simulate: (body: { graph: BotGraph; nodeId: string; vars?: Record<string, string>; tries: number; text?: string; choiceId?: string; start: boolean; hoursOpen: boolean; clock?: string; day?: number; botId?: number; channelId?: number }) =>
     request<SimResult>("/wa/bots/simulate", json("POST", body)),

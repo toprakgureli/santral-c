@@ -12,6 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -39,12 +40,18 @@ type IStorage interface {
 	Open(ctx context.Context, id, rangeHeader string) (*http.Response, error)
 }
 
+// IAudit records who changed what.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
+}
+
 // Service is the WhatsApp module.
 type Service struct {
 	db      *gorm.DB
 	users   IUsers
 	push    IPusher
 	storage IStorage
+	audit   IAudit
 	secret  string
 
 	wakeWebhook chan struct{}
@@ -59,12 +66,13 @@ type Service struct {
 }
 
 // NewService builds the module. secret encrypts tokens at rest.
-func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, secret string) *Service {
+func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, auditor IAudit, secret string) *Service {
 	return &Service{
 		db:          db,
 		users:       users,
 		push:        push,
 		storage:     storage,
+		audit:       auditor,
 		secret:      "wa:" + secret,
 		wakeWebhook: make(chan struct{}, 1),
 		wakeOutbox:  make(chan struct{}, 1),

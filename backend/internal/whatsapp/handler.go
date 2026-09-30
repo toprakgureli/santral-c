@@ -516,7 +516,16 @@ func (r *Router) Routes(g fiber.Router) {
 		}
 		return s.UpdateChannel(c.UserContext(), uid, id, in)
 	}))
-	a.Delete("/channels/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.DeleteChannel(c.UserContext(), uid, id) }))
+	a.Delete("/channels/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return s.RemoveChannel(c.UserContext(), uid, id, c.IP())
+	}))
+	a.Post("/channels/:id/purge", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		var in PurgeInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return nil, s.PurgeChannel(c.UserContext(), uid, id, in.Confirm, c.IP())
+	}))
 	a.Post("/channels/:id/test", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return s.TestChannel(c.UserContext(), uid, id) }))
 	a.Post("/channels/:id/subscribe", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
 		return nil, s.SubscribeChannel(c.UserContext(), uid, id)
@@ -715,7 +724,16 @@ func (r *Router) Routes(g fiber.Router) {
 		}
 		return s.CopyBot(c.UserContext(), uid, id, in.Name, in.ChannelIDs)
 	}))
-	a.Delete("/bots/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.DeleteBot(c.UserContext(), uid, id) }))
+	a.Delete("/bots/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return s.RemoveBot(c.UserContext(), uid, id, c.IP())
+	}))
+	a.Post("/bots/:id/purge", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		var in PurgeInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return nil, s.PurgeBot(c.UserContext(), uid, id, in.Confirm, c.IP())
+	}))
 	a.Get("/bots/:id/report", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
 		days, _ := strconv.Atoi(c.Query("days"))
 		return s.BotReport(c.UserContext(), uid, id, days)
