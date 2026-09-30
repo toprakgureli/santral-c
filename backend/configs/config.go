@@ -102,7 +102,7 @@ type Bulutsantralim struct {
 	WebphoneBase string `mapstructure:"webphoneBase"`
 
 	// WebRTC softphone (SIP over WSS) registration settings.
-	SIPDomain string `mapstructure:"sipDomain"` // registrar/realm, the X-Lite "Santral Adı"
+	SIPDomain string `mapstructure:"sipDomain"` // registrar/realm: the "Santral Adı" in Verimor's SIP device settings
 	SIPWssURL string `mapstructure:"sipWssUrl"` // wss:// signaling endpoint
 	StunURL   string `mapstructure:"stunUrl"`   // optional STUN server
 	TurnURL   string `mapstructure:"turnUrl"`   // optional TURN server

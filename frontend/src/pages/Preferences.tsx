@@ -1,7 +1,6 @@
 // Preferences ("Ayarlarım"): each person's own settings. They change
-// nothing for anybody else. For now WhatsApp: sounds, desktop notices, a
-// mute for everything for a while, and the conversations muted or pinned
-// one by one.
+// nothing for anybody else: WhatsApp sounds, desktop notices, a mute for
+// everything for a while, and the conversations muted or pinned one by one.
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

@@ -19,11 +19,6 @@ type ISessionRevoker interface {
 	RevokeUserSessions(ctx context.Context, userID uint, at time.Time) error
 }
 
-// IProvisioner provisions a user's SIP endpoint after creation.
-type IProvisioner interface {
-	Provision(ctx context.Context, userID uint) error
-}
-
 // IManagement is the user administration service consumed by the handler.
 type IManagement interface {
 	CreateUser(ctx context.Context, actorID uint, req requests.UserCreate, meta Meta) (*responses.User, error)

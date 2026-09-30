@@ -1,10 +1,9 @@
 -- +goose Up
 -- Teams: in-house chat. Groups and direct messages share one table; a
 -- direct message is a group of kind 'dm' with exactly two members and a
--- dm_key that makes the pair unique. Messages are text for now; the
--- attachments column is reserved so images, video and GIFs can follow
--- without a schema change. Deleting a message is a soft delete: the row
--- stays and the chat shows "Bu mesaj silindi."
+-- dm_key that makes the pair unique. The attachments column was kept for
+-- files; they later got their own table (00018). Deleting a message is a
+-- soft delete: the row stays and the chat shows "Bu mesaj silindi."
 
 CREATE TABLE chat_groups (
     id          bigserial PRIMARY KEY,

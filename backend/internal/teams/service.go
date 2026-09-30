@@ -1,6 +1,7 @@
 // Package teams is the in-house chat: groups, direct messages, invites,
 // per-room roles, soft-deleted messages, reactions, read state and a live
-// event stream. Nobody sees a room they are not seated in.
+// event stream. Only a room's members see it, apart from people with the
+// Teams administrator permission, who can open any group to manage it.
 package teams
 
 import (

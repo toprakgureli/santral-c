@@ -1,6 +1,6 @@
 -- +goose Up
--- Auth / RBAC / MFA foundation. Telephony tables (calls, cdr, contacts,
--- queues) and Asterisk PJSIP realtime tables arrive in later migrations.
+-- Auth / RBAC / MFA foundation. Telephony, contacts and the other modules
+-- arrive in later migrations.
 
 CREATE TABLE users (
     id                   bigserial PRIMARY KEY,
