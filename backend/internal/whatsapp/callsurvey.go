@@ -234,7 +234,7 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 	if set.QuietDays > 0 {
 		var n int64
 		warnDB(ctx, s.db.WithContext(ctx).Model(&models.WACallSurvey{}).
-			Where("peer_key = ? AND status IN ('queued','sent','answered') AND created_at > ?", key, time.Now().AddDate(0, 0, -set.QuietDays)).Count(&n).Error)
+			Where("peer_key = ? AND status IN ('queued','sending','sent','answered') AND created_at > ?", key, time.Now().AddDate(0, 0, -set.QuietDays)).Count(&n).Error)
 		if n > 0 {
 			status, note = "skipped", fmt.Sprintf("Son %d günde zaten soruldu", set.QuietDays)
 		}
@@ -246,10 +246,28 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 	}
 }
 
-// sendDueCallSurveys sends the surveys whose time has come.
+// staleCallSurvey is how long a survey may stay 'sending' before it is
+// taken to have been cut off.
+const staleCallSurvey = 10 * time.Minute
+
+// sendDueCallSurveys sends the surveys whose time has come. Taking marks
+// them 'sending' in the same statement, with rows another worker holds
+// skipped, so a survey is taken once; one whose outcome could not be stored
+// stays taken and is never sent a second time.
 func (s *Service) sendDueCallSurveys(ctx context.Context) {
+	s.flagStaleCallSurveys(ctx)
 	var rows []models.WACallSurvey
-	if err := s.db.WithContext(ctx).Where("status = 'queued' AND send_at <= now()").Order("send_at").Limit(20).Find(&rows).Error; err != nil || len(rows) == 0 {
+	err := s.db.WithContext(ctx).Raw(`WITH due AS (
+			SELECT id FROM wa_call_surveys WHERE status = 'queued' AND send_at <= now()
+			ORDER BY send_at LIMIT 20 FOR UPDATE SKIP LOCKED)
+		UPDATE wa_call_surveys SET status = 'sending', claimed_at = now()
+		FROM due WHERE wa_call_surveys.id = due.id
+		RETURNING wa_call_surveys.*`).Scan(&rows).Error
+	if err != nil {
+		slog.ErrorContext(ctx, "call surveys could not be taken", "error", err)
+		return
+	}
+	if len(rows) == 0 {
 		return
 	}
 	set := s.callSurveySettings(ctx)
@@ -272,6 +290,21 @@ func (s *Service) sendDueCallSurveys(ctx context.Context) {
 	}
 }
 
+// flagStaleCallSurveys marks surveys cut off while being sent as failed
+// rather than sending them again.
+func (s *Service) flagStaleCallSurveys(ctx context.Context) {
+	res := s.db.WithContext(ctx).Exec(`UPDATE wa_call_surveys SET status = 'failed', note = ?
+		WHERE status = 'sending' AND claimed_at < ?`, "Gönderilip gönderilmediği anlaşılamadı", time.Now().Add(-staleCallSurvey))
+	if res.Error != nil {
+		slog.ErrorContext(ctx, "stale call surveys could not be checked", "error", res.Error)
+		return
+	}
+	if res.RowsAffected > 0 {
+		slog.WarnContext(ctx, "call surveys were cut off while sending", "count", res.RowsAffected)
+	}
+}
+
+// finishCallSurvey stores the outcome of a survey this sender took.
 func (s *Service) finishCallSurvey(ctx context.Context, id uint, status, note string, convID, msgID *uint) {
 	fields := map[string]any{"status": status, "note": note}
 	if status == "sent" {
@@ -283,7 +316,10 @@ func (s *Service) finishCallSurvey(ctx context.Context, id uint, status, note st
 	if msgID != nil {
 		fields["message_id"] = *msgID
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ?", id).Updates(fields).Error)
+	res := s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ? AND status = 'sending'", id).Updates(fields)
+	if res.Error != nil {
+		slog.ErrorContext(ctx, "call survey outcome could not be stored; it stays taken and is not sent again", "survey", id, "status", status, "error", res.Error)
+	}
 }
 
 func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r *models.WACallSurvey) error {
@@ -507,7 +543,7 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		Average                                 float64
 	}
 	if err := s.db.WithContext(ctx).Raw(`SELECT
-		count(*) FILTER (WHERE cs.status = 'queued') AS queued,
+		count(*) FILTER (WHERE cs.status IN ('queued','sending')) AS queued,
 		count(*) FILTER (WHERE cs.status IN ('sent','answered') AND COALESCE(m.status,'') <> 'failed') AS sent,
 		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
 		count(*) FILTER (WHERE cs.status = 'failed' OR m.status = 'failed') AS failed,
