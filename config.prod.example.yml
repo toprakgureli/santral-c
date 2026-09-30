@@ -14,7 +14,7 @@ app:
 
 auth:
   secret: "change-me-to-a-long-random-secret"   # openssl rand -hex 32
-  accessTTL: 24h
+  accessTTL: 15m
   refreshTTL: 720h
   issuer: santral-c
   cookieName: santral_access

@@ -1,7 +1,6 @@
 package teams
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/base64"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -18,6 +16,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/internal/sse"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -836,49 +835,11 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	c.Set("Content-Type", "text/event-stream")
-	c.Set("Cache-Control", "no-cache")
-	c.Set("Connection", "keep-alive")
-	c.Set("X-Accel-Buffering", "no")
-	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		defer h.service.Unsubscribe(id, ch)
-		if _, err := w.WriteString("data: {\"type\":\"hello\"}\n\n"); err != nil {
-			return
-		}
-		if w.Flush() != nil {
-			return
-		}
-		heartbeat := time.NewTicker(20 * time.Second)
-		defer heartbeat.Stop()
-		for {
-			select {
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				if _, err := w.WriteString("data: "); err != nil {
-					return
-				}
-				if _, err := w.Write(msg); err != nil {
-					return
-				}
-				if _, err := w.WriteString("\n\n"); err != nil {
-					return
-				}
-				if w.Flush() != nil {
-					return
-				}
-			case <-heartbeat.C:
-				if _, err := w.WriteString(": ping\n\n"); err != nil {
-					return
-				}
-				if w.Flush() != nil {
-					return
-				}
-			}
-		}
+	return sse.Serve(c, sse.Stream{
+		First:  []byte(`{"type":"hello"}`),
+		Events: ch,
+		Close:  func() { h.service.Unsubscribe(id, ch) },
 	})
-	return nil
 }
 
 // Router mounts the chat endpoints.

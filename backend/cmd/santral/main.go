@@ -92,7 +92,8 @@ func run() error {
 	auditSvc := audit.NewService(db)
 	userRepo := user.NewRepository(db)
 
-	userSvc := user.NewService(userRepo, auditSvc, sessionRepo, nil)
+	revoker := auth.NewRevoker(sessionRepo, deny, configs.Cnf.Auth.AccessTTL)
+	userSvc := user.NewService(userRepo, auditSvc, revoker, nil)
 	secRepo := security.NewRepository(db)
 	secSvc := security.NewService(configs.Cnf.Security, secRepo, lockout.New())
 	secHandler := security.NewHandler(security.NewAdmin(secRepo, userSvc, auditSvc))

@@ -49,6 +49,11 @@ export class ApiError extends Error {
   }
 }
 
+// SESSION_ENDED is dispatched on window when the server rejects the session
+// and it cannot be renewed (the user was deactivated, signed out elsewhere or
+// the refresh token expired). AuthContext listens and returns to sign-in.
+export const SESSION_ENDED = "santral:session-ended";
+
 // A single in-flight refresh is shared by all concurrent 401s so the session
 // survives silently (the access token is short-lived; the refresh token is not).
 let refreshing: Promise<boolean> | null = null;
@@ -63,6 +68,27 @@ function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
+// renewable reports whether a 401 on path may be fixed by a refresh. The
+// sign-in steps answer 401 for a wrong password or code, which a refresh
+// cannot change; /auth/me is an ordinary session call.
+function renewable(path: string): boolean {
+  return !path.startsWith("/auth/") || path === "/auth/me";
+}
+
+function endSession() {
+  window.dispatchEvent(new Event(SESSION_ENDED));
+}
+
+function parseBody(text: string): { code?: string; message?: string } | undefined {
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    // A proxy error page is not JSON; the status still tells what happened.
+    return undefined;
+  }
+}
+
 export async function request<T>(path: string, options: RequestInit = {}, allowRetry = true): Promise<T> {
   // FormData bodies must keep the browser-set multipart Content-Type (with its
   // boundary); only default to JSON for the rest.
@@ -74,38 +100,37 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
     ...options,
   });
   // Access token expired: refresh once (using the long-lived refresh cookie) and
-  // retry, so the user is not logged out mid-session.
-  if (res.status === 401 && allowRetry && !path.startsWith("/auth/")) {
-    if (await tryRefresh()) {
+  // retry, so the user is not logged out mid-session. When that is not
+  // possible the session is over.
+  if (res.status === 401 && renewable(path)) {
+    if (allowRetry && (await tryRefresh())) {
       return request<T>(path, options, false);
     }
+    endSession();
   }
   if (res.status === 204) {
     return undefined as T;
   }
   const text = await res.text();
-  const body = text ? JSON.parse(text) : undefined;
   if (!res.ok) {
-    const code = body?.code ?? "ERROR";
-    const message = body?.message ?? "İstek başarısız oldu.";
-    throw new ApiError(res.status, code, message);
+    const body = parseBody(text);
+    throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "İstek başarısız oldu.");
   }
-  return body as T;
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // download fetches a file endpoint (same auth/refresh handling as request) and
 // hands it to the browser as a save dialog.
 export async function download(path: string, fallbackName: string, allowRetry = true): Promise<void> {
   const res = await fetch(BASE + path, { credentials: "include" });
-  if (res.status === 401 && allowRetry) {
-    if (await tryRefresh()) {
+  if (res.status === 401) {
+    if (allowRetry && (await tryRefresh())) {
       return download(path, fallbackName, false);
     }
+    endSession();
   }
   if (!res.ok) {
-    const text = await res.text();
-    let body: { code?: string; message?: string } | undefined;
-    try { body = text ? JSON.parse(text) : undefined; } catch { body = undefined; }
+    const body = parseBody(await res.text());
     throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "İndirme başarısız oldu.");
   }
   const blob = await res.blob();
