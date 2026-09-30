@@ -427,16 +427,11 @@ func talkLabel(seconds int) string {
 	return fmt.Sprintf("%d dk %d sn", m, s)
 }
 
-// History returns past escalations for a customer number. Agents see it for
-// the caller on the line (escalation.view); the standalone search page needs
-// escalation.search.
+// History returns past escalations for any customer number, so it needs
+// escalation.search; the panel shows it only to those who have it.
 func (s *Service) History(ctx context.Context, actorID uint, number string) ([]Record, error) {
-	actor, err := s.users.GetByID(ctx, actorID)
-	if err != nil {
+	if _, err := s.authorize(ctx, actorID, enums.EscalationSearch); err != nil {
 		return nil, err
-	}
-	if !actor.Can(enums.EscalationView) && !actor.Can(enums.EscalationSearch) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	key := phone.Key(number)
 	if key == "" {
