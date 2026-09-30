@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/flow"
 )
 
 func TestInboundShape(t *testing.T) {
@@ -57,27 +58,15 @@ func TestBuildTemplate(t *testing.T) {
 	}
 }
 
-func TestRetryableAndWords(t *testing.T) {
-	if !retryable(&APIError{Status: 500}) || !retryable(&APIError{Status: 400, Code: 130429}) {
-		t.Fatal("server errors and rate limits are retried")
-	}
-	if retryable(&APIError{Status: 400, Code: 131047}) {
-		t.Fatal("a closed window is final")
-	}
-	if !strings.Contains(describeCode(131047, ""), "24 saat") {
-		t.Fatal("the window error must say 24 hours")
-	}
-}
-
 func TestMenuMessageShapes(t *testing.T) {
-	opts := []BotOption{{ID: "a", Label: "Bir"}, {ID: "b", Label: "İki"}}
-	m := menuMessage("buttons", "Seç", "", opts)
+	opts := []flow.Option{{ID: "a", Label: "Bir"}, {ID: "b", Label: "İki"}}
+	m := flow.MenuMessage("buttons", "Seç", "", opts)
 	in := m["interactive"].(map[string]any)
 	if in["type"] != "button" {
 		t.Fatalf("two options fit buttons: %+v", in)
 	}
-	opts = append(opts, BotOption{ID: "c", Label: "Üç"}, BotOption{ID: "d", Label: "Dört"})
-	m = menuMessage("buttons", "Seç", "", opts)
+	opts = append(opts, flow.Option{ID: "c", Label: "Üç"}, flow.Option{ID: "d", Label: "Dört"})
+	m = flow.MenuMessage("buttons", "Seç", "", opts)
 	if m["interactive"].(map[string]any)["type"] != "list" {
 		t.Fatal("more than three options must become a list")
 	}

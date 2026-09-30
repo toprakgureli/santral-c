@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
@@ -124,11 +125,11 @@ SELECT %s FROM r %s WHERE
 %s`
 
 func (f RatingFilter) args() (map[string]any, error) {
-	from, err := time.ParseInLocation("2006-01-02", f.From, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", f.From, hours.Zone)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", f.To, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", f.To, hours.Zone)
 	if err != nil || toStart.Before(from) {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}
@@ -215,7 +216,7 @@ func (s *Service) ratingItems(ctx context.Context, rows []ratingRow) []RatingIte
 		if r.ChannelID != nil {
 			n, ok := names[*r.ChannelID]
 			if !ok {
-				if ch, err := s.channel(ctx, *r.ChannelID); err == nil {
+				if ch, err := s.repo.Channel(ctx, *r.ChannelID); err == nil {
 					n = ch.Name
 				}
 				names[*r.ChannelID] = n
@@ -364,7 +365,7 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 		if it.Agent != nil {
 			agent = it.Agent.Name
 		}
-		row := []string{it.At.In(istanbul).Format("02.01.2006 15:04"), src, fmt.Sprint(it.Score)}
+		row := []string{it.At.In(hours.Zone).Format("02.01.2006 15:04"), src, fmt.Sprint(it.Score)}
 		for _, q := range questions {
 			cell := ""
 			for _, a := range it.Answers {

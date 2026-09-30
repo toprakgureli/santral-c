@@ -3,14 +3,13 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -20,18 +19,6 @@ import (
 // Templates are Meta-approved messages. They are the only way to write to
 // a customer after the 24-hour window, and they belong to a business
 // account: every device of that account can use them.
-
-func (s *Service) template(ctx context.Context, id uint) (*models.WATemplate, error) {
-	var t models.WATemplate
-	err := s.db.WithContext(ctx).First(&t, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NotFound("Şablon bulunamadı.")
-	}
-	if err != nil {
-		return nil, errs.Internal(err)
-	}
-	return &t, nil
-}
 
 // TemplateView is a template for the panel.
 type TemplateView struct {
@@ -80,7 +67,7 @@ func (s *Service) SetTemplateFill(ctx context.Context, actorID, id uint, fill []
 	if err := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE id = ?", jsonString(fill), id).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
-	t, err := s.template(ctx, id)
+	t, err := s.repo.Template(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +81,7 @@ func (s *Service) Templates(ctx context.Context, actorID, channelID uint) ([]Tem
 	if err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, channelID)
+	ch, err := s.repo.Channel(ctx, channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,13 +109,13 @@ func (s *Service) SyncTemplates(ctx context.Context, actorID, channelID uint) (i
 	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon yönetme yetkiniz yok."); err != nil {
 		return 0, err
 	}
-	ch, err := s.channel(ctx, channelID)
+	ch, err := s.repo.Channel(ctx, channelID)
 	if err != nil {
 		return 0, err
 	}
 	n, err := s.syncTemplates(ctx, ch)
 	if err != nil {
-		return 0, errs.Invalid("Şablonlar Meta'dan alınamadı. "+friendlyError(err), err)
+		return 0, errs.Invalid("Şablonlar Meta'dan alınamadı. "+meta.Friendly(err), err)
 	}
 	return n, nil
 }
@@ -235,7 +222,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, in.ChannelID)
+	ch, err := s.repo.Channel(ctx, in.ChannelID)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +300,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 	}
 	metaID, status, err := cl.CreateTemplate(ctx, in.Name, in.Language, in.Category, comps)
 	if err != nil {
-		return nil, errs.Invalid("Meta şablonu kabul etmedi. "+friendlyError(err), err)
+		return nil, errs.Invalid("Meta şablonu kabul etmedi. "+meta.Friendly(err), err)
 	}
 	if status == "" {
 		status = "PENDING"
@@ -347,7 +334,7 @@ func (s *Service) UploadTemplateMedia(ctx context.Context, actorID, channelID ui
 	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkiniz yok."); err != nil {
 		return "", err
 	}
-	ch, err := s.channel(ctx, channelID)
+	ch, err := s.repo.Channel(ctx, channelID)
 	if err != nil {
 		return "", err
 	}
@@ -367,7 +354,7 @@ func (s *Service) DeleteTemplate(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon silme yetkiniz yok."); err != nil {
 		return err
 	}
-	t, err := s.template(ctx, id)
+	t, err := s.repo.Template(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -375,7 +362,7 @@ func (s *Service) DeleteTemplate(ctx context.Context, actorID, id uint) error {
 	if err := s.db.WithContext(ctx).Where("waba_id = ?", t.WABAID).First(&ch).Error; err == nil {
 		if cl, err := s.cloudFor(&ch); err == nil {
 			if err := cl.DeleteTemplate(ctx, t.Name); err != nil {
-				return errs.Invalid("Meta şablonu silmedi. "+friendlyError(err), err)
+				return errs.Invalid("Meta şablonu silmedi. "+meta.Friendly(err), err)
 			}
 		}
 	}

@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/outside"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
+
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -308,7 +311,7 @@ func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in Contac
 	if err := s.db.WithContext(ctx).Model(&models.WAContact{}).Where("id = ?", id).Updates(fields).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
-	c, err := s.contact(ctx, id)
+	c, err := s.repo.Contact(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +464,7 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 	waID := strings.TrimPrefix(e164, "+")
 	var convID uint
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		c, err := upsertContact(tx, waID, "")
+		c, err := store.UpsertContact(tx, waID, "")
 		if err != nil {
 			return err
 		}
@@ -470,7 +473,7 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 				return err
 			}
 		}
-		conv, _, err := upsertConversation(tx, channelID, c.ID)
+		conv, _, err := store.UpsertConversation(tx, channelID, c.ID)
 		if err != nil {
 			return err
 		}
@@ -557,7 +560,7 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return errs.Invalid("Adres http:// ya da https:// ile başlayan tam bir adres olmalı.", nil)
 	}
-	if err := checkURLTemplate(strings.TrimSpace(in.URL)); err != nil {
+	if err := outside.CheckURLTemplate(strings.TrimSpace(in.URL)); err != nil {
 		return errs.Invalid("Değişkenler ({ad} gibi) adresin sunucu kısmında kullanılamaz; yalnızca yolda ve sorguda olabilir.", err)
 	}
 	if strings.TrimSpace(in.Name) == "" {
@@ -618,7 +621,7 @@ type CallbackView struct {
 }
 
 func (s *Service) createCallback(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, note string) {
-	c, err := s.contact(ctx, conv.ContactID)
+	c, err := s.repo.Contact(ctx, conv.ContactID)
 	if err != nil {
 		return
 	}

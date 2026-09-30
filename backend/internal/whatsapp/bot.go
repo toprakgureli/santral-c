@@ -12,6 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/flow"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/outside"
+
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -38,17 +43,17 @@ type liveIO struct {
 	resolve bool
 }
 
-func (o *liveIO) sendText(text string) {
+func (o *liveIO) SendText(text string) {
 	o.s.queueObject(o.ctx, o.ch, o.conv.ID, o.ticket.ID, "bot", o.bot.Name, "text", text, map[string]any{"type": "text", "text": map[string]any{"body": text}})
 }
 
-func (o *liveIO) sendMedia(kind, url string, fileID uint, fileName, caption string) {
+func (o *liveIO) SendMedia(kind, url string, fileID uint, fileName, caption string) {
 	if fileID > 0 {
 		metaID, f, err := o.s.metaMediaFor(o.ctx, o.ch, fileID)
 		if err != nil || f == nil {
 			slog.WarnContext(o.ctx, "whatsapp chatbot file could not be sent", "bot", o.bot.ID, "file", fileID, "error", err)
 			if t := strings.TrimSpace(caption); t != "" {
-				o.sendText(t)
+				o.SendText(t)
 			}
 			return
 		}
@@ -73,24 +78,24 @@ func (o *liveIO) sendMedia(kind, url string, fileID uint, fileName, caption stri
 	o.s.queueObject(o.ctx, o.ch, o.conv.ID, o.ticket.ID, "bot", o.bot.Name, "text", strings.TrimSpace(caption+" "+url), map[string]any{"type": kind, kind: obj})
 }
 
-func (o *liveIO) sendMenu(style, text, button string, options []BotOption) {
+func (o *liveIO) SendMenu(style, text, button string, options []flow.Option) {
 	lines := []string{text}
 	for i, opt := range options {
 		lines = append(lines, fmt.Sprintf("%d. %s", i+1, opt.Label))
 	}
-	o.s.queueObject(o.ctx, o.ch, o.conv.ID, o.ticket.ID, "bot", o.bot.Name, "interactive", strings.Join(lines, "\n"), menuMessage(style, text, button, options))
+	o.s.queueObject(o.ctx, o.ch, o.conv.ID, o.ticket.ID, "bot", o.bot.Name, "interactive", strings.Join(lines, "\n"), flow.MenuMessage(style, text, button, options))
 }
 
-func (o *liveIO) handoff(teamID uint, note string) {
+func (o *liveIO) Handoff(teamID uint, note string) {
 	o.handed, o.team, o.note = true, teamID, note
 }
 
-func (o *liveIO) finish(resolve bool) {
+func (o *liveIO) Finish(resolve bool) {
 	o.ended, o.resolve = true, resolve
 }
 
-func (o *liveIO) tag(tags []string, priority, category string) {
-	t := o.s.ticketFresh(o.ctx, o.ticket.ID)
+func (o *liveIO) Tag(tags []string, priority, category string) {
+	t := o.s.repo.Ticket(o.ctx, o.ticket.ID)
 	if t == nil {
 		return
 	}
@@ -106,36 +111,36 @@ func (o *liveIO) tag(tags []string, priority, category string) {
 	_ = o.s.db.WithContext(o.ctx).Model(&models.WATicket{}).Where("id = ?", o.ticket.ID).Updates(fields).Error
 }
 
-func (o *liveIO) callback(note string) {
+func (o *liveIO) Callback(note string) {
 	o.s.createCallback(o.ctx, o.ch, o.conv, o.ticket, note)
 }
 
-func (o *liveIO) survey() {
+func (o *liveIO) Survey() {
 	o.s.sendNativeSurvey(o.ctx, o.ch, o.conv, o.ticket, "")
 }
 
-func (o *liveIO) callAPI(id uint, vars map[string]string) (map[string]any, error) {
+func (o *liveIO) CallAPI(id uint, vars map[string]string) (map[string]any, error) {
 	return o.s.callIntegration(o.ctx, id, vars)
 }
 
-func (o *liveIO) now() time.Time { return time.Now() }
+func (o *liveIO) Now() time.Time { return time.Now() }
 
-func (o *liveIO) hoursOpen() bool {
-	h := parseSettings(o.ch.Settings).Hours
+func (o *liveIO) HoursOpen() bool {
+	h := device.Parse(o.ch.Settings).Hours
 	return !h.Enabled || h.Open(time.Now())
 }
 
-func (o *liveIO) mark(nodeID, kind string) {
+func (o *liveIO) Mark(nodeID, kind string) {
 	_ = o.s.db.WithContext(o.ctx).Exec("INSERT INTO wa_bot_events (bot_id, version, conversation_id, node_id, kind) VALUES (?, ?, ?, ?, ?)",
 		o.bot.ID, o.version, o.conv.ID, nodeID, kind).Error
 }
 
-func (s *Service) botGraph(ctx context.Context, botID uint, version int) (*BotGraph, error) {
+func (s *Service) botGraph(ctx context.Context, botID uint, version int) (*flow.Graph, error) {
 	var raw string
 	if err := s.db.WithContext(ctx).Raw("SELECT graph FROM wa_bot_versions WHERE bot_id = ? AND version = ?", botID, version).Scan(&raw).Error; err != nil || raw == "" {
 		return nil, errors.New("chatbot sürümü bulunamadı")
 	}
-	var g BotGraph
+	var g flow.Graph
 	if err := json.Unmarshal([]byte(raw), &g); err != nil {
 		return nil, err
 	}
@@ -150,14 +155,14 @@ func (s *Service) pickBot(ctx context.Context, ch *models.WAChannel, text string
 	if err := s.db.WithContext(ctx).Where("active AND published_version > 0 AND channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", ch.ID)).Order("id").Find(&bots).Error; err != nil {
 		return nil
 	}
-	h := parseSettings(ch.Settings).Hours
+	h := device.Parse(ch.Settings).Hours
 	now := time.Now()
 	closed := h.Enabled && !h.Open(now)
 	var entry, timed, after, keyword *models.WABot
 	low := strings.ToLower(text)
 	for i := range bots {
 		b := &bots[i]
-		sc := parseSchedule(b.Schedule)
+		sc := hours.ParseSchedule(b.Schedule)
 		if b.Trigger != "after_hours" && !sc.Fits(h, now) {
 			continue
 		}
@@ -203,8 +208,8 @@ func (s *Service) startBot(ctx context.Context, ch *models.WAChannel, conv *mode
 		slog.WarnContext(ctx, "whatsapp chatbot could not start", "bot", bot.ID, "error", err)
 		return false
 	}
-	contact, _ := s.contact(ctx, conv.ContactID)
-	st := &botState{Vars: map[string]string{}}
+	contact, _ := s.repo.Contact(ctx, conv.ContactID)
+	st := &flow.State{Vars: map[string]string{}}
 	if contact != nil {
 		v := contactView(contact)
 		st.Vars["musteri"] = firstName(v.Display)
@@ -236,7 +241,7 @@ func (s *Service) continueBot(ctx context.Context, ch *models.WAChannel, conv *m
 		s.botToHuman(ctx, ch, conv, ticket, 0, "")
 		return false
 	}
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 	if msg.Kind == "text" && matchesWord(msg.Body, set.HumanKeywords) {
 		s.endBot(ctx, conv.ID, "handoff")
 		s.botToHuman(ctx, ch, conv, ticket, 0, "Müşteri temsilciyle görüşmek istedi.")
@@ -248,9 +253,9 @@ func (s *Service) continueBot(ctx context.Context, ch *models.WAChannel, conv *m
 		s.botToHuman(ctx, ch, conv, ticket, 0, "")
 		return false
 	}
-	st := &botState{NodeID: sess.NodeID, Tries: sess.Tries, Vars: map[string]string{}}
+	st := &flow.State{NodeID: sess.NodeID, Tries: sess.Tries, Vars: map[string]string{}}
 	_ = json.Unmarshal([]byte(sess.Vars), &st.Vars)
-	in := &botInput{Text: msg.Body}
+	in := &flow.Input{Text: msg.Body}
 	if msg.Payload != nil {
 		var p struct {
 			ID      string `json:"id"`
@@ -267,9 +272,9 @@ func (s *Service) continueBot(ctx context.Context, ch *models.WAChannel, conv *m
 }
 
 // runStep walks the flow and saves or ends the session.
-func (s *Service) runStep(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, ticket *models.WATicket, bot *models.WABot, version int, g *BotGraph, st *botState, in *botInput) {
+func (s *Service) runStep(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, ticket *models.WATicket, bot *models.WABot, version int, g *flow.Graph, st *flow.State, in *flow.Input) {
 	io := &liveIO{s: s, ctx: ctx, ch: ch, conv: conv, ticket: ticket, bot: bot, version: version}
-	step(g, st, in, io)
+	flow.Step(g, st, in, io)
 	if !st.Done {
 		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_bot_sessions SET node_id = ?, vars = ?, tries = ?, updated_at = now() WHERE conversation_id = ?",
 			st.NodeID, jsonString(st.Vars), st.Tries, conv.ID).Error)
@@ -355,14 +360,14 @@ func (s *Service) sweepBots(ctx context.Context) {
 	warnDB(ctx, s.db.WithContext(ctx).Raw(`SELECT s.conversation_id, c.channel_id, s.updated_at FROM wa_bot_sessions s JOIN wa_conversations c ON c.id = s.conversation_id
 		WHERE s.updated_at < now() - interval '5 minutes'`).Scan(&rows).Error)
 	for _, r := range rows {
-		ch, err := s.channel(ctx, r.ChannelID)
+		ch, err := s.repo.Channel(ctx, r.ChannelID)
 		if err != nil {
 			continue
 		}
-		if time.Since(r.UpdatedAt) < time.Duration(parseSettings(ch.Settings).BotTimeoutMinutes)*time.Minute {
+		if time.Since(r.UpdatedAt) < time.Duration(device.Parse(ch.Settings).BotTimeoutMinutes)*time.Minute {
 			continue
 		}
-		conv, ticket, err := s.loadConv(ctx, r.ConversationID)
+		conv, ticket, err := s.repo.Conversation(ctx, r.ConversationID)
 		if err != nil || ticket == nil {
 			continue
 		}
@@ -383,7 +388,7 @@ type BotView struct {
 	ChannelIDs       []uint          `json:"channelIds"`
 	Trigger          string          `json:"trigger"`
 	Keywords         []string        `json:"keywords"`
-	Schedule         BotSchedule     `json:"schedule"`
+	Schedule         hours.Schedule  `json:"schedule"`
 	Draft            json.RawMessage `json:"draft"`
 	PublishedVersion int             `json:"publishedVersion"`
 	PublishedAt      *time.Time      `json:"publishedAt,omitempty"`
@@ -402,7 +407,7 @@ func parseIDs(raw string) []uint {
 
 func (s *Service) botView(ctx context.Context, b *models.WABot) BotView {
 	v := BotView{ID: b.ID, Name: b.Name, Description: b.Description, Active: b.Active, ChannelIDs: parseIDs(b.ChannelIDs), Trigger: b.Trigger,
-		Keywords: parseTags(b.Keywords), Schedule: parseSchedule(b.Schedule), Draft: json.RawMessage(b.Draft), PublishedVersion: b.PublishedVersion, PublishedAt: b.PublishedAt, UpdatedAt: b.UpdatedAt}
+		Keywords: parseTags(b.Keywords), Schedule: hours.ParseSchedule(b.Schedule), Draft: json.RawMessage(b.Draft), PublishedVersion: b.PublishedVersion, PublishedAt: b.PublishedAt, UpdatedAt: b.UpdatedAt}
 	if b.PublishedVersion == 0 {
 		v.DraftChanged = true
 	} else {
@@ -458,40 +463,40 @@ func (s *Service) Bot(ctx context.Context, actorID, id uint) (*BotView, error) {
 
 // BotInput is the chatbot's card: name, when it runs and on which devices.
 type BotInput struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Trigger     string       `json:"trigger"`
-	Keywords    []string     `json:"keywords"`
-	Schedule    *BotSchedule `json:"schedule"`
-	ChannelIDs  []uint       `json:"channelIds"`
-	Active      *bool        `json:"active"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Trigger     string          `json:"trigger"`
+	Keywords    []string        `json:"keywords"`
+	Schedule    *hours.Schedule `json:"schedule"`
+	ChannelIDs  []uint          `json:"channelIds"`
+	Active      *bool           `json:"active"`
 }
 
 // schedule reads the hours of the form; after-hours chatbots always follow
 // the device's working hours, so they carry none of their own.
-func (in BotInput) schedule(trigger string) (BotSchedule, error) {
-	sc := BotSchedule{Mode: "always", Spans: []TimeSpan{}}
+func (in BotInput) schedule(trigger string) (hours.Schedule, error) {
+	sc := hours.Schedule{Mode: "always", Spans: []hours.Span{}}
 	if in.Schedule != nil && trigger != "after_hours" {
-		sc = parseSchedule(jsonString(in.Schedule))
+		sc = hours.ParseSchedule(jsonString(in.Schedule))
 		if sc.Mode != "custom" {
-			sc.Spans = []TimeSpan{}
+			sc.Spans = []hours.Span{}
 		}
 	}
-	if err := sc.check(); err != nil {
+	if err := sc.Check(); err != nil {
 		return sc, errs.Invalid("Çalışma saatleri: "+err.Error()+".", nil)
 	}
 	return sc, nil
 }
 
 func starterGraph() string {
-	g := BotGraph{
-		Nodes: []BotNode{
+	g := flow.Graph{
+		Nodes: []flow.Node{
 			{ID: "start", Type: "start", X: 80, Y: 200},
-			{ID: "welcome", Type: "message", X: 320, Y: 180, Data: BotData{Text: "Merhaba {musteri}, size nasıl yardımcı olabiliriz?"}},
-			{ID: "menu", Type: "menu", X: 600, Y: 160, Data: BotData{Text: "Lütfen bir konu seçin.", Style: "buttons", Options: []BotOption{{ID: "o1", Label: "Destek"}, {ID: "o2", Label: "Satış"}, {ID: "o3", Label: "Temsilci"}}}},
-			{ID: "h", Type: "handoff", X: 900, Y: 200, Data: BotData{Text: "Sizi bir temsilcimize aktarıyorum, en kısa sürede dönüş yapacağız."}},
+			{ID: "welcome", Type: "message", X: 320, Y: 180, Data: flow.Data{Text: "Merhaba {musteri}, size nasıl yardımcı olabiliriz?"}},
+			{ID: "menu", Type: "menu", X: 600, Y: 160, Data: flow.Data{Text: "Lütfen bir konu seçin.", Style: "buttons", Options: []flow.Option{{ID: "o1", Label: "Destek"}, {ID: "o2", Label: "Satış"}, {ID: "o3", Label: "Temsilci"}}}},
+			{ID: "h", Type: "handoff", X: 900, Y: 200, Data: flow.Data{Text: "Sizi bir temsilcimize aktarıyorum, en kısa sürede dönüş yapacağız."}},
 		},
-		Edges: []BotEdge{
+		Edges: []flow.Edge{
 			{ID: "e1", From: "start", Port: "next", To: "welcome"},
 			{ID: "e2", From: "welcome", Port: "next", To: "menu"},
 			{ID: "e3", From: "menu", Port: "o1", To: "h"},
@@ -513,7 +518,7 @@ func normTrigger(t string) string {
 // checkBotConflict keeps one always-on entry flow and one after-hours flow
 // per device, so it is never unclear which one answers. Entry flows with
 // their own hours may sit beside them; in their hours they come first.
-func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string, sc BotSchedule, channels []uint, active bool) error {
+func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string, sc hours.Schedule, channels []uint, active bool) error {
 	if !active || trigger == "keyword" || (trigger == "entry" && sc.Mode != "always") {
 		return nil
 	}
@@ -586,7 +591,7 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	fields["description"] = strings.TrimSpace(in.Description)
 	trigger := normTrigger(in.Trigger)
 	fields["trigger"] = trigger
-	sc := parseSchedule(b.Schedule)
+	sc := hours.ParseSchedule(b.Schedule)
 	if in.Schedule != nil || trigger == "after_hours" {
 		if sc, err = in.schedule(trigger); err != nil {
 			return nil, err
@@ -602,7 +607,7 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	if in.Active != nil {
 		active = *in.Active
 	}
-	liveChange := active != b.Active || jsonString(channels) != jsonString(parseIDs(b.ChannelIDs)) || trigger != b.Trigger || jsonString(sc) != jsonString(parseSchedule(b.Schedule))
+	liveChange := active != b.Active || jsonString(channels) != jsonString(parseIDs(b.ChannelIDs)) || trigger != b.Trigger || jsonString(sc) != jsonString(hours.ParseSchedule(b.Schedule))
 	if liveChange && !u.Can(enums.WABotPublish) {
 		return nil, errs.Forbidden("Chatbot'u açıp kapatma ya da cihaz seçme yetkiniz yok.")
 	}
@@ -626,7 +631,7 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 }
 
 // SaveDraft stores the drawing without touching what customers meet.
-func (s *Service) SaveDraft(ctx context.Context, actorID, id uint, g BotGraph) (*BotView, error) {
+func (s *Service) SaveDraft(ctx context.Context, actorID, id uint, g flow.Graph) (*BotView, error) {
 	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
 		return nil, err
 	}
@@ -654,7 +659,7 @@ func (s *Service) PublishBot(ctx context.Context, actorID, id uint) (*PublishRes
 	if err := s.db.WithContext(ctx).First(&b, id).Error; err != nil {
 		return nil, errs.NotFound("Chatbot bulunamadı.")
 	}
-	var g BotGraph
+	var g flow.Graph
 	if err := json.Unmarshal([]byte(b.Draft), &g); err != nil {
 		return nil, errs.Invalid("Akış okunamadı.", err)
 	}
@@ -743,7 +748,7 @@ func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, ch
 
 // SimInput is one turn in the test screen.
 type SimInput struct {
-	Graph     BotGraph          `json:"graph"`
+	Graph     flow.Graph        `json:"graph"`
 	NodeID    string            `json:"nodeId"`
 	Vars      map[string]string `json:"vars"`
 	Tries     int               `json:"tries"`
@@ -761,21 +766,21 @@ type SimInput struct {
 
 // simNow is the moment a test run pretends it is, in Turkey time.
 func (in SimInput) simNow() time.Time {
-	now := time.Now().In(istanbul)
+	now := time.Now().In(hours.Zone)
 	if in.Day != nil && *in.Day >= 0 && *in.Day <= 6 {
 		today := (int(now.Weekday()) + 6) % 7
 		now = now.AddDate(0, 0, *in.Day-today)
 	}
-	if validClock(in.Clock) {
-		m := minuteOf(in.Clock)
-		now = time.Date(now.Year(), now.Month(), now.Day(), m/60, m%60, 0, 0, istanbul)
+	if hours.ValidClock(in.Clock) {
+		m := hours.MinuteOf(in.Clock)
+		now = time.Date(now.Year(), now.Month(), now.Day(), m/60, m%60, 0, 0, hours.Zone)
 	}
 	return now
 }
 
 // SimResult is what the flow did and where it stands.
 type SimResult struct {
-	Outputs []SimOutput       `json:"outputs"`
+	Outputs []flow.SimOutput  `json:"outputs"`
 	NodeID  string            `json:"nodeId"`
 	Vars    map[string]string `json:"vars"`
 	Tries   int               `json:"tries"`
@@ -791,14 +796,14 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 	if _, err := s.botManager(ctx, actorID); err != nil {
 		return nil, err
 	}
-	st := &botState{NodeID: in.NodeID, Vars: in.Vars, Tries: in.Tries}
+	st := &flow.State{NodeID: in.NodeID, Vars: in.Vars, Tries: in.Tries}
 	if st.Vars == nil {
 		st.Vars = map[string]string{"musteri": "Ayşe", "numara": "+905xxxxxxxxx"}
 	}
 	at := in.simNow()
 	// Working hours come from the device at the pretended moment, so a
 	// Sunday test on a device closed on Sundays is outside working hours.
-	var h HoursSettings
+	var h hours.Week
 	open, chName := in.HoursOpen, ""
 	chID := in.ChannelID
 	var bot *models.WABot
@@ -812,33 +817,33 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 		}
 	}
 	if chID > 0 {
-		if ch, err := s.channel(ctx, chID); err == nil {
-			h = parseSettings(ch.Settings).Hours
+		if ch, err := s.repo.Channel(ctx, chID); err == nil {
+			h = device.Parse(ch.Settings).Hours
 			open, chName = !h.Enabled || h.Open(at), ch.Name
 		}
 	}
-	io := &simIO{hours: open, at: at, api: func(id uint, vars map[string]string) (map[string]any, error) {
+	io := flow.NewSimIO(open, at, func(id uint, vars map[string]string) (map[string]any, error) {
 		return s.callIntegration(ctx, id, vars)
-	}}
-	var input *botInput
+	})
+	var input *flow.Input
 	if in.Start {
 		st.NodeID = ""
 		// Would this chatbot greet the customer at all at that moment?
 		if bot != nil && chName != "" {
 			skip, note := simGate(bot, h, open, at, chName)
 			if skip != "" {
-				return &SimResult{Outputs: []SimOutput{{Kind: "skip", Text: skip}}, Vars: st.Vars, Done: true, HoursOpen: open, Channel: chName}, nil
+				return &SimResult{Outputs: []flow.SimOutput{{Kind: "skip", Text: skip}}, Vars: st.Vars, Done: true, HoursOpen: open, Channel: chName}, nil
 			}
 			if note != "" {
-				io.Out = append(io.Out, SimOutput{Kind: "note", Text: note})
+				io.Out = append(io.Out, flow.SimOutput{Kind: "note", Text: note})
 			}
 		}
 	} else {
-		input = &botInput{Text: in.Text, ChoiceID: in.ChoiceID}
+		input = &flow.Input{Text: in.Text, ChoiceID: in.ChoiceID}
 	}
-	step(&in.Graph, st, input, io)
+	flow.Step(&in.Graph, st, input, io)
 	if io.Out == nil {
-		io.Out = []SimOutput{}
+		io.Out = []flow.SimOutput{}
 	}
 	return &SimResult{Outputs: io.Out, NodeID: st.NodeID, Vars: st.Vars, Tries: st.Tries, Done: st.Done, HoursOpen: open, Channel: chName}, nil
 }
@@ -846,8 +851,8 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 // simGate says whether a chatbot would greet a customer writing at t on a
 // device with these working hours: a reason when it would not, or a note
 // when it would although the device is closed.
-func simGate(bot *models.WABot, h HoursSettings, open bool, t time.Time, chName string) (skip, note string) {
-	sc := parseSchedule(bot.Schedule)
+func simGate(bot *models.WABot, h hours.Week, open bool, t time.Time, chName string) (skip, note string) {
+	sc := hours.ParseSchedule(bot.Schedule)
 	switch {
 	case bot.Trigger == "after_hours" && open:
 		return "Bu saatte " + chName + " mesai içinde. Bu chatbot sadece mesai dışında çalıştığı için müşteriyi karşılamaz; sohbet doğrudan temsilcilere düşer.", ""
@@ -888,14 +893,14 @@ func (s *Service) BotReport(ctx context.Context, actorID, id uint, days int) (*B
 		return nil, errs.Internal(err)
 	}
 	out := &BotStats{Nodes: map[string]int64{}, Fails: map[string]int64{}, Drops: map[string]int64{}}
-	var g BotGraph
+	var g flow.Graph
 	var draft string
 	if err := s.db.WithContext(ctx).Raw("SELECT draft::text FROM wa_bots WHERE id = ?", id).Scan(&draft).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
 	_ = json.Unmarshal([]byte(draft), &g)
 	start := ""
-	if n := g.start(); n != nil {
+	if n := g.Start(); n != nil {
 		start = n.ID
 	}
 	for _, r := range rows {
@@ -928,13 +933,13 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 	if err := s.db.WithContext(ctx).First(&in, id).Error; err != nil {
 		return nil, errors.New("dış sorgu bulunamadı")
 	}
-	target, err := fillURL(in.URL, vars)
+	target, err := outside.FillURL(in.URL, vars)
 	if err != nil {
 		return nil, err
 	}
 	var body io.Reader
 	if in.Method != "GET" && strings.TrimSpace(in.Body) != "" {
-		body = bytes.NewReader([]byte(fillJSON(in.Body, vars)))
+		body = bytes.NewReader([]byte(outside.FillJSON(in.Body, vars)))
 	}
 	timeout := time.Duration(in.TimeoutSec) * time.Second
 	if timeout <= 0 || timeout > 30*time.Second {
@@ -954,13 +959,13 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 		var hs map[string]string
 		if json.Unmarshal([]byte(raw), &hs) == nil {
 			for k, v := range hs {
-				req.Header.Set(k, fillHeader(v, vars))
+				req.Header.Set(k, outside.FillHeader(v, vars))
 			}
 		}
 	}
-	resp, err := outsideClient.Do(req)
+	resp, err := outside.Client.Do(req)
 	if err != nil {
-		return nil, explainOutside(err)
+		return nil, outside.Explain(err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))

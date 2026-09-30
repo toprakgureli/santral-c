@@ -1,4 +1,4 @@
-package whatsapp
+package outside
 
 import (
 	"encoding/json"
@@ -19,19 +19,19 @@ func TestFillURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := fillURL(tt.raw, vars)
+			got, err := FillURL(tt.raw, vars)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("fillURL() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("FillURL() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if got != tt.want {
-				t.Fatalf("fillURL() = %q, want %q", got, tt.want)
+				t.Fatalf("FillURL() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
 func TestFillJSONKeepsBodyValid(t *testing.T) {
-	body := fillJSON(`{"note":"{not}","phone":"{tel}"}`, map[string]string{"not": `a","admin":true,"x":"`, "tel": "555\n123"})
+	body := FillJSON(`{"note":"{not}","phone":"{tel}"}`, map[string]string{"not": `a","admin":true,"x":"`, "tel": "555\n123"})
 	var out map[string]any
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		t.Fatalf("body is not valid JSON: %v (%s)", err, body)
@@ -45,21 +45,7 @@ func TestFillJSONKeepsBodyValid(t *testing.T) {
 }
 
 func TestFillHeaderDropsLineBreaks(t *testing.T) {
-	if got := fillHeader("Bearer {t}", map[string]string{"t": "abc\r\nX-Evil: 1"}); got != "Bearer abc  X-Evil: 1" {
-		t.Fatalf("fillHeader() = %q", got)
-	}
-}
-
-func TestTemplateParamsRejectLineBreaks(t *testing.T) {
-	for _, bad := range []string{"iki\nsatır", "sekme\tvar", "çok      boşluk"} {
-		if err := checkParams([]string{bad}); err == nil {
-			t.Errorf("checkParams(%q) accepted a value Meta refuses", bad)
-		}
-	}
-	if err := checkParams([]string{"Ayşe Yılmaz", "12:30"}); err != nil {
-		t.Errorf("checkParams() refused a normal value: %v", err)
-	}
-	if got := oneLine(" Ayşe \n  Yılmaz\t"); got != "Ayşe Yılmaz" {
-		t.Errorf("oneLine() = %q", got)
+	if got := FillHeader("Bearer {t}", map[string]string{"t": "abc\r\nX-Evil: 1"}); got != "Bearer abc  X-Evil: 1" {
+		t.Fatalf("FillHeader() = %q", got)
 	}
 }

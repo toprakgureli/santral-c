@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -214,7 +215,7 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 		if text == "" {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%s (%s): %s", who, m.CreatedAt.In(istanbul).Format("02.01 15:04"), text))
+		lines = append(lines, fmt.Sprintf("%s (%s): %s", who, m.CreatedAt.In(hours.Zone).Format("02.01 15:04"), text))
 	}
 
 	var sys strings.Builder

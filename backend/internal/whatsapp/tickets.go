@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -32,15 +33,6 @@ func (s *Service) event(ctx context.Context, tx *gorm.DB, conv *models.WAConvers
 	}
 }
 
-func (s *Service) userName(ctx context.Context, id uint) string {
-	var name string
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT name FROM users WHERE id = ?", id).Scan(&name).Error)
-	if name == "" {
-		return "Biri"
-	}
-	return name
-}
-
 func firstName(name string) string {
 	if i := strings.IndexByte(name, ' '); i > 0 {
 		return name[:i]
@@ -54,7 +46,7 @@ func firstName(name string) string {
 // on shift, available, with the panel open and room under their limit.
 // The one who got a ticket longest ago comes first.
 func (s *Service) eligible(ctx context.Context, ch *models.WAChannel, teamID *uint) []uint {
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 	q := `SELECT m.user_id FROM wa_channel_members m
 		JOIN users u ON u.id = m.user_id AND u.active
 		JOIN shifts sh ON sh.user_id = m.user_id AND sh.ended_at IS NULL
@@ -93,7 +85,7 @@ func (s *Service) eligible(ctx context.Context, ch *models.WAChannel, teamID *ui
 // distribute hands an unowned ticket to the next available person when
 // the device distributes automatically; otherwise it waits in the pool.
 func (s *Service) distribute(ctx context.Context, ch *models.WAChannel, ticketID uint) bool {
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 	if !set.Distribution.Enabled {
 		return false
 	}
@@ -121,26 +113,18 @@ func (s *Service) distribute(ctx context.Context, ch *models.WAChannel, ticketID
 		if err != nil || !ok {
 			return false
 		}
-		conv, _, _ := s.loadConv(ctx, t.ConversationID)
+		conv, _, _ := s.repo.Conversation(ctx, t.ConversationID)
 		if conv != nil {
-			s.event(ctx, nil, conv, t.ID, 0, s.userName(ctx, uid)+" sohbete otomatik olarak atandı.")
+			s.event(ctx, nil, conv, t.ID, 0, s.repo.UserName(ctx, uid)+" sohbete otomatik olarak atandı.")
 			s.publish(ctx, conv.ID, nil, before)
 		}
 		s.push.Push([]uint{uid}, Event{Type: "wa.assigned", ConversationID: t.ConversationID, Text: "Size yeni bir WhatsApp sohbeti atandı."})
 		if conv != nil {
-			s.runAutomations(ctx, ch, "ticket_assigned", conv, s.ticketFresh(ctx, t.ID), nil)
+			s.runAutomations(ctx, ch, "ticket_assigned", conv, s.repo.Ticket(ctx, t.ID), nil)
 		}
 		return true
 	}
 	return false
-}
-
-func (s *Service) ticketFresh(ctx context.Context, id uint) *models.WATicket {
-	var t models.WATicket
-	if s.db.WithContext(ctx).First(&t, id).Error != nil {
-		return nil
-	}
-	return &t
 }
 
 // ---------------------------------------------------------------- actions
@@ -177,7 +161,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 	if ticket.Status == "resolved" {
 		return errs.Invalid("Bu sohbet çözülmüş. Müşteri yazınca yeniden açılır.", nil)
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		return err
 	}
@@ -222,7 +206,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 		}
 		return errs.Internal(err)
 	}
-	name := s.userName(ctx, actorID)
+	name := s.repo.UserName(ctx, actorID)
 	switch {
 	case role == "owner" && joined:
 		s.event(ctx, nil, conv, ticket.ID, actorID, name+" sohbeti üstlendi.")
@@ -232,7 +216,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 	if ticket.Status == "bot" {
 		s.endBot(ctx, conv.ID, "handoff")
 	}
-	s.sendGreeting(ctx, v.user, ch, conv, s.ticketFresh(ctx, ticket.ID), role)
+	s.sendGreeting(ctx, v.user, ch, conv, s.repo.Ticket(ctx, ticket.ID), role)
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
 }
@@ -242,7 +226,7 @@ func (s *Service) sendGreeting(ctx context.Context, u *models.User, ch *models.W
 	if ticket == nil {
 		return
 	}
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 	g := set.Greeting
 	if !g.Enabled || (role == "helper" && !g.ForHelpers) {
 		return
@@ -252,7 +236,7 @@ func (s *Service) sendGreeting(ctx context.Context, u *models.User, ch *models.W
 	if greeted {
 		return
 	}
-	contact, err := s.contact(ctx, conv.ContactID)
+	contact, err := s.repo.Contact(ctx, conv.ContactID)
 	if err != nil {
 		return
 	}
@@ -296,7 +280,7 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 	var previous *uint
 	taken := false
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		fresh, err := lockTicket(tx, ticket.ID)
+		fresh, err := store.LockTicket(tx, ticket.ID)
 		if err != nil {
 			return err
 		}
@@ -324,9 +308,9 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 	if !taken {
 		return nil
 	}
-	s.event(ctx, nil, conv, ticket.ID, actorID, s.userName(ctx, actorID)+" sohbeti devraldı.")
+	s.event(ctx, nil, conv, ticket.ID, actorID, s.repo.UserName(ctx, actorID)+" sohbeti devraldı.")
 	if previous != nil {
-		s.push.Push([]uint{*previous}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.userName(ctx, actorID) + " bir sohbetinizi devraldı. Siz yardımcı olarak kaldınız.", Level: "info"})
+		s.push.Push([]uint{*previous}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.repo.UserName(ctx, actorID) + " bir sohbetinizi devraldı. Siz yardımcı olarak kaldınız.", Level: "info"})
 	}
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
@@ -351,7 +335,7 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 	if in.UserID == 0 && in.TeamID == 0 {
 		return errs.Invalid("Kime aktarılacağını seçin.", nil)
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		return err
 	}
@@ -368,7 +352,7 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Work from the row as it is now: someone may have taken or moved
 		// the ticket since it was read.
-		fresh, err := lockTicket(tx, ticket.ID)
+		fresh, err := store.LockTicket(tx, ticket.ID)
 		if err != nil {
 			return err
 		}
@@ -413,10 +397,10 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 		}
 		return errs.Internal(err)
 	}
-	who := s.userName(ctx, actorID)
+	who := s.repo.UserName(ctx, actorID)
 	switch {
 	case in.UserID > 0:
-		userName = s.userName(ctx, in.UserID)
+		userName = s.repo.UserName(ctx, in.UserID)
 		line := who + " sohbeti " + userName + " kişisine aktardı."
 		if n := strings.TrimSpace(in.Note); n != "" {
 			line += " Not: " + n
@@ -436,17 +420,6 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 	}
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
-}
-
-// lockTicket reads a ticket's current state and holds its row until the
-// transaction ends, so two people changing it at once take turns instead
-// of overwriting each other.
-func lockTicket(tx *gorm.DB, id uint) (*models.WATicket, error) {
-	var t models.WATicket
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&t, id).Error; err != nil {
-		return nil, fmt.Errorf("ticket %d could not be locked: %w", id, err)
-	}
-	return &t, nil
 }
 
 // Resolve closes a ticket; the survey goes out if the device asks for one.
@@ -485,10 +458,10 @@ func (s *Service) resolve(ctx context.Context, conv *models.WAConversation, tick
 	}
 	s.endBot(ctx, conv.ID, "end")
 	if actorID > 0 {
-		s.event(ctx, nil, conv, ticket.ID, actorID, s.userName(ctx, actorID)+" sohbeti çözüldü olarak kapattı.")
+		s.event(ctx, nil, conv, ticket.ID, actorID, s.repo.UserName(ctx, actorID)+" sohbeti çözüldü olarak kapattı.")
 	}
-	fresh := s.ticketFresh(ctx, ticket.ID)
-	if ch, err := s.channel(ctx, conv.ChannelID); err == nil && fresh != nil {
+	fresh := s.repo.Ticket(ctx, ticket.ID)
+	if ch, err := s.repo.Channel(ctx, conv.ChannelID); err == nil && fresh != nil {
 		s.runAutomations(ctx, ch, "ticket_resolved", conv, fresh, nil)
 		if actorID > 0 {
 			s.sendSurvey(ctx, ch, conv, fresh, actorID)
@@ -518,7 +491,7 @@ func (s *Service) Reopen(ctx context.Context, actorID, conversationID uint) erro
 	if res.RowsAffected == 0 {
 		return nil
 	}
-	s.event(ctx, nil, conv, ticket.ID, actorID, s.userName(ctx, actorID)+" sohbeti yeniden açtı.")
+	s.event(ctx, nil, conv, ticket.ID, actorID, s.repo.UserName(ctx, actorID)+" sohbeti yeniden açtı.")
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
 }
@@ -543,7 +516,7 @@ func (s *Service) UpdateTicket(ctx context.Context, actorID, conversationID uint
 	}
 	fields := map[string]any{"updated_at": time.Now()}
 	var lines []string
-	name := s.userName(ctx, actorID)
+	name := s.repo.UserName(ctx, actorID)
 	if in.Status != nil {
 		switch *in.Status {
 		case "open", "pending":
@@ -685,16 +658,16 @@ func (s *Service) sweepWaiting(ctx context.Context) {
 	if err := s.db.WithContext(ctx).Where("awaiting_since IS NOT NULL AND waiting_listed_at IS NULL AND status IN ('open','pending')").Find(&list).Error; err != nil {
 		return
 	}
-	settings := map[uint]ChannelSettings{}
+	settings := map[uint]device.Settings{}
 	for i := range list {
 		t := &list[i]
 		set, ok := settings[t.ChannelID]
 		if !ok {
-			ch, err := s.channel(ctx, t.ChannelID)
+			ch, err := s.repo.Channel(ctx, t.ChannelID)
 			if err != nil {
 				continue
 			}
-			set = parseSettings(ch.Settings)
+			set = device.Parse(ch.Settings)
 			settings[t.ChannelID] = set
 		}
 		if set.WaitingMinutes <= 0 {
@@ -710,9 +683,9 @@ func (s *Service) sweepWaiting(ctx context.Context) {
 		}
 		s.publish(ctx, t.ConversationID, nil, before)
 		// A short signal for those who can help, so the list is not missed.
-		fresh := s.ticketFresh(ctx, t.ID)
+		fresh := s.repo.Ticket(ctx, t.ID)
 		viewers, _ := s.loadViewers(ctx)
-		parts := s.participantSet(ctx, t.ID)
+		parts := s.repo.Participants(ctx, t.ID)
 		var ids []uint
 		for id, v := range viewers {
 			if v.can(enums.WAWaiting) && v.seesTicket(fresh, parts) {
@@ -736,14 +709,14 @@ func (s *Service) sweepPool(ctx context.Context) {
 		t := &list[i]
 		ch, ok := chans[t.ChannelID]
 		if !ok {
-			c, err := s.channel(ctx, t.ChannelID)
+			c, err := s.repo.Channel(ctx, t.ChannelID)
 			if err != nil {
 				continue
 			}
 			ch = c
 			chans[t.ChannelID] = ch
 		}
-		if !parseSettings(ch.Settings).Distribution.Enabled {
+		if !device.Parse(ch.Settings).Distribution.Enabled {
 			continue
 		}
 		if !s.distribute(ctx, ch, t.ID) {

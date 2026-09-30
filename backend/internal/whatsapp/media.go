@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
+
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -101,7 +103,7 @@ func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uin
 		return
 	}
 	var data []byte
-	var info *MediaInfo
+	var info *meta.MediaInfo
 	for attempt := 0; attempt < 3; attempt++ {
 		c, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		data, info, err = cl.Download(c, ref.MetaID, mediaLimit)
@@ -172,7 +174,7 @@ func (s *Service) OpenMedia(ctx context.Context, actorID, messageID uint, rangeH
 	if ref.MetaID == "" {
 		return nil, errs.NotFound("Dosya artık yok.")
 	}
-	ch, err := s.channel(ctx, msg.ChannelID)
+	ch, err := s.repo.Channel(ctx, msg.ChannelID)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +242,7 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 	if err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +258,7 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 	metaID, err := cl.Upload(c, name, mime, data)
 	cancel()
 	if err != nil {
-		return nil, errs.Invalid("Dosya Meta'ya yüklenemedi. "+friendlyError(err), err)
+		return nil, errs.Invalid("Dosya Meta'ya yüklenemedi. "+meta.Friendly(err), err)
 	}
 	obj := map[string]any{"id": metaID}
 	caption = strings.TrimSpace(caption)

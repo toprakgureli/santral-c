@@ -1,8 +1,7 @@
-// Package whatsapp connects WhatsApp Business numbers to the panel: Meta
-// tells us about every message through the webhook, agents answer from the
-// inbox, tickets are distributed, templates, quick replies, automatic
-// messages and chatbots are configured per device from the panel.
-package whatsapp
+// Package meta talks to Meta's WhatsApp Cloud API for one device: sending
+// messages, files and templates, reading the number's state, and putting
+// Meta's error codes into words.
+package meta
 
 import (
 	"bytes"
@@ -21,12 +20,12 @@ import (
 
 const graphBase = "https://graph.facebook.com"
 
-// defaultGraphVersion is used only when a device has no version entered.
-const defaultGraphVersion = "v23.0"
+// DefaultGraphVersion is used only when a device has no version entered.
+const DefaultGraphVersion = "v23.0"
 
-// Cloud is a client for one device's Graph API calls. It is built per call
+// Client is a client for one device's Graph API calls. It is built per call
 // from the device's decrypted credentials.
-type Cloud struct {
+type Client struct {
 	PhoneNumberID string
 	WABAID        string
 	AppID         string
@@ -52,22 +51,22 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("Meta yanıtı %d (kod %d): %s", e.Status, e.Code, msg)
 }
 
-func (c *Cloud) base() string {
+func (c *Client) base() string {
 	v := c.Version
 	if v == "" {
-		v = defaultGraphVersion
+		v = DefaultGraphVersion
 	}
 	return graphBase + "/" + v
 }
 
-func (c *Cloud) client() *http.Client {
+func (c *Client) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
 	return &http.Client{Timeout: 30 * time.Second}
 }
 
-func (c *Cloud) do(ctx context.Context, method, endpoint string, body io.Reader, contentType string, out any) error {
+func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader, contentType string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
 		return err
@@ -112,7 +111,7 @@ func (c *Cloud) do(ctx context.Context, method, endpoint string, body io.Reader,
 	return nil
 }
 
-func (c *Cloud) postJSON(ctx context.Context, endpoint string, payload, out any) error {
+func (c *Client) postJSON(ctx context.Context, endpoint string, payload, out any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -133,7 +132,7 @@ type NumberInfo struct {
 }
 
 // Number reads the number's card; it doubles as the credentials check.
-func (c *Cloud) Number(ctx context.Context) (*NumberInfo, error) {
+func (c *Client) Number(ctx context.Context) (*NumberInfo, error) {
 	var out NumberInfo
 	q := url.Values{"fields": {"display_phone_number,verified_name,quality_rating,messaging_limit_tier,name_status"}}
 	if err := c.do(ctx, http.MethodGet, c.base()+"/"+url.PathEscape(c.PhoneNumberID)+"?"+q.Encode(), nil, "", &out); err != nil {
@@ -143,7 +142,7 @@ func (c *Cloud) Number(ctx context.Context) (*NumberInfo, error) {
 }
 
 // Subscribed reports whether our app receives this account's webhooks.
-func (c *Cloud) Subscribed(ctx context.Context) (bool, error) {
+func (c *Client) Subscribed(ctx context.Context) (bool, error) {
 	var out struct {
 		Data []json.RawMessage `json:"data"`
 	}
@@ -154,7 +153,7 @@ func (c *Cloud) Subscribed(ctx context.Context) (bool, error) {
 }
 
 // Subscribe asks Meta to send this account's events to the app.
-func (c *Cloud) Subscribe(ctx context.Context) error {
+func (c *Client) Subscribe(ctx context.Context) error {
 	return c.do(ctx, http.MethodPost, c.base()+"/"+url.PathEscape(c.WABAID)+"/subscribed_apps", nil, "", nil)
 }
 
@@ -169,7 +168,7 @@ type SendResult struct {
 
 // Send posts one message object (the part after messaging_product and to)
 // and returns the message id Meta gave it.
-func (c *Cloud) Send(ctx context.Context, to string, message map[string]any) (string, error) {
+func (c *Client) Send(ctx context.Context, to string, message map[string]any) (string, error) {
 	payload := map[string]any{"messaging_product": "whatsapp", "recipient_type": "individual", "to": to}
 	for k, v := range message {
 		payload[k] = v
@@ -186,7 +185,7 @@ func (c *Cloud) Send(ctx context.Context, to string, message map[string]any) (st
 
 // MarkRead tells the customer their message was read (blue ticks). With
 // typing set the customer also sees that we are writing.
-func (c *Cloud) MarkRead(ctx context.Context, wamid string, typing bool) error {
+func (c *Client) MarkRead(ctx context.Context, wamid string, typing bool) error {
 	payload := map[string]any{"messaging_product": "whatsapp", "status": "read", "message_id": wamid}
 	if typing {
 		payload["typing_indicator"] = map[string]any{"type": "text"}
@@ -205,7 +204,7 @@ type MediaInfo struct {
 }
 
 // Media reads a media object's card; its URL lives a few minutes.
-func (c *Cloud) Media(ctx context.Context, id string) (*MediaInfo, error) {
+func (c *Client) Media(ctx context.Context, id string) (*MediaInfo, error) {
 	var out MediaInfo
 	if err := c.do(ctx, http.MethodGet, c.base()+"/"+url.PathEscape(id), nil, "", &out); err != nil {
 		return nil, err
@@ -214,7 +213,7 @@ func (c *Cloud) Media(ctx context.Context, id string) (*MediaInfo, error) {
 }
 
 // Download fetches a media object's bytes.
-func (c *Cloud) Download(ctx context.Context, id string, limit int64) ([]byte, *MediaInfo, error) {
+func (c *Client) Download(ctx context.Context, id string, limit int64) ([]byte, *MediaInfo, error) {
 	info, err := c.Media(ctx, id)
 	if err != nil {
 		return nil, nil, err
@@ -244,7 +243,7 @@ func (c *Cloud) Download(ctx context.Context, id string, limit int64) ([]byte, *
 }
 
 // Upload puts a file into Meta's media store and returns its id.
-func (c *Cloud) Upload(ctx context.Context, name, mime string, data []byte) (string, error) {
+func (c *Client) Upload(ctx context.Context, name, mime string, data []byte) (string, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("messaging_product", "whatsapp")
@@ -276,7 +275,7 @@ func (c *Cloud) Upload(ctx context.Context, name, mime string, data []byte) (str
 
 // UploadHandle puts a file through the app's resumable upload so it can be
 // used as a template header example. It needs the app id.
-func (c *Cloud) UploadHandle(ctx context.Context, mime string, data []byte) (string, error) {
+func (c *Client) UploadHandle(ctx context.Context, mime string, data []byte) (string, error) {
 	if c.AppID == "" {
 		return "", errors.New("Görselli şablon için cihazda uygulama kimliği (App ID) girilmeli.")
 	}
@@ -313,8 +312,8 @@ func (c *Cloud) UploadHandle(ctx context.Context, mime string, data []byte) (str
 
 // ---------------------------------------------------------------- templates
 
-// MetaTemplate is a template as Meta lists it.
-type MetaTemplate struct {
+// Template is a template as Meta lists it.
+type Template struct {
 	ID             string          `json:"id"`
 	Name           string          `json:"name"`
 	Language       string          `json:"language"`
@@ -328,15 +327,15 @@ type MetaTemplate struct {
 }
 
 // Templates lists every template of the business account.
-func (c *Cloud) Templates(ctx context.Context) ([]MetaTemplate, error) {
-	var out []MetaTemplate
+func (c *Client) Templates(ctx context.Context) ([]Template, error) {
+	var out []Template
 	next := c.base() + "/" + url.PathEscape(c.WABAID) + "/message_templates?" + url.Values{
 		"fields": {"id,name,language,category,status,rejected_reason,components,quality_score"},
 		"limit":  {"100"},
 	}.Encode()
 	for page := 0; next != "" && page < 50; page++ {
 		var resp struct {
-			Data   []MetaTemplate `json:"data"`
+			Data   []Template `json:"data"`
 			Paging struct {
 				Next string `json:"next"`
 			} `json:"paging"`
@@ -352,7 +351,7 @@ func (c *Cloud) Templates(ctx context.Context) ([]MetaTemplate, error) {
 
 // CreateTemplate submits a template for approval and returns its id and
 // first status.
-func (c *Cloud) CreateTemplate(ctx context.Context, name, language, category string, components []map[string]any) (string, string, error) {
+func (c *Client) CreateTemplate(ctx context.Context, name, language, category string, components []map[string]any) (string, string, error) {
 	var out struct {
 		ID       string `json:"id"`
 		Status   string `json:"status"`
@@ -366,6 +365,92 @@ func (c *Cloud) CreateTemplate(ctx context.Context, name, language, category str
 }
 
 // DeleteTemplate removes a template (all its languages) by name.
-func (c *Cloud) DeleteTemplate(ctx context.Context, name string) error {
+func (c *Client) DeleteTemplate(ctx context.Context, name string) error {
 	return c.do(ctx, http.MethodDelete, c.base()+"/"+url.PathEscape(c.WABAID)+"/message_templates?"+url.Values{"name": {name}}.Encode(), nil, "", nil)
+}
+
+// Describe puts Meta's error codes into words an agent understands.
+func Describe(code int, fallback string) string {
+	switch code {
+	case 190:
+		return "Cihazın erişim anahtarı geçersiz ya da süresi dolmuş. Yöneticinin cihaz ayarlarından yenilemesi gerekiyor."
+	case 10, 200, 3:
+		return "Erişim anahtarının bu işlem için izni yok."
+	case 131047:
+		return "Müşterinin son mesajının üzerinden 24 saat geçti. Artık yalnızca şablonla yazılabilir."
+	case 131026:
+		return "Mesaj müşteriye ulaşmadı. Numara WhatsApp kullanmıyor olabilir ya da uygulaması çok eski olabilir."
+	case 131049:
+		return "Meta bu pazarlama mesajını müşteriye iletmedi. Kısa süre içinde çok sayıda pazarlama mesajı almış olabilir."
+	case 131050:
+		return "Müşteri pazarlama mesajlarını kapatmış."
+	case 131051:
+		return "Bu mesaj türü desteklenmiyor."
+	case 131052:
+		return "Müşterinin gönderdiği dosya indirilemedi."
+	case 131053:
+		return "Dosya Meta'ya yüklenemedi. Biçimi ya da boyutu uygun olmayabilir."
+	case 132000:
+		return "Şablondaki değişken sayısı ile girilen değerler tutmuyor."
+	case 132001:
+		return "Şablon bulunamadı ya da bu dilde onaylı değil."
+	case 132005:
+		return "Şablon değişkenleri çok uzun."
+	case 132007:
+		return "Şablon metni Meta kurallarına uymuyor."
+	case 132012:
+		return "Şablon değişkenlerinin biçimi yanlış."
+	case 132015:
+		return "Şablon düşük kalite nedeniyle Meta tarafından duraklatıldı."
+	case 132016:
+		return "Şablon Meta tarafından kapatıldı."
+	case 130429:
+		return "Gönderim hızı sınırına takıldı. Biraz sonra tekrar denenecek."
+	case 131056:
+		return "Bu müşteriye çok kısa sürede çok fazla mesaj gönderildi. Biraz bekleyip tekrar deneyin."
+	case 131048:
+		return "Meta, numaranın gönderimlerini geçici olarak kısıtladı (spam şüphesi)."
+	case 131042:
+		return "Meta işletme hesabında ödeme sorunu var."
+	case 131031, 368:
+		return "Meta bu hesabı kurallar nedeniyle kısıtlamış."
+	case 133010:
+		return "Numara WhatsApp Business'a kayıtlı değil."
+	case 131021:
+		return "Gönderen ve alıcı aynı numara olamaz."
+	case 100:
+		if f := strings.TrimSpace(fallback); f != "" {
+			return "Meta isteği anlamadı: " + f
+		}
+		return "Meta isteği anlamadı."
+	}
+	if f := strings.TrimSpace(fallback); f != "" {
+		return f
+	}
+	return "Meta bir hata bildirdi."
+}
+
+// Friendly turns any error from Meta into a sentence.
+func Friendly(err error) string {
+	var api *APIError
+	if errors.As(err, &api) {
+		return Describe(api.Code, api.Message+" "+api.Details)
+	}
+	return "Meta'ya ulaşılamadı, internet bağlantısı ya da Meta tarafında geçici bir sorun olabilir."
+}
+
+// Retryable reports whether a failed call may succeed when tried again.
+func Retryable(err error) bool {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return true
+	}
+	if api.Status >= 500 {
+		return true
+	}
+	switch api.Code {
+	case 1, 2, 4, 80007, 130429, 131000, 131016, 133004, 131056:
+		return true
+	}
+	return false
 }

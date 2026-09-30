@@ -2,7 +2,6 @@ package whatsapp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -37,7 +36,7 @@ func (s *Service) RemoveChannel(ctx context.Context, actorID, id uint, ip string
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz silme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +67,7 @@ func (s *Service) PurgeChannel(ctx context.Context, actorID, id uint, confirm, i
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz silme yetkiniz yok."); err != nil {
 		return err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -115,7 +114,7 @@ func (s *Service) RemoveBot(ctx context.Context, actorID, id uint, ip string) (*
 	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot silme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	b, err := s.botByID(ctx, id)
+	b, err := s.repo.Bot(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +148,7 @@ func (s *Service) PurgeBot(ctx context.Context, actorID, id uint, confirm, ip st
 	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot silme yetkiniz yok."); err != nil {
 		return err
 	}
-	b, err := s.botByID(ctx, id)
+	b, err := s.repo.Bot(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -198,27 +197,15 @@ func (s *Service) endBotSessions(ctx context.Context, botID uint, note string) e
 		return errs.Internal(fmt.Errorf("chatbot sessions could not be listed: %w", err))
 	}
 	for _, c := range convs {
-		conv, ticket, err := s.loadConv(ctx, c)
+		conv, ticket, err := s.repo.Conversation(ctx, c)
 		if err != nil || ticket == nil {
 			continue
 		}
-		if ch, err := s.channel(ctx, conv.ChannelID); err == nil {
+		if ch, err := s.repo.Channel(ctx, conv.ChannelID); err == nil {
 			s.botToHuman(ctx, ch, conv, ticket, 0, note)
 		}
 	}
 	return nil
-}
-
-func (s *Service) botByID(ctx context.Context, id uint) (*models.WABot, error) {
-	var b models.WABot
-	err := s.db.WithContext(ctx).First(&b, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NotFound("Chatbot bulunamadı.")
-	}
-	if err != nil {
-		return nil, errs.Internal(err)
-	}
-	return &b, nil
 }
 
 // exists reports whether query returns a row.

@@ -8,6 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
+
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -17,24 +21,12 @@ import (
 )
 
 // cloudFor builds the Graph API client from a device's credentials.
-func (s *Service) cloudFor(ch *models.WAChannel) (*Cloud, error) {
+func (s *Service) cloudFor(ch *models.WAChannel) (*meta.Client, error) {
 	token := s.open(ch.AccessTokenEnc)
 	if token == "" {
 		return nil, errors.New("Bu cihazın erişim anahtarı (token) girilmemiş.")
 	}
-	return &Cloud{PhoneNumberID: ch.PhoneNumberID, WABAID: ch.WABAID, AppID: ch.AppID, Token: token, Version: ch.GraphVersion}, nil
-}
-
-func (s *Service) channel(ctx context.Context, id uint) (*models.WAChannel, error) {
-	var ch models.WAChannel
-	err := s.db.WithContext(ctx).First(&ch, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, errs.NotFound("Cihaz bulunamadı.")
-	}
-	if err != nil {
-		return nil, errs.Internal(err)
-	}
-	return &ch, nil
+	return &meta.Client{PhoneNumberID: ch.PhoneNumberID, WABAID: ch.WABAID, AppID: ch.AppID, Token: token, Version: ch.GraphVersion}, nil
 }
 
 // ChannelView is a device as the settings screen shows it. Secrets never
@@ -56,7 +48,7 @@ type ChannelView struct {
 	AcceptUnsigned  bool            `json:"acceptUnsigned"`
 	SurveyHookPath  string          `json:"surveyHookPath,omitempty"`
 	Active          bool            `json:"active"`
-	Settings        ChannelSettings `json:"settings"`
+	Settings        device.Settings `json:"settings"`
 	HasSurveySecret bool            `json:"hasSurveySecret"`
 	VerifiedName    string          `json:"verifiedName"`
 	QualityRating   string          `json:"qualityRating"`
@@ -69,7 +61,7 @@ type ChannelView struct {
 }
 
 func (s *Service) channelView(ctx context.Context, ch *models.WAChannel, full bool) ChannelView {
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 	v := ChannelView{
 		ID: ch.ID, Name: ch.Name, DisplayPhone: ch.DisplayPhone, PhoneNumberID: ch.PhoneNumberID, WABAID: ch.WABAID,
 		AppID: ch.AppID, GraphVersion: ch.GraphVersion, HasToken: ch.AccessTokenEnc != "", HasAppSecret: ch.AppSecretEnc != "",
@@ -171,7 +163,7 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 		Name: strings.TrimSpace(in.Name), DisplayPhone: strings.TrimSpace(in.DisplayPhone), PhoneNumberID: in.PhoneNumberID,
 		WABAID: in.WABAID, AppID: cleanID(in.AppID), GraphVersion: strings.TrimSpace(in.GraphVersion),
 		AccessTokenEnc: tok, AppSecretEnc: sec, VerifyToken: randomKey(16), HookKey: randomKey(20),
-		Active: true, Settings: defaultSettings().encode(), CreatedBy: uintPtr(actorID),
+		Active: true, Settings: device.Default().Encode(), CreatedBy: uintPtr(actorID),
 		ExistingHookURL: strings.TrimSpace(in.ExistingHookURL), ExistingHookPath: hookPath,
 		ExistingVerifyToken: strings.TrimSpace(in.ExistingVerifyToken), AcceptUnsigned: hookPath != "" && in.AcceptUnsigned,
 	}
@@ -195,7 +187,7 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz düzenleme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +248,7 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 		return nil, errs.Internal(err)
 	}
 	s.forgetHookPaths()
-	ch, _ = s.channel(ctx, id)
+	ch, _ = s.repo.Channel(ctx, id)
 	s.refreshNumber(ctx, ch)
 	v := s.channelView(ctx, ch, true)
 	return &v, nil
@@ -280,7 +272,7 @@ func (s *Service) TestChannel(ctx context.Context, actorID, id uint) (*ChannelCh
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +284,7 @@ func (s *Service) TestChannel(ctx context.Context, actorID, id uint) (*ChannelCh
 	}
 	info, err := cl.Number(ctx)
 	if err != nil {
-		out.Message = "Meta bilgileri kabul etmedi. " + friendlyError(err)
+		out.Message = "Meta bilgileri kabul etmedi. " + meta.Friendly(err)
 		return out, nil
 	}
 	out.DisplayPhone, out.VerifiedName, out.QualityRating, out.MessagingLimit = info.DisplayPhoneNumber, info.VerifiedName, info.QualityRating, info.MessagingLimitTier
@@ -315,7 +307,7 @@ func (s *Service) SubscribeChannel(ctx context.Context, actorID, id uint) error 
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkiniz yok."); err != nil {
 		return err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -324,7 +316,7 @@ func (s *Service) SubscribeChannel(ctx context.Context, actorID, id uint) error 
 		return errs.Invalid(err.Error(), nil)
 	}
 	if err := cl.Subscribe(ctx); err != nil {
-		return errs.Invalid("Meta isteği kabul etmedi. "+friendlyError(err), err)
+		return errs.Invalid("Meta isteği kabul etmedi. "+meta.Friendly(err), err)
 	}
 	return nil
 }
@@ -347,7 +339,7 @@ func (s *Service) refreshNumber(ctx context.Context, ch *models.WAChannel) {
 	})
 }
 
-func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *NumberInfo) {
+func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *meta.NumberInfo) {
 	fields := map[string]any{"verified_name": info.VerifiedName, "quality_rating": info.QualityRating, "messaging_limit": info.MessagingLimitTier}
 	if ch.DisplayPhone == "" && info.DisplayPhoneNumber != "" {
 		fields["display_phone"] = info.DisplayPhoneNumber
@@ -360,7 +352,7 @@ func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *Nu
 // SettingsInput is the settings screen's save. SurveySecret, when not
 // empty, replaces the stored Tally secret; "-" clears it.
 type SettingsInput struct {
-	Settings     ChannelSettings `json:"settings"`
+	Settings     device.Settings `json:"settings"`
 	SurveySecret string          `json:"surveySecret"`
 }
 
@@ -371,13 +363,13 @@ func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in Setti
 	if err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, id)
+	ch, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	cur := parseSettings(ch.Settings)
+	cur := device.Parse(ch.Settings)
 	next := in.Settings
-	next.normalize()
+	next.Normalize()
 	next.Survey.SecretEnc = cur.Survey.SecretEnc
 	need := func(changed bool, p enums.Permission, what string) error {
 		if changed && !u.Can(p) {
@@ -413,15 +405,15 @@ func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in Setti
 	if err := validateSettings(&next); err != nil {
 		return nil, err
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Updates(map[string]any{"settings": next.encode(), "updated_at": time.Now()}).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Updates(map[string]any{"settings": next.Encode(), "updated_at": time.Now()}).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
-	ch, _ = s.channel(ctx, id)
+	ch, _ = s.repo.Channel(ctx, id)
 	v := s.channelView(ctx, ch, u.Can(enums.WAChannelManage))
 	return &v, nil
 }
 
-func validateSettings(s *ChannelSettings) error {
+func validateSettings(s *device.Settings) error {
 	if s.WaitingMinutes < 0 || s.WaitingMinutes > 24*60 {
 		return errs.Invalid("Bekleme süresi 0 ile 1440 dakika arasında olmalı.", nil)
 	}
@@ -447,7 +439,7 @@ func validateSettings(s *ChannelSettings) error {
 	}
 	for i := range s.Hours.Days {
 		d := &s.Hours.Days[i]
-		if d.Open && minuteOf(d.To) <= minuteOf(d.From) {
+		if d.Open && hours.MinuteOf(d.To) <= hours.MinuteOf(d.From) {
 			return errs.Invalid(fmt.Sprintf("%s günü için kapanış saati açılıştan sonra olmalı.", dayNames[i]), nil)
 		}
 	}
@@ -498,15 +490,15 @@ func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sect
 	if id == from {
 		return nil, errs.Invalid("Bir cihazın ayarları kendisine kopyalanamaz.", nil)
 	}
-	src, err := s.channel(ctx, from)
+	src, err := s.repo.Channel(ctx, from)
 	if err != nil {
 		return nil, err
 	}
-	dst, err := s.channel(ctx, id)
+	dst, err := s.repo.Channel(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	a, b := parseSettings(src.Settings), parseSettings(dst.Settings)
+	a, b := device.Parse(src.Settings), device.Parse(dst.Settings)
 	for _, sec := range sections {
 		switch sec {
 		case "readReceipts":
@@ -529,7 +521,7 @@ func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sect
 			b.OptOutKeywords, b.OptOutReply = a.OptOutKeywords, a.OptOutReply
 		}
 	}
-	b.Survey.SecretEnc = parseSettings(dst.Settings).Survey.SecretEnc
+	b.Survey.SecretEnc = device.Parse(dst.Settings).Survey.SecretEnc
 	return s.UpdateSettings(ctx, actorID, id, SettingsInput{Settings: b})
 }
 
@@ -538,7 +530,7 @@ func (s *Service) SetMembers(ctx context.Context, actorID, id uint, userIDs []ui
 	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Cihaz üyelerini düzenleme yetkiniz yok."); err != nil {
 		return err
 	}
-	if _, err := s.channel(ctx, id); err != nil {
+	if _, err := s.repo.Channel(ctx, id); err != nil {
 		return err
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

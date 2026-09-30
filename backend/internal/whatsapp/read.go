@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -48,8 +49,8 @@ func (s *Service) MarkRead(ctx context.Context, actorID, conversationID, message
 // sendReadReceipt gives the customer blue ticks for their latest message
 // up to the one read, once.
 func (s *Service) sendReadReceipt(ctx context.Context, conv *models.WAConversation, upTo uint) {
-	ch, err := s.channel(ctx, conv.ChannelID)
-	if err != nil || !parseSettings(ch.Settings).ReadReceipts {
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
+	if err != nil || !device.Parse(ch.Settings).ReadReceipts {
 		return
 	}
 	var last models.WAMessage

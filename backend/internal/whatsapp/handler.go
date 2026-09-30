@@ -14,6 +14,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/sse"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/flow"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -730,7 +731,7 @@ func (r *Router) Routes(g fiber.Router) {
 		return s.UpdateBot(c.UserContext(), uid, id, in)
 	}))
 	a.Put("/bots/:id/draft", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
-		var in BotGraph
+		var in flow.Graph
 		if err := body(c, &in); err != nil {
 			return nil, err
 		}

@@ -3,17 +3,19 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
-	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
@@ -141,7 +143,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 	}
 	res := &inboundResult{}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		contact, err := upsertContact(tx, m.From, profileName)
+		contact, err := store.UpsertContact(tx, m.From, profileName)
 		if err != nil {
 			return err
 		}
@@ -152,7 +154,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 				return err
 			}
 		}
-		conv, first, err := upsertConversation(tx, ch.ID, contact.ID)
+		conv, first, err := store.UpsertConversation(tx, ch.ID, contact.ID)
 		if err != nil {
 			return err
 		}
@@ -185,7 +187,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		res.msg = msg
 		// "DUR": leaving marketing messages is stored together with the
 		// message, so it can never be lost to a later step failing.
-		if kind == "text" && matchesWord(strings.TrimSpace(body), parseSettings(ch.Settings).OptOutKeywords) {
+		if kind == "text" && matchesWord(strings.TrimSpace(body), device.Parse(ch.Settings).OptOutKeywords) {
 			if err := tx.Exec("UPDATE wa_contacts SET opted_out = true WHERE id = ?", contact.ID).Error; err != nil {
 				return err
 			}
@@ -220,7 +222,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			}
 		}
 		// Ticket: open one, or bring a resolved one back.
-		ticket, created, reopened, err := touchTicket(tx, conv, at)
+		ticket, created, reopened, err := store.TouchTicket(tx, conv, at)
 		if err != nil {
 			return err
 		}
@@ -274,7 +276,7 @@ func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *i
 		bg, id := context.WithoutCancel(ctx), msg.ID
 		safe.Go(bg, "whatsapp keep media", func() { s.keepMedia(bg, ch, id) })
 	}
-	set := parseSettings(ch.Settings)
+	set := device.Parse(ch.Settings)
 
 	// "DUR": the choice is already stored; confirm it to the customer.
 	if res.optedOut && strings.TrimSpace(set.OptOutReply) != "" {
@@ -325,80 +327,6 @@ func matchesWord(text string, words []string) bool {
 		}
 	}
 	return false
-}
-
-func upsertContact(tx *gorm.DB, waID, profileName string) (*models.WAContact, error) {
-	var c models.WAContact
-	err := tx.Raw(`INSERT INTO wa_contacts (wa_id, peer_key, profile_name) VALUES (?, ?, ?)
-		ON CONFLICT (wa_id) DO UPDATE SET
-			profile_name = CASE WHEN EXCLUDED.profile_name <> '' THEN EXCLUDED.profile_name ELSE wa_contacts.profile_name END,
-			updated_at = now()
-		RETURNING *`, waID, phone.Key(waID), profileName).Scan(&c).Error
-	if err != nil {
-		return nil, fmt.Errorf("müşteri kaydedilemedi: %w", err)
-	}
-	return &c, nil
-}
-
-func upsertConversation(tx *gorm.DB, channelID, contactID uint) (*models.WAConversation, bool, error) {
-	var c models.WAConversation
-	err := tx.Raw(`INSERT INTO wa_conversations (channel_id, contact_id) VALUES (?, ?)
-		ON CONFLICT (channel_id, contact_id) DO UPDATE SET channel_id = EXCLUDED.channel_id
-		RETURNING *`, channelID, contactID).Scan(&c).Error
-	if err != nil {
-		return nil, false, fmt.Errorf("sohbet kaydedilemedi: %w", err)
-	}
-	var inserted bool
-	if err := tx.Raw("SELECT last_message_id IS NULL FROM wa_conversations WHERE id = ?", c.ID).Scan(&inserted).Error; err != nil {
-		return nil, false, err
-	}
-	// Lock the row for the rest of the transaction.
-	if err := tx.Raw("SELECT * FROM wa_conversations WHERE id = ? FOR UPDATE", c.ID).Scan(&c).Error; err != nil {
-		return nil, false, err
-	}
-	return &c, inserted, nil
-}
-
-// touchTicket makes sure the conversation has an open ticket and marks it
-// as waiting for our answer.
-func touchTicket(tx *gorm.DB, conv *models.WAConversation, at *time.Time) (*models.WATicket, bool, bool, error) {
-	var t models.WATicket
-	created, reopened := false, false
-	if conv.TicketID != nil {
-		if err := tx.Raw("SELECT * FROM wa_tickets WHERE id = ? FOR UPDATE", *conv.TicketID).Scan(&t).Error; err != nil {
-			return nil, false, false, err
-		}
-	}
-	switch {
-	case t.ID == 0:
-		t = models.WATicket{ConversationID: conv.ID, ChannelID: conv.ChannelID, ContactID: conv.ContactID, Status: "open", Priority: "normal", Tags: "[]", AwaitingSince: at}
-		if err := tx.Create(&t).Error; err != nil {
-			return nil, false, false, err
-		}
-		if err := tx.Raw("SELECT * FROM wa_tickets WHERE id = ?", t.ID).Scan(&t).Error; err != nil {
-			return nil, false, false, err
-		}
-		created = true
-	case t.Status == "resolved":
-		// Only the customer writing (or us sending a template) brings a
-		// resolved ticket back. It keeps its number and history.
-		if err := tx.Exec(`UPDATE wa_tickets SET status = 'open', reopen_count = reopen_count + 1, resolved_at = NULL,
-			awaiting_since = ?, waiting_listed_at = NULL, updated_at = now() WHERE id = ?`, *at, t.ID).Error; err != nil {
-			return nil, false, false, err
-		}
-		t.Status, t.ReopenCount, t.ResolvedAt, t.AwaitingSince, t.WaitingListedAt = "open", t.ReopenCount+1, nil, at, nil
-		reopened = true
-	case t.AwaitingSince == nil:
-		if err := tx.Exec("UPDATE wa_tickets SET awaiting_since = ?, updated_at = now() WHERE id = ?", *at, t.ID).Error; err != nil {
-			return nil, false, false, err
-		}
-		t.AwaitingSince = at
-	default:
-		if err := tx.Exec("UPDATE wa_tickets SET updated_at = now() WHERE id = ?", t.ID).Error; err != nil {
-			return nil, false, false, err
-		}
-	}
-	return &t, created, reopened, nil
 }
 
 // ---------------------------------------------------------------- statuses
@@ -458,7 +386,7 @@ func (s *Service) applyStatus(ctx context.Context, msg *models.WAMessage, st *ho
 		code, text := 0, "Mesaj iletilemedi."
 		if len(st.Errors) > 0 {
 			code = st.Errors[0].Code
-			text = describeCode(code, st.Errors[0].Title+" "+st.Errors[0].ErrorData.Details)
+			text = meta.Describe(code, st.Errors[0].Title+" "+st.Errors[0].ErrorData.Details)
 		}
 		fields["status"], fields["failed_at"], fields["error_code"], fields["error_text"] = "failed", *at, code, text
 	}

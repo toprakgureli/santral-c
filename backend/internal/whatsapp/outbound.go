@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -22,91 +23,6 @@ import (
 // customer wrote within the last 24 hours.
 func windowOpen(conv *models.WAConversation) bool {
 	return conv.LastInboundAt != nil && time.Since(*conv.LastInboundAt) < 24*time.Hour
-}
-
-// describeCode puts Meta's error codes into words an agent understands.
-func describeCode(code int, fallback string) string {
-	switch code {
-	case 190:
-		return "Cihazın erişim anahtarı geçersiz ya da süresi dolmuş. Yöneticinin cihaz ayarlarından yenilemesi gerekiyor."
-	case 10, 200, 3:
-		return "Erişim anahtarının bu işlem için izni yok."
-	case 131047:
-		return "Müşterinin son mesajının üzerinden 24 saat geçti. Artık yalnızca şablonla yazılabilir."
-	case 131026:
-		return "Mesaj müşteriye ulaşmadı. Numara WhatsApp kullanmıyor olabilir ya da uygulaması çok eski olabilir."
-	case 131049:
-		return "Meta bu pazarlama mesajını müşteriye iletmedi. Kısa süre içinde çok sayıda pazarlama mesajı almış olabilir."
-	case 131050:
-		return "Müşteri pazarlama mesajlarını kapatmış."
-	case 131051:
-		return "Bu mesaj türü desteklenmiyor."
-	case 131052:
-		return "Müşterinin gönderdiği dosya indirilemedi."
-	case 131053:
-		return "Dosya Meta'ya yüklenemedi. Biçimi ya da boyutu uygun olmayabilir."
-	case 132000:
-		return "Şablondaki değişken sayısı ile girilen değerler tutmuyor."
-	case 132001:
-		return "Şablon bulunamadı ya da bu dilde onaylı değil."
-	case 132005:
-		return "Şablon değişkenleri çok uzun."
-	case 132007:
-		return "Şablon metni Meta kurallarına uymuyor."
-	case 132012:
-		return "Şablon değişkenlerinin biçimi yanlış."
-	case 132015:
-		return "Şablon düşük kalite nedeniyle Meta tarafından duraklatıldı."
-	case 132016:
-		return "Şablon Meta tarafından kapatıldı."
-	case 130429:
-		return "Gönderim hızı sınırına takıldı. Biraz sonra tekrar denenecek."
-	case 131056:
-		return "Bu müşteriye çok kısa sürede çok fazla mesaj gönderildi. Biraz bekleyip tekrar deneyin."
-	case 131048:
-		return "Meta, numaranın gönderimlerini geçici olarak kısıtladı (spam şüphesi)."
-	case 131042:
-		return "Meta işletme hesabında ödeme sorunu var."
-	case 131031, 368:
-		return "Meta bu hesabı kurallar nedeniyle kısıtlamış."
-	case 133010:
-		return "Numara WhatsApp Business'a kayıtlı değil."
-	case 131021:
-		return "Gönderen ve alıcı aynı numara olamaz."
-	case 100:
-		if f := strings.TrimSpace(fallback); f != "" {
-			return "Meta isteği anlamadı: " + f
-		}
-		return "Meta isteği anlamadı."
-	}
-	if f := strings.TrimSpace(fallback); f != "" {
-		return f
-	}
-	return "Meta bir hata bildirdi."
-}
-
-// friendlyError turns any error from Meta into a sentence.
-func friendlyError(err error) string {
-	var api *APIError
-	if errors.As(err, &api) {
-		return describeCode(api.Code, api.Message+" "+api.Details)
-	}
-	return "Meta'ya ulaşılamadı, internet bağlantısı ya da Meta tarafında geçici bir sorun olabilir."
-}
-
-func retryable(err error) bool {
-	var api *APIError
-	if !errors.As(err, &api) {
-		return true
-	}
-	if api.Status >= 500 {
-		return true
-	}
-	switch api.Code {
-	case 1, 2, 4, 80007, 130429, 131000, 131016, 133004, 131056:
-		return true
-	}
-	return false
 }
 
 // ---------------------------------------------------------------- agent sends
@@ -141,11 +57,11 @@ func (s *Service) reachable(ctx context.Context, actorID, conversationID uint) (
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	conv, ticket, err := s.loadConv(ctx, conversationID)
+	conv, ticket, err := s.repo.Conversation(ctx, conversationID)
 	if err != nil {
 		return nil, nil, nil, errs.NotFound("Sohbet bulunamadı.")
 	}
-	if ticket == nil || !v.seesTicket(ticket, s.participantSet(ctx, ticket.ID)) {
+	if ticket == nil || !v.seesTicket(ticket, s.repo.Participants(ctx, ticket.ID)) {
 		return nil, nil, nil, errs.Forbidden("Bu sohbeti görme yetkiniz yok.")
 	}
 	return v, conv, ticket, nil
@@ -161,11 +77,11 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 	if !v.can(enums.WAReply) {
 		return nil, errs.Forbidden("Müşteriye yazma yetkiniz yok.")
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		return nil, err
 	}
-	contact, err := s.contact(ctx, conv.ContactID)
+	contact, err := s.repo.Contact(ctx, conv.ContactID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +95,7 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 	if cid := strings.TrimSpace(in.ClientID); cid != "" {
 		msg.ClientID = strPtr(cid)
 	}
-	var meta map[string]any
+	var payload map[string]any
 	switch in.Kind {
 	case "", "text":
 		body := strings.TrimSpace(in.Body)
@@ -193,12 +109,12 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 			return nil, errs.Invalid("Müşterinin son mesajının üzerinden 24 saat geçti. Şablonla yazmanız gerekiyor.", nil)
 		}
 		msg.Kind, msg.Body = "text", body
-		meta = map[string]any{"type": "text", "text": map[string]any{"body": body, "preview_url": strings.Contains(body, "http")}}
+		payload = map[string]any{"type": "text", "text": map[string]any{"body": body, "preview_url": strings.Contains(body, "http")}}
 	case "template":
 		if !v.can(enums.WATemplateSend) {
 			return nil, errs.Forbidden("Şablonla mesaj gönderme yetkiniz yok.")
 		}
-		tpl, err := s.template(ctx, in.TemplateID)
+		tpl, err := s.repo.Template(ctx, in.TemplateID)
 		if err != nil {
 			return nil, err
 		}
@@ -243,7 +159,7 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		if params.HeaderFile > 0 {
 			id, _, err := s.metaMediaFor(ctx, ch, params.HeaderFile)
 			if err != nil {
-				return nil, errs.Invalid("Başlık dosyası Meta'ya yüklenemedi. "+friendlyError(err), err)
+				return nil, errs.Invalid("Başlık dosyası Meta'ya yüklenemedi. "+meta.Friendly(err), err)
 			}
 			params.headerMediaID = id
 		}
@@ -252,14 +168,14 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 			return nil, err
 		}
 		msg.Kind, msg.Body, msg.SenderLabel = "template", preview, tpl.Name
-		meta = map[string]any{"type": "template", "template": obj}
+		payload = map[string]any{"type": "template", "template": obj}
 	case "reaction":
 		var target models.WAMessage
 		if err := s.db.WithContext(ctx).Where("id = ? AND conversation_id = ?", in.TargetID, conv.ID).First(&target).Error; err != nil || target.WAMID == nil {
 			return nil, errs.NotFound("Tepki verilecek mesaj bulunamadı.")
 		}
 		msg.Kind, msg.Body = "reaction", in.Emoji
-		meta = map[string]any{"type": "reaction", "reaction": map[string]any{"message_id": *target.WAMID, "emoji": in.Emoji}}
+		payload = map[string]any{"type": "reaction", "reaction": map[string]any{"message_id": *target.WAMID, "emoji": in.Emoji}}
 	default:
 		return nil, errs.Invalid("Mesaj türü tanınmadı.", nil)
 	}
@@ -269,13 +185,13 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 			msg.ReplyToWAMID = target.WAMID
 		}
 	}
-	return s.enqueue(ctx, ch, conv, ticket, msg, meta, actorID)
+	return s.enqueue(ctx, ch, conv, ticket, msg, payload, actorID)
 }
 
 // enqueue stores an outgoing message and applies what an agent's answer
 // means for the ticket.
-func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, ticket *models.WATicket, msg *models.WAMessage, meta map[string]any, actorID uint) (*MessageView, error) {
-	msg.Payload = strPtr(jsonString(meta))
+func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, ticket *models.WATicket, msg *models.WAMessage, payload map[string]any, actorID uint) (*MessageView, error) {
+	msg.Payload = strPtr(jsonString(payload))
 	nt := time.Now()
 	msg.NextTryAt = &nt
 	before := s.audience(ctx, ticket)
@@ -323,7 +239,7 @@ func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *model
 // It works on the locked current row, so two people answering an unowned
 // ticket at once do not both become its owner.
 func markAnswered(tx *gorm.DB, stale *models.WATicket, userID uint, template bool) error {
-	ticket, err := lockTicket(tx, stale.ID)
+	ticket, err := store.LockTicket(tx, stale.ID)
 	if err != nil {
 		return err
 	}
@@ -375,8 +291,8 @@ func (s *Service) queueSystem(ctx context.Context, ch *models.WAChannel, convers
 }
 
 // queueObject stores any prepared message from the device.
-func (s *Service) queueObject(ctx context.Context, ch *models.WAChannel, conversationID, ticketID uint, senderKind, label, kind, body string, meta map[string]any) {
-	conv, ticket, err := s.loadConv(ctx, conversationID)
+func (s *Service) queueObject(ctx context.Context, ch *models.WAChannel, conversationID, ticketID uint, senderKind, label, kind, body string, payload map[string]any) {
+	conv, ticket, err := s.repo.Conversation(ctx, conversationID)
 	if err != nil {
 		return
 	}
@@ -393,7 +309,7 @@ func (s *Service) queueObject(ctx context.Context, ch *models.WAChannel, convers
 	if ticket == nil {
 		ticket = &models.WATicket{}
 	}
-	if _, err := s.enqueue(ctx, ch, conv, ticket, msg, meta, 0); err != nil {
+	if _, err := s.enqueue(ctx, ch, conv, ticket, msg, payload, 0); err != nil {
 		slog.WarnContext(ctx, "whatsapp system message could not be queued", "conversation", conversationID, "error", err)
 	}
 }
@@ -503,7 +419,7 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 		}
 		s.publish(ctx, msg.ConversationID, msg, nil)
 	}
-	ch, err := s.channel(ctx, msg.ChannelID)
+	ch, err := s.repo.Channel(ctx, msg.ChannelID)
 	if err != nil {
 		fail(0, "Cihaz bulunamadı.")
 		return
@@ -517,38 +433,38 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 		fail(0, err.Error())
 		return
 	}
-	contact, err := s.contactOfConversation(ctx, msg.ConversationID)
+	contact, err := s.repo.ContactOfConversation(ctx, msg.ConversationID)
 	if err != nil {
 		fail(0, "Müşteri bulunamadı.")
 		return
 	}
-	var meta map[string]any
-	if msg.Payload == nil || json.Unmarshal([]byte(*msg.Payload), &meta) != nil || meta["type"] == nil {
+	var payload map[string]any
+	if msg.Payload == nil || json.Unmarshal([]byte(*msg.Payload), &payload) != nil || payload["type"] == nil {
 		fail(0, "Mesaj içeriği okunamadı.")
 		return
 	}
 	if msg.ReplyToWAMID != nil && msg.Kind != "reaction" {
-		meta["context"] = map[string]any{"message_id": *msg.ReplyToWAMID}
+		payload["context"] = map[string]any{"message_id": *msg.ReplyToWAMID}
 	}
 	c, cancel := context.WithTimeout(ctx, 40*time.Second)
-	wamid, err := cl.Send(c, contact.WAID, meta)
+	wamid, err := cl.Send(c, contact.WAID, payload)
 	cancel()
 	if err != nil {
 		attempts := msg.Attempts + 1
-		if retryable(err) && attempts < 6 {
+		if meta.Retryable(err) && attempts < 6 {
 			next := time.Now().Add(time.Duration(10*(1<<attempts)) * time.Second)
-			s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'queued', attempts = ?, next_try_at = ?, error_text = ? WHERE id = ? AND status = 'sending'", attempts, next, friendlyError(err), msg.ID)
+			s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'queued', attempts = ?, next_try_at = ?, error_text = ? WHERE id = ? AND status = 'sending'", attempts, next, meta.Friendly(err), msg.ID)
 			return
 		}
 		code := 0
-		var api *APIError
+		var api *meta.APIError
 		if errors.As(err, &api) {
 			code = api.Code
 			if api.Code == 190 {
-				s.recordChannelError(ctx, ch.ID, describeCode(190, ""))
+				s.recordChannelError(ctx, ch.ID, meta.Describe(190, ""))
 			}
 		}
-		fail(code, friendlyError(err))
+		fail(code, meta.Friendly(err))
 		return
 	}
 	s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET wamid = ?, status = 'sent', sent_at = now(), attempts = attempts + 1, error_text = '' WHERE id = ? AND status = 'sending'", wamid, msg.ID)
@@ -583,21 +499,4 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	s.publish(ctx, msg.ConversationID, &msg, nil)
 	wake(s.wakeOutbox)
 	return nil
-}
-
-func (s *Service) contact(ctx context.Context, id uint) (*models.WAContact, error) {
-	var c models.WAContact
-	if err := s.db.WithContext(ctx).First(&c, id).Error; err != nil {
-		return nil, errs.NotFound("Müşteri bulunamadı.")
-	}
-	return &c, nil
-}
-
-func (s *Service) contactOfConversation(ctx context.Context, conversationID uint) (*models.WAContact, error) {
-	var c models.WAContact
-	err := s.db.WithContext(ctx).Raw("SELECT c.* FROM wa_contacts c JOIN wa_conversations v ON v.contact_id = c.id WHERE v.id = ?", conversationID).Scan(&c).Error
-	if err != nil || c.ID == 0 {
-		return nil, fmt.Errorf("contact of conversation %d not found", conversationID)
-	}
-	return &c, nil
 }

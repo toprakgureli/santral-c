@@ -1,4 +1,8 @@
-package whatsapp
+// Package outside makes the requests the WhatsApp module sends to systems
+// outside the panel (a chatbot's outside system, an automatic rule's
+// address): never to the server's own network, and with customer answers
+// escaped where they land.
+package outside
 
 import (
 	"errors"
@@ -16,7 +20,7 @@ import (
 // actually dialled, after the name is resolved, so a name that later
 // points inward is caught too.
 
-var errInternalAddress = errors.New("iç ağdaki adreslere istek gönderilemez")
+var ErrInternalAddress = errors.New("iç ağdaki adreslere istek gönderilemez")
 
 func blockedIP(ip net.IP) bool {
 	if ip == nil {
@@ -42,15 +46,15 @@ func guardedDialer() *net.Dialer {
 				return err
 			}
 			if blockedIP(net.ParseIP(host)) {
-				return errInternalAddress
+				return ErrInternalAddress
 			}
 			return nil
 		},
 	}
 }
 
-// outsideClient is the HTTP client for addresses entered in the panel.
-var outsideClient = &http.Client{
+// Client is the HTTP client for addresses entered in the panel.
+var Client = &http.Client{
 	Transport: &http.Transport{
 		DialContext:           guardedDialer().DialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
@@ -66,10 +70,10 @@ var outsideClient = &http.Client{
 	},
 }
 
-// explainOutside turns a dial refusal into words for the panel.
-func explainOutside(err error) error {
-	if errors.Is(err, errInternalAddress) {
-		return errInternalAddress
+// Explain turns a dial refusal into words for the panel.
+func Explain(err error) error {
+	if errors.Is(err, ErrInternalAddress) {
+		return ErrInternalAddress
 	}
 	return err
 }

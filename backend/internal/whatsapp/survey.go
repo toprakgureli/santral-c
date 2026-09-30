@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/flow"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -54,7 +56,7 @@ func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t 
 
 // sendSurvey sends the device's survey for a resolved ticket.
 func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, agentID uint) {
-	set := parseSettings(ch.Settings).Survey
+	set := device.Parse(ch.Settings).Survey
 	if !s.surveyDue(ctx, conv, t, set.RepeatHours) {
 		return
 	}
@@ -102,7 +104,7 @@ func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *mo
 // surveyText fills {musteri} and {temsilci} in the survey message.
 func (s *Service) surveyText(ctx context.Context, text string, conv *models.WAConversation, agentID uint) string {
 	customer, agent := "", ""
-	if c, err := s.contact(ctx, conv.ContactID); err == nil {
+	if c, err := s.repo.Contact(ctx, conv.ContactID); err == nil {
 		customer = firstName(contactView(c).Display)
 	}
 	if agentID > 0 {
@@ -121,14 +123,14 @@ func (s *Service) sendNativeSurvey(ctx context.Context, ch *models.WAChannel, co
 	if strings.TrimSpace(text) == "" {
 		text = "Görüşmemizi 1 ile 5 arasında puanlar mısınız?"
 	}
-	opts := []BotOption{
+	opts := []flow.Option{
 		{ID: fmt.Sprintf("rate-%d-5", t.ID), Label: "5 - Çok iyi"},
 		{ID: fmt.Sprintf("rate-%d-4", t.ID), Label: "4 - İyi"},
 		{ID: fmt.Sprintf("rate-%d-3", t.ID), Label: "3 - Orta"},
 		{ID: fmt.Sprintf("rate-%d-2", t.ID), Label: "2 - Kötü"},
 		{ID: fmt.Sprintf("rate-%d-1", t.ID), Label: "1 - Çok kötü"},
 	}
-	msg := menuMessage("list", text, "Puan ver", opts)
+	msg := flow.MenuMessage("list", text, "Puan ver", opts)
 	s.queueObject(ctx, ch, conv.ID, t.ID, "automation", "Değerlendirme anketi", "interactive", text, msg)
 	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error)
 }
@@ -175,7 +177,7 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", score, strings.TrimSpace(comment), jsonString(answers), ticketID).Error; err != nil {
 		return
 	}
-	conv, _, err := s.loadConv(ctx, t.ConversationID)
+	conv, _, err := s.repo.Conversation(ctx, t.ConversationID)
 	if err != nil {
 		return
 	}
@@ -187,8 +189,8 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 		line += " Yorumu: " + strings.ReplaceAll(c, "\n", " · ")
 	}
 	s.event(ctx, nil, conv, ticketID, 0, line)
-	if ch, err := s.channel(ctx, t.ChannelID); err == nil && !again {
-		if below := parseSettings(ch.Settings).Survey.AlertBelow; below > 0 && lowestScore(score, answers) <= below {
+	if ch, err := s.repo.Channel(ctx, t.ChannelID); err == nil && !again {
+		if below := device.Parse(ch.Settings).Survey.AlertBelow; below > 0 && lowestScore(score, answers) <= below {
 			viewers, _ := s.loadViewers(ctx)
 			var ids []uint
 			for id, v := range viewers {
@@ -211,7 +213,7 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if err != nil {
 		return err
 	}
-	set := parseSettings(ch.Settings).Survey
+	set := device.Parse(ch.Settings).Survey
 	secret := s.open(set.SecretEnc)
 	if secret != "" {
 		mac := hmac.New(sha256.New, []byte(secret))

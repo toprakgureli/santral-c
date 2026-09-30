@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -51,11 +52,11 @@ func (s *Service) PrepareExport(ctx context.Context, actorID, conversationID uin
 	if !v.can(enums.WAExport) {
 		return nil, errs.Forbidden("Yazışmayı dışa aktarma yetkiniz yok.")
 	}
-	contact, err := s.contact(ctx, conv.ContactID)
+	contact, err := s.repo.Contact(ctx, conv.ContactID)
 	if err != nil {
 		return nil, err
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +126,7 @@ func (e *Export) Write(ctx context.Context, w io.Writer) error {
 	)
 	for i := range e.msgs {
 		m := &e.msgs[i]
-		at := m.CreatedAt.In(istanbul)
+		at := m.CreatedAt.In(hours.Zone)
 		label := dayLabel(at)
 		if len(days) == 0 || days[len(days)-1].Label != label {
 			days = append(days, exportDay{Label: label})
@@ -229,7 +230,7 @@ func (e *Export) Write(ctx context.Context, w io.Writer) error {
 		"Phone":   "+" + e.contact.WAID,
 		"Channel": e.ch.Name,
 		"By":      e.by,
-		"At":      time.Now().In(istanbul).Format("02.01.2006 15:04"),
+		"At":      time.Now().In(hours.Zone).Format("02.01.2006 15:04"),
 		"Count":   len(e.msgs),
 		"Files":   files,
 		"Days":    days,

@@ -1,4 +1,7 @@
-package whatsapp
+// Package flow runs a chatbot's flow: the graph drawn in the panel, one
+// customer answer at a time, acting on the world through IO so the same
+// engine drives live chats and the test screen.
+package flow
 
 import (
 	"encoding/json"
@@ -9,6 +12,9 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/varfill"
 )
 
 // A chatbot is a flow drawn in the panel: boxes (nodes) joined by arrows
@@ -16,55 +22,55 @@ import (
 // the database or to Meta itself; everything it does goes through botIO,
 // so the same engine runs for real customers and in the test screen.
 
-// BotGraph is a drawn flow.
-type BotGraph struct {
-	Nodes []BotNode `json:"nodes"`
-	Edges []BotEdge `json:"edges"`
+// Graph is a drawn flow.
+type Graph struct {
+	Nodes []Node `json:"nodes"`
+	Edges []Edge `json:"edges"`
 }
 
-// BotNode is one box.
-type BotNode struct {
+// Node is one box.
+type Node struct {
 	ID   string  `json:"id"`
 	Type string  `json:"type"` // start | message | menu | ask | condition | api | tag | handoff | callback | survey | end
 	X    float64 `json:"x"`
 	Y    float64 `json:"y"`
-	Data BotData `json:"data"`
+	Data Data    `json:"data"`
 }
 
-// BotData is a box's settings; each type uses its own fields.
-type BotData struct {
-	Text        string      `json:"text,omitempty"`
-	MediaURL    string      `json:"mediaUrl,omitempty"`
-	FileID      uint        `json:"fileId,omitempty"`    // a file uploaded from the panel
-	FileName    string      `json:"fileName,omitempty"`  // its name, for the drawing
-	MediaKind   string      `json:"mediaKind,omitempty"` // image | video | document
-	Style       string      `json:"style,omitempty"`     // buttons | list
-	ButtonLabel string      `json:"buttonLabel,omitempty"`
-	Options     []BotOption `json:"options,omitempty"`
-	Var         string      `json:"var,omitempty"`
-	Validate    string      `json:"validate,omitempty"` // any | number | email | phone
-	Retry       string      `json:"retry,omitempty"`
-	Match       string      `json:"match,omitempty"` // all | any
-	Rules       []BotRule   `json:"rules,omitempty"`
-	Integration uint        `json:"integration,omitempty"`
-	Map         []BotMap    `json:"map,omitempty"`
-	Tags        []string    `json:"tags,omitempty"`
-	Priority    string      `json:"priority,omitempty"`
-	Category    string      `json:"category,omitempty"`
-	TeamID      uint        `json:"teamId,omitempty"`
-	Note        string      `json:"note,omitempty"`
-	Resolve     bool        `json:"resolve,omitempty"`
+// Data is a box's settings; each type uses its own fields.
+type Data struct {
+	Text        string   `json:"text,omitempty"`
+	MediaURL    string   `json:"mediaUrl,omitempty"`
+	FileID      uint     `json:"fileId,omitempty"`    // a file uploaded from the panel
+	FileName    string   `json:"fileName,omitempty"`  // its name, for the drawing
+	MediaKind   string   `json:"mediaKind,omitempty"` // image | video | document
+	Style       string   `json:"style,omitempty"`     // buttons | list
+	ButtonLabel string   `json:"buttonLabel,omitempty"`
+	Options     []Option `json:"options,omitempty"`
+	Var         string   `json:"var,omitempty"`
+	Validate    string   `json:"validate,omitempty"` // any | number | email | phone
+	Retry       string   `json:"retry,omitempty"`
+	Match       string   `json:"match,omitempty"` // all | any
+	Rules       []Rule   `json:"rules,omitempty"`
+	Integration uint     `json:"integration,omitempty"`
+	Map         []Map    `json:"map,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Priority    string   `json:"priority,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	TeamID      uint     `json:"teamId,omitempty"`
+	Note        string   `json:"note,omitempty"`
+	Resolve     bool     `json:"resolve,omitempty"`
 }
 
-// BotOption is a menu choice; each has its own outgoing arrow.
-type BotOption struct {
+// Option is a menu choice; each has its own outgoing arrow.
+type Option struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
 }
 
-// BotRule is one test in a condition box.
-type BotRule struct {
+// Rule is one test in a condition box.
+type Rule struct {
 	Var   string `json:"var"`
 	Op    string `json:"op"` // equals | not_equals | contains | gt | lt | exists | empty | hours_open | hours_closed | time_between
 	Value string `json:"value"`
@@ -75,45 +81,45 @@ type BotRule struct {
 	Days []int  `json:"days,omitempty"`
 }
 
-// BotMap copies a field of an outside system's answer into a variable.
-type BotMap struct {
+// Map copies a field of an outside system's answer into a variable.
+type Map struct {
 	Var  string `json:"var"`
 	Path string `json:"path"` // e.g. data.status
 }
 
-// BotEdge is an arrow from a box's exit (port) to another box.
-type BotEdge struct {
+// Edge is an arrow from a box's exit (port) to another box.
+type Edge struct {
 	ID   string `json:"id"`
 	From string `json:"from"`
 	Port string `json:"port"`
 	To   string `json:"to"`
 }
 
-// botState is where a customer is in the flow.
-type botState struct {
+// State is where a customer is in the flow.
+type State struct {
 	NodeID string            `json:"nodeId"`
 	Vars   map[string]string `json:"vars"`
 	Tries  int               `json:"tries"`
 	Done   bool              `json:"done"`
 }
 
-// botIO is everything the flow may do in the world.
-type botIO interface {
-	sendText(text string)
-	sendMedia(kind, url string, fileID uint, fileName, caption string)
-	sendMenu(style, text, button string, options []BotOption)
-	handoff(teamID uint, note string)
-	finish(resolve bool)
-	tag(tags []string, priority, category string)
-	callback(note string)
-	survey()
-	callAPI(integrationID uint, vars map[string]string) (map[string]any, error)
-	hoursOpen() bool
-	now() time.Time
-	mark(nodeID, kind string)
+// IO is everything the flow may do in the world.
+type IO interface {
+	SendText(text string)
+	SendMedia(kind, url string, fileID uint, fileName, caption string)
+	SendMenu(style, text, button string, options []Option)
+	Handoff(teamID uint, note string)
+	Finish(resolve bool)
+	Tag(tags []string, priority, category string)
+	Callback(note string)
+	Survey()
+	CallAPI(integrationID uint, vars map[string]string) (map[string]any, error)
+	HoursOpen() bool
+	Now() time.Time
+	Mark(nodeID, kind string)
 }
 
-func (g *BotGraph) node(id string) *BotNode {
+func (g *Graph) node(id string) *Node {
 	for i := range g.Nodes {
 		if g.Nodes[i].ID == id {
 			return &g.Nodes[i]
@@ -122,7 +128,7 @@ func (g *BotGraph) node(id string) *BotNode {
 	return nil
 }
 
-func (g *BotGraph) start() *BotNode {
+func (g *Graph) Start() *Node {
 	for i := range g.Nodes {
 		if g.Nodes[i].Type == "start" {
 			return &g.Nodes[i]
@@ -131,7 +137,7 @@ func (g *BotGraph) start() *BotNode {
 	return nil
 }
 
-func (g *BotGraph) next(from, port string) *BotNode {
+func (g *Graph) next(from, port string) *Node {
 	for _, e := range g.Edges {
 		if e.From == from && (e.Port == port || (port == "next" && e.Port == "")) {
 			return g.node(e.To)
@@ -142,7 +148,7 @@ func (g *BotGraph) next(from, port string) *BotNode {
 
 // Validate checks a flow before it is published and says what is wrong
 // in words.
-func (g *BotGraph) Validate() []string {
+func (g *Graph) Validate() []string {
 	var problems []string
 	starts := 0
 	for _, n := range g.Nodes {
@@ -192,7 +198,7 @@ func (g *BotGraph) Validate() []string {
 			}
 		case "condition":
 			for _, r := range n.Data.Rules {
-				if r.Op == "time_between" && (TimeSpan{Days: r.Days, From: r.From, To: r.To}).check() != nil {
+				if r.Op == "time_between" && (hours.Span{Days: r.Days, From: r.From, To: r.To}).Check() != nil {
 					problems = append(problems, "Koşul kutusundaki saat aralığı eksik ya da hatalı; saatleri 09:00 gibi yazın.")
 				}
 			}
@@ -244,45 +250,33 @@ func boxName(t string) string {
 	return t
 }
 
-var varRef = regexp.MustCompile(`\{([a-zA-Z0-9_ğüşıöçĞÜŞİÖÇ]+)\}`)
-
-func fillVars(text string, vars map[string]string) string {
-	return varRef.ReplaceAllStringFunc(text, func(m string) string {
-		k := strings.Trim(m, "{}")
-		if v, ok := vars[k]; ok {
-			return v
-		}
-		return m
-	})
-}
-
-// botInput is what the customer answered.
-type botInput struct {
+// Input is what the customer answered.
+type Input struct {
 	Text     string
 	ChoiceID string // from a button or list reply
 }
 
-// step moves the flow forward with the customer's answer (nil at the
+// Step moves the flow forward with the customer's answer (nil at the
 // start) until it needs another answer or ends.
-func step(g *BotGraph, st *botState, in *botInput, io botIO) {
+func Step(g *Graph, st *State, in *Input, io IO) {
 	if st.Vars == nil {
 		st.Vars = map[string]string{}
 	}
-	var cur *BotNode
+	var cur *Node
 	if st.NodeID == "" {
-		cur = g.start()
+		cur = g.Start()
 		if cur == nil {
 			st.Done = true
-			io.finish(false)
+			io.Finish(false)
 			return
 		}
-		io.mark(cur.ID, "enter")
+		io.Mark(cur.ID, "enter")
 		cur = g.next(cur.ID, "next")
 	} else {
 		at := g.node(st.NodeID)
 		if at == nil {
 			st.Done = true
-			io.handoff(0, "Chatbot akışı değişti, müşteri temsilciye aktarıldı.")
+			io.Handoff(0, "Chatbot akışı değişti, müşteri temsilciye aktarıldı.")
 			return
 		}
 		cur = answer(g, at, st, in, io)
@@ -293,27 +287,27 @@ func step(g *BotGraph, st *botState, in *botInput, io botIO) {
 	for steps := 0; steps < 40; steps++ {
 		if cur == nil {
 			st.Done = true
-			io.finish(false)
+			io.Finish(false)
 			return
 		}
-		io.mark(cur.ID, "enter")
+		io.Mark(cur.ID, "enter")
 		d := cur.Data
 		switch cur.Type {
 		case "start":
 			cur = g.next(cur.ID, "next")
 		case "message":
 			if d.MediaURL != "" || d.FileID > 0 {
-				io.sendMedia(d.MediaKind, d.MediaURL, d.FileID, d.FileName, fillVars(d.Text, st.Vars))
-			} else if t := strings.TrimSpace(fillVars(d.Text, st.Vars)); t != "" {
-				io.sendText(t)
+				io.SendMedia(d.MediaKind, d.MediaURL, d.FileID, d.FileName, varfill.Fill(d.Text, st.Vars))
+			} else if t := strings.TrimSpace(varfill.Fill(d.Text, st.Vars)); t != "" {
+				io.SendText(t)
 			}
 			cur = g.next(cur.ID, "next")
 		case "menu":
-			io.sendMenu(d.Style, fillVars(d.Text, st.Vars), d.ButtonLabel, d.Options)
+			io.SendMenu(d.Style, varfill.Fill(d.Text, st.Vars), d.ButtonLabel, d.Options)
 			st.NodeID, st.Tries = cur.ID, 0
 			return
 		case "ask":
-			io.sendText(fillVars(d.Text, st.Vars))
+			io.SendText(varfill.Fill(d.Text, st.Vars))
 			st.NodeID, st.Tries = cur.ID, 0
 			return
 		case "condition":
@@ -323,55 +317,55 @@ func step(g *BotGraph, st *botState, in *botInput, io botIO) {
 			}
 			cur = g.next(cur.ID, port)
 		case "api":
-			res, err := io.callAPI(d.Integration, st.Vars)
+			res, err := io.CallAPI(d.Integration, st.Vars)
 			if err != nil {
 				cur = g.next(cur.ID, "fail")
 				continue
 			}
 			for _, m := range d.Map {
-				if v, ok := lookupPath(res, m.Path); ok {
+				if v, ok := LookupPath(res, m.Path); ok {
 					st.Vars[m.Var] = v
 				}
 			}
 			cur = g.next(cur.ID, "ok")
 		case "tag":
-			io.tag(d.Tags, d.Priority, d.Category)
+			io.Tag(d.Tags, d.Priority, d.Category)
 			cur = g.next(cur.ID, "next")
 		case "callback":
-			note := fillVars(d.Note, st.Vars)
-			io.callback(note)
-			if t := strings.TrimSpace(fillVars(d.Text, st.Vars)); t != "" {
-				io.sendText(t)
+			note := varfill.Fill(d.Note, st.Vars)
+			io.Callback(note)
+			if t := strings.TrimSpace(varfill.Fill(d.Text, st.Vars)); t != "" {
+				io.SendText(t)
 			}
 			cur = g.next(cur.ID, "next")
 			if cur == nil {
 				st.Done = true
-				io.finish(d.Resolve)
+				io.Finish(d.Resolve)
 				return
 			}
 		case "survey":
-			io.survey()
+			io.Survey()
 			cur = g.next(cur.ID, "next")
 			if cur == nil {
 				st.Done = true
-				io.finish(true)
+				io.Finish(true)
 				return
 			}
 		case "handoff":
-			if t := strings.TrimSpace(fillVars(d.Text, st.Vars)); t != "" {
-				io.sendText(t)
+			if t := strings.TrimSpace(varfill.Fill(d.Text, st.Vars)); t != "" {
+				io.SendText(t)
 			}
 			st.Done = true
-			io.mark(cur.ID, "handoff")
-			io.handoff(d.TeamID, fillVars(d.Note, st.Vars))
+			io.Mark(cur.ID, "handoff")
+			io.Handoff(d.TeamID, varfill.Fill(d.Note, st.Vars))
 			return
 		case "end":
-			if t := strings.TrimSpace(fillVars(d.Text, st.Vars)); t != "" {
-				io.sendText(t)
+			if t := strings.TrimSpace(varfill.Fill(d.Text, st.Vars)); t != "" {
+				io.SendText(t)
 			}
 			st.Done = true
-			io.mark(cur.ID, "end")
-			io.finish(d.Resolve)
+			io.Mark(cur.ID, "end")
+			io.Finish(d.Resolve)
 			return
 		default:
 			cur = g.next(cur.ID, "next")
@@ -379,35 +373,35 @@ func step(g *BotGraph, st *botState, in *botInput, io botIO) {
 	}
 	// A loop in the drawing; hand over rather than spin.
 	st.Done = true
-	io.handoff(0, "Chatbot akışında döngü var, müşteri temsilciye aktarıldı.")
+	io.Handoff(0, "Chatbot akışında döngü var, müşteri temsilciye aktarıldı.")
 }
 
 // answer handles the customer's reply at a box that asked for one and
 // returns the box to continue with, or nil.
-func answer(g *BotGraph, at *BotNode, st *botState, in *botInput, io botIO) *BotNode {
+func answer(g *Graph, at *Node, st *State, in *Input, io IO) *Node {
 	if in == nil {
 		return nil
 	}
 	d := at.Data
-	retry := func(defaultText string) *BotNode {
+	retry := func(defaultText string) *Node {
 		st.Tries++
-		io.mark(at.ID, "fail")
+		io.Mark(at.ID, "fail")
 		if st.Tries >= 2 {
 			if n := g.next(at.ID, "fallback"); n != nil {
 				return n
 			}
 			st.Done = true
-			io.mark(at.ID, "handoff")
-			io.handoff(0, "Chatbot müşterinin cevabını anlamadı.")
+			io.Mark(at.ID, "handoff")
+			io.Handoff(0, "Chatbot müşterinin cevabını anlamadı.")
 			return nil
 		}
 		text := strings.TrimSpace(d.Retry)
 		if text == "" {
 			text = defaultText
 		}
-		io.sendText(fillVars(text, st.Vars))
+		io.SendText(varfill.Fill(text, st.Vars))
 		if at.Type == "menu" {
-			io.sendMenu(d.Style, fillVars(d.Text, st.Vars), d.ButtonLabel, d.Options)
+			io.SendMenu(d.Style, varfill.Fill(d.Text, st.Vars), d.ButtonLabel, d.Options)
 		}
 		return nil
 	}
@@ -417,7 +411,7 @@ func answer(g *BotGraph, at *BotNode, st *botState, in *botInput, io botIO) *Bot
 		if choice == nil {
 			return retry("Anlayamadım, lütfen seçeneklerden birini seçin.")
 		}
-		io.mark(at.ID, "answer")
+		io.Mark(at.ID, "answer")
 		if d.Var != "" {
 			st.Vars[d.Var] = choice.Label
 		}
@@ -428,7 +422,7 @@ func answer(g *BotGraph, at *BotNode, st *botState, in *botInput, io botIO) *Bot
 		if val == "" || !validAnswer(d.Validate, val) {
 			return retry(validationHint(d.Validate))
 		}
-		io.mark(at.ID, "answer")
+		io.Mark(at.ID, "answer")
 		st.Vars[d.Var] = val
 		st.Tries = 0
 		return g.next(at.ID, "next")
@@ -436,7 +430,7 @@ func answer(g *BotGraph, at *BotNode, st *botState, in *botInput, io botIO) *Bot
 	return g.next(at.ID, "next")
 }
 
-func matchOption(opts []BotOption, in *botInput) *BotOption {
+func matchOption(opts []Option, in *Input) *Option {
 	if in.ChoiceID != "" {
 		id := strings.TrimPrefix(in.ChoiceID, "opt:")
 		for i := range opts {
@@ -487,7 +481,7 @@ func validationHint(kind string) string {
 	return "Lütfen bir cevap yazın."
 }
 
-func evalRules(d BotData, vars map[string]string, io botIO) bool {
+func evalRules(d Data, vars map[string]string, io IO) bool {
 	if len(d.Rules) == 0 {
 		return true
 	}
@@ -504,15 +498,15 @@ func evalRules(d BotData, vars map[string]string, io botIO) bool {
 	return !any
 }
 
-func evalRule(r BotRule, vars map[string]string, io botIO) bool {
+func evalRule(r Rule, vars map[string]string, io IO) bool {
 	v := vars[r.Var]
 	switch r.Op {
 	case "hours_open":
-		return io.hoursOpen()
+		return io.HoursOpen()
 	case "hours_closed":
-		return !io.hoursOpen()
+		return !io.HoursOpen()
 	case "time_between":
-		return TimeSpan{Days: r.Days, From: r.From, To: r.To}.Covers(io.now())
+		return hours.Span{Days: r.Days, From: r.From, To: r.To}.Covers(io.Now())
 	case "exists":
 		return strings.TrimSpace(v) != ""
 	case "empty":
@@ -537,8 +531,8 @@ func evalRule(r BotRule, vars map[string]string, io botIO) bool {
 	return false
 }
 
-// lookupPath reads data.items.0.name out of a decoded JSON answer.
-func lookupPath(v any, path string) (string, bool) {
+// LookupPath reads data.items.0.name out of a decoded JSON answer.
+func LookupPath(v any, path string) (string, bool) {
 	cur := v
 	for _, part := range strings.Split(strings.TrimSpace(path), ".") {
 		if part == "" {
@@ -575,8 +569,8 @@ func lookupPath(v any, path string) (string, bool) {
 	}
 }
 
-// menuMessage builds WhatsApp's interactive message for a menu box.
-func menuMessage(style, text, button string, options []BotOption) map[string]any {
+// MenuMessage builds WhatsApp's interactive message for a menu box.
+func MenuMessage(style, text, button string, options []Option) map[string]any {
 	if style == "list" || len(options) > 3 {
 		if strings.TrimSpace(button) == "" {
 			button = "Seçenekler"
@@ -611,50 +605,57 @@ func truncate(s string, n int) string {
 	return string(r[:n])
 }
 
-// simIO records what the flow would do, for the test screen.
-type simIO struct {
+// SimIO records what the flow would do, for the test screen.
+type SimIO struct {
 	Out   []SimOutput
 	hours bool
 	at    time.Time
 	api   func(uint, map[string]string) (map[string]any, error)
 }
 
-// SimOutput is one thing the flow did in the test screen.
-type SimOutput struct {
-	Kind    string      `json:"kind"` // text | media | menu | handoff | end | tag | callback | survey | api
-	Text    string      `json:"text,omitempty"`
-	Options []BotOption `json:"options,omitempty"`
-	Style   string      `json:"style,omitempty"`
-	Detail  string      `json:"detail,omitempty"`
+// NewSimIO builds the test screen's world: whether the device counts as
+// open, the moment the test pretends it is, and how outside systems are
+// called.
+func NewSimIO(hoursOpen bool, at time.Time, api func(uint, map[string]string) (map[string]any, error)) *SimIO {
+	return &SimIO{hours: hoursOpen, at: at, api: api}
 }
 
-func (o *simIO) sendText(t string) { o.Out = append(o.Out, SimOutput{Kind: "text", Text: t}) }
-func (o *simIO) sendMedia(kind, url string, fileID uint, fileName, caption string) {
+// SimOutput is one thing the flow did in the test screen.
+type SimOutput struct {
+	Kind    string   `json:"kind"` // text | media | menu | handoff | end | tag | callback | survey | api
+	Text    string   `json:"text,omitempty"`
+	Options []Option `json:"options,omitempty"`
+	Style   string   `json:"style,omitempty"`
+	Detail  string   `json:"detail,omitempty"`
+}
+
+func (o *SimIO) SendText(t string) { o.Out = append(o.Out, SimOutput{Kind: "text", Text: t}) }
+func (o *SimIO) SendMedia(kind, url string, fileID uint, fileName, caption string) {
 	what := url
 	if fileID > 0 {
 		what = fileName
 	}
 	o.Out = append(o.Out, SimOutput{Kind: "media", Text: caption, Detail: what})
 }
-func (o *simIO) sendMenu(style, text, button string, options []BotOption) {
+func (o *SimIO) SendMenu(style, text, button string, options []Option) {
 	o.Out = append(o.Out, SimOutput{Kind: "menu", Text: text, Options: options, Style: style, Detail: button})
 }
-func (o *simIO) handoff(teamID uint, note string) {
+func (o *SimIO) Handoff(teamID uint, note string) {
 	o.Out = append(o.Out, SimOutput{Kind: "handoff", Text: note, Detail: fmt.Sprint(teamID)})
 }
-func (o *simIO) finish(resolve bool) {
+func (o *SimIO) Finish(resolve bool) {
 	d := ""
 	if resolve {
 		d = "resolve"
 	}
 	o.Out = append(o.Out, SimOutput{Kind: "end", Detail: d})
 }
-func (o *simIO) tag(tags []string, priority, category string) {
+func (o *SimIO) Tag(tags []string, priority, category string) {
 	o.Out = append(o.Out, SimOutput{Kind: "tag", Text: strings.Join(tags, ", "), Detail: strings.TrimSpace(priority + " " + category)})
 }
-func (o *simIO) callback(note string) { o.Out = append(o.Out, SimOutput{Kind: "callback", Text: note}) }
-func (o *simIO) survey()              { o.Out = append(o.Out, SimOutput{Kind: "survey"}) }
-func (o *simIO) callAPI(id uint, vars map[string]string) (map[string]any, error) {
+func (o *SimIO) Callback(note string) { o.Out = append(o.Out, SimOutput{Kind: "callback", Text: note}) }
+func (o *SimIO) Survey()              { o.Out = append(o.Out, SimOutput{Kind: "survey"}) }
+func (o *SimIO) CallAPI(id uint, vars map[string]string) (map[string]any, error) {
 	if o.api == nil {
 		return nil, fmt.Errorf("sorgu yok")
 	}
@@ -666,11 +667,22 @@ func (o *simIO) callAPI(id uint, vars map[string]string) (map[string]any, error)
 	o.Out = append(o.Out, SimOutput{Kind: "api", Detail: detail})
 	return res, err
 }
-func (o *simIO) hoursOpen() bool { return o.hours }
-func (o *simIO) now() time.Time {
+func (o *SimIO) HoursOpen() bool { return o.hours }
+func (o *SimIO) Now() time.Time {
 	if o.at.IsZero() {
 		return time.Now()
 	}
 	return o.at
 }
-func (o *simIO) mark(nodeID, kind string) {}
+func (o *SimIO) Mark(nodeID, kind string) {}
+
+// digitsOnly keeps the digits of s.
+func digitsOnly(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}

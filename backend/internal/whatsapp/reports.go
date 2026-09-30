@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -51,11 +52,11 @@ func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay stri
 	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", fromDay, hours.Zone)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, hours.Zone)
 	if err != nil || toStart.Before(from) {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}

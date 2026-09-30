@@ -5,10 +5,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 )
 
 func at(s string) time.Time {
-	t, err := time.ParseInLocation("2006-01-02 15:04", s, istanbul)
+	t, err := time.ParseInLocation("2006-01-02 15:04", s, hours.Zone)
 	if err != nil {
 		panic(err)
 	}
@@ -16,7 +19,7 @@ func at(s string) time.Time {
 }
 
 func TestHoursElapsedCountsOnlyWorkingTime(t *testing.T) {
-	h := defaultSettings().Hours
+	h := device.Default().Hours
 	h.Enabled = true
 	// 2026-09-25 is a Friday.
 	cases := []struct {
@@ -51,7 +54,7 @@ func TestHoursElapsedCountsOnlyWorkingTime(t *testing.T) {
 
 func TestSettingsListsNeverNull(t *testing.T) {
 	for _, raw := range []string{"", "{}", `{"hours":{"holidays":null},"humanKeywords":null}`} {
-		b, _ := json.Marshal(parseSettings(raw))
+		b, _ := json.Marshal(device.Parse(raw))
 		for _, bad := range []string{`"holidays":null`, `"humanKeywords":null`, `"optOutKeywords":null`} {
 			if strings.Contains(string(b), bad) {
 				t.Errorf("parseSettings(%q) gives %s", raw, bad)

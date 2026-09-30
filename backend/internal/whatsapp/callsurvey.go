@@ -17,6 +17,8 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
@@ -104,7 +106,7 @@ func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurve
 		}
 	}
 	if in.Enabled {
-		ch, err := s.channel(ctx, in.ChannelID)
+		ch, err := s.repo.Channel(ctx, in.ChannelID)
 		if err != nil {
 			return nil, errs.Invalid("Anketin gideceği WhatsApp numarasını seçin.", nil)
 		}
@@ -327,7 +329,7 @@ func (s *Service) finishCallSurvey(ctx context.Context, id uint, status, note st
 }
 
 func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r *models.WACallSurvey) error {
-	ch, err := s.channel(ctx, set.ChannelID)
+	ch, err := s.repo.Channel(ctx, set.ChannelID)
 	if err != nil || !ch.Active {
 		return fmt.Errorf("anket numarası bulunamadı ya da kapalı")
 	}
@@ -338,12 +340,12 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 	var conv *models.WAConversation
 	var contact *models.WAContact
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		c, err := upsertContact(tx, r.WAID, "")
+		c, err := store.UpsertContact(tx, r.WAID, "")
 		if err != nil {
 			return err
 		}
 		contact = c
-		cv, _, err := upsertConversation(tx, ch.ID, c.ID)
+		cv, _, err := store.UpsertConversation(tx, ch.ID, c.ID)
 		conv = cv
 		return err
 	})
@@ -380,7 +382,7 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 		u.RawQuery = q.Encode()
 		link, query = u.String(), u.RawQuery
 	}
-	fill := strings.NewReplacer("{musteri}", customer, "{temsilci}", agent, "{tarih}", r.CreatedAt.In(istanbul).Format("02.01.2006"), "{link}", link)
+	fill := strings.NewReplacer("{musteri}", customer, "{temsilci}", agent, "{tarih}", r.CreatedAt.In(hours.Zone).Format("02.01.2006"), "{link}", link)
 	params := TemplateParams{}
 	for _, p := range set.Params {
 		v := oneLine(fill.Replace(p))
@@ -404,7 +406,7 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 	}
 	ticket := &models.WATicket{}
 	if conv.TicketID != nil {
-		if t := s.ticketFresh(ctx, *conv.TicketID); t != nil {
+		if t := s.repo.Ticket(ctx, *conv.TicketID); t != nil {
 			ticket = t
 		}
 	}
@@ -532,11 +534,11 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", fromDay, hours.Zone)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, hours.Zone)
 	if err != nil || toStart.Before(from) {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -49,6 +51,7 @@ type IAudit interface {
 // Service is the WhatsApp module.
 type Service struct {
 	db      *gorm.DB
+	repo    *store.Repository
 	users   IUsers
 	push    IPusher
 	storage IStorage
@@ -74,6 +77,7 @@ type Service struct {
 func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, auditor IAudit, ring *crypt.Keyring, secret string) *Service {
 	return &Service{
 		db:          db,
+		repo:        store.New(db),
 		users:       users,
 		push:        push,
 		storage:     storage,
@@ -266,23 +270,13 @@ func (s *Service) require(ctx context.Context, userID uint, p enums.Permission, 
 	return u, nil
 }
 
-func (s *Service) participantSet(ctx context.Context, ticketID uint) map[uint]bool {
-	var ids []uint
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_ticket_participants WHERE ticket_id = ?", ticketID).Scan(&ids).Error)
-	out := make(map[uint]bool, len(ids))
-	for _, id := range ids {
-		out[id] = true
-	}
-	return out
-}
-
 // audience lists who sees a ticket right now.
 func (s *Service) audience(ctx context.Context, t *models.WATicket) []uint {
 	viewers, err := s.loadViewers(ctx)
 	if err != nil || t == nil {
 		return nil
 	}
-	parts := s.participantSet(ctx, t.ID)
+	parts := s.repo.Participants(ctx, t.ID)
 	out := make([]uint, 0, len(viewers))
 	for id, v := range viewers {
 		if v.seesTicket(t, parts) {
@@ -331,7 +325,7 @@ func (s *Service) bump(ctx context.Context, conversationID uint) {
 // to everyone who sees it, and tells those who lost sight of it.
 func (s *Service) publish(ctx context.Context, conversationID uint, msg *models.WAMessage, before []uint) {
 	s.bump(ctx, conversationID)
-	conv, ticket, err := s.loadConv(ctx, conversationID)
+	conv, ticket, err := s.repo.Conversation(ctx, conversationID)
 	if err != nil {
 		slog.WarnContext(ctx, "whatsapp publish failed", "conversation", conversationID, "error", err)
 		return
@@ -379,21 +373,6 @@ func (s *Service) alert(ctx context.Context, channelID uint, text string) {
 	s.push.Push(ids, Event{Type: "wa.alert", Text: text, Level: "warning"})
 }
 
-func (s *Service) loadConv(ctx context.Context, id uint) (*models.WAConversation, *models.WATicket, error) {
-	var c models.WAConversation
-	if err := s.db.WithContext(ctx).First(&c, id).Error; err != nil {
-		return nil, nil, err
-	}
-	var t *models.WATicket
-	if c.TicketID != nil {
-		var tt models.WATicket
-		if err := s.db.WithContext(ctx).First(&tt, *c.TicketID).Error; err == nil {
-			t = &tt
-		}
-	}
-	return &c, t, nil
-}
-
 func jsonString(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
@@ -402,3 +381,11 @@ func jsonString(v any) string {
 func strPtr(s string) *string { return &s }
 
 func uintPtr(u uint) *uint { return &u }
+
+func truncate(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n])
+}

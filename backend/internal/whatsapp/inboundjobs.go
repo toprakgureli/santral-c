@@ -71,7 +71,7 @@ func (s *Service) resumeInbound(ctx context.Context, job inboundJob) {
 		slog.WarnContext(ctx, "whatsapp follow-up message could not be loaded", "message", job.MessageID, "error", err)
 		return
 	}
-	conv, _, err := s.loadConv(ctx, msg.ConversationID)
+	conv, _, err := s.repo.Conversation(ctx, msg.ConversationID)
 	if err != nil {
 		slog.WarnContext(ctx, "whatsapp follow-up conversation could not be loaded", "message", job.MessageID, "error", err)
 		return
@@ -80,13 +80,13 @@ func (s *Service) resumeInbound(ctx context.Context, job inboundJob) {
 		s.finishInboundJob(ctx, msg.ID)
 		return
 	}
-	ticket := s.ticketFresh(ctx, *msg.TicketID)
-	contact, err := s.contact(ctx, conv.ContactID)
+	ticket := s.repo.Ticket(ctx, *msg.TicketID)
+	contact, err := s.repo.Contact(ctx, conv.ContactID)
 	if ticket == nil || err != nil {
 		slog.WarnContext(ctx, "whatsapp follow-up ticket or customer could not be loaded", "message", job.MessageID)
 		return
 	}
-	ch, err := s.channel(ctx, conv.ChannelID)
+	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
 		slog.WarnContext(ctx, "whatsapp follow-up device could not be loaded", "message", job.MessageID, "error", err)
 		return
@@ -116,7 +116,7 @@ func (s *Service) sweepMedia(ctx context.Context) {
 		return
 	}
 	for _, r := range rows {
-		ch, err := s.channel(ctx, r.ChannelID)
+		ch, err := s.repo.Channel(ctx, r.ChannelID)
 		if err != nil {
 			continue
 		}

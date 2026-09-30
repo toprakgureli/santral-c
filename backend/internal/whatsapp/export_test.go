@@ -11,12 +11,13 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 )
 
 func TestExportPage(t *testing.T) {
 	uid := uint(3)
 	wamid := "wamid.1"
-	at := time.Date(2026, 9, 25, 14, 5, 0, 0, istanbul)
+	at := time.Date(2026, 9, 25, 14, 5, 0, 0, hours.Zone)
 	e := &Export{
 		s:       &Service{},
 		ch:      &models.WAChannel{Name: "Destek"},

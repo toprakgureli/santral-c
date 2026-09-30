@@ -88,3 +88,17 @@ func TestParseTallyThreeQuestions(t *testing.T) {
 		t.Error("scoreFromText")
 	}
 }
+
+func TestTemplateParamsRejectLineBreaks(t *testing.T) {
+	for _, bad := range []string{"iki\nsatır", "sekme\tvar", "çok      boşluk"} {
+		if err := checkParams([]string{bad}); err == nil {
+			t.Errorf("checkParams(%q) accepted a value Meta refuses", bad)
+		}
+	}
+	if err := checkParams([]string{"Ayşe Yılmaz", "12:30"}); err != nil {
+		t.Errorf("checkParams() refused a normal value: %v", err)
+	}
+	if got := oneLine(" Ayşe \n  Yılmaz\t"); got != "Ayşe Yılmaz" {
+		t.Errorf("oneLine() = %q", got)
+	}
+}

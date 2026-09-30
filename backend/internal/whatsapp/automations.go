@@ -11,6 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/outside"
+
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/varfill"
+
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -92,7 +97,7 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 }
 
 func (s *Service) conditionsHold(ctx context.Context, ch *models.WAChannel, conds []RuleCondition, ticket *models.WATicket, msg *models.WAMessage) bool {
-	h := parseSettings(ch.Settings).Hours
+	h := device.Parse(ch.Settings).Hours
 	text := ""
 	if msg != nil {
 		text = strings.TrimSpace(msg.Body)
@@ -125,7 +130,7 @@ func (s *Service) conditionsHold(ctx context.Context, ch *models.WAChannel, cond
 				}
 			}
 			if !ok {
-				if c2, err := s.contact(ctx, ticket.ContactID); err == nil {
+				if c2, err := s.repo.Contact(ctx, ticket.ContactID); err == nil {
 					for _, t := range parseTags(c2.Tags) {
 						if strings.EqualFold(t, v) {
 							ok = true
@@ -148,7 +153,7 @@ func (s *Service) conditionsHold(ctx context.Context, ch *models.WAChannel, cond
 }
 
 func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models.WAAutomation, a RuleAction, conv *models.WAConversation, ticket *models.WATicket) error {
-	contact, _ := s.contact(ctx, conv.ContactID)
+	contact, _ := s.repo.Contact(ctx, conv.ContactID)
 	vars := map[string]string{}
 	if contact != nil {
 		vars["musteri"] = firstName(contactView(contact).Display)
@@ -157,13 +162,13 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 	vars["sohbet"] = fmt.Sprint(ticket.Number)
 	switch a.Kind {
 	case "send_text":
-		text := strings.TrimSpace(fillVars(a.Text, vars))
+		text := strings.TrimSpace(varfill.Fill(a.Text, vars))
 		if text == "" {
 			return nil
 		}
 		// Read the conversation again: the message that triggered the rule
 		// may have just opened the window.
-		if fresh, _, err := s.loadConv(ctx, conv.ID); err == nil {
+		if fresh, _, err := s.repo.Conversation(ctx, conv.ID); err == nil {
 			conv = fresh
 		}
 		if !windowOpen(conv) {
@@ -171,13 +176,13 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		}
 		s.queueSystem(ctx, ch, conv.ID, ticket.ID, "automation", r.Name, text)
 	case "send_template":
-		tpl, err := s.template(ctx, a.TemplateID)
+		tpl, err := s.repo.Template(ctx, a.TemplateID)
 		if err != nil || tpl.Status != "APPROVED" || tpl.WABAID != ch.WABAID {
 			return fmt.Errorf("şablon kullanılamıyor")
 		}
 		params := make([]string, len(a.Params))
 		for i, p := range a.Params {
-			params[i] = oneLine(fillVars(p, vars))
+			params[i] = oneLine(varfill.Fill(p, vars))
 		}
 		obj, preview, err := buildTemplate(tpl, TemplateParams{Body: params})
 		if err != nil {
@@ -202,7 +207,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		}
 		s.publish(ctx, conv.ID, nil, before)
 	case "add_tag":
-		t := s.ticketFresh(ctx, ticket.ID)
+		t := s.repo.Ticket(ctx, ticket.ID)
 		if t != nil {
 			if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET tags = ? WHERE id = ?", jsonString(cleanTags(append(parseTags(t.Tags), a.Value))), ticket.ID).Error; err != nil {
 				return err
@@ -221,19 +226,19 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		s.publish(ctx, conv.ID, nil, nil)
 	case "note":
 		m := &models.WAMessage{ChannelID: ch.ID, ConversationID: conv.ID, TicketID: uintPtr(ticket.ID), Direction: "note", Kind: "text", SenderKind: "automation",
-			SenderLabel: r.Name, Body: fillVars(a.Text, vars), Status: "received", CreatedAt: time.Now()}
+			SenderLabel: r.Name, Body: varfill.Fill(a.Text, vars), Status: "received", CreatedAt: time.Now()}
 		if err := s.db.WithContext(ctx).Create(m).Error; err != nil {
 			return err
 		}
 		s.publish(ctx, conv.ID, m, nil)
 	case "resolve":
-		fresh := s.ticketFresh(ctx, ticket.ID)
+		fresh := s.repo.Ticket(ctx, ticket.ID)
 		if fresh != nil && fresh.Status != "resolved" {
 			s.event(ctx, nil, conv, ticket.ID, 0, r.Name+" kuralı sohbeti kapattı.")
 			return s.resolve(ctx, conv, fresh, 0)
 		}
 	case "send_survey":
-		fresh := s.ticketFresh(ctx, ticket.ID)
+		fresh := s.repo.Ticket(ctx, ticket.ID)
 		if fresh != nil {
 			owner := uint(0)
 			if fresh.OwnerID != nil {
@@ -251,9 +256,9 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := outsideClient.Do(req)
+		resp, err := outside.Client.Do(req)
 		if err != nil {
-			return explainOutside(err)
+			return outside.Explain(err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode/100 != 2 {
@@ -281,11 +286,11 @@ func (s *Service) sweepTimedRules(ctx context.Context) {
 			continue
 		}
 		for _, chID := range parseIDs(r.ChannelIDs) {
-			ch, err := s.channel(ctx, chID)
+			ch, err := s.repo.Channel(ctx, chID)
 			if err != nil {
 				continue
 			}
-			h := parseSettings(ch.Settings).Hours
+			h := device.Parse(ch.Settings).Hours
 			var list []models.WATicket
 			warnDB(ctx, s.db.WithContext(ctx).Where("channel_id = ? AND awaiting_since IS NOT NULL AND status IN ('open','pending')", chID).Find(&list).Error)
 			for j := range list {
@@ -298,7 +303,7 @@ func (s *Service) sweepTimedRules(ctx context.Context) {
 				if done > 0 {
 					continue
 				}
-				conv, _, err := s.loadConv(ctx, t.ConversationID)
+				conv, _, err := s.repo.Conversation(ctx, t.ConversationID)
 				if err != nil {
 					continue
 				}
