@@ -291,7 +291,7 @@ func (s *Service) summaries(ctx context.Context, convs []models.WAConversation) 
 		}
 		if c.LastMessageID != nil {
 			if m := lasts[*c.LastMessageID]; m != nil {
-				lv := &LastView{ID: m.ID, Direction: m.Direction, Kind: m.Kind, Preview: preview(m), At: m.CreatedAt, Status: m.Status}
+				lv := &LastView{ID: m.ID, Direction: m.Direction, Kind: m.Kind, Preview: preview(m), At: m.CreatedAt, Status: shownStatus(m.Status)}
 				if m.SenderUserID != nil {
 					lv.SenderName = firstName(people[*m.SenderUserID].Name)
 				} else if m.SenderKind == "bot" {
@@ -387,6 +387,15 @@ func reactionTarget(m *models.WAMessage) (string, string) {
 	return in.Reaction.MessageID, in.Reaction.Emoji
 }
 
+// shownStatus is a message's status for the panel: a message being sent
+// right now still shows as waiting in the queue.
+func shownStatus(status string) string {
+	if status == "sending" {
+		return "queued"
+	}
+	return status
+}
+
 func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]MessageView, error) {
 	if len(list) == 0 {
 		return []MessageView{}, nil
@@ -470,7 +479,7 @@ func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]
 	for i := range list {
 		m := &list[i]
 		v := MessageView{ID: m.ID, ConversationID: m.ConversationID, TicketID: m.TicketID, Direction: m.Direction, Kind: m.Kind, Body: m.Body,
-			Status: m.Status, ErrorText: m.ErrorText, CreatedAt: m.CreatedAt, SentAt: m.SentAt, DeliveredAt: m.DeliveredAt, ReadAt: m.ReadAt}
+			Status: shownStatus(m.Status), ErrorText: m.ErrorText, CreatedAt: m.CreatedAt, SentAt: m.SentAt, DeliveredAt: m.DeliveredAt, ReadAt: m.ReadAt}
 		if m.ClientID != nil {
 			v.ClientID = *m.ClientID
 		}

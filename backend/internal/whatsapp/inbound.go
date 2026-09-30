@@ -388,7 +388,7 @@ func touchTicket(tx *gorm.DB, conv *models.WAConversation, at *time.Time) (*mode
 
 // ---------------------------------------------------------------- statuses
 
-var statusRank = map[string]int{"queued": 0, "sent": 1, "delivered": 2, "read": 3}
+var statusRank = map[string]int{"queued": 0, "sending": 0, "sent": 1, "delivered": 2, "read": 3}
 
 func (s *Service) onStatus(ctx context.Context, ch *models.WAChannel, st *hookStatus) error {
 	var msg models.WAMessage
