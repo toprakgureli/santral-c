@@ -17,10 +17,11 @@ import (
 // Seed applies the permission, role, owner and default-settings seed
 // idempotently.
 func Seed(db *gorm.DB) error {
-	if err := seedPermissions(db); err != nil {
+	added, err := seedPermissions(db)
+	if err != nil {
 		return err
 	}
-	if err := seedRoles(db); err != nil {
+	if err := seedRoles(db, added); err != nil {
 		return err
 	}
 	if err := seedSettings(db); err != nil {
@@ -51,10 +52,25 @@ func seedSettings(db *gorm.DB) error {
 	return nil
 }
 
-func seedPermissions(db *gorm.DB) error {
+// seedPermissions upserts the permission catalog and returns the keys that
+// did not exist before this run.
+func seedPermissions(db *gorm.DB) (map[string]bool, error) {
+	var known []string
+	if err := db.Model(&models.Permission{}).Pluck("key", &known).Error; err != nil {
+		return nil, fmt.Errorf("permissions could not be listed: %w", err)
+	}
+	existed := make(map[string]bool, len(known))
+	for _, k := range known {
+		existed[k] = true
+	}
+	added := make(map[string]bool)
+
 	list := enums.Permissions()
 	rows := make([]models.Permission, 0, len(list))
 	for _, p := range list {
+		if !existed[string(p.Key)] {
+			added[string(p.Key)] = true
+		}
 		rows = append(rows, models.Permission{
 			Key:         string(p.Key),
 			Module:      string(p.Key.Module()),
@@ -65,12 +81,14 @@ func seedPermissions(db *gorm.DB) error {
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"module", "description", "updated_at"}),
 	}).Create(&rows).Error; err != nil {
-		return fmt.Errorf("permissions could not be seeded: %w", err)
+		return nil, fmt.Errorf("permissions could not be seeded: %w", err)
 	}
-	return nil
+	return added, nil
 }
 
-func seedRoles(db *gorm.DB) error {
+// seedRoles creates missing system roles with their default permissions and
+// hands newly added permissions to the system roles that get them by default.
+func seedRoles(db *gorm.DB, added map[string]bool) error {
 	var existing []string
 	if err := db.Model(&models.Role{}).Pluck("name", &existing).Error; err != nil {
 		return fmt.Errorf("roles could not be listed: %w", err)
@@ -113,7 +131,7 @@ func seedRoles(db *gorm.DB) error {
 	if err := syncInvisibleAdminPermissions(db, perms); err != nil {
 		return err
 	}
-	return syncSystemRolePermissions(db, byKey)
+	return syncSystemRolePermissions(db, byKey, added)
 }
 
 func syncInvisibleAdminPermissions(db *gorm.DB, perms []models.Permission) error {
@@ -133,7 +151,14 @@ func syncInvisibleAdminPermissions(db *gorm.DB, perms []models.Permission) error
 	return nil
 }
 
-func syncSystemRolePermissions(db *gorm.DB, byKey map[string]models.Permission) error {
+// syncSystemRolePermissions gives system roles the default permissions that
+// were added to the catalog in this run. Older permissions are left alone: an
+// admin may have taken one away from a system role on purpose, and it must
+// not come back on the next start.
+func syncSystemRolePermissions(db *gorm.DB, byKey map[string]models.Permission, added map[string]bool) error {
+	if len(added) == 0 {
+		return nil
+	}
 	for _, info := range enums.Roles() {
 		if info.Name == enums.RoleInvisibleAdmin {
 			continue
@@ -150,7 +175,7 @@ func syncSystemRolePermissions(db *gorm.DB, byKey map[string]models.Permission) 
 		}
 		missing := make([]models.Permission, 0)
 		for _, key := range enums.RolePermissions(info.Name) {
-			if current[string(key)] {
+			if current[string(key)] || !added[string(key)] {
 				continue
 			}
 			if p, ok := byKey[string(key)]; ok {
