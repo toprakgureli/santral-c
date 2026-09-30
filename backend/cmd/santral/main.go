@@ -42,6 +42,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/denylist"
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
+	"github.com/toprakgureli/santral-c/backend/pkg/logctx"
 	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -55,7 +56,8 @@ var (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+	// Log lines written with a request's context carry its request and user.
+	slog.SetDefault(slog.New(logctx.NewHandler(slog.NewJSONHandler(os.Stderr, nil))))
 	if err := run(); err != nil {
 		slog.Error("startup failed", "error", err)
 		os.Exit(1)
@@ -158,6 +160,7 @@ func run() error {
 	}
 	app := fiber.New(fiberCfg)
 	app.Use(requestid.New())
+	app.Use(middlewares.RequestContext())
 	app.Use(middlewares.Recover())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     configs.Cnf.App.CORSOrigins,

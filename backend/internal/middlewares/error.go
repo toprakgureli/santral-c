@@ -9,11 +9,17 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
-// ErrorHandler renders an error as a typed JSON response and logs it.
+// ErrorHandler renders an error as a typed JSON response and logs it: a
+// request the client got wrong (4xx) as a warning, a failure of ours (5xx)
+// as an error. The log line carries the request and user from the context.
 func ErrorHandler(c *fiber.Ctx, err error) error {
 	e := resolve(err)
 
-	slog.Error("request failed",
+	level := slog.LevelWarn
+	if e.Status >= fiber.StatusInternalServerError {
+		level = slog.LevelError
+	}
+	slog.Log(c.UserContext(), level, "request failed",
 		"method", c.Method(),
 		"path", c.Path(),
 		"status", e.Status,

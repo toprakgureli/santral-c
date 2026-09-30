@@ -11,6 +11,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/jwt"
+	"github.com/toprakgureli/santral-c/backend/pkg/logctx"
 )
 
 // IDenylist checks token and per-user revocation.
@@ -97,6 +98,7 @@ func Auth(cfg configs.Auth, list IDenylist) fiber.Handler {
 
 		c.Locals(UserIDKey, claims.UserID)
 		c.Locals(SessionKey, session)
+		c.SetUserContext(logctx.WithUser(c.UserContext(), claims.UserID))
 		return c.Next()
 	}
 }
