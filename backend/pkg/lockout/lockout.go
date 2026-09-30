@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
+
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
 )
 
@@ -48,6 +50,36 @@ func Clear(ctx context.Context, key string) error {
 	return nil
 }
 
+const (
+	triesPrefix string = "santral:tries:"
+	oncePrefix  string = "santral:once:"
+)
+
+// Hit counts one more try on key and returns the count so far. The count
+// starts when the first try is made and is forgotten after ttl.
+func Hit(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	var incr *goredis.IntCmd
+	_, err := redis.Get().TxPipelined(ctx, func(p goredis.Pipeliner) error {
+		incr = p.Incr(ctx, triesPrefix+key)
+		p.ExpireNX(ctx, triesPrefix+key, ttl)
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("try could not be counted: %w", err)
+	}
+	return incr.Val(), nil
+}
+
+// Once reports whether key is used for the first time within ttl; every
+// later call within ttl reports false.
+func Once(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	fresh, err := redis.Get().SetNX(ctx, oncePrefix+key, "1", ttl).Result()
+	if err != nil {
+		return false, fmt.Errorf("one-time use could not be recorded: %w", err)
+	}
+	return fresh, nil
+}
+
 // Client is a struct handle over the package functions.
 type Client struct{}
 
@@ -67,4 +99,14 @@ func (c *Client) Set(ctx context.Context, key string, ttl time.Duration) error {
 // Clear removes any lock on key.
 func (c *Client) Clear(ctx context.Context, key string) error {
 	return Clear(ctx, key)
+}
+
+// Hit counts one more try on key; see Hit.
+func (c *Client) Hit(ctx context.Context, key string, ttl time.Duration) (int64, error) {
+	return Hit(ctx, key, ttl)
+}
+
+// Once reports whether key is used for the first time within ttl; see Once.
+func (c *Client) Once(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	return Once(ctx, key, ttl)
 }

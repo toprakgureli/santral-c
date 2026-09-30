@@ -36,6 +36,12 @@ type ISecurityService interface {
 	Failure(ctx context.Context, a security.Attempt)
 }
 
+// IAttempts counts tries and remembers one-time uses.
+type IAttempts interface {
+	Hit(ctx context.Context, key string, ttl time.Duration) (int64, error)
+	Once(ctx context.Context, key string, ttl time.Duration) (bool, error)
+}
+
 // IDenylist revokes one-time token ids.
 type IDenylist interface {
 	Add(ctx context.Context, id string, ttl time.Duration) error

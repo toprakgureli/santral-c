@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -61,11 +63,12 @@ type Service struct {
 	security ISecurityService
 	denylist IDenylist
 	settings ISettingService
+	attempts IAttempts
 }
 
 // NewService builds an auth service.
-func NewService(cfg configs.Auth, sec configs.Security, repo IRepository, user IUserService, secSvc ISecurityService, deny IDenylist, settings ISettingService) *Service {
-	return &Service{cfg: cfg, sec: sec, repo: repo, user: user, security: secSvc, denylist: deny, settings: settings}
+func NewService(cfg configs.Auth, sec configs.Security, repo IRepository, user IUserService, secSvc ISecurityService, deny IDenylist, settings ISettingService, attempts IAttempts) *Service {
+	return &Service{cfg: cfg, sec: sec, repo: repo, user: user, security: secSvc, denylist: deny, settings: settings, attempts: attempts}
 }
 
 // Login validates credentials and returns a session or a challenge.
@@ -299,6 +302,9 @@ func (s *Service) MFAEnable(ctx context.Context, userID uint, code string) error
 	if !totp.Validate(secret, code) {
 		return errs.Invalid("Kod doğrulanamadı. Uygulamadaki güncel kodu girin.", nil)
 	}
+	if err := s.useCode(ctx, u.ID, code); err != nil {
+		return err
+	}
 	return s.user.SetMFA(ctx, u.ID, u.MFASecret, true)
 }
 
@@ -328,9 +334,8 @@ func (s *Service) MFAVerify(ctx context.Context, token, code string, meta Reques
 	if err != nil {
 		return nil, err
 	}
-	if !totp.Validate(secret, code) {
-		s.security.Failure(ctx, attempt(u.Email, &u.ID, meta, security.ReasonMFA))
-		return nil, errs.Unauthorized("Kod doğrulanamadı.")
+	if err := s.checkCode(ctx, u, claims, secret, code, meta); err != nil {
+		return nil, err
 	}
 	s.revokeToken(ctx, claims)
 	s.security.Success(ctx, attempt(u.Email, &u.ID, meta, ""))
@@ -372,9 +377,8 @@ func (s *Service) MFAEnrollVerify(ctx context.Context, token, code string, meta 
 	if err != nil {
 		return nil, err
 	}
-	if !totp.Validate(secret, code) {
-		s.security.Failure(ctx, attempt(u.Email, &u.ID, meta, security.ReasonMFA))
-		return nil, errs.Unauthorized("Kod doğrulanamadı.")
+	if err := s.checkCode(ctx, u, claims, secret, code, meta); err != nil {
+		return nil, err
 	}
 	if err := s.user.SetMFA(ctx, u.ID, u.MFASecret, true); err != nil {
 		return nil, err
@@ -444,10 +448,60 @@ func (s *Service) PasswordChange(ctx context.Context, req requests.PasswordChang
 }
 
 func (s *Service) revokeToken(ctx context.Context, claims *jwt.Claims) {
+	if ttl := tokenTTL(claims); ttl > 0 {
+		if err := s.denylist.Add(ctx, claims.ID, ttl); err != nil {
+			slog.WarnContext(ctx, "one-time token could not be revoked", "error", err)
+		}
+	}
+}
+
+// tokenTTL is how long a token stays valid, or zero.
+func tokenTTL(claims *jwt.Claims) time.Duration {
 	if claims.ExpiresAt == nil {
-		return
+		return 0
 	}
-	if ttl := time.Until(claims.ExpiresAt.Time); ttl > 0 {
-		_ = s.denylist.Add(ctx, claims.ID, ttl)
+	return max(time.Until(claims.ExpiresAt.Time), 0)
+}
+
+const (
+	// maxCodeTries is how many wrong codes one sign-in step allows before
+	// the user has to start over with their password.
+	maxCodeTries = 5
+	// codeReuseWindow covers the whole time a code is accepted (the current
+	// step and one on either side), so a used code cannot be sent again.
+	codeReuseWindow = 2 * time.Minute
+)
+
+// checkCode verifies a sign-in step's TOTP code. The account and address
+// locks apply as for the password, a step allows maxCodeTries wrong codes
+// before its token is revoked, and a code that was already used is refused.
+func (s *Service) checkCode(ctx context.Context, u *models.User, claims *jwt.Claims, secret, code string, meta RequestMeta) error {
+	if err := s.security.Guard(ctx, u.Email, meta.IP); err != nil {
+		return err
 	}
+	if !totp.Validate(secret, code) {
+		s.security.Failure(ctx, attempt(u.Email, &u.ID, meta, security.ReasonMFA))
+		tries, err := s.attempts.Hit(ctx, "mfa:"+claims.ID, tokenTTL(claims))
+		if err != nil {
+			slog.WarnContext(ctx, "mfa tries could not be counted", "error", err)
+		}
+		if tries >= maxCodeTries {
+			s.revokeToken(ctx, claims)
+			return errs.Unauthorized("Çok fazla hatalı kod girildi. Lütfen yeniden giriş yapın.")
+		}
+		return errs.Unauthorized("Kod doğrulanamadı.")
+	}
+	return s.useCode(ctx, u.ID, code)
+}
+
+// useCode records a TOTP code as used and refuses one used before.
+func (s *Service) useCode(ctx context.Context, userID uint, code string) error {
+	fresh, err := s.attempts.Once(ctx, fmt.Sprintf("totp:%d:%s", userID, code), codeReuseWindow)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if !fresh {
+		return errs.Unauthorized("Bu kod az önce kullanıldı. Uygulamada yeni kodun çıkmasını bekleyin.")
+	}
+	return nil
 }
