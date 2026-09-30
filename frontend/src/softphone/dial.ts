@@ -1,7 +1,7 @@
 // normalizeDial makes a dialed string acceptable to the PBX. Internal
 // extensions (short) pass through; Turkish mobile/landline numbers are coerced
-// to the 0XXXXXXXXXX form the switch expects, so "5304230113", "+905304230113"
-// and "905304230113" all become "05304230113".
+// to the 0XXXXXXXXXX form the switch expects, so "5551234567", "+905551234567"
+// and "905551234567" all become "05551234567".
 export function normalizeDial(raw: string): string {
   const trimmed = raw.trim();
   // Feature/service codes (e.g. *60 echo test, *43, #-codes) pass through with
@@ -19,8 +19,8 @@ export function normalizeDial(raw: string): string {
 }
 
 // displayNumber strips a number down to its bare significant digits for copying
-// and display: "05304230113", "905304230113" and "+905304230113" all become
-// "5304230113". Short internal numbers are returned unchanged.
+// and display: "05551234567", "905551234567" and "+905551234567" all become
+// "5551234567". Short internal numbers are returned unchanged.
 export function displayNumber(raw: string): string {
   const d = (raw || "").replace(/[^\d]/g, "");
   if (!d) return raw || "";

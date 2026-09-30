@@ -40,9 +40,9 @@ const ad = { source_url: "https://fb.me/abc", source_type: "ad", headline: "Fibe
 const contact = (id: number, name: string, wa: string) => ({ id, waId: wa, name: "", profileName: name, display: name, tags: id === 1 ? ["vip"] : [], note: "", optedOut: false, blocked: false, source: id === 1 ? ad : undefined });
 const ticket = (id: number, over: Record<string, unknown> = {}) => ({ id, number: 1000 + id, status: "open", priority: "normal", category: "", tags: [], waitingCount: 0, reopenCount: 0, createdAt: ago(60), participants: [], ...over });
 const conversations = [
-  { id: 1, channelId: 1, channelName: "Destek Hattı", contact: contact(1, "Zeynep Arslan", "905321112233"), ticket: ticket(1, { owner: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, participants: [{ id: 1, name: "Toprak Şahin Güreli", hasAvatar: false, role: "owner" }, { id: 2, name: "Ayşe Kaya", hasAvatar: false, role: "helper" }] }), last: { id: 5, direction: "in", kind: "text", preview: "Tamam teşekkürler, bekliyorum", at: ago(3), status: "received" }, unread: 1, teamReadId: 4, lastInboundAt: ago(3), windowEndsAt: new Date(Date.now() + 20 * 3600000).toISOString(), version: 10 },
-  { id: 2, channelId: 1, channelName: "Destek Hattı", contact: contact(2, "Can Öztürk", "905339998877"), ticket: ticket(2, { awaitingSince: ago(22), waitingListedAt: ago(7), owner: { id: 2, name: "Ayşe Kaya", hasAvatar: false } }), last: { id: 9, direction: "in", kind: "text", preview: "Hala cevap bekliyorum", at: ago(22), status: "received" }, unread: 2, teamReadId: 0, lastInboundAt: ago(22), windowEndsAt: new Date(Date.now() + 23 * 3600000).toISOString(), version: 11 },
-  { id: 3, channelId: 2, channelName: "Satış Hattı", contact: contact(3, "Elif Şahin", "905301234567"), ticket: ticket(3, { status: "bot" }), last: { id: 12, direction: "out", kind: "interactive", preview: "Hangi konuda yardım istersiniz?", at: ago(1), status: "delivered", senderName: "Karşılama" }, unread: 0, teamReadId: 12, lastInboundAt: ago(1), windowEndsAt: new Date(Date.now() + 23 * 3600000).toISOString(), version: 12 },
+  { id: 1, channelId: 1, channelName: "Destek Hattı", contact: contact(1, "Zeynep Arslan", "905551112233"), ticket: ticket(1, { owner: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, participants: [{ id: 1, name: "Toprak Şahin Güreli", hasAvatar: false, role: "owner" }, { id: 2, name: "Ayşe Kaya", hasAvatar: false, role: "helper" }] }), last: { id: 5, direction: "in", kind: "text", preview: "Tamam teşekkürler, bekliyorum", at: ago(3), status: "received" }, unread: 1, teamReadId: 4, lastInboundAt: ago(3), windowEndsAt: new Date(Date.now() + 20 * 3600000).toISOString(), version: 10 },
+  { id: 2, channelId: 1, channelName: "Destek Hattı", contact: contact(2, "Can Öztürk", "905559998877"), ticket: ticket(2, { awaitingSince: ago(22), waitingListedAt: ago(7), owner: { id: 2, name: "Ayşe Kaya", hasAvatar: false } }), last: { id: 9, direction: "in", kind: "text", preview: "Hala cevap bekliyorum", at: ago(22), status: "received" }, unread: 2, teamReadId: 0, lastInboundAt: ago(22), windowEndsAt: new Date(Date.now() + 23 * 3600000).toISOString(), version: 11 },
+  { id: 3, channelId: 2, channelName: "Satış Hattı", contact: contact(3, "Elif Şahin", "905551234567"), ticket: ticket(3, { status: "bot" }), last: { id: 12, direction: "out", kind: "interactive", preview: "Hangi konuda yardım istersiniz?", at: ago(1), status: "delivered", senderName: "Karşılama" }, unread: 0, teamReadId: 12, lastInboundAt: ago(1), windowEndsAt: new Date(Date.now() + 23 * 3600000).toISOString(), version: 12 },
   { id: 4, channelId: 1, channelName: "Destek Hattı", contact: contact(4, "Burak Aydın", "905551112244"), ticket: ticket(4, { awaitingSince: ago(4) }), last: { id: 14, direction: "in", kind: "image", preview: "📷 Fotoğraf", at: ago(4), status: "received" }, unread: 1, teamReadId: 0, lastInboundAt: ago(4), windowEndsAt: new Date(Date.now() + 23 * 3600000).toISOString(), version: 13 },
 ];
 const agent = (id: number, name: string) => ({ kind: "agent", userId: id, name, hasAvatar: false });
@@ -115,8 +115,8 @@ const report = {
   hours: [0, 0, 0, 0, 0, 0, 1, 4, 22, 58, 80, 95, 70, 64, 88, 91, 76, 60, 33, 20, 14, 9, 4, 1],
 };
 const callbacks = [
-  { id: 1, channelName: "Destek Hattı", conversationId: 2, customer: "Can Öztürk", phone: "905339998877", note: "Fatura itirazı için aranmak istiyor", status: "open", createdAt: ago(12) },
-  { id: 2, channelName: "Satış Hattı", conversationId: 3, customer: "Elif Şahin", phone: "905301234567", note: "", status: "done", doneBy: "Ayşe Kaya", doneAt: ago(60), createdAt: ago(200) },
+  { id: 1, channelName: "Destek Hattı", conversationId: 2, customer: "Can Öztürk", phone: "905559998877", note: "Fatura itirazı için aranmak istiyor", status: "open", createdAt: ago(12) },
+  { id: 2, channelName: "Satış Hattı", conversationId: 3, customer: "Elif Şahin", phone: "905551234567", note: "", status: "done", doneBy: "Ayşe Kaya", doneAt: ago(60), createdAt: ago(200) },
 ];
 
 const prefs: { sound: boolean; desktop: boolean; mutedUntil?: string; conversations: { id: number; mutedUntil?: string; pinnedAt?: string }[] } = { sound: true, desktop: true, conversations: [{ id: 2, mutedUntil: new Date(Date.now() + 8 * 3600000).toISOString() }, { id: 3, pinnedAt: ago(100) }] };
@@ -165,8 +165,8 @@ function answer(method: string, path: string, body: unknown): unknown {
       { question: "Tek soruluk anket", count: 48, average: 4.3, dist: [1, 2, 4, 15, 26] },
     ],
     items: [
-      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905321112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0], answers: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", score: 5 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", score: 5 }, { question: "Sorununuz tamamen çözüldü mü?", score: 4 }], texts: [{ question: "Sizinle ilgilenen Teknik Uzmanımızın ismi nedir?", text: "Toprak Bey" }, { question: "Eklemek istediğiniz görüş, öneri veya şikayet var mı?", text: "Çok hızlı çözüldü, teşekkürler." }] },
-      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905339998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412, answers: [{ question: "Tek soruluk anket", score: 2 }], texts: [] },
+      { source: "chat", at: ago(12), score: 5, comment: "Çok hızlı çözüldü, Toprak Bey'e teşekkürler.", customer: "Zeynep Arslan", phone: "905551112233", conversationId: 1, ticketNumber: 1001, channel: "Destek Hattı", agent: people[0], answers: [{ question: "Temsilcimiz sorununuzu ne kadar hızlı çözdü?", score: 5 }, { question: "Temsilcimizin ilgisinden memnun kaldınız mı?", score: 5 }, { question: "Sorununuz tamamen çözüldü mü?", score: 4 }], texts: [{ question: "Sizinle ilgilenen Teknik Uzmanımızın ismi nedir?", text: "Toprak Bey" }, { question: "Eklemek istediğiniz görüş, öneri veya şikayet var mı?", text: "Çok hızlı çözüldü, teşekkürler." }] },
+      { source: "call", at: ago(95), score: 2, comment: "Uzun süre beklettiler, sorun hâlâ tam çözülmedi.", customer: "Can Öztürk", phone: "905559998877", conversationId: 2, channel: "Destek Hattı", agent: people[1], talkSeconds: 412, answers: [{ question: "Tek soruluk anket", score: 2 }], texts: [] },
       { source: "chat", at: ago(300), score: 4, customer: "", phone: "905445556677", ticketNumber: 998, channel: "Satış Hattı", agent: people[0], answers: [{ question: "Tek soruluk anket", score: 4 }], texts: [] },
     ],
   };
@@ -198,7 +198,7 @@ function answer(method: string, path: string, body: unknown): unknown {
   if (/\/suggest$/.test(p)) return { text: "Anlayışınız için teşekkürler Zeynep Hanım. Arıza giderilince size buradan haber vereceğim, tahmini süre [süre]." };
   if (p === "/files") return { id: 9, name: "kampanya.png", mime: "image/png", size: 120000, kind: "image", url: "/api/v1/wa/files/9" };
   if (p === "/call-survey") return { enabled: true, channelId: 1, template: "anket_cagri", templateLang: "tr", params: ["{musteri}", "{temsilci}"], mode: "buttons", buttonScores: [5, 3, 1], linkUrl: "", directions: "both", minSeconds: 30, delayMinutes: 2, quietDays: 7, alertBelow: 2, thankYou: "Değerlendirmeniz için teşekkür ederiz." };
-  if (p === "/call-survey/report") return { queued: 2, sent: 140, answered: 61, failed: 3, skipped: 12, average: 4.3, agents: [{ user: people[0], sent: 80, answered: 40, average: 4.6, low: 1 }, { user: people[1], sent: 60, answered: 21, average: 3.7, low: 4 }], recent: [{ id: 1, agent: "Ayşe Kaya", phone: "905321112233", score: 1, comment: "Çok beklettiler", conversationId: 1, answeredAt: ago(30) }, { id: 2, agent: "Toprak Şahin Güreli", phone: "905339998877", score: 5, comment: "", conversationId: 2, answeredAt: ago(90) }] };
+  if (p === "/call-survey/report") return { queued: 2, sent: 140, answered: 61, failed: 3, skipped: 12, average: 4.3, agents: [{ user: people[0], sent: 80, answered: 40, average: 4.6, low: 1 }, { user: people[1], sent: 60, answered: 21, average: 3.7, low: 4 }], recent: [{ id: 1, agent: "Ayşe Kaya", phone: "905551112233", score: 1, comment: "Çok beklettiler", conversationId: 1, answeredAt: ago(30) }, { id: 2, agent: "Toprak Şahin Güreli", phone: "905559998877", score: 5, comment: "", conversationId: 2, answeredAt: ago(90) }] };
   if (p.endsWith("/test")) return { ok: true, message: "Bağlantı çalışıyor. Numara: +90 850 123 45 67, ad: Örnek Şirket.", subscribed: false, webhookSeen: true };
   return method === "GET" ? [] : {};
 }
@@ -301,12 +301,12 @@ function perfRow(id: number, name: string, status: string, long: number, un: num
     shift: { firstStart: ago(240), open: status !== "off", seconds: shift },
     calls: { total: long + un + sh, answered: long + sh, short: sh, long, unanswered: un, inbound: long, outbound: un, inboundMissed: un, outboundMissed: 0, inboundReal: Math.round(long * 0.6), outboundReal: long - Math.round(long * 0.6), talkSeconds: talk, avgTalkSeconds: long ? Math.round(talk / long) : 0, longestSeconds: 1310, over5: 3, over10: 1, over20: 0, peers: long, avgAnswerSeconds: 6 },
     escalations: 2, breakSeconds: 900,
-    recent: [{ peer: "05304230113", peerName: "Mehmet Demir", direction: "inbound", disposition: "answered", startedAt: ago(20), durationSeconds: 312 }],
+    recent: [{ peer: "05551234567", peerName: "Mehmet Demir", direction: "inbound", disposition: "answered", startedAt: ago(20), durationSeconds: 312 }],
     ...extra,
   };
 }
 const perfRows = [
-  perfRow(1, "Toprak Şahin Güreli", "talking", 31, 4, 3, 5400, 14400, { call: { peer: "05304230113", peerName: "Mehmet Demir", direction: "inbound", startedAt: ago(2) }, wa: { owned: 12, resolved: 10, messages: 140, avgFirstReplySec: 95, ratings: 6, avgRating: 4.7 }, survey: { answered: 9, average: 4.6 } }),
+  perfRow(1, "Toprak Şahin Güreli", "talking", 31, 4, 3, 5400, 14400, { call: { peer: "05551234567", peerName: "Mehmet Demir", direction: "inbound", startedAt: ago(2) }, wa: { owned: 12, resolved: 10, messages: 140, avgFirstReplySec: 95, ratings: 6, avgRating: 4.7 }, survey: { answered: 9, average: 4.6 } }),
   perfRow(2, "Ayşe Kaya", "available", 24, 14, 6, 3900, 14000, { wa: { owned: 8, resolved: 5, messages: 60, avgFirstReplySec: 700, ratings: 2, avgRating: 3.5 } }),
   perfRow(3, "Mehmet Demir", "break", 18, 3, 1, 3000, 12000),
   perfRow(4, "Elif Su Uzunsoyadlıkişi", "off", 0, 0, 0, 0, 0),

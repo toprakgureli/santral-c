@@ -9,7 +9,7 @@ import (
 )
 
 func TestInboundShape(t *testing.T) {
-	raw := `{"from":"905301112233","id":"wamid.X","timestamp":"1727000000","type":"interactive",
+	raw := `{"from":"905551112233","id":"wamid.X","timestamp":"1727000000","type":"interactive",
 		"interactive":{"type":"button_reply","button_reply":{"id":"opt:o1","title":"Destek"}}}`
 	var m hookMessage
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
@@ -19,7 +19,7 @@ func TestInboundShape(t *testing.T) {
 	if kind != "interactive" || body != "Destek" || media != nil || payload.(map[string]string)["id"] != "opt:o1" {
 		t.Fatalf("button reply shape wrong: %s %s %+v", kind, body, payload)
 	}
-	raw = `{"from":"905301112233","id":"wamid.Y","type":"document","document":{"id":"M1","mime_type":"application/pdf","filename":"fatura.pdf","caption":"ekte"}}`
+	raw = `{"from":"905551112233","id":"wamid.Y","type":"document","document":{"id":"M1","mime_type":"application/pdf","filename":"fatura.pdf","caption":"ekte"}}`
 	m = hookMessage{}
 	_ = json.Unmarshal([]byte(raw), &m)
 	kind, body, media, _ = inboundShape(&m)

@@ -456,7 +456,7 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 	}
 	e164, err := phone.Normalize(number)
 	if err != nil {
-		return nil, errs.Invalid("Numara anlaşılamadı. Örnek: 0530 123 45 67", err)
+		return nil, errs.Invalid("Numara anlaşılamadı. Örnek: 0555 123 45 67", err)
 	}
 	waID := strings.TrimPrefix(e164, "+")
 	var convID uint

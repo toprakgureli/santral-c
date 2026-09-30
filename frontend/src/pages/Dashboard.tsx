@@ -431,7 +431,7 @@ function Softphone({ hasExtension, canCall }: { hasExtension: boolean; canCall: 
     if (n) phone.call(n).catch(() => undefined);
   }
 
-  // Clicking the number on the call face copies it bare (5304230113).
+  // Clicking the number on the call face copies it bare (5551234567).
   const [peerCopied, setPeerCopied] = useState(false);
   function copyPeer() {
     const val = displayNumber(phone.peer || "");

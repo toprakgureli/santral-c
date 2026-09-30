@@ -35,8 +35,8 @@ const (
 )
 
 // party is one side of a call as the hosted API prints it: an external number
-// ("05304230113"), a DID with the extension behind it ("902127060510 (1014)"),
-// an extension with its outbound DID ("1014 (902129510292)"), or a bare
+// ("05551234567"), a DID with the extension behind it ("902125550101 (1014)"),
+// an extension with its outbound DID ("1014 (902125550100)"), or a bare
 // extension ("1014").
 type party struct {
 	Ext string // internal extension, if any

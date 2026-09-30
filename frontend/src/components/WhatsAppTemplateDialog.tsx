@@ -84,7 +84,7 @@ export default function WhatsAppTemplateDialog({
     }
   }
 
-  const preview = renderWhatsAppTemplate(text, { name: user?.name ?? "", number: previewNumber || "5304230113" });
+  const preview = renderWhatsAppTemplate(text, { name: user?.name ?? "", number: previewNumber || "5551234567" });
   const tooLong = Object.values(texts).some((t) => t.length > WHATSAPP_TEMPLATE_MAX);
   const empty = Object.values(texts).some((t) => !t.trim());
 

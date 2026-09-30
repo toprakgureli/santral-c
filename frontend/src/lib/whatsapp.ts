@@ -44,7 +44,7 @@ export function renderWhatsAppTemplate(template: string, vars: { name: string; n
 }
 
 // whatsappNumber turns any Turkish number form into the E.164 digits wa.me
-// wants (905304230113); returns "" for extensions and unknown shapes.
+// wants (905551234567); returns "" for extensions and unknown shapes.
 export function whatsappNumber(raw: string): string {
   const d = (raw || "").replace(/[^\d]/g, "");
   if (d.length < 10) return "";

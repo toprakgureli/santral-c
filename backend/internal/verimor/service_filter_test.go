@@ -10,13 +10,13 @@ func TestExtIsParty(t *testing.T) {
 		caller, dest, ext string
 		want              bool
 	}{
-		{"1014 (902129510292)", "05304230113", "1014", true},  // outbound: ext is caller prefix
-		{"1015 (902129510292)", "05367441605", "1014", false}, // another ext's outbound
-		{"05325219502", "902129092554", "1014", false},        // inbound to a bare DID (not this ext)
-		{"05357352889", "902129510292 (1008)", "1008", true},  // inbound answered by 1008
-		{"05357352889", "902129510292 (1008)", "1014", false}, // inbound to 1008, not 1014
-		{"1021 (902127060510)", "1014", "1014", true},         // internal call to 1014
-		{"1008 (902128526465)", "05309752651", "1014", false},
+		{"1014 (902125550100)", "05551234567", "1014", true},  // outbound: ext is caller prefix
+		{"1015 (902125550100)", "05551234568", "1014", false}, // another ext's outbound
+		{"05551234569", "902125550102", "1014", false},        // inbound to a bare DID (not this ext)
+		{"05551234570", "902125550100 (1008)", "1008", true},  // inbound answered by 1008
+		{"05551234570", "902125550100 (1008)", "1014", false}, // inbound to 1008, not 1014
+		{"1021 (902125550101)", "1014", "1014", true},         // internal call to 1014
+		{"1008 (902125550103)", "05551234571", "1014", false},
 	}
 	for _, c := range cases {
 		got := extIsParty(CDR{CallerIDNumber: c.caller, DestinationNumber: c.dest}, c.ext)
@@ -31,9 +31,9 @@ func TestParseParty(t *testing.T) {
 		field    string
 		ext, num string
 	}{
-		{"1014 (902129510292)", "1014", "902129510292"},
-		{"902127060510 (1014)", "1014", "902127060510"},
-		{"05304230113", "", "05304230113"},
+		{"1014 (902125550100)", "1014", "902125550100"},
+		{"902125550101 (1014)", "1014", "902125550101"},
+		{"05551234567", "", "05551234567"},
 		{"1014", "1014", ""},
 		{"", "", ""},
 	}
@@ -47,12 +47,12 @@ func TestParseParty(t *testing.T) {
 
 func TestPhoneQuery(t *testing.T) {
 	cases := map[string]string{
-		"5304230113":       "5304230113",
-		"05304230113":      "5304230113",
-		"905304230113":     "5304230113",
-		"+90 530 423 0113": "5304230113",
+		"5551234567":       "5551234567",
+		"05551234567":      "5551234567",
+		"905551234567":     "5551234567",
+		"+90 555 123 4567": "5551234567",
 		"530423":           "530423",
-		"0212 909 25 54":   "2129092554",
+		"0212 555 01 02":   "2125550102",
 		"":                 "",
 	}
 	for in, want := range cases {
@@ -63,12 +63,12 @@ func TestPhoneQuery(t *testing.T) {
 }
 
 func TestCDRRowDerivesSearchColumns(t *testing.T) {
-	c := CDR{CallUUID: "u1", Direction: "Gelen", CallerIDNumber: "05304230113", DestinationNumber: "902127060510 (1014)", StartStamp: "2026-09-12 20:55:41 +0300", RecordingPresent: true}
+	c := CDR{CallUUID: "u1", Direction: "Gelen", CallerIDNumber: "05551234567", DestinationNumber: "902125550101 (1014)", StartStamp: "2026-09-12 20:55:41 +0300", RecordingPresent: true}
 	row, ok := cdrRow(c, time.Now())
 	if !ok {
 		t.Fatal("row should be built")
 	}
-	if row.Direction != "inbound" || row.CallerNum != "05304230113" || row.DestNum != "902127060510" || row.DestExt != "1014" || row.CallerExt != "" {
+	if row.Direction != "inbound" || row.CallerNum != "05551234567" || row.DestNum != "902125550101" || row.DestExt != "1014" || row.CallerExt != "" {
 		t.Fatalf("unexpected row: %+v", row)
 	}
 	want := time.Date(2026, 9, 12, 17, 55, 41, 0, time.UTC)

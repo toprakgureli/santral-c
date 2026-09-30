@@ -26,7 +26,7 @@ CREATE TABLE contact_phones (
     contact_id  bigint NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
     label       varchar(20) NOT NULL DEFAULT 'other'
                 CHECK (label IN ('mobile', 'work', 'home', 'other')),
-    number_e164 varchar(20) NOT NULL,             -- normalized E.164, e.g. +905321112233
+    number_e164 varchar(20) NOT NULL,             -- normalized E.164, e.g. +905551112233
     is_primary  boolean NOT NULL DEFAULT false,
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()

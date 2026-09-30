@@ -108,7 +108,7 @@
     else if (d.length === 10) d = "0" + d;
     return d;
   }
-  // displayNumber strips a number to its bare 10 digits (5304230113).
+  // displayNumber strips a number to its bare 10 digits (5551234567).
   function displayNumber(raw) {
     const d = String(raw ?? "").replace(/[^\d]/g, "");
     if (!d) return String(raw ?? "");

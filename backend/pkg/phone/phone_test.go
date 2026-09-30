@@ -8,13 +8,13 @@ func TestNormalize(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"local zero prefix", "0532 111 22 33", "+905321112233"},
-		{"bare ten digits", "5321112233", "+905321112233"},
-		{"international plus", "+90 532 111 22 33", "+905321112233"},
-		{"double zero prefix", "0090 532 111 22 33", "+905321112233"},
-		{"bare country code", "905321112233", "+905321112233"},
+		{"local zero prefix", "0555 111 22 33", "+905551112233"},
+		{"bare ten digits", "5551112233", "+905551112233"},
+		{"international plus", "+90 555 111 22 33", "+905551112233"},
+		{"double zero prefix", "0090 555 111 22 33", "+905551112233"},
+		{"bare country code", "905551112233", "+905551112233"},
 		{"foreign number", "+1 (415) 555-2671", "+14155552671"},
-		{"punctuation", "+90.532.111.22.33", "+905321112233"},
+		{"punctuation", "+90.555.111.22.33", "+905551112233"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

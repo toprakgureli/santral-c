@@ -158,7 +158,7 @@ export function EscalationSearch() {
             <input
               value={number}
               onChange={(e) => setNumber(e.target.value)}
-              placeholder="Müşteri numarası (örn. 05304230113)"
+              placeholder="Müşteri numarası (örn. 05551234567)"
               inputMode="tel"
               autoFocus={searchOnly}
               className="h-10 w-full rounded-xl border border-border/70 bg-muted/40 pl-10 pr-9 text-sm outline-none transition placeholder:text-muted-foreground/60 hover:border-border focus-visible:border-ring/60 focus-visible:bg-card focus-visible:ring-4 focus-visible:ring-ring/20"

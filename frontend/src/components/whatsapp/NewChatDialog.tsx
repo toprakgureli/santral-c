@@ -100,7 +100,7 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
             )}
             <label className="block space-y-1">
               <span className="text-xs font-medium text-muted-foreground">Müşterinin numarası</span>
-              <input autoFocus value={number} onChange={(e) => setNumber(e.target.value)} inputMode="tel" placeholder="0530 123 45 67" className="h-10 w-full rounded-xl border border-border/60 bg-card px-3 font-mono text-sm outline-none focus:border-ring/50 focus:ring-4 focus:ring-ring/15" />
+              <input autoFocus value={number} onChange={(e) => setNumber(e.target.value)} inputMode="tel" placeholder="0555 123 45 67" className="h-10 w-full rounded-xl border border-border/60 bg-card px-3 font-mono text-sm outline-none focus:border-ring/50 focus:ring-4 focus:ring-ring/15" />
             </label>
             <label className="block space-y-1">
               <span className="text-xs font-medium text-muted-foreground">Adı (isteğe bağlı)</span>

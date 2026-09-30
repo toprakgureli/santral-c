@@ -34,13 +34,13 @@ function phoneValue(over: Partial<SoftphoneValue>): SoftphoneValue {
     status: "in-call",
     lastEnded: null,
     callId: "c1",
-    lastPeer: "05304230113",
+    lastPeer: "05551234567",
     lastUnreached: null,
     extension: "1001",
     error: null,
     muted: false,
     held: false,
-    peer: "05304230113",
+    peer: "05551234567",
     endReason: null,
     callStartedAt: Date.now() - 65000,
     answeredAt: Date.now() - 60000,
@@ -74,13 +74,13 @@ function row(over: Partial<TeamRow> & { status: TeamRow["status"] }): TeamRow {
     calls: { total: 31, answered: 24, short: 3, long: 21, unanswered: 7, inbound: 20, outbound: 11, inboundMissed: 5, outboundMissed: 2, inboundReal: 14, outboundReal: 7, talkSeconds: 5400, avgTalkSeconds: 257, longestSeconds: 1310, over5: 6, over10: 3, over20: 1, peers: 18, avgAnswerSeconds: 6 },
     escalations: 2,
     breakSeconds: 900,
-    recent: [{ peer: "05304230113", peerName: "Mehmet Demir", direction: "inbound", disposition: "answered", startedAt: new Date(now.getTime() - 20 * 60000).toISOString(), durationSeconds: 312 }],
+    recent: [{ peer: "05551234567", peerName: "Mehmet Demir", direction: "inbound", disposition: "answered", startedAt: new Date(now.getTime() - 20 * 60000).toISOString(), durationSeconds: 312 }],
     ...over,
   };
 }
 
 const rows: TeamRow[] = [
-  row({ status: "talking", call: { peer: "05304230113", peerName: "Mehmet Demir", direction: "inbound", startedAt: new Date(Date.now() - 95000).toISOString() } }),
+  row({ status: "talking", call: { peer: "05551234567", peerName: "Mehmet Demir", direction: "inbound", startedAt: new Date(Date.now() - 95000).toISOString() } }),
   row({ status: "available", userId: 2, name: "Zeynep Kaya Uzunsoyadlıkişi", extension: "1003", roles: ["Satış", "Teknik Destek"] }),
   row({ status: "break", userId: 3, name: "Mehmet Öz", extension: "1004", escalations: 0, breakSeconds: 0 }),
   row({ status: "off", userId: 4, name: "Elif Su", extension: "1005", shift: { open: false, seconds: 0 }, calls: { total: 0, answered: 0, short: 0, long: 0, unanswered: 0, inbound: 0, outbound: 0, inboundMissed: 0, outboundMissed: 0, inboundReal: 0, outboundReal: 0, talkSeconds: 0, avgTalkSeconds: 0, longestSeconds: 0, over5: 0, over10: 0, over20: 0, peers: 0, avgAnswerSeconds: 0 }, recent: [] }),
@@ -131,7 +131,7 @@ export default function Preview() {
                       <RangePicker preset={range.preset} range={range.range} onPreset={range.choose} onFrom={range.setFrom} onTo={range.setTo} />
                     </Toolbar>
                     <div className="space-y-1">
-                      <ListRow icon={PhoneIncoming} tone="success" title={<span className="font-mono">05304230113 → 1001</span>} sub="Gelen · Cevaplandı · 25.09 14:12" trailing={<span className="font-mono text-sm">03:12</span>} />
+                      <ListRow icon={PhoneIncoming} tone="success" title={<span className="font-mono">05551234567 → 1001</span>} sub="Gelen · Cevaplandı · 25.09 14:12" trailing={<span className="font-mono text-sm">03:12</span>} />
                       <ListRow icon={PhoneOutgoing} tone="destructive" title={<span className="font-mono">1001 → 05551234567</span>} sub="Giden · Cevapsız · 25.09 13:58" trailing={<span className="font-mono text-sm">—</span>} onClick={() => undefined} />
                       <ListRow icon={Tags} tone="warning" title="Fatura itirazı" sub={<span>Ahmet Yılmaz · <Badge tone="amber">Faturalama</Badge></span>} trailing={<span className="text-xs text-muted-foreground">25.09.2026 12:03</span>} active>
                         <p className="pl-11 text-sm text-foreground/80">Kendiliğinden kaydedildi · 4 dk 12 sn görüşme</p>
