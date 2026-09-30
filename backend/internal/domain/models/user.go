@@ -73,6 +73,21 @@ func (u *User) CanGrant(p enums.Permission) bool {
 	return enums.Grantable(u.Can, p)
 }
 
+// CanManage reports whether the user may change target's account: the target
+// holds no permission the user could not hand out themselves. Invisible
+// admins may manage anyone.
+func (u *User) CanManage(target *User) bool {
+	if u.IsInvisibleAdmin() {
+		return true
+	}
+	for _, p := range target.Permissions() {
+		if !u.CanGrant(p) {
+			return false
+		}
+	}
+	return true
+}
+
 // IsInvisibleAdmin reports whether the user carries the invisible-admin role.
 func (u *User) IsInvisibleAdmin() bool {
 	for _, r := range u.Roles {

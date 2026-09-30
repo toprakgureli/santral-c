@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -25,6 +26,11 @@ import (
 // IActorResolver loads the acting user for authorization.
 type IActorResolver interface {
 	GetByID(ctx context.Context, id uint) (*models.User, error)
+}
+
+// IAudit records who changed what.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
 }
 
 // IShiftReader reports the user's open shift. Placing calls and changing
@@ -40,6 +46,7 @@ type Service struct {
 	client *Client
 	users  IActorResolver
 	repo   *Repository
+	audit  IAudit
 	cfg    configs.Bulutsantralim
 	shifts IShiftReader
 
@@ -64,11 +71,11 @@ type snapshot struct {
 }
 
 // NewService builds a Verimor service.
-func NewService(client *Client, users IActorResolver, repo *Repository, cfg configs.Bulutsantralim) *Service {
+func NewService(client *Client, users IActorResolver, repo *Repository, auditor IAudit, cfg configs.Bulutsantralim) *Service {
 	if cfg.WebphoneBase == "" {
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, repo: repo, cfg: cfg}
+	return &Service{client: client, users: users, repo: repo, audit: auditor, cfg: cfg}
 }
 
 // SetShifts wires the shift reader that gates outbound calls and presence.
@@ -348,28 +355,31 @@ func (s *Service) Credentials(ctx context.Context, actorID uint) (*SIPCredential
 }
 
 // SetCredentials stores a user's SIP extension and password (encrypted).
-func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, extension, password string) error {
-	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
+func (s *Service) SetCredentials(ctx context.Context, actorID, targetID uint, extension, password, ip string) error {
+	target, err := s.sipTarget(ctx, actorID, targetID, extension)
+	if err != nil {
 		return err
 	}
 	enc, err := crypt.Encrypt(s.cfg.SIPKey, password)
 	if err != nil {
 		return errs.Internal(err)
 	}
-	if err := s.repo.SetSIP(ctx, targetID, extension, enc); err != nil {
+	if err := s.repo.SetSIP(ctx, target.ID, extension, enc); err != nil {
 		return errs.Internal(err)
 	}
+	s.recordSIP(ctx, actorID, target, extension, "manual", ip)
 	return nil
 }
 
 // ProvisionSIP pulls a single extension's SIP password from Verimor and stores
 // it (encrypted) for the target user, so the admin only enters the extension.
-func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, extension string) error {
-	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
-		return err
+func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, extension, ip string) error {
+	if !extensionPattern.MatchString(extension) {
+		return errs.Invalid("Dahili numarası 2-32 haneli bir sayı olmalı.", nil)
 	}
-	if extension == "" {
-		return errs.Invalid("Dahili numarası zorunlu.", nil)
+	target, err := s.sipTarget(ctx, actorID, targetID, extension)
+	if err != nil {
+		return err
 	}
 	pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, extension)
 	if err != nil {
@@ -379,10 +389,61 @@ func (s *Service) ProvisionSIP(ctx context.Context, actorID, targetID uint, exte
 	if err != nil {
 		return errs.Internal(err)
 	}
-	if err := s.repo.SetSIP(ctx, targetID, extension, enc); err != nil {
+	if err := s.repo.SetSIP(ctx, target.ID, extension, enc); err != nil {
 		return errs.Internal(err)
 	}
+	s.recordSIP(ctx, actorID, target, extension, "verimor", ip)
 	return nil
+}
+
+// extensionPattern is a PBX extension: digits only, since it also goes into
+// the webphone address.
+var extensionPattern = regexp.MustCompile(`^[0-9]{2,32}$`)
+
+// sipTarget checks that actor may set target's SIP account to extension and
+// returns the target. The invisible admin stays hidden from other users, a
+// user with more rights than the actor is left alone, and an extension
+// already bound to someone else is refused rather than silently moved.
+func (s *Service) sipTarget(ctx context.Context, actorID, targetID uint, extension string) (*models.User, error) {
+	actor, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage)
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.users.GetByID(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
+		return nil, errs.NotFound("Kullanıcı bulunamadı.")
+	}
+	if !actor.CanManage(target) {
+		return nil, errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
+	}
+	owner, err := s.repo.ExtensionOwner(ctx, extension)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if owner != 0 && owner != target.ID {
+		return nil, errs.Conflict("Bu dahili başka bir kullanıcıya bağlı.", nil)
+	}
+	return target, nil
+}
+
+// recordSIP writes the audit entry for a SIP account change. The password is
+// never part of it.
+func (s *Service) recordSIP(ctx context.Context, actorID uint, target *models.User, extension, source, ip string) {
+	previous := ""
+	if target.SIPExtension != nil {
+		previous = *target.SIPExtension
+	}
+	s.audit.Record(ctx, audit.Entry{
+		ActorID:    &actorID,
+		Action:     enums.AuditUserSIPUpdated,
+		TargetType: "user",
+		TargetID:   strconv.FormatUint(uint64(target.ID), 10),
+		IP:         ip,
+		Detail:     map[string]any{"extension": extension, "previous": previous, "source": source},
+	})
 }
 
 // SIPSyncFailure is one extension that could not be synced, with why.
@@ -395,7 +456,7 @@ type SIPSyncFailure struct {
 // extension and stores it, returning how many succeeded and which extensions
 // failed with the reason, so a missing employee can be told apart from a
 // throttle or a changed webphone page.
-func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []SIPSyncFailure, error) {
+func (s *Service) SyncAllSIP(ctx context.Context, actorID uint, ip string) (int, []SIPSyncFailure, error) {
 	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
 		return 0, nil, err
 	}
@@ -429,6 +490,12 @@ func (s *Service) SyncAllSIP(ctx context.Context, actorID uint) (int, []SIPSyncF
 		}
 		ok++
 	}
+	s.audit.Record(ctx, audit.Entry{
+		ActorID: &actorID,
+		Action:  enums.AuditSIPSyncedAll,
+		IP:      ip,
+		Detail:  map[string]any{"synced": ok, "failed": len(failed)},
+	})
 	return ok, failed, nil
 }
 

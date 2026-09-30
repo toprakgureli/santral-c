@@ -121,6 +121,15 @@ func (s *Service) CreateUser(ctx context.Context, actorID uint, req requests.Use
 	if exists {
 		return nil, errs.Conflict("Bu e-posta zaten kullanımda.", nil)
 	}
+	if req.SIPExtension != "" {
+		taken, err := s.repo.ExtensionTaken(ctx, req.SIPExtension)
+		if err != nil {
+			return nil, errs.Internal(err)
+		}
+		if taken {
+			return nil, errs.Conflict("Bu dahili başka bir kullanıcıya bağlı.", nil)
+		}
+	}
 	if err := password.Validate(req.Password); err != nil {
 		return nil, err
 	}
@@ -478,13 +487,8 @@ func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []ui
 // ensureNotAbove blocks changes to a user who holds a permission the actor
 // lacks. Invisible admins may change anyone.
 func ensureNotAbove(actor, target *models.User) error {
-	if actor.IsInvisibleAdmin() {
-		return nil
-	}
-	for _, p := range target.Permissions() {
-		if !actor.CanGrant(p) {
-			return errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
-		}
+	if !actor.CanManage(target) {
+		return errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
 	}
 	return nil
 }

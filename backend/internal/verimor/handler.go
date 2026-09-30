@@ -68,7 +68,7 @@ func (h *Handler) SetCredentials(c *fiber.Ctx) error {
 	if err := validator.Struct(req); err != nil {
 		return err
 	}
-	if err := h.service.SetCredentials(c.UserContext(), id, uint(targetID), req.Extension, req.Password); err != nil {
+	if err := h.service.SetCredentials(c.UserContext(), id, uint(targetID), req.Extension, req.Password, c.IP()); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -91,7 +91,7 @@ func (h *Handler) SyncCredentials(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	if err := h.service.ProvisionSIP(c.UserContext(), id, uint(targetID), strings.TrimSpace(req.Extension)); err != nil {
+	if err := h.service.ProvisionSIP(c.UserContext(), id, uint(targetID), strings.TrimSpace(req.Extension), c.IP()); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -104,7 +104,7 @@ func (h *Handler) SyncAllCredentials(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	ok, failed, err := h.service.SyncAllSIP(c.UserContext(), id)
+	ok, failed, err := h.service.SyncAllSIP(c.UserContext(), id, c.IP())
 	if err != nil {
 		return err
 	}

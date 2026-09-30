@@ -6,7 +6,7 @@ type UserCreate struct {
 	Email        string `json:"email" validate:"required,email,max=255"`
 	Password     string `json:"password" validate:"required,min=8,max=16"`
 	RoleIDs      []uint `json:"roleIds" validate:"required,min=1,dive,gt=0"`
-	SIPExtension string `json:"sipExtension" validate:"omitempty,min=2,max=32"`
+	SIPExtension string `json:"sipExtension" validate:"omitempty,numeric,min=2,max=32"`
 }
 
 // UserUpdate edits a user's profile and role assignment.

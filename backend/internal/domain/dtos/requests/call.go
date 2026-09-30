@@ -9,7 +9,7 @@ type CallOriginate struct {
 
 // SIPCredentials sets a user's Bulutsantralim SIP extension and password.
 type SIPCredentials struct {
-	Extension string `json:"extension" validate:"required,min=2,max=32"`
+	Extension string `json:"extension" validate:"required,numeric,min=2,max=32"`
 	Password  string `json:"password" validate:"required,min=1,max=128"`
 }
 

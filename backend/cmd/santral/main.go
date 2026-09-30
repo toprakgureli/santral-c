@@ -197,7 +197,7 @@ func run() error {
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
-		verimorSvc := verimor.NewService(verimorClient, userSvc, verimor.NewRepository(db), configs.Cnf.Bulutsantralim)
+		verimorSvc := verimor.NewService(verimorClient, userSvc, verimor.NewRepository(db), auditSvc, configs.Cnf.Bulutsantralim)
 		// Calls and presence changes need an open shift; a shift change in turn
 		// drives the agent's presence and do-not-disturb.
 		verimorSvc.SetShifts(shiftSvc)

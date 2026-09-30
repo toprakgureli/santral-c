@@ -356,6 +356,22 @@ func (r *Repository) UsersWithExtension(ctx context.Context) ([]UserExtension, e
 	return rows, nil
 }
 
+// ExtensionOwner returns the id of the user bound to extension, or 0.
+func (r *Repository) ExtensionOwner(ctx context.Context, extension string) (uint, error) {
+	var ids []uint
+	if err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("sip_extension = ?", extension).
+		Limit(1).
+		Pluck("id", &ids).Error; err != nil {
+		return 0, fmt.Errorf("extension owner could not be looked up: %w", err)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	return ids[0], nil
+}
+
 // SetSIP stores a user's SIP extension and encrypted SIP password.
 func (r *Repository) SetSIP(ctx context.Context, id uint, extension, encPassword string) error {
 	if err := r.db.WithContext(ctx).

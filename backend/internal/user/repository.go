@@ -117,6 +117,18 @@ func (r *Repository) EmailExists(ctx context.Context, email string) (bool, error
 	return count > 0, nil
 }
 
+// ExtensionTaken reports whether a user is already bound to the SIP extension.
+func (r *Repository) ExtensionTaken(ctx context.Context, extension string) (bool, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("sip_extension = ?", extension).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("extension use could not be checked: %w", err)
+	}
+	return count > 0, nil
+}
+
 // EmailExistsExcept reports whether another account already uses the email.
 func (r *Repository) EmailExistsExcept(ctx context.Context, email string, exceptID uint) (bool, error) {
 	var count int64

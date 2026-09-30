@@ -8,6 +8,8 @@ const (
 	AuditUserPasswordReset string = "user.password_reset"
 	AuditUserRolesUpdated  string = "user.roles_updated"
 	AuditUserUpdated       string = "user.updated"
+	AuditUserSIPUpdated    string = "user.sip_updated"
+	AuditSIPSyncedAll      string = "pbx.sip_synced_all"
 
 	AuditRoleCreated string = "role.created"
 	AuditRoleUpdated string = "role.updated"

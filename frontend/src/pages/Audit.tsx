@@ -18,6 +18,8 @@ const ACTION_LABELS: Record<string, string> = {
   "user.deactivated": "Kullanıcı pasife alındı",
   "user.password_reset": "Şifre sıfırlandı",
   "user.roles_updated": "Roller değiştirildi",
+  "user.sip_updated": "Dahili (SIP) değiştirildi",
+  "pbx.sip_synced_all": "Tüm SIP şifreleri Verimor'dan çekildi",
   "role.created": "Rol oluşturuldu",
   "role.updated": "Rol güncellendi",
   "role.deleted": "Rol silindi",
@@ -40,6 +42,7 @@ const MODULES: { key: string; label: string }[] = [
   { key: "settings.", label: "Ayarlar" },
   { key: "security.", label: "Güvenlik" },
   { key: "shift.", label: "Mesai" },
+  { key: "pbx.", label: "Santral" },
 ];
 
 const TARGET_LABELS: Record<string, string> = {
