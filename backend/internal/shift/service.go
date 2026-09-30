@@ -13,6 +13,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // Working-day cutoffs in Istanbul time. The day nominally ends at 18:30; a
@@ -130,9 +131,9 @@ func (s *Service) End(ctx context.Context, userID uint, ip string) (*responses.S
 }
 
 // StartSweeper launches the loop that closes shifts left open past the cutoff.
-func (s *Service) StartSweeper(ctx context.Context) {
-	go func() {
-		s.sweep(ctx)
+func (s *Service) StartSweeper(ctx context.Context, g *safe.Group) {
+	g.Loop(ctx, "shift sweeper", func(ctx context.Context) {
+		safe.Run(ctx, "shift sweep", func() { s.sweep(ctx) })
 		t := time.NewTicker(sweepEvery)
 		defer t.Stop()
 		for {
@@ -140,10 +141,10 @@ func (s *Service) StartSweeper(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				s.sweep(ctx)
+				safe.Run(ctx, "shift sweep", func() { s.sweep(ctx) })
 			}
 		}
-	}()
+	})
 }
 
 // sweep closes every open shift whose cutoff has passed. The close is stamped

@@ -25,6 +25,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/teams"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 const (
@@ -1111,7 +1112,8 @@ func (s *Service) finish(ctx context.Context, m *Match, winners []uint, note str
 		text += " (" + note + ")"
 	}
 	s.rooms.PostSystem(ctx, m.G.GroupID, text)
-	go s.forgetLater(m.G.ID)
+	id := m.G.ID
+	safe.Go(ctx, "games forget match", func() { s.forgetLater(id) })
 }
 
 func (s *Service) forget(id uint) {
@@ -1125,10 +1127,11 @@ func (s *Service) forgetLater(id uint) {
 	s.forget(id)
 }
 
-// StartClock runs the one-second referee and the hockey simulation.
-func (s *Service) StartClock(ctx context.Context) {
+// StartClock runs the one-second referee and the hockey simulation. A panic
+// in one tick is logged and the next tick runs as usual.
+func (s *Service) StartClock(ctx context.Context, g *safe.Group) {
 	s.Warm(ctx)
-	go func() {
+	g.Loop(ctx, "games referee", func(ctx context.Context) {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
 		for {
@@ -1136,11 +1139,11 @@ func (s *Service) StartClock(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case now := <-t.C:
-				s.tick(ctx, now)
+				safe.Run(ctx, "games referee tick", func() { s.tick(ctx, now) })
 			}
 		}
-	}()
-	go func() {
+	})
+	g.Loop(ctx, "games hockey", func(ctx context.Context) {
 		t := time.NewTicker(time.Second / 30)
 		defer t.Stop()
 		for {
@@ -1148,10 +1151,10 @@ func (s *Service) StartClock(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				s.frame(ctx)
+				safe.Run(ctx, "games hockey frame", func() { s.frame(ctx) })
 			}
 		}
-	}()
+	})
 }
 
 func (s *Service) tick(ctx context.Context, now time.Time) {

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 var istanbul = time.FixedZone("+03", 3*3600)
@@ -716,9 +718,14 @@ func (s *Service) Update(ctx context.Context, actorID, groupID uint, in UpdateIn
 	if g.DriveFolder != "" && name != g.Name {
 		renamed := *g
 		renamed.Name = name
-		go func(id, label string) {
-			_ = s.drive.Rename(context.Background(), id, label)
-		}(g.DriveFolder, s.roomFolderName(ctx, &renamed))
+		folder, label := g.DriveFolder, s.roomFolderName(ctx, &renamed)
+		safe.Go(ctx, "teams drive rename", func() {
+			c, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+			defer cancel()
+			if err := s.drive.Rename(c, folder, label); err != nil {
+				slog.WarnContext(c, "drive folder could not be renamed", "drive_id", folder, "error", err)
+			}
+		})
 	}
 	s.notifyGroup(ctx, groupID, Event{Type: "group", GroupID: groupID})
 	return s.Detail(ctx, actorID, groupID)
@@ -776,9 +783,7 @@ func (s *Service) Delete(ctx context.Context, actorID, groupID uint) error {
 	}
 	// The room's folder and everything in it go with the room.
 	if g.DriveFolder != "" {
-		go func(id string) {
-			_ = s.drive.Delete(context.Background(), id)
-		}(g.DriveFolder)
+		s.deleteDriveLater(ctx, g.DriveFolder)
 	}
 	s.hub.Send(ids, Event{Type: "group", GroupID: groupID})
 	return nil

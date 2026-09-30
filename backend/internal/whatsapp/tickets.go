@@ -12,6 +12,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // event writes a line into the conversation's history ("Toprak sohbeti
@@ -564,6 +565,19 @@ func (s *Service) notifyReopen(ctx context.Context, t *models.WATicket) {
 
 // clock runs the timed work: the waiting list, handing out pooled
 // tickets, chatbot timeouts, timed rules and housekeeping.
+// housekeeping deletes old rows nobody reads any more.
+func (s *Service) housekeeping(ctx context.Context) {
+	for _, q := range []string{
+		"DELETE FROM wa_webhook_events WHERE status = 'done' AND received_at < now() - interval '30 days'",
+		"DELETE FROM wa_pending_statuses WHERE created_at < now() - interval '2 days'",
+		"DELETE FROM wa_bot_events WHERE created_at < now() - interval '180 days'",
+	} {
+		if err := s.db.WithContext(ctx).Exec(q).Error; err != nil {
+			slog.WarnContext(ctx, "whatsapp housekeeping failed", "query", q, "error", err)
+		}
+	}
+}
+
 func (s *Service) clock(ctx context.Context) {
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
@@ -581,26 +595,25 @@ func (s *Service) clock(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		s.sweepWaiting(ctx)
+		// Each job runs on its own, so a panic in one does not stop the rest.
+		safe.Run(ctx, "whatsapp waiting sweep", func() { s.sweepWaiting(ctx) })
 		if every("pool", 30*time.Second) {
-			s.sweepPool(ctx)
+			safe.Run(ctx, "whatsapp pool sweep", func() { s.sweepPool(ctx) })
 		}
 		if every("bots", time.Minute) {
-			s.sweepBots(ctx)
+			safe.Run(ctx, "whatsapp chatbot sweep", func() { s.sweepBots(ctx) })
 		}
 		if every("rules", time.Minute) {
-			s.sweepTimedRules(ctx)
+			safe.Run(ctx, "whatsapp timed rules", func() { s.sweepTimedRules(ctx) })
 		}
 		if every("callsurveys", 30*time.Second) {
-			s.sendDueCallSurveys(ctx)
+			safe.Run(ctx, "whatsapp call surveys", func() { s.sendDueCallSurveys(ctx) })
 		}
 		if every("templates", 6*time.Hour) {
-			s.syncAllTemplates(ctx)
+			safe.Run(ctx, "whatsapp template sync", func() { s.syncAllTemplates(ctx) })
 		}
 		if every("housekeeping", 6*time.Hour) {
-			_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_webhook_events WHERE status = 'done' AND received_at < now() - interval '30 days'").Error
-			_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_pending_statuses WHERE created_at < now() - interval '2 days'").Error
-			_ = s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_events WHERE created_at < now() - interval '180 days'").Error
+			safe.Run(ctx, "whatsapp housekeeping", func() { s.housekeeping(ctx) })
 		}
 	}
 }

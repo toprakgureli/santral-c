@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"log/slog"
 	"net/http"
 	"path"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // Size limits per kind.
@@ -312,9 +314,7 @@ func (s *Service) CancelUpload(ctx context.Context, actorID, attachmentID uint) 
 		return errs.Invalid("Gönderilmiş bir ek bu yoldan silinemez.", nil)
 	}
 	if a.DriveID != "" {
-		go func(id string) {
-			_ = s.drive.Delete(context.Background(), id)
-		}(a.DriveID)
+		s.deleteDriveLater(ctx, a.DriveID)
 	}
 	if err := s.repo.DeleteAttachmentRow(ctx, a.ID); err != nil {
 		return errs.Internal(err)
@@ -351,9 +351,7 @@ func (s *Service) dropAttachments(ctx context.Context, messageID uint) {
 	_ = s.repo.SoftDeleteAttachments(ctx, messageID)
 	for _, a := range rows[messageID] {
 		if a.DriveID != "" {
-			go func(id string) {
-				_ = s.drive.Delete(context.Background(), id)
-			}(a.DriveID)
+			s.deleteDriveLater(ctx, a.DriveID)
 		}
 	}
 }
@@ -393,8 +391,8 @@ func (s *Service) StreamAttachment(ctx context.Context, a *models.ChatAttachment
 }
 
 // StartSweeper removes uploads that never became a message.
-func (s *Service) StartSweeper(ctx context.Context) {
-	go func() {
+func (s *Service) StartSweeper(ctx context.Context, g *safe.Group) {
+	g.Loop(ctx, "teams upload sweeper", func(ctx context.Context) {
 		t := time.NewTicker(time.Hour)
 		defer t.Stop()
 		for {
@@ -405,7 +403,19 @@ func (s *Service) StartSweeper(ctx context.Context) {
 			case <-t.C:
 			}
 		}
-	}()
+	})
+}
+
+// deleteDriveLater removes a Drive file or folder in the background. A
+// failure only leaves an unused file behind, so it is logged, not returned.
+func (s *Service) deleteDriveLater(ctx context.Context, driveID string) {
+	safe.Go(ctx, "teams drive delete", func() {
+		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		defer cancel()
+		if err := s.drive.Delete(c, driveID); err != nil {
+			slog.WarnContext(c, "drive item could not be deleted", "drive_id", driveID, "error", err)
+		}
+	})
 }
 
 func (s *Service) sweepOrphans(ctx context.Context) {

@@ -14,6 +14,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // windowOpen reports whether a free-form message may be sent: the
@@ -420,7 +421,17 @@ func (s *Service) sendBatch(ctx context.Context) bool {
 		return false
 	}
 	for i := range list {
-		s.sendOne(ctx, &list[i])
+		msg := &list[i]
+		// A panic while sending one message fails that message; the queue
+		// keeps moving.
+		err := safe.Call(func() error {
+			s.sendOne(ctx, msg)
+			return nil
+		})
+		if err != nil {
+			slog.ErrorContext(ctx, "whatsapp send panicked", "message", msg.ID, "error", err)
+			_ = s.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?, attempts = attempts + 1 WHERE id = ?", "Gönderilirken beklenmeyen bir hata oldu.", msg.ID).Error
+		}
 	}
 	return len(list) == 20
 }

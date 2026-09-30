@@ -17,6 +17,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // How Meta tells us about things. Every call is written down first and
@@ -109,7 +110,9 @@ func (s *Service) processBatch(ctx context.Context) bool {
 	}
 	for i := range list {
 		ev := &list[i]
-		err := s.processEvent(ctx, ev)
+		// A panic while handling one event marks that event failed; the
+		// rest of the batch goes on.
+		err := safe.Call(func() error { return s.processEvent(ctx, ev) })
 		if err == nil {
 			_ = s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'done', processed_at = now(), attempts = attempts + 1, last_error = '' WHERE id = ?", ev.ID).Error
 			continue
@@ -117,8 +120,12 @@ func (s *Service) processBatch(ctx context.Context) bool {
 		attempts := ev.Attempts + 1
 		status := "pending"
 		wait := time.Duration(30*(1<<min(attempts, 6))) * time.Second
-		if attempts >= 8 {
+		// A panic will happen again on a retry, so it fails at once.
+		if attempts >= 8 || safe.IsPanic(err) {
 			status = "failed"
+		}
+		if p := (*safe.PanicError)(nil); errors.As(err, &p) {
+			slog.ErrorContext(ctx, "whatsapp webhook event panicked", "event", ev.ID, "panic", fmt.Sprint(p.Value), "stack", string(p.Stack))
 		}
 		_ = s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ? WHERE id = ?",
 			status, attempts, err.Error(), time.Now().Add(wait), ev.ID).Error

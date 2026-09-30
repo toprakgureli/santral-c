@@ -9,6 +9,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // MarkRead records that a person read a conversation up to a message.
@@ -69,13 +70,13 @@ func (s *Service) sendReadReceipt(ctx context.Context, conv *models.WAConversati
 		return
 	}
 	wamid := *last.WAMID
-	go func() {
-		c, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	safe.Go(ctx, "whatsapp read receipt", func() {
+		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
 		if err := cl.MarkRead(c, wamid, false); err != nil {
-			slog.Warn("whatsapp read receipt failed", "conversation", conv.ID, "error", err)
+			slog.WarnContext(c, "whatsapp read receipt failed", "conversation", conv.ID, "error", err)
 		}
-	}()
+	})
 }
 
 // MarkUnread puts the badge back for the team.

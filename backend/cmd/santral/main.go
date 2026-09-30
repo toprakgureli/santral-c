@@ -41,6 +41,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // Build stamp, set at link time via -ldflags "-X main.version=... -X main.buildTime=...".
@@ -186,14 +187,16 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Background loops run until ctx ends; shutdown waits for them.
+	var workers safe.Group
 	// Shifts left open past the evening cutoff are closed by the sweeper.
-	shiftSvc.StartSweeper(ctx)
+	shiftSvc.StartSweeper(ctx, &workers)
 	// Chat uploads that never became a message are removed from Drive.
-	teamsSvc.StartSweeper(ctx)
+	teamsSvc.StartSweeper(ctx, &workers)
 	// The games' referee clock and the hockey simulation.
-	gamesSvc.StartClock(ctx)
+	gamesSvc.StartClock(ctx, &workers)
 	// WhatsApp: webhook processing, the send queue and the timed work.
-	waSvc.Start(ctx)
+	waSvc.Start(ctx, &workers)
 
 	if configs.Cnf.Bulutsantralim.Enabled {
 		verimorClient := verimor.NewClient(configs.Cnf.Bulutsantralim.APIKey, configs.Cnf.Bulutsantralim.APIBase)
@@ -205,7 +208,7 @@ func run() error {
 		verimorSvc.SetContacts(contactRepo)
 		shiftSvc.SetPresence(verimorSvc)
 		perfSvc.SetLive(verimorSvc)
-		verimorSvc.Start(ctx)
+		verimorSvc.Start(ctx, &workers)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}
 
@@ -225,5 +228,5 @@ func run() error {
 	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
 		return fmt.Errorf("server shutdown failed: %w", err)
 	}
-	return nil
+	return workers.Wait(shutdownCtx)
 }

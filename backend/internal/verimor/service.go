@@ -21,6 +21,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // IActorResolver loads the acting user for authorization.
@@ -165,9 +166,9 @@ func (s *Service) extensionOf(ctx context.Context, userID uint) string {
 // the one-off history backfill. The hosted API is rate limited (roughly 10
 // requests/minute, and 2/minute on the status endpoint), so the panel must read
 // from the snapshot and the mirror instead of hitting the API on every load.
-func (s *Service) Start(ctx context.Context) {
-	go s.poll(ctx)
-	go s.runMirror(ctx)
+func (s *Service) Start(ctx context.Context, g *safe.Group) {
+	g.Loop(ctx, "verimor poller", s.poll)
+	g.Loop(ctx, "verimor call mirror", s.runMirror)
 }
 
 func (s *Service) poll(ctx context.Context) {

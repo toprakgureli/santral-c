@@ -13,6 +13,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // cloudFor builds the Graph API client from a device's credentials.
@@ -337,13 +338,13 @@ func (s *Service) refreshNumber(ctx context.Context, ch *models.WAChannel) {
 	if err != nil {
 		return
 	}
-	go func() {
+	safe.Go(ctx, "whatsapp number refresh", func() {
 		c, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
 		if info, err := cl.Number(c); err == nil {
 			s.saveNumber(c, ch, info)
 		}
-	}()
+	})
 }
 
 func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *NumberInfo) {

@@ -15,6 +15,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // Meta keeps a customer's file only for a while and its link only for
@@ -283,8 +284,9 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 	}
 	// Keep our own copy too; Meta's goes away.
 	if s.storage != nil && s.storage.Connected(ctx) {
-		go func(id uint) {
-			bg, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		id := msg.ID
+		safe.Go(ctx, "whatsapp media copy", func() {
+			bg, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 			defer cancel()
 			folder, err := s.folderFor(bg, ch)
 			if err != nil {
@@ -296,7 +298,7 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 			}
 			ref.StoreID = store
 			s.saveRef(bg, id, ref)
-		}(msg.ID)
+		})
 	}
 	return view, nil
 }

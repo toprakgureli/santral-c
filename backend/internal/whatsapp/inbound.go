@@ -14,6 +14,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // MediaRef is a media file as stored on a message.
@@ -255,7 +256,8 @@ func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *i
 		return
 	}
 	if msg.Media != nil {
-		go s.keepMedia(context.WithoutCancel(ctx), ch, msg.ID)
+		bg, id := context.WithoutCancel(ctx), msg.ID
+		safe.Go(bg, "whatsapp keep media", func() { s.keepMedia(bg, ch, id) })
 	}
 	set := parseSettings(ch.Settings)
 	text := strings.TrimSpace(msg.Body)

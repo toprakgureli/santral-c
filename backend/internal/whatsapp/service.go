@@ -17,6 +17,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // IUsers loads a user with roles and permissions.
@@ -82,10 +83,10 @@ func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, audit
 }
 
 // Start runs the background workers until ctx ends.
-func (s *Service) Start(ctx context.Context) {
-	go s.webhookWorker(ctx)
-	go s.outboxWorker(ctx)
-	go s.clock(ctx)
+func (s *Service) Start(ctx context.Context, g *safe.Group) {
+	g.Loop(ctx, "whatsapp webhook worker", s.webhookWorker)
+	g.Loop(ctx, "whatsapp outbox worker", s.outboxWorker)
+	g.Loop(ctx, "whatsapp clock", s.clock)
 }
 
 func wake(ch chan struct{}) {

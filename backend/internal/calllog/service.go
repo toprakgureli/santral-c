@@ -10,6 +10,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
+	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
 // todayLimit caps how many of today's calls the panel history lists.
@@ -147,7 +148,8 @@ func (s *Service) ended(ctx context.Context, log models.CallLog) {
 	if s.OnEnded == nil {
 		return
 	}
-	go s.OnEnded(context.WithoutCancel(ctx), log)
+	bg := context.WithoutCancel(ctx)
+	safe.Go(bg, "call ended hooks", func() { s.OnEnded(bg, log) })
 }
 
 // lookupDays is how far back the number lookup reaches.
