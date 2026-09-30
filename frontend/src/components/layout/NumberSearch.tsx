@@ -23,11 +23,7 @@ import { listTime, STATUS_WORD } from "@/whatsapp/util";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
 import { whatsappNumber } from "@/lib/whatsapp";
-
-function stamp(iso: string) {
-  const d = new Date(iso);
-  return `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
-}
+import { shortDateTime } from "@/lib/time";
 
 function minutes(seconds: number) {
   if (seconds < 60) return `${seconds} sn`;
@@ -152,7 +148,7 @@ export default function NumberSearch() {
                 {result.items.map((c) => (
                   <li key={c.uuid} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs">
                     {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
-                    <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt)}</span>
+                    <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{shortDateTime(c.startedAt)}</span>
                     <span className="min-w-0 flex-1 truncate font-medium">{c.agentName}</span>
                     <CallDisposition value={c.disposition} />
                     <span className="w-12 shrink-0 text-right font-mono tabular-nums">{c.disposition === "answered" ? formatClock(c.durationSeconds) : "—"}</span>

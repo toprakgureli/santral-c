@@ -13,6 +13,7 @@ import { Badge, Button } from "@/components/ui";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
+import { fmt } from "@/lib/time";
 
 export interface PopoverAnchor {
   userId: number;
@@ -84,7 +85,7 @@ export default function ProfilePopover({ anchor, selfId, onClose }: { anchor: Po
     }
   }
 
-  const joined = profile?.joinedAt ? new Date(profile.joinedAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" }) : null;
+  const joined = profile?.joinedAt ? fmt(profile.joinedAt, { day: "2-digit", month: "long", year: "numeric" }) : null;
 
   return (
     <div

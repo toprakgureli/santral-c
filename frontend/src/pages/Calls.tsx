@@ -9,26 +9,12 @@ import { displayNumber } from "../softphone/dial";
 import { cn } from "../lib/utils";
 import { Button, Card, DateField, EmptyState, Input, Select, Skeleton, Spinner } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
+import { presetRange, type Preset } from "../lib/dateRange";
 
-// ymd formats a Date as a local YYYY-MM-DD (not UTC, so it matches the panel's day).
-function ymd(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-// datePreset resolves a named range to [from, to] local dates.
+// datePreset resolves a named range to [from, to] Istanbul days; "all" has
+// no bounds.
 function datePreset(key: string): { from: string; to: string } {
-  const now = new Date();
-  const today = ymd(now);
-  const shift = (days: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
-  switch (key) {
-    case "today": return { from: today, to: today };
-    case "yesterday": return { from: shift(1), to: shift(1) };
-    case "last7": return { from: shift(6), to: today };
-    case "last30": return { from: shift(29), to: today };
-    case "month": return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
-    default: return { from: "", to: "" }; // "all"
-  }
+  return key === "all" ? { from: "", to: "" } : presetRange(key as Preset);
 }
 
 const datePresetLabels: { key: string; label: string }[] = [

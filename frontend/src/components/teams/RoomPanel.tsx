@@ -12,6 +12,7 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { attachmentUrl, extensionOf, formatDuration, formatSize, thumbUrl } from "@/lib/attachments";
 import { stripMarkup } from "@/lib/markup";
 import { cn } from "@/lib/utils";
+import { clockTime, fmt, isToday } from "@/lib/time";
 
 export type PanelMode = "members" | "search" | "media";
 
@@ -47,9 +48,7 @@ export default function RoomPanel({
 }
 
 function when(iso: string) {
-  const d = new Date(iso);
-  const today = d.toDateString() === new Date().toDateString();
-  return today ? d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return isToday(iso) ? clockTime(iso) : fmt(iso, { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
 function SearchView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: number) => void }) {

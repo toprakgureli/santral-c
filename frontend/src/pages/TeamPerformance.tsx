@@ -30,6 +30,7 @@ import { STATUS_COLOR } from "../lib/status";
 import { cn } from "../lib/utils";
 import { displayNumber } from "../softphone/dial";
 import { formatClock } from "./callFormat";
+import { clockTime, shortDateTime } from "@/lib/time";
 
 const REFRESH_MS = 15000;
 const VIEW_KEY = "santral.perf-view";
@@ -77,16 +78,9 @@ function forHow(iso: string | undefined, now: number): string | null {
   return `${Math.floor(h / 24)} gün`;
 }
 
-function hhmm(iso?: string) {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-}
-
 // stamp is hh:mm, prefixed with the day when the range spans several days.
 function stamp(iso: string, withDay: boolean) {
-  const d = new Date(iso);
-  const t = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-  return withDay ? `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${t}` : t;
+  return withDay ? shortDateTime(iso) : clockTime(iso);
 }
 
 // short is a compact duration: "42 dk", "3 sa 05 dk".
@@ -315,7 +309,7 @@ function Who({ r, now, live, size = "md" }: { r: TeamRow; now: number; live: boo
       </UserAvatar>
       <span className="min-w-0">
         <span className={cn("block truncate font-semibold leading-tight", size === "lg" ? "text-base" : "text-sm")}>{r.name}</span>
-        <span className={cn("mt-0.5 inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-px text-[0.68rem] font-medium", s.chip)} data-tip={held && since ? `${hhmm(since)}'den beri` : undefined}>
+        <span className={cn("mt-0.5 inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-px text-[0.68rem] font-medium", s.chip)} data-tip={held && since ? `${clockTime(since)}'den beri` : undefined}>
           <s.icon className="size-3 shrink-0" />
           <span className="truncate">{s.label}{held ? ` · ${held}` : ""}</span>
         </span>

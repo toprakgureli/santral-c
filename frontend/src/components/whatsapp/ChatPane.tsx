@@ -22,7 +22,8 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { dayLabel, hm, isMine, mergeMessage, newClientId, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
+import { hm, isMine, mergeMessage, newClientId, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
+import { dayName, numericDateTime, sameDay } from "@/lib/time";
 
 const upsert = mergeMessage;
 
@@ -402,7 +403,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             <div className="absolute inset-x-4 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-2xl border border-border bg-popover p-1 shadow-lg">
               {hits.map((h) => (
                 <button key={h.messageId} type="button" onClick={() => void jump(h.messageId)} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-accent">
-                  <span className="block text-[0.65rem] text-muted-foreground">{new Date(h.at).toLocaleString("tr-TR")}</span>
+                  <span className="block text-[0.65rem] text-muted-foreground">{numericDateTime(h.at)}</span>
                   <span className="block truncate text-sm">{h.snippet}</span>
                 </button>
               ))}
@@ -418,13 +419,13 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         {older && messages.length > 0 && <p className="py-3 text-center"><span className="rounded-lg bg-card/90 px-3 py-1 text-[0.7rem] text-muted-foreground shadow-sm">{loading ? "Yükleniyor..." : "Yukarı kaydırınca eski mesajlar gelir"}</span></p>}
         {messages.map((m, i) => {
           const prev = messages[i - 1];
-          const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
+          const newDay = !prev || !sameDay(prev.createdAt, m.createdAt);
           const sameSide = prev && prev.direction === m.direction && prev.direction !== "event" && (prev.sender.userId ?? prev.sender.kind) === (m.sender.userId ?? m.sender.kind) && Date.parse(m.createdAt) - Date.parse(prev.createdAt) < 5 * 60000;
           return (
             <div key={m.clientId ?? m.id}>
               {newDay && (
                 <div className="my-4 flex items-center justify-center">
-                  <span className="rounded-lg bg-card/95 px-3 py-1 text-[0.72rem] font-medium text-muted-foreground shadow-sm">{dayLabel(m.createdAt)}</span>
+                  <span className="rounded-lg bg-card/95 px-3 py-1 text-[0.72rem] font-medium text-muted-foreground shadow-sm">{dayName(m.createdAt)}</span>
                 </div>
               )}
               <MessageBubble m={m} head={newDay || !sameSide} highlight={flash === m.id}

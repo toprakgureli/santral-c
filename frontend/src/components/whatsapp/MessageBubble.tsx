@@ -11,7 +11,8 @@ import Ticks from "@/components/whatsapp/Ticks";
 import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
 import type { WAMessage } from "@/whatsapp/types";
-import { clock, menuOptions, menuText, templateParts } from "@/whatsapp/util";
+import { menuOptions, menuText, templateParts } from "@/whatsapp/util";
+import { clockTime } from "@/lib/time";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
@@ -46,7 +47,7 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
     return (
       <div className="my-2 flex justify-center px-6">
         <span className="max-w-[80%] rounded-lg bg-card/95 px-3 py-1.5 text-center text-[0.72rem] leading-snug text-muted-foreground shadow-sm">
-          {m.body} <span className="ml-1 tabular-nums text-muted-foreground/70">{clock(m.createdAt)}</span>
+          {m.body} <span className="ml-1 tabular-nums text-muted-foreground/70">{clockTime(m.createdAt)}</span>
         </span>
       </div>
     );
@@ -101,7 +102,7 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
               <span className="whitespace-pre-wrap break-words">{waText(body)}</span>
             ) : null}
             <span className={cn("relative top-[7px] float-right ml-2.5 flex items-center gap-0.5 text-[0.66rem] tabular-nums text-wa-meta", !body && media && "absolute right-2 bottom-2 top-auto rounded-full bg-black/35 px-1.5 text-white")}>
-              {clock(m.createdAt)}
+              {clockTime(m.createdAt)}
               {m.direction === "out" && <Ticks status={m.status} className={cn(!body && media && "text-white")} />}
             </span>
           </div>

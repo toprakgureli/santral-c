@@ -23,12 +23,10 @@ import { Badge, Button, ConfirmDialog } from "../components/ui";
 import { can } from "../lib/permissions";
 import { cn } from "../lib/utils";
 import { useTeams } from "../teams/TeamsContext";
+import { clockTime, isToday, shortDate } from "../lib/time";
 
 function when(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" });
+  return isToday(iso) ? clockTime(iso) : shortDate(iso);
 }
 
 export function Teams() {

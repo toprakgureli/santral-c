@@ -10,6 +10,7 @@ import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WAMessage, WAReadInfo } from "@/whatsapp/types";
+import { clockTimeSeconds, dayName } from "@/lib/time";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
@@ -67,11 +68,7 @@ function Item({ icon: Icon, label, onClick }: { icon: typeof Info; label: string
 
 function when(iso?: string) {
   if (!iso) return null;
-  const d = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(Date.now() - 86400000);
-  const day = d.toDateString() === today.toDateString() ? "Bugün" : d.toDateString() === yesterday.toDateString() ? "Dün" : d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
-  return `${day} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  return `${dayName(iso)} ${clockTimeSeconds(iso)}`;
 }
 
 export function MessageInfo({ m: given, onClose }: { m: WAMessage; onClose: () => void }) {

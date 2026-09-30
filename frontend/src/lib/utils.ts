@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { numericDateTime } from "./time";
 
 // cn merges Tailwind classes, letting the last conflicting one win.
 export function cn(...inputs: ClassValue[]) {
@@ -12,7 +13,7 @@ export function formatDateTime(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (isNaN(d.getTime())) return value;
-  return d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return numericDateTime(d);
 }
 
 export function initials(name?: string | null) {

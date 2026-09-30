@@ -7,6 +7,7 @@
 import type { TeamRow } from "@/api/types";
 import { APP_NAME } from "@/lib/brand";
 import { avatarUrl } from "@/lib/avatar";
+import { numericDateTime } from "../lib/time";
 
 const W = 1200;
 const PAD = 56;
@@ -297,7 +298,7 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
   ctx.font = font(500, 12);
   ctx.fillText("Gerçek çağrı: 30 saniye ve üstü görüşmeler · Yoğunluk: görüşme süresi / mesai süresi, yalnızca çağrılar · Ort. cevap: gelen çağrının açılmasına kadar geçen süre", PAD, H - 28);
   ctx.textAlign = "right";
-  ctx.fillText(new Date().toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }), W - PAD, H - 28);
+  ctx.fillText(numericDateTime(new Date()), W - PAD, H - 28);
   ctx.textAlign = "left";
 
   return canvas;

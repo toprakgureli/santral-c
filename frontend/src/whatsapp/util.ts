@@ -2,6 +2,7 @@
 // belongs to, times in words, and WhatsApp's own text styling.
 
 import type { WAConversation, WAMessage, WASettings } from "@/whatsapp/types";
+import { clockTime, isToday, isYesterday, shortDate } from "@/lib/time";
 
 export type Bucket = "mine" | "waiting" | "pool" | "team" | "resolved";
 
@@ -66,29 +67,13 @@ export function since(iso: string | undefined, now: number): string {
   return `${Math.floor(h / 24)} gün`;
 }
 
-export function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-}
-
+// listTime is the time in a conversation list: the clock today, "Dün",
+// then the date.
 export function listTime(iso?: string): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return clock(iso);
-  const y = new Date(now);
-  y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return "Dün";
-  return d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" });
-}
-
-export function dayLabel(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Bugün";
-  const y = new Date(now);
-  y.setDate(now.getDate() - 1);
-  if (d.toDateString() === y.toDateString()) return "Dün";
-  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  if (isToday(iso)) return clockTime(iso);
+  if (isYesterday(iso)) return "Dün";
+  return shortDate(iso);
 }
 
 export function prettyPhone(waId: string): string {
@@ -236,7 +221,7 @@ export function waitTip(c: { lastInboundAt?: string; ticket?: { awaitingSince?: 
   const a = c.ticket?.awaitingSince;
   const shown = waitShown(c);
   if (!a || !shown) return "";
-  const head = shown === a ? `Beklemeye başladığı saat: ${clock(a)}.` : `Müşterinin son mesajı: ${clock(shown)}.`;
-  const total = shown === a ? "" : ` İlk cevapsız mesajı: ${clock(a)}, toplamda ${since(a, now)} oldu. Bekleyenler listesi bu toplam süreye bakar.`;
+  const head = shown === a ? `Beklemeye başladığı saat: ${clockTime(a)}.` : `Müşterinin son mesajı: ${clockTime(shown)}.`;
+  const total = shown === a ? "" : ` İlk cevapsız mesajı: ${clockTime(a)}, toplamda ${since(a, now)} oldu. Bekleyenler listesi bu toplam süreye bakar.`;
   return head + total + " Bir temsilci cevap yazınca sıfırlanır.";
 }

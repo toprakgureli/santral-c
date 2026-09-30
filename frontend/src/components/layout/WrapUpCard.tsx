@@ -24,6 +24,7 @@ import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext, type EndedCall } from "@/softphone/SoftphoneContext";
+import { clockTime } from "@/lib/time";
 
 const KEY = "santral.wrapup.pending";
 // A connected call that ended within this many seconds was the PBX playing an
@@ -70,10 +71,6 @@ function writePending(items: EndedCall[]) {
   } catch {
     // storage unavailable; the list still lives in memory for this page
   }
-}
-
-function hhmm(ms: number) {
-  return new Date(ms).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function duration(seconds: number) {
@@ -185,8 +182,8 @@ export default function WrapUpCard() {
             <div className="mt-1 text-3xl font-bold tabular-nums tracking-wide">{number}</div>
             <ul className="mt-4 space-y-2.5 text-sm">
               <Fact label="Yön" value={inbound ? "Gelen çağrı" : "Giden çağrı"} icon={inbound ? <PhoneIncoming className="size-3.5 text-success" /> : <PhoneOutgoing className="size-3.5 text-violet-500" />} />
-              <Fact label="Başlangıç" value={hhmm(current.answeredAt)} mono />
-              <Fact label="Bitiş" value={hhmm(current.endedAt)} mono />
+              <Fact label="Başlangıç" value={clockTime(current.answeredAt)} mono />
+              <Fact label="Bitiş" value={clockTime(current.endedAt)} mono />
               <Fact label="Süre" value={duration((current.endedAt - current.answeredAt) / 1000)} mono />
               {canSearch && <Fact label="Geçmiş kayıt" value={historyCount === 0 ? "Yok" : `${historyCount} kayıt`} tone={historyCount ? "amber" : undefined} />}
             </ul>

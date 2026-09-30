@@ -11,6 +11,7 @@ import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WACallSurveySettings, WAChannel, WATemplate } from "@/whatsapp/types";
+import { numericDate } from "@/lib/time";
 
 const VARS = [
   { key: "{musteri}", label: "müşterinin adı" },
@@ -54,7 +55,7 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
   const preview = body.replace(/\{\{(\d+)\}\}/g, (all, k) => {
     const v = s.params[Number(k) - 1];
     if (!v) return all;
-    return v.replace("{musteri}", "Ayşe").replace("{temsilci}", "Toprak").replace("{tarih}", new Date().toLocaleDateString("tr-TR")).replace("{link}", "https://tally.so/r/...");
+    return v.replace("{musteri}", "Ayşe").replace("{temsilci}", "Toprak").replace("{tarih}", numericDate(new Date())).replace("{link}", "https://tally.so/r/...");
   });
 
   const save = async () => {

@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { BotData, BotGraph, BotNodeType, BotStats, WABot, WAChannel, WAIntegration, WATeam } from "@/whatsapp/types";
 import { since } from "@/whatsapp/util";
+import { fmt } from "@/lib/time";
 
 type Panel = "edit" | "test" | "versions" | null;
 type SaveState = "saved" | "dirty" | "saving" | "error";
@@ -362,7 +363,7 @@ export function WhatsAppBot() {
                       <span className={cn("flex size-8 items-center justify-center rounded-lg text-xs font-bold", v.version === bot?.publishedVersion ? "bg-success/12 text-success" : "bg-muted text-muted-foreground")}>{v.version}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm">{v.publishedBy || "?"}</p>
-                        <p className="text-[0.68rem] text-muted-foreground">{new Date(v.createdAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{v.version === bot?.publishedVersion ? " · yayında" : ""}</p>
+                        <p className="text-[0.68rem] text-muted-foreground">{fmt(v.createdAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{v.version === bot?.publishedVersion ? " · yayında" : ""}</p>
                       </div>
                       {canEdit && <Button variant="secondary" className="h-7 px-2.5 text-xs" onClick={() => void waApi.restoreVersion(botId, v.version).then((b) => { snapshot(); setBot(b); setGraph(b.draft); setSave("saved"); setNotice(`Sürüm ${v.version} taslağa geri yüklendi. Yayınlayınca müşteriler görür.`); })}>Taslağa al</Button>}
                     </div>

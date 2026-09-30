@@ -14,11 +14,10 @@ import { rangeLabel } from "@/lib/dateRange";
 import { cn } from "@/lib/utils";
 import { formatClock } from "@/pages/callFormat";
 import { displayNumber } from "@/softphone/dial";
+import { clockTime, shortDateTime } from "@/lib/time";
 
 function stamp(iso: string, withDay: boolean) {
-  const d = new Date(iso);
-  const t = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-  return withDay ? `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${t}` : t;
+  return withDay ? shortDateTime(iso) : clockTime(iso);
 }
 
 const REASON: Record<string, string> = {

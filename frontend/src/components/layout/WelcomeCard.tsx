@@ -11,6 +11,7 @@ import { Button } from "@/components/ui";
 import { useAuth } from "@/auth/AuthContext";
 import { usePresence } from "@/presence/PresenceContext";
 import { useShift } from "@/shift/ShiftContext";
+import { clockTime, fmt } from "@/lib/time";
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -81,10 +82,10 @@ export default function WelcomeCard() {
 
           <div className="mt-6 text-center">
             <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">
-              {now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+              {clockTime(now)}
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              {now.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" })}
+              {fmt(now, { weekday: "long", day: "numeric", month: "long" })}
             </div>
           </div>
         </div>

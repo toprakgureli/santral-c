@@ -15,14 +15,13 @@ import { SwitchRow } from "@/components/whatsapp/settings/parts";
 import { cn } from "@/lib/utils";
 import type { WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
+import { clockTime, fmt, isToday } from "@/lib/time";
 
 function until(iso?: string) {
   if (!iso) return "";
   const d = new Date(iso);
   if (d.getFullYear() > 9000) return "siz açana kadar";
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  return `${sameDay ? "bugün" : d.toLocaleDateString("tr-TR", { day: "numeric", month: "long" })} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}'e kadar`;
+  return `${isToday(d) ? "bugün" : fmt(d, { day: "numeric", month: "long" })} ${clockTime(d)} olana kadar`;
 }
 
 export function Preferences() {

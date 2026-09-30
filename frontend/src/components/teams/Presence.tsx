@@ -8,6 +8,7 @@
 import { Check, CheckCheck } from "lucide-react";
 import type { TeamsMessage } from "@/api/types";
 import { cn } from "@/lib/utils";
+import { clockTime, isToday, isYesterday, numericDate } from "@/lib/time";
 
 export interface Presence {
   online: boolean;
@@ -36,13 +37,10 @@ export function seenLabel(p: Presence): string {
   if (!p.lastSeen) return "Çevrimdışı";
   const d = new Date(p.lastSeen);
   if (Number.isNaN(d.getTime())) return "Çevrimdışı";
-  const now = new Date();
-  const y = new Date(now);
-  y.setDate(now.getDate() - 1);
-  const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-  if (d.toDateString() === now.toDateString()) return `Son görülme bugün ${time}`;
-  if (d.toDateString() === y.toDateString()) return `Son görülme dün ${time}`;
-  return `Son görülme ${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" })} ${time}`;
+  const time = clockTime(d);
+  if (isToday(d)) return `Son görülme bugün ${time}`;
+  if (isYesterday(d)) return `Son görülme dün ${time}`;
+  return `Son görülme ${numericDate(d)} ${time}`;
 }
 
 // presenceTone is the text colour that goes with the label.

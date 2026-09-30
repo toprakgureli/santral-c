@@ -16,6 +16,7 @@ import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WASettings, WATemplate } from "@/whatsapp/types";
 import { normalizeSettings } from "@/whatsapp/util";
 import { TimeInput } from "@/components/whatsapp/settings/TimeParts";
+import { fmt } from "@/lib/time";
 
 const DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 
@@ -261,14 +262,14 @@ function Preview({ text }: { text: string }) {
 function Holidays({ values, onChange, disabled }: { values: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
   const [day, setDay] = useState("");
   const sorted = [...(values ?? [])].sort();
-  const fmt = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", weekday: "short" });
+  const dayText = (d: string) => fmt(`${d}T12:00:00+03:00`, { day: "numeric", month: "long", year: "numeric", weekday: "short" });
   return (
     <div className={cn("space-y-2", disabled && "opacity-60")}>
       <p className="text-xs font-medium text-muted-foreground">Tatil günleri (bu günler tüm gün kapalı sayılır)</p>
       <div className="flex flex-wrap items-center gap-1.5">
         {sorted.map((d) => (
           <span key={d} className="flex items-center gap-1 rounded-full bg-warning/12 px-2.5 py-1 text-xs font-medium text-warning">
-            {fmt(d)}
+            {dayText(d)}
             {!disabled && <button type="button" onClick={() => onChange(values.filter((x) => x !== d))} aria-label="Kaldır"><Trash2 className="size-3" /></button>}
           </span>
         ))}

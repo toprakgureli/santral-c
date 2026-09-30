@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WACallSurveyReport, WAChannel, WAReport } from "@/whatsapp/types";
 import { prettyPhone } from "@/whatsapp/util";
+import { fmt } from "@/lib/time";
 
 function dur(sec: number): string {
   if (!sec || sec <= 0) return "–";
@@ -258,7 +259,7 @@ function CallSurveyCard({ r }: { r: WACallSurveyReport }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm"><span className="font-medium">{a.agent || "?"}</span> <span className="font-mono text-xs text-muted-foreground">{prettyPhone(a.phone)}</span></span>
                     {a.comment && <span className="block text-xs text-muted-foreground">{a.comment}</span>}
-                    <span className="block text-[0.65rem] text-muted-foreground">{new Date(a.answeredAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                    <span className="block text-[0.65rem] text-muted-foreground">{fmt(a.answeredAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                   </span>
                 </div>
               ))}

@@ -10,10 +10,7 @@ import { usePresence } from "@/presence/PresenceContext";
 import { useShift } from "@/shift/ShiftContext";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { cn } from "@/lib/utils";
-
-function hhmm(iso: string) {
-  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-}
+import { clockTime } from "@/lib/time";
 
 // clock renders a running duration as HH:MM:SS.
 function clock(seconds: number) {
@@ -114,7 +111,7 @@ export default function BreakOverlay() {
                 <div className="mt-2 text-sm text-muted-foreground">
                   Bu mola <span className="font-mono tabular-nums text-foreground">{clock(current)}</span>
                   {", "}
-                  <span className="font-mono tabular-nums text-foreground">{hhmm(new Date(startedAt).toISOString())}</span>
+                  <span className="font-mono tabular-nums text-foreground">{clockTime(new Date(startedAt).toISOString())}</span>
                   {"'de başladı"}
                 </div>
               </>
@@ -122,7 +119,7 @@ export default function BreakOverlay() {
               <>
                 <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{clock(current)}</div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  <span className="font-mono tabular-nums text-foreground">{hhmm(new Date(startedAt).toISOString())}</span>
+                  <span className="font-mono tabular-nums text-foreground">{clockTime(new Date(startedAt).toISOString())}</span>
                   {"'de başladı"}
                 </div>
               </>
@@ -164,12 +161,12 @@ export default function BreakOverlay() {
           <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
             {earlier.map((p) => (
               <li key={p.startedAt} className="flex items-center justify-between rounded-lg px-2 py-1 text-muted-foreground">
-                <span className="font-mono tabular-nums">{hhmm(p.startedAt)} - {hhmm(p.endedAt!)}</span>
+                <span className="font-mono tabular-nums">{clockTime(p.startedAt)} - {clockTime(p.endedAt!)}</span>
                 <span className="font-mono tabular-nums">{brief((Date.parse(p.endedAt!) - Date.parse(p.startedAt)) / 1000)}</span>
               </li>
             ))}
             <li className={cn("flex items-center justify-between rounded-lg bg-warning/10 px-2 py-1 font-medium")}>
-              <span className="font-mono tabular-nums">{hhmm(new Date(startedAt).toISOString())} - <span className="font-sans text-warning">devam ediyor</span></span>
+              <span className="font-mono tabular-nums">{clockTime(new Date(startedAt).toISOString())} - <span className="font-sans text-warning">devam ediyor</span></span>
               <span className="font-mono tabular-nums">{brief(current)}</span>
             </li>
           </ul>

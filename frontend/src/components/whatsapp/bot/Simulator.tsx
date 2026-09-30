@@ -11,6 +11,7 @@ import { waText } from "@/components/whatsapp/waText";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { BotGraph, BotOption, SimOutput, WAChannel } from "@/whatsapp/types";
+import { clockTime } from "@/lib/time";
 
 type Line = { side: "bot"; out: SimOutput } | { side: "me"; text: string };
 
@@ -213,7 +214,7 @@ function BotLine({ out, onPick, active }: { out: SimOutput; onPick: (o: BotOptio
 
 // Now in Turkey time, whatever the computer's clock is set to.
 function nowClock(): string {
-  return new Date().toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", hour12: false });
+  return clockTime(new Date());
 }
 
 function nowDay(): number {

@@ -8,6 +8,7 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { gamesApi } from "@/games/api";
 import type { GameMeta, LeaderRow } from "@/games/types";
 import { cn } from "@/lib/utils";
+import { fmt } from "@/lib/time";
 
 export default function Leaderboard({ open, onClose, kinds, selfId }: { open: boolean; onClose: () => void; kinds: GameMeta[]; selfId: number }) {
   const [period, setPeriod] = useState<"month" | "all">("month");
@@ -24,7 +25,7 @@ export default function Leaderboard({ open, onClose, kinds, selfId }: { open: bo
       .catch((e) => setError(e instanceof ApiError ? e.message : "Sıralama alınamadı."));
   }, [open, period, kind]);
 
-  const month = new Date().toLocaleDateString("tr-TR", { month: "long" });
+  const month = fmt(new Date(), { month: "long" });
   return (
     <Modal open={open} onClose={onClose} title="Oyun sıralaması" description="Galibiyete göre; eşitlikte puan belirler." size="md">
       <div className="space-y-3">

@@ -25,26 +25,12 @@ import GameCard from "@/games/GameCard";
 import { previewLabel } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
+import { clockTime, dayKey, dayName, isToday, numericDateTime, shortDateTime } from "@/lib/time";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🔥", "✅"];
 const ALL = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅", "👏", "🎉", "👀", "💯"];
 
 type Seats = Record<number, { deliveredId: number; readId: number; name: string }>;
-
-function hhmm(iso: string) {
-  return new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function dayLabel(iso: string) {
-  const d = new Date(iso);
-  const today = new Date();
-  const y = new Date(today);
-  y.setDate(today.getDate() - 1);
-  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-  if (same(d, today)) return "Bugün";
-  if (same(d, y)) return "Dün";
-  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
-}
 
 export default function MessagePane({ group, selfId, target, onOpenGame }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null; onOpenGame: (id: number) => void }) {
   const teams = useTeams();
@@ -310,10 +296,10 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
     const out: { m: TeamsMessage; head: boolean; day: string | null }[] = [];
     let lastDay = "";
     for (const m of items) {
-      const day = new Date(m.createdAt).toDateString();
+      const day = dayKey(m.createdAt);
       const newDay = day !== lastDay;
       lastDay = day;
-      out.push({ m, head: true, day: newDay ? dayLabel(m.createdAt) : null });
+      out.push({ m, head: true, day: newDay ? dayName(m.createdAt) : null });
     }
     return out;
   }, [items]);
@@ -414,7 +400,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                         <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9 shadow-sm ring-2 ring-card" fallbackClassName="bg-primary/10 text-xs text-primary" />
                       </button>
                     )}
-                    {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{hhmm(m.createdAt)}</span>}
+                    {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{clockTime(m.createdAt)}</span>}
                   </div>
                   <div className="min-w-0 flex-1">
                     {m.replyTo && (
@@ -433,7 +419,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                     {head && m.sender && (
                       <div className="flex items-center gap-2">
                         <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className={cn("text-sm font-semibold leading-tight hover:underline", m.mine && "text-primary")}>{m.sender.name}</button>
-                        <span className="text-[0.7rem] text-muted-foreground">{hhmm(m.createdAt)}</span>
+                        <span className="text-[0.7rem] text-muted-foreground">{clockTime(m.createdAt)}</span>
                         {m.mine && !m.deleted && (() => {
                           const st = statusOf(m.id, selfId, seats);
                           return <Ticks status={st.status} readBy={st.readBy} size="size-3.5" className="-ml-0.5" />;
@@ -450,7 +436,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
                           <AttachmentGrid attachments={m.attachments} className={m.body ? "mt-1 mb-1.5" : "mt-1"} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
                         )}
                         {m.body && renderMarkup(m.body, { mentions: labels })}
-                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" data-tip={`Düzenlendi: ${new Date(m.editedAt).toLocaleString("tr-TR")}`}>(düzenlendi)</span>}
+                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" data-tip={`Düzenlendi: ${numericDateTime(m.editedAt)}`}>(düzenlendi)</span>}
                       </div>
                     )}
                     {m.reactions.length > 0 && (
@@ -570,12 +556,9 @@ function MessageInfo({ message, group, onClose }: { message: TeamsMessage; group
 
   const stamp = (iso?: string) => {
     if (!iso) return null;
-    const d = new Date(iso);
-    const today = d.toDateString() === new Date().toDateString();
-    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-    return today ? time : `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })} ${time}`;
+    return isToday(iso) ? clockTime(iso) : shortDateTime(iso);
   };
-  const sent = new Date(message.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const sent = numericDateTime(message.createdAt);
   const peer = group.kind === "dm" ? rows?.[0] : undefined;
   const sorted = (rows ?? []).slice().sort((a, b) => (b.readAt ? 2 : b.deliveredAt ? 1 : 0) - (a.readAt ? 2 : a.deliveredAt ? 1 : 0) || a.name.localeCompare(b.name, "tr"));
 

@@ -14,13 +14,10 @@ import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
 import { Badge, Card, DateField, EmptyState, Pagination, Select, Skeleton } from "../components/ui";
 import { cn } from "../lib/utils";
+import { presetRange as dayRange } from "../lib/dateRange";
+import { todayKey } from "../lib/time";
 
 const PER_PAGE = 25;
-
-function ymd(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
 
 type Preset = "all" | "today" | "yesterday" | "last7" | "last30" | "month" | "custom";
 
@@ -34,18 +31,10 @@ const PRESETS: { key: Preset; label: string }[] = [
   { key: "custom", label: "Tarih aralığı" },
 ];
 
+// presetRange resolves a named range to [from, to] Istanbul days; "all"
+// and "custom" have no bounds of their own.
 function presetRange(key: Preset): { from: string; to: string } {
-  const now = new Date();
-  const today = ymd(now);
-  const shift = (days: number) => ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
-  switch (key) {
-    case "today": return { from: today, to: today };
-    case "yesterday": return { from: shift(1), to: shift(1) };
-    case "last7": return { from: shift(6), to: today };
-    case "last30": return { from: shift(29), to: today };
-    case "month": return { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
-    default: return { from: "", to: "" };
-  }
+  return key === "all" || key === "custom" ? { from: "", to: "" } : dayRange(key);
 }
 
 export function EscalationSearch() {
@@ -182,7 +171,7 @@ export function EscalationSearch() {
             <div className="flex items-center gap-1">
               <DateField value={from} max={to || undefined} onChange={setFrom} className="w-40" data-tip="Başlangıç" />
               <span className="text-muted-foreground">-</span>
-              <DateField value={to} min={from || undefined} max={ymd(new Date())} onChange={setTo} className="w-40" data-tip="Bitiş" />
+              <DateField value={to} min={from || undefined} max={todayKey()} onChange={setTo} className="w-40" data-tip="Bitiş" />
             </div>
           )}
 

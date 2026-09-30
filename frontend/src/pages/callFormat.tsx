@@ -1,4 +1,5 @@
 import { Badge } from "../components/ui";
+import { shortDateTime } from "../lib/time";
 
 const directionLabel: Record<string, string> = {
   inbound: "Gelen",
@@ -91,5 +92,5 @@ export function formatStamp(value: string): string {
   if (!value) return "—";
   const d = new Date(value.replace(" ", "T"));
   if (isNaN(d.getTime())) return value;
-  return d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return shortDateTime(d);
 }
