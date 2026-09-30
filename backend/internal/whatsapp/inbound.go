@@ -237,7 +237,9 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		// it is what opens the 24-hour window.
 		conv.LastInboundAt, conv.TicketID = at, uintPtr(ticket.ID)
 		res.conv = conv
-		return nil
+		// Record the work that follows, so a restart cannot lose it.
+		return tx.Exec("INSERT INTO wa_inbound_jobs (message_id, created, reopened, first, opted_out) VALUES (?, ?, ?, ?, ?)",
+			msg.ID, res.created, res.reopened, res.first, res.optedOut).Error
 	})
 	if err != nil {
 		return err
@@ -256,6 +258,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		return nil
 	}
 	s.afterInbound(ctx, ch, res)
+	s.finishInboundJob(ctx, res.msg.ID)
 	return nil
 }
 
