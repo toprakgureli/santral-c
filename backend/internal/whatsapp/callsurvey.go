@@ -58,6 +58,10 @@ func (s *Service) callSurveySettings(ctx context.Context) CallSurveySettings {
 	if len(set.ButtonScores) == 0 {
 		set.ButtonScores = []int{5, 3, 1}
 	}
+	if set.Params == nil {
+		// The settings screen reads the list; an empty one must not be null.
+		set.Params = []string{}
+	}
 	return set
 }
 

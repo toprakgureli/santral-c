@@ -145,6 +145,10 @@ func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentRef, error) 
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
+	if out == nil {
+		// The panel maps over the list; an empty one must not read as null.
+		out = []AgentRef{}
+	}
 	return out, nil
 }
 
