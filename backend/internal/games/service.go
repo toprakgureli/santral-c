@@ -809,7 +809,7 @@ func (s *Service) Join(ctx context.Context, actorID, gameID uint) (*GameView, er
 		}
 		if m.G.Status == statusPlaying {
 			if j, ok := m.Kind.(lateJoiner); ok {
-				j.Joined(m, s, ctx, actorID)
+				j.Joined(ctx, m, s, actorID)
 			}
 		}
 	}
@@ -864,7 +864,7 @@ func (s *Service) Leave(ctx context.Context, actorID, gameID uint) (*GameView, e
 		} else if len(m.active()) < m.Kind.Meta().MinPlayers {
 			s.finish(ctx, m, m.leaders(), "yeterli oyuncu kalmadı")
 		} else {
-			m.Kind.Left(m, s, ctx, actorID)
+			m.Kind.Left(ctx, m, s, actorID)
 		}
 	}
 	s.save(ctx, m)
@@ -934,7 +934,7 @@ func (s *Service) Start(ctx context.Context, actorID, gameID uint) (*GameView, e
 	if len(m.active()) < meta.MinPlayers {
 		return nil, errs.Invalid(fmt.Sprintf("En az %d oyuncu gerekli.", meta.MinPlayers), nil)
 	}
-	if err := m.Kind.Start(m, s, ctx); err != nil {
+	if err := m.Kind.Start(ctx, m, s); err != nil {
 		return nil, err
 	}
 	now := time.Now()
@@ -1033,7 +1033,7 @@ func (s *Service) Act(ctx context.Context, actorID, gameID uint, action string, 
 	if len(m.Paused) > 0 && action != "move" {
 		return nil, errs.Invalid("Oyun duraklatıldı.", nil)
 	}
-	changed, err := m.Kind.Act(m, s, ctx, actorID, action, payload)
+	changed, err := m.Kind.Act(ctx, m, s, actorID, action, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -1065,7 +1065,7 @@ func (s *Service) Move(ctx context.Context, actorID, gameID uint, x, y float64) 
 		return errs.Forbidden("Bu oyunda oturmuyorsunuz.")
 	}
 	raw, _ := json.Marshal(map[string]float64{"x": x, "y": y})
-	_, err := m.Kind.Act(m, s, ctx, actorID, "move", raw)
+	_, err := m.Kind.Act(ctx, m, s, actorID, "move", raw)
 	return err
 }
 
@@ -1203,7 +1203,7 @@ func (s *Service) tick(ctx context.Context, now time.Time) {
 		}
 		if m.G.Status == statusPlaying && len(m.Paused) == 0 && !m.Deadline.IsZero() && now.After(m.Deadline) {
 			m.Deadline = time.Time{}
-			m.Kind.Timeout(m, s, ctx)
+			m.Kind.Timeout(ctx, m, s)
 			s.save(ctx, m)
 			m.mu.Unlock()
 			s.broadcast(ctx, m)
@@ -1233,7 +1233,7 @@ func (s *Service) frame(ctx context.Context) {
 			m.mu.Unlock()
 			continue
 		}
-		done := h.step(m, s, ctx)
+		done := h.step(ctx, m, s)
 		payload := h.frame(m)
 		if done {
 			s.save(ctx, m)

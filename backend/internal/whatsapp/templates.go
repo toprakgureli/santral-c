@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,7 +210,7 @@ func countVars(text string) int {
 	n := 0
 	for _, m := range varPattern.FindAllStringSubmatch(text, -1) {
 		var k int
-		fmt.Sscan(m[1], &k)
+		k, _ = strconv.Atoi(m[1]) // the pattern only matches digits
 		if k > n {
 			n = k
 		}
@@ -476,7 +477,7 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 	fill := func(text string, vals []string) string {
 		return varPattern.ReplaceAllStringFunc(text, func(m string) string {
 			var k int
-			fmt.Sscan(strings.Trim(m, "{}"), &k)
+			k, _ = strconv.Atoi(strings.Trim(m, "{}")) // the pattern only matches digits
 			if k >= 1 && k <= len(vals) {
 				return vals[k-1]
 			}

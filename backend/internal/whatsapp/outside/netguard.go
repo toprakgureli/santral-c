@@ -20,6 +20,7 @@ import (
 // actually dialled, after the name is resolved, so a name that later
 // points inward is caught too.
 
+// ErrInternalAddress refuses a request to the server's own network.
 var ErrInternalAddress = errors.New("iç ağdaki adreslere istek gönderilemez")
 
 func blockedIP(ip net.IP) bool {

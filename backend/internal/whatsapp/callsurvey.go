@@ -191,7 +191,7 @@ func parseComponents(t *models.WATemplate) []tplComponent {
 
 func (s *Service) callSurveyToken(id uint) string {
 	mac := hmac.New(sha256.New, []byte(s.secret+":call"))
-	fmt.Fprint(mac, id)
+	_, _ = fmt.Fprint(mac, id) // writing to a hash cannot fail
 	return hex.EncodeToString(mac.Sum(nil))[:24]
 }
 

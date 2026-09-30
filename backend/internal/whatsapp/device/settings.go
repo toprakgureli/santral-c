@@ -103,6 +103,8 @@ func Default() Settings {
 	return s
 }
 
+// Parse reads stored settings over the defaults, so a missing section
+// keeps its default and lists are never null.
 func Parse(raw string) Settings {
 	s := Default()
 	if strings.TrimSpace(raw) == "" || raw == "{}" {
@@ -133,6 +135,7 @@ func (s *Settings) Normalize() {
 	}
 }
 
+// Encode is the settings as stored on the device.
 func (s Settings) Encode() string {
 	b, _ := json.Marshal(s)
 	return string(b)

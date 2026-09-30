@@ -967,7 +967,7 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 	if err != nil {
 		return nil, outside.Explain(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("yanıt %d", resp.StatusCode)

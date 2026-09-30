@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -260,7 +261,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		if err != nil {
 			return outside.Explain(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode/100 != 2 {
 			return fmt.Errorf("adres %d döndü", resp.StatusCode)
 		}
@@ -279,7 +280,7 @@ func (s *Service) sweepTimedRules(ctx context.Context) {
 		minutes := 0
 		for _, c := range conds {
 			if c.Kind == "after_minutes" {
-				fmt.Sscan(c.Value, &minutes)
+				minutes, _ = strconv.Atoi(strings.TrimSpace(c.Value)) // not a number: no limit
 			}
 		}
 		if minutes <= 0 {

@@ -128,6 +128,7 @@ func (g *Graph) node(id string) *Node {
 	return nil
 }
 
+// Start is the flow's start box, or nil when it has none.
 func (g *Graph) Start() *Node {
 	for i := range g.Nodes {
 		if g.Nodes[i].Type == "start" {
@@ -629,7 +630,10 @@ type SimOutput struct {
 	Detail  string   `json:"detail,omitempty"`
 }
 
+// SendText records a text message.
 func (o *SimIO) SendText(t string) { o.Out = append(o.Out, SimOutput{Kind: "text", Text: t}) }
+
+// SendMedia records a file message.
 func (o *SimIO) SendMedia(kind, url string, fileID uint, fileName, caption string) {
 	what := url
 	if fileID > 0 {
@@ -637,12 +641,18 @@ func (o *SimIO) SendMedia(kind, url string, fileID uint, fileName, caption strin
 	}
 	o.Out = append(o.Out, SimOutput{Kind: "media", Text: caption, Detail: what})
 }
+
+// SendMenu records a menu message.
 func (o *SimIO) SendMenu(style, text, button string, options []Option) {
 	o.Out = append(o.Out, SimOutput{Kind: "menu", Text: text, Options: options, Style: style, Detail: button})
 }
+
+// Handoff records handing the customer to a person.
 func (o *SimIO) Handoff(teamID uint, note string) {
 	o.Out = append(o.Out, SimOutput{Kind: "handoff", Text: note, Detail: fmt.Sprint(teamID)})
 }
+
+// Finish records the end of the flow.
 func (o *SimIO) Finish(resolve bool) {
 	d := ""
 	if resolve {
@@ -650,11 +660,19 @@ func (o *SimIO) Finish(resolve bool) {
 	}
 	o.Out = append(o.Out, SimOutput{Kind: "end", Detail: d})
 }
+
+// Tag records the tags, priority and category the flow set.
 func (o *SimIO) Tag(tags []string, priority, category string) {
 	o.Out = append(o.Out, SimOutput{Kind: "tag", Text: strings.Join(tags, ", "), Detail: strings.TrimSpace(priority + " " + category)})
 }
+
+// Callback records a callback request.
 func (o *SimIO) Callback(note string) { o.Out = append(o.Out, SimOutput{Kind: "callback", Text: note}) }
-func (o *SimIO) Survey()              { o.Out = append(o.Out, SimOutput{Kind: "survey"}) }
+
+// Survey records sending the satisfaction survey.
+func (o *SimIO) Survey() { o.Out = append(o.Out, SimOutput{Kind: "survey"}) }
+
+// CallAPI calls an outside system through the test screen's caller.
 func (o *SimIO) CallAPI(id uint, vars map[string]string) (map[string]any, error) {
 	if o.api == nil {
 		return nil, fmt.Errorf("sorgu yok")
@@ -667,13 +685,19 @@ func (o *SimIO) CallAPI(id uint, vars map[string]string) (map[string]any, error)
 	o.Out = append(o.Out, SimOutput{Kind: "api", Detail: detail})
 	return res, err
 }
+
+// HoursOpen is whether the test counts the device as open.
 func (o *SimIO) HoursOpen() bool { return o.hours }
+
+// Now is the moment the test pretends it is.
 func (o *SimIO) Now() time.Time {
 	if o.at.IsZero() {
 		return time.Now()
 	}
 	return o.at
 }
+
+// Mark does nothing: the test screen keeps no report.
 func (o *SimIO) Mark(nodeID, kind string) {}
 
 // digitsOnly keeps the digits of s.

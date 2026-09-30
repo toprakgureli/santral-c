@@ -8,12 +8,12 @@ import (
 func TestCell(t *testing.T) {
 	tests := map[string]string{
 		"=HYPERLINK(\"http://x\")": "'=HYPERLINK(\"http://x\")",
-		"+905551234567":           "'+905551234567",
-		"-2":                      "'-2",
-		"@SUM(A1)":                "'@SUM(A1)",
-		"\tcmd":                   "'\tcmd",
-		"Çok iyi":                 "Çok iyi",
-		"":                        "",
+		"+905551234567":            "'+905551234567",
+		"-2":                       "'-2",
+		"@SUM(A1)":                 "'@SUM(A1)",
+		"\tcmd":                    "'\tcmd",
+		"Çok iyi":                  "Çok iyi",
+		"":                         "",
 	}
 	for in, want := range tests {
 		if got := Cell(in); got != want {

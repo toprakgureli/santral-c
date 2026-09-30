@@ -23,6 +23,7 @@ type Span struct {
 
 var clockRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
 
+// ValidClock reports whether s is a clock time such as 09:30.
 func ValidClock(s string) bool { return clockRe.MatchString(s) }
 
 func (sp Span) onDay(idx int) bool {
@@ -60,6 +61,7 @@ func (sp Span) Covers(t time.Time) bool {
 	return m < to && sp.onDay((idx+6)%7)
 }
 
+// Check reports why a span cannot be saved, or nil.
 func (sp Span) Check() error {
 	if !ValidClock(sp.From) || !ValidClock(sp.To) {
 		return fmt.Errorf("saatler 09:00 gibi yazılmalı")
@@ -79,6 +81,7 @@ type Schedule struct {
 	Spans []Span `json:"spans"`
 }
 
+// ParseSchedule reads a stored schedule; anything unreadable means always.
 func ParseSchedule(raw string) Schedule {
 	var sc Schedule
 	_ = json.Unmarshal([]byte(raw), &sc)
@@ -93,6 +96,7 @@ func ParseSchedule(raw string) Schedule {
 	return sc
 }
 
+// Check reports why a schedule cannot be saved, or nil.
 func (sc Schedule) Check() error {
 	if sc.Mode != "custom" {
 		return nil
@@ -130,6 +134,7 @@ func (sc Schedule) Fits(h Week, t time.Time) bool {
 // Zone is the panel's time zone (no daylight saving).
 var Zone = time.FixedZone("+03", 3*3600)
 
+// MinuteOf turns "HH:MM" into minutes after midnight.
 func MinuteOf(hhmm string) int {
 	var h, m int
 	if len(hhmm) >= 4 {

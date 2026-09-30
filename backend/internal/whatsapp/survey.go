@@ -27,7 +27,7 @@ import (
 
 func (s *Service) surveyToken(ticketID uint) string {
 	mac := hmac.New(sha256.New, []byte(s.secret+":survey"))
-	fmt.Fprintf(mac, "%d", ticketID)
+	_, _ = fmt.Fprintf(mac, "%d", ticketID) // writing to a hash cannot fail
 	return hex.EncodeToString(mac.Sum(nil))[:24]
 }
 

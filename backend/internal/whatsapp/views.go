@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -525,9 +526,8 @@ func (s *Service) messageViews(ctx context.Context, list []models.WAMessage) ([]
 			for _, side := range []bool{false, true} {
 				if r, ok := reacts[*m.WAMID][side]; ok {
 					if r.By != "" {
-						var id uint
-						fmt.Sscan(r.By, &id)
-						r.By = people[id].Name
+						id, _ := strconv.ParseUint(r.By, 10, 64) // an id written by the server
+						r.By = people[uint(id)].Name
 					}
 					v.Reactions = append(v.Reactions, r)
 				}

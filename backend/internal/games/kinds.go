@@ -42,16 +42,16 @@ type Meta struct {
 type Kind interface {
 	Meta() Meta
 	NewState() any
-	Start(m *Match, s *Service, ctx context.Context) error
-	Act(m *Match, s *Service, ctx context.Context, userID uint, action string, payload json.RawMessage) (bool, error)
-	Timeout(m *Match, s *Service, ctx context.Context)
-	Left(m *Match, s *Service, ctx context.Context, userID uint)
+	Start(ctx context.Context, m *Match, s *Service) error
+	Act(ctx context.Context, m *Match, s *Service, userID uint, action string, payload json.RawMessage) (bool, error)
+	Timeout(ctx context.Context, m *Match, s *Service)
+	Left(ctx context.Context, m *Match, s *Service, userID uint)
 	View(m *Match, viewer uint) any
 }
 
 // lateJoiner is a kind that seats people after the start (bingo).
 type lateJoiner interface {
-	Joined(m *Match, s *Service, ctx context.Context, userID uint)
+	Joined(ctx context.Context, m *Match, s *Service, userID uint)
 }
 
 var kinds = []Kind{&drawKind{}, &telephoneKind{}, &pollKind{}, &truthKind{}, &solveKind{}, &storyKind{}, &whosaidKind{}, &voiceKind{}, &connect4Kind{}, &hockeyKind{}}
@@ -178,7 +178,7 @@ func (drawKind) Meta() Meta {
 }
 func (drawKind) NewState() any { return &drawState{} }
 
-func (k *drawKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *drawKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*drawState)
 	st.Order = nil
 	for _, p := range m.active() {
@@ -188,7 +188,7 @@ func (k *drawKind) Start(m *Match, s *Service, ctx context.Context) error {
 	st.Total = m.Config.Rounds * len(st.Order)
 	st.Turn = -1
 	st.Used = map[string]bool{}
-	k.next(m, s, ctx)
+	k.next(ctx, m, s)
 	return nil
 }
 
@@ -200,7 +200,7 @@ func (k *drawKind) drawer(m *Match) uint {
 	return st.Order[st.Turn%len(st.Order)]
 }
 
-func (k *drawKind) next(m *Match, s *Service, ctx context.Context) {
+func (k *drawKind) next(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*drawState)
 	for {
 		st.Turn++
@@ -241,7 +241,7 @@ func (k *drawKind) next(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(15)
 }
 
-func (k *drawKind) begin(m *Match, s *Service, ctx context.Context, word string) {
+func (k *drawKind) begin(ctx context.Context, m *Match, s *Service, word string) {
 	st := m.Data.(*drawState)
 	st.Word = word
 	st.Used[word] = true
@@ -259,7 +259,7 @@ func (k *drawKind) begin(m *Match, s *Service, ctx context.Context, word string)
 	m.setDeadline(st.Seconds)
 }
 
-func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *drawKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*drawState)
 	drawer := k.drawer(m)
 	switch action {
@@ -271,7 +271,7 @@ func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 		if uid != drawer || st.Phase != "choose" || in.Index < 0 || in.Index >= len(st.Choices) {
 			return false, errs.Invalid("Şu an kelime seçemezsiniz.", nil)
 		}
-		k.begin(m, s, ctx, st.Choices[in.Index])
+		k.begin(ctx, m, s, st.Choices[in.Index])
 		return true, nil
 	case "stroke":
 		if uid != drawer || st.Phase != "draw" {
@@ -283,7 +283,7 @@ func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 		if len(m.Strokes) < 1500 {
 			m.Strokes = append(m.Strokes, payload)
 		}
-		s.push(ctx, m, "game.stroke", json.RawMessage(payload))
+		s.push(ctx, m, "game.stroke", payload)
 		return false, nil
 	case "clear":
 		if uid != drawer || st.Phase != "draw" {
@@ -347,24 +347,24 @@ func (k *drawKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 	return false, errs.Invalid("Bilinmeyen hamle.", nil)
 }
 
-func (k *drawKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *drawKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*drawState)
 	switch st.Phase {
 	case "choose":
 		if len(st.Choices) > 0 {
-			k.begin(m, s, ctx, st.Choices[0])
+			k.begin(ctx, m, s, st.Choices[0])
 		} else {
-			k.next(m, s, ctx)
+			k.next(ctx, m, s)
 		}
 	case "draw":
 		st.Phase = "reveal"
 		m.setDeadline(4)
 	case "reveal":
-		k.next(m, s, ctx)
+		k.next(ctx, m, s)
 	}
 }
 
-func (k *drawKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+func (k *drawKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {
 	if k.drawer(m) == uid {
 		st := m.Data.(*drawState)
 		st.Phase = "reveal"
@@ -429,7 +429,7 @@ func (pollKind) Meta() Meta {
 }
 func (pollKind) NewState() any { return &pollState{} }
 
-func (k *pollKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *pollKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*pollState)
 	items := s.pickItems(ctx, "poll", m.Config.Rounds)
 	if len(items) == 0 {
@@ -467,7 +467,7 @@ func (k *pollKind) open(m *Match) {
 	m.setDeadline(st.Items[st.Round].Seconds)
 }
 
-func (k *pollKind) reveal(m *Match, s *Service, ctx context.Context) {
+func (k *pollKind) reveal(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*pollState)
 	counts := map[uint]int{}
 	best := 0
@@ -493,7 +493,7 @@ func (k *pollKind) reveal(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(6)
 }
 
-func (k *pollKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *pollKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*pollState)
 	if action != "vote" || st.Phase != "vote" {
 		return false, errs.Invalid("Şu an oy verilemez.", nil)
@@ -507,15 +507,15 @@ func (k *pollKind) Act(m *Match, s *Service, ctx context.Context, uid uint, acti
 	}
 	st.Votes[uid] = in.Target
 	if len(st.Votes) >= len(m.active()) {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	}
 	return true, nil
 }
 
-func (k *pollKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *pollKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*pollState)
 	if st.Phase == "vote" {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 		return
 	}
 	st.Round++
@@ -526,7 +526,7 @@ func (k *pollKind) Timeout(m *Match, s *Service, ctx context.Context) {
 	k.open(m)
 }
 
-func (k *pollKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
+func (k *pollKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {}
 
 func (k *pollKind) View(m *Match, viewer uint) any {
 	st := m.Data.(*pollState)
@@ -568,7 +568,7 @@ func (truthKind) Meta() Meta {
 }
 func (truthKind) NewState() any { return &truthState{} }
 
-func (k *truthKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *truthKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*truthState)
 	st.Phase = "write"
 	st.Entries = map[uint]truthEntry{}
@@ -577,7 +577,7 @@ func (k *truthKind) Start(m *Match, s *Service, ctx context.Context) error {
 	return nil
 }
 
-func (k *truthKind) startVoting(m *Match, s *Service, ctx context.Context) {
+func (k *truthKind) startVoting(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*truthState)
 	st.Order = nil
 	for _, p := range m.active() {
@@ -590,10 +590,10 @@ func (k *truthKind) startVoting(m *Match, s *Service, ctx context.Context) {
 		return
 	}
 	st.Turn = -1
-	k.nextAuthor(m, s, ctx)
+	k.nextAuthor(ctx, m, s)
 }
 
-func (k *truthKind) nextAuthor(m *Match, s *Service, ctx context.Context) {
+func (k *truthKind) nextAuthor(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*truthState)
 	st.Turn++
 	if st.Turn >= len(st.Order) {
@@ -605,7 +605,7 @@ func (k *truthKind) nextAuthor(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(m.Config.Seconds)
 }
 
-func (k *truthKind) reveal(m *Match, s *Service, ctx context.Context) {
+func (k *truthKind) reveal(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*truthState)
 	author := st.Order[st.Turn]
 	e := st.Entries[author]
@@ -621,7 +621,7 @@ func (k *truthKind) reveal(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(7)
 }
 
-func (k *truthKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *truthKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*truthState)
 	switch action {
 	case "write":
@@ -643,7 +643,7 @@ func (k *truthKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 		}
 		st.Entries[uid] = in
 		if len(st.Entries) >= len(m.active()) {
-			k.startVoting(m, s, ctx)
+			k.startVoting(ctx, m, s)
 		}
 		return true, nil
 	case "vote":
@@ -669,29 +669,29 @@ func (k *truthKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 			}
 		}
 		if len(st.Votes) >= voters {
-			k.reveal(m, s, ctx)
+			k.reveal(ctx, m, s)
 		}
 		return true, nil
 	}
 	return false, errs.Invalid("Bilinmeyen hamle.", nil)
 }
 
-func (k *truthKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *truthKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*truthState)
 	switch st.Phase {
 	case "write":
-		k.startVoting(m, s, ctx)
+		k.startVoting(ctx, m, s)
 	case "vote":
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	case "reveal":
-		k.nextAuthor(m, s, ctx)
+		k.nextAuthor(ctx, m, s)
 	}
 }
 
-func (k *truthKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+func (k *truthKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {
 	st := m.Data.(*truthState)
 	if st.Phase == "vote" && st.Turn < len(st.Order) && st.Order[st.Turn] == uid {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	}
 }
 
@@ -748,7 +748,7 @@ func (solveKind) Meta() Meta {
 }
 func (solveKind) NewState() any { return &solveState{} }
 
-func (k *solveKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *solveKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*solveState)
 	items := s.pickItems(ctx, "solve", m.Config.Rounds)
 	if len(items) == 0 {
@@ -780,17 +780,17 @@ func (k *solveKind) open(m *Match) {
 	m.setDeadline(st.Items[st.Round].Seconds)
 }
 
-func (k *solveKind) vote(m *Match, s *Service, ctx context.Context) {
+func (k *solveKind) vote(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*solveState)
 	if len(st.Answers) < 2 {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 		return
 	}
 	st.Phase = "vote"
 	m.setDeadline(40)
 }
 
-func (k *solveKind) reveal(m *Match, s *Service, ctx context.Context) {
+func (k *solveKind) reveal(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*solveState)
 	counts := map[uint]int{}
 	best := 0
@@ -813,7 +813,7 @@ func (k *solveKind) reveal(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(12)
 }
 
-func (k *solveKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *solveKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*solveState)
 	switch action {
 	case "answer":
@@ -830,7 +830,7 @@ func (k *solveKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 		}
 		st.Answers[uid] = text
 		if len(st.Answers) >= len(m.active()) {
-			k.vote(m, s, ctx)
+			k.vote(ctx, m, s)
 		}
 		return true, nil
 	case "vote":
@@ -849,20 +849,20 @@ func (k *solveKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 		}
 		st.Votes[uid] = in.Target
 		if len(st.Votes) >= len(m.active()) {
-			k.reveal(m, s, ctx)
+			k.reveal(ctx, m, s)
 		}
 		return true, nil
 	}
 	return false, errs.Invalid("Bilinmeyen hamle.", nil)
 }
 
-func (k *solveKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *solveKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*solveState)
 	switch st.Phase {
 	case "write":
-		k.vote(m, s, ctx)
+		k.vote(ctx, m, s)
 	case "vote":
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	case "reveal":
 		st.Round++
 		if st.Round >= len(st.Items) {
@@ -873,7 +873,7 @@ func (k *solveKind) Timeout(m *Match, s *Service, ctx context.Context) {
 	}
 }
 
-func (k *solveKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
+func (k *solveKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {}
 
 func (k *solveKind) View(m *Match, viewer uint) any {
 	st := m.Data.(*solveState)
@@ -919,7 +919,7 @@ func (storyKind) Meta() Meta {
 }
 func (storyKind) NewState() any { return &storyState{} }
 
-func (k *storyKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *storyKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*storyState)
 	items := s.pickItems(ctx, "story", 1)
 	st.Prompt = "Müşteri aradı ve..."
@@ -953,7 +953,7 @@ func (k *storyKind) writer(m *Match) uint {
 	return 0
 }
 
-func (k *storyKind) advance(m *Match, s *Service, ctx context.Context) {
+func (k *storyKind) advance(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*storyState)
 	if len(st.Sentences) >= st.Total {
 		var b strings.Builder
@@ -980,7 +980,7 @@ func (k *storyKind) advance(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(m.Config.Seconds)
 }
 
-func (k *storyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *storyKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*storyState)
 	if action != "add" {
 		return false, errs.Invalid("Bilinmeyen hamle.", nil)
@@ -1001,17 +1001,17 @@ func (k *storyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 		name = p.Name
 	}
 	st.Sentences = append(st.Sentences, storySentence{UserID: uid, Name: name, Text: text})
-	k.advance(m, s, ctx)
+	k.advance(ctx, m, s)
 	return true, nil
 }
 
-func (k *storyKind) Timeout(m *Match, s *Service, ctx context.Context) {
-	k.advance(m, s, ctx)
+func (k *storyKind) Timeout(ctx context.Context, m *Match, s *Service) {
+	k.advance(ctx, m, s)
 }
 
-func (k *storyKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+func (k *storyKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {
 	if k.writer(m) == uid {
-		k.advance(m, s, ctx)
+		k.advance(ctx, m, s)
 	}
 }
 
@@ -1050,7 +1050,7 @@ func (whosaidKind) Meta() Meta {
 }
 func (whosaidKind) NewState() any { return &whosaidState{} }
 
-func (k *whosaidKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *whosaidKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*whosaidState)
 	ids := []uint{}
 	for _, p := range m.active() {
@@ -1088,7 +1088,7 @@ func (k *whosaidKind) open(m *Match) {
 	m.setDeadline(m.Config.Seconds)
 }
 
-func (k *whosaidKind) reveal(m *Match, s *Service, ctx context.Context) {
+func (k *whosaidKind) reveal(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*whosaidState)
 	line := st.Lines[st.Round]
 	res := whosaidRes{Author: line.Author, Votes: st.Votes}
@@ -1103,7 +1103,7 @@ func (k *whosaidKind) reveal(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(6)
 }
 
-func (k *whosaidKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *whosaidKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*whosaidState)
 	if action != "guess" || st.Phase != "guess" {
 		return false, errs.Invalid("Şu an tahmin edilemez.", nil)
@@ -1127,15 +1127,15 @@ func (k *whosaidKind) Act(m *Match, s *Service, ctx context.Context, uid uint, a
 		}
 	}
 	if len(st.Votes) >= voters {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	}
 	return true, nil
 }
 
-func (k *whosaidKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *whosaidKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*whosaidState)
 	if st.Phase == "guess" {
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 		return
 	}
 	st.Round++
@@ -1146,7 +1146,7 @@ func (k *whosaidKind) Timeout(m *Match, s *Service, ctx context.Context) {
 	k.open(m)
 }
 
-func (k *whosaidKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
+func (k *whosaidKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {}
 
 func (k *whosaidKind) View(m *Match, viewer uint) any {
 	st := m.Data.(*whosaidState)
@@ -1182,7 +1182,7 @@ func (connect4Kind) Meta() Meta {
 }
 func (connect4Kind) NewState() any { return &c4State{} }
 
-func (k *connect4Kind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *connect4Kind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*c4State)
 	*st = c4State{Turn: 1}
 	m.setDeadline(m.Config.Seconds)
@@ -1225,7 +1225,7 @@ func (k *connect4Kind) winLine(b *[6][7]int, r, c, who int) [][2]int {
 	return nil
 }
 
-func (k *connect4Kind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *connect4Kind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*c4State)
 	if action != "drop" {
 		return false, errs.Invalid("Bilinmeyen hamle.", nil)
@@ -1263,13 +1263,13 @@ func (k *connect4Kind) Act(m *Match, s *Service, ctx context.Context, uid uint, 
 	return true, nil
 }
 
-func (k *connect4Kind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *connect4Kind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*c4State)
 	st.Turn = 3 - st.Turn
 	m.setDeadline(m.Config.Seconds)
 }
 
-func (k *connect4Kind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
+func (k *connect4Kind) Left(ctx context.Context, m *Match, s *Service, uid uint) {}
 
 func (k *connect4Kind) View(m *Match, viewer uint) any {
 	st := m.Data.(*c4State)
@@ -1317,7 +1317,7 @@ func (hockeyKind) Meta() Meta {
 }
 func (hockeyKind) NewState() any { return &hockeyState{} }
 
-func (k *hockeyKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *hockeyKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*hockeyState)
 	*st = hockeyState{Target: max(1, m.Config.Rounds), Phase: "play", Serve: 1}
 	st.Pads = [2][2]float64{{hkW / 2, hkH - 20}, {hkW / 2, 20}}
@@ -1350,7 +1350,7 @@ func (k *hockeyKind) seat(m *Match, uid uint) int {
 	return -1
 }
 
-func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *hockeyKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*hockeyState)
 	if action != "move" {
 		return false, errs.Invalid("Bilinmeyen hamle.", nil)
@@ -1422,7 +1422,7 @@ func (k *hockeyKind) Act(m *Match, s *Service, ctx context.Context, uid uint, ac
 }
 
 // step advances the puck one tick; true when the match just ended.
-func (k *hockeyKind) step(m *Match, s *Service, ctx context.Context) bool {
+func (k *hockeyKind) step(ctx context.Context, m *Match, s *Service) bool {
 	st := m.Data.(*hockeyState)
 	if st.Phase == "goal" {
 		if time.Since(st.GoalAt) > hkGoalPause {
@@ -1638,9 +1638,9 @@ func (k *hockeyKind) frame(m *Match) any {
 	return map[string]any{"puck": st.Puck, "pads": st.Pads, "score": st.Score, "phase": st.Phase, "scorer": st.Scorer}
 }
 
-func (k *hockeyKind) Timeout(m *Match, s *Service, ctx context.Context) {}
+func (k *hockeyKind) Timeout(ctx context.Context, m *Match, s *Service) {}
 
-func (k *hockeyKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {}
+func (k *hockeyKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {}
 
 func (k *hockeyKind) View(m *Match, viewer uint) any {
 	st := m.Data.(*hockeyState)
@@ -1677,7 +1677,7 @@ func (telephoneKind) Meta() Meta {
 }
 func (telephoneKind) NewState() any { return &telephoneState{} }
 
-func (k *telephoneKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *telephoneKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*telephoneState)
 	st.Order = nil
 	for _, p := range m.active() {
@@ -1735,7 +1735,7 @@ func (k *telephoneKind) open(m *Match) {
 
 // fill closes the step: anyone who did not deliver gets a placeholder. A
 // missing opening line is taken from the word pool so the chain can still run.
-func (k *telephoneKind) fill(m *Match, s *Service, ctx context.Context) {
+func (k *telephoneKind) fill(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*telephoneState)
 	var spare []models.GameItem
 	for c := range st.Chains {
@@ -1761,7 +1761,7 @@ func (k *telephoneKind) fill(m *Match, s *Service, ctx context.Context) {
 	}
 }
 
-func (k *telephoneKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *telephoneKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*telephoneState)
 	switch action {
 	case "submit":
@@ -1803,7 +1803,7 @@ func (k *telephoneKind) Act(m *Match, s *Service, ctx context.Context, uid uint,
 		}
 		st.Done[uid] = true
 		if len(st.Done) >= len(m.active()) {
-			k.fill(m, s, ctx)
+			k.fill(ctx, m, s)
 			k.open(m)
 		}
 		return true, nil
@@ -1814,14 +1814,14 @@ func (k *telephoneKind) Act(m *Match, s *Service, ctx context.Context, uid uint,
 		if uid != m.G.HostID {
 			return false, errs.Forbidden("Albümü kurucu çevirir.")
 		}
-		k.advance(m, s, ctx)
+		k.advance(ctx, m, s)
 		return true, nil
 	}
 	return false, errs.Invalid("Bilinmeyen hamle.", nil)
 }
 
 // advance turns one page of the album.
-func (k *telephoneKind) advance(m *Match, s *Service, ctx context.Context) {
+func (k *telephoneKind) advance(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*telephoneState)
 	st.RevealStep++
 	if st.RevealStep >= len(st.Chains[st.RevealChain]) {
@@ -1844,21 +1844,21 @@ func (k *telephoneKind) advance(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(5)
 }
 
-func (k *telephoneKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *telephoneKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*telephoneState)
 	if st.Phase == "work" {
-		k.fill(m, s, ctx)
+		k.fill(ctx, m, s)
 		k.open(m)
 		return
 	}
-	k.advance(m, s, ctx)
+	k.advance(ctx, m, s)
 }
 
 // Left: if the one everyone was waiting for walks out, the step closes.
-func (k *telephoneKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+func (k *telephoneKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {
 	st := m.Data.(*telephoneState)
 	if st.Phase == "work" && len(st.Done) >= len(m.active()) {
-		k.fill(m, s, ctx)
+		k.fill(ctx, m, s)
 		k.open(m)
 	}
 }
@@ -1924,7 +1924,7 @@ func (voiceKind) Meta() Meta {
 }
 func (voiceKind) NewState() any { return &voiceState{} }
 
-func (k *voiceKind) Start(m *Match, s *Service, ctx context.Context) error {
+func (k *voiceKind) Start(ctx context.Context, m *Match, s *Service) error {
 	st := m.Data.(*voiceState)
 	st.Phrase = "Alo, teknik destek, nasıl yardımcı olabilirim?"
 	if items := s.pickItems(ctx, "voice", 1); len(items) > 0 {
@@ -1936,7 +1936,7 @@ func (k *voiceKind) Start(m *Match, s *Service, ctx context.Context) error {
 	return nil
 }
 
-func (k *voiceKind) startGuessing(m *Match, s *Service, ctx context.Context) {
+func (k *voiceKind) startGuessing(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*voiceState)
 	st.Order = nil
 	for uid := range st.Clips {
@@ -1963,7 +1963,7 @@ func (k *voiceKind) open(m *Match) {
 	m.setDeadline(m.Config.Seconds)
 }
 
-func (k *voiceKind) reveal(m *Match, s *Service, ctx context.Context) {
+func (k *voiceKind) reveal(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*voiceState)
 	owner := st.Order[st.Round]
 	for uid, target := range st.Votes {
@@ -1975,7 +1975,7 @@ func (k *voiceKind) reveal(m *Match, s *Service, ctx context.Context) {
 	m.setDeadline(6)
 }
 
-func (k *voiceKind) Act(m *Match, s *Service, ctx context.Context, uid uint, action string, payload json.RawMessage) (bool, error) {
+func (k *voiceKind) Act(ctx context.Context, m *Match, s *Service, uid uint, action string, payload json.RawMessage) (bool, error) {
 	st := m.Data.(*voiceState)
 	switch action {
 	case "clip":
@@ -1991,7 +1991,7 @@ func (k *voiceKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 		}
 		st.Clips[uid] = in.Data
 		if len(st.Clips) >= len(m.active()) {
-			k.startGuessing(m, s, ctx)
+			k.startGuessing(ctx, m, s)
 		}
 		return true, nil
 	case "guess":
@@ -2017,20 +2017,20 @@ func (k *voiceKind) Act(m *Match, s *Service, ctx context.Context, uid uint, act
 			}
 		}
 		if len(st.Votes) >= voters {
-			k.reveal(m, s, ctx)
+			k.reveal(ctx, m, s)
 		}
 		return true, nil
 	}
 	return false, errs.Invalid("Bilinmeyen hamle.", nil)
 }
 
-func (k *voiceKind) Timeout(m *Match, s *Service, ctx context.Context) {
+func (k *voiceKind) Timeout(ctx context.Context, m *Match, s *Service) {
 	st := m.Data.(*voiceState)
 	switch st.Phase {
 	case "record":
-		k.startGuessing(m, s, ctx)
+		k.startGuessing(ctx, m, s)
 	case "guess":
-		k.reveal(m, s, ctx)
+		k.reveal(ctx, m, s)
 	case "reveal":
 		st.Round++
 		if st.Round >= len(st.Order) {
@@ -2042,12 +2042,12 @@ func (k *voiceKind) Timeout(m *Match, s *Service, ctx context.Context) {
 }
 
 // Left: a walkout must not hold the room at a count it can no longer reach.
-func (k *voiceKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
+func (k *voiceKind) Left(ctx context.Context, m *Match, s *Service, uid uint) {
 	st := m.Data.(*voiceState)
 	switch st.Phase {
 	case "record":
 		if len(st.Clips) >= len(m.active()) {
-			k.startGuessing(m, s, ctx)
+			k.startGuessing(ctx, m, s)
 		}
 	case "guess":
 		voters := 0
@@ -2057,7 +2057,7 @@ func (k *voiceKind) Left(m *Match, s *Service, ctx context.Context, uid uint) {
 			}
 		}
 		if len(st.Votes) >= voters {
-			k.reveal(m, s, ctx)
+			k.reveal(ctx, m, s)
 		}
 	}
 }

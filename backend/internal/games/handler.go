@@ -97,7 +97,7 @@ func (h *Handler) CreateItem(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.CreateItem(c.UserContext(), id, c.Query("kind"), ItemInput{Text: req.Text, Answer: req.Answer, Options: req.Options, Seconds: req.Seconds, Active: req.Active})
+	res, err := h.service.CreateItem(c.UserContext(), id, c.Query("kind"), ItemInput(req))
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (h *Handler) UpdateItem(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	if err := h.service.UpdateItem(c.UserContext(), id, iid, ItemInput{Text: req.Text, Answer: req.Answer, Options: req.Options, Seconds: req.Seconds, Active: req.Active}); err != nil {
+	if err := h.service.UpdateItem(c.UserContext(), id, iid, ItemInput(req)); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -157,7 +157,7 @@ func (h *Handler) ImportItems(c *fiber.Ctx) error {
 	if err != nil {
 		return errs.Invalid("Dosya açılamadı.", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(f)
 	if err != nil {
 		return errs.Invalid("Dosya okunamadı.", err)

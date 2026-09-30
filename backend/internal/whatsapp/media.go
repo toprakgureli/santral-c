@@ -196,18 +196,18 @@ func (s *Service) OpenMedia(ctx context.Context, actorID, messageID uint, rangeH
 // mediaKind decides how a file is sent and checks WhatsApp's limits.
 func mediaKind(mime string, size int64) (string, error) {
 	mime = strings.ToLower(strings.TrimSpace(strings.SplitN(mime, ";", 2)[0]))
-	switch {
-	case mime == "image/jpeg" || mime == "image/png":
+	switch mime {
+	case "image/jpeg", "image/png":
 		if size > 5<<20 {
 			return "", errs.Invalid("Görsel en fazla 5 MB olabilir. Belge olarak göndermeyi deneyin.", nil)
 		}
 		return "image", nil
-	case mime == "video/mp4" || mime == "video/3gpp":
+	case "video/mp4", "video/3gpp":
 		if size > 16<<20 {
 			return "", errs.Invalid("Video en fazla 16 MB olabilir.", nil)
 		}
 		return "video", nil
-	case mime == "audio/ogg" || mime == "audio/mpeg" || mime == "audio/mp4" || mime == "audio/aac" || mime == "audio/amr":
+	case "audio/ogg", "audio/mpeg", "audio/mp4", "audio/aac", "audio/amr":
 		if size > 16<<20 {
 			return "", errs.Invalid("Ses dosyası en fazla 16 MB olabilir.", nil)
 		}

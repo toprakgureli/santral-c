@@ -34,7 +34,7 @@ func runHockeyChaos(t *testing.T, seed int64) {
 	s := &Service{rooms: quietRooms{}, live: map[uint]*Match{}, rnd: rand.New(rand.NewSource(7))}
 	m := &Match{G: &models.Game{ID: 1, Kind: "hockey", Status: statusPlaying, Winners: "[]"}, Kind: k, Config: Config{Rounds: 1000}, Paused: map[uint]bool{},
 		Players: []Player{{UserID: 1, Name: "A"}, {UserID: 2, Name: "B"}}, Data: k.NewState()}
-	if err := k.Start(m, s, context.Background()); err != nil {
+	if err := k.Start(context.Background(), m, s); err != nil {
 		t.Fatal(err)
 	}
 	st := m.Data.(*hockeyState)
@@ -57,12 +57,12 @@ func runHockeyChaos(t *testing.T, seed int64) {
 				target = [2]float64{st.Puck[0], st.Puck[1]} // sit on it
 			}
 			raw, _ := json.Marshal(map[string]float64{"x": target[0], "y": target[1]})
-			if _, err := k.Act(m, s, context.Background(), seat, "move", raw); err != nil {
+			if _, err := k.Act(context.Background(), m, s, seat, "move", raw); err != nil {
 				t.Fatalf("move: %v", err)
 			}
 		}
 		before := st.Puck
-		k.step(m, s, context.Background())
+		k.step(context.Background(), m, s)
 		for i, v := range st.Puck {
 			if math.IsNaN(v) || math.IsInf(v, 0) {
 				t.Fatalf("tick %d: puck[%d] is %v", tick, i, v)

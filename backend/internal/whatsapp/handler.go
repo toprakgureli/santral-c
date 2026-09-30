@@ -229,7 +229,7 @@ func (h *Handler) Upload(c *fiber.Ctx, uid uint) (any, error) {
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, mediaLimit+1))
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)
@@ -291,7 +291,7 @@ func serveStream(c *fiber.Ctx, m *MediaStream) error {
 	}
 	body := m.Body
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 		_, _ = io.Copy(w, body)
 		_ = w.Flush()
 	})
@@ -325,7 +325,7 @@ func (h *Handler) SendMedia(c *fiber.Ctx, uid, id uint) (any, error) {
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, mediaLimit+1))
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)
@@ -347,7 +347,7 @@ func (h *Handler) TemplateMedia(c *fiber.Ctx, uid uint) (any, error) {
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	data, err := io.ReadAll(io.LimitReader(f, 16<<20))
 	if err != nil {
 		return nil, errs.Invalid("Dosya okunamadı.", err)

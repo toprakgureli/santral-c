@@ -77,9 +77,9 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 	}
 	resp, err := c.client().Do(req)
 	if err != nil {
-		return fmt.Errorf("Meta'ya ulaşılamadı: %w", err)
+		return fmt.Errorf("Meta'ya ulaşılamadı: %w", err) //nolint:staticcheck,revive // starts with a proper noun
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode/100 != 2 {
 		var wrap struct {
@@ -105,7 +105,7 @@ func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader
 	}
 	if out != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {
-			return fmt.Errorf("Meta yanıtı okunamadı: %w", err)
+			return fmt.Errorf("Meta yanıtı okunamadı: %w", err) //nolint:staticcheck,revive // starts with a proper noun
 		}
 	}
 	return nil
@@ -178,7 +178,7 @@ func (c *Client) Send(ctx context.Context, to string, message map[string]any) (s
 		return "", err
 	}
 	if len(out.Messages) == 0 || out.Messages[0].ID == "" {
-		return "", errors.New("Meta mesaj kimliği döndürmedi")
+		return "", errors.New("Meta mesaj kimliği döndürmedi") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	return out.Messages[0].ID, nil
 }
@@ -228,7 +228,7 @@ func (c *Client) Download(ctx context.Context, id string, limit int64) ([]byte, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("medya indirilemedi: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		return nil, nil, fmt.Errorf("medya indirme yanıtı %d", resp.StatusCode)
 	}
@@ -268,7 +268,7 @@ func (c *Client) Upload(ctx context.Context, name, mime string, data []byte) (st
 		return "", err
 	}
 	if out.ID == "" {
-		return "", errors.New("Meta medya kimliği döndürmedi")
+		return "", errors.New("Meta medya kimliği döndürmedi") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	return out.ID, nil
 }
@@ -277,7 +277,7 @@ func (c *Client) Upload(ctx context.Context, name, mime string, data []byte) (st
 // used as a template header example. It needs the app id.
 func (c *Client) UploadHandle(ctx context.Context, mime string, data []byte) (string, error) {
 	if c.AppID == "" {
-		return "", errors.New("Görselli şablon için cihazda uygulama kimliği (App ID) girilmeli.")
+		return "", errors.New("Görselli şablon için cihazda uygulama kimliği (App ID) girilmeli.") //nolint:staticcheck,revive // a sentence shown to people as it is
 	}
 	q := url.Values{"file_length": {strconv.Itoa(len(data))}, "file_type": {mime}}
 	var session struct {
@@ -296,7 +296,7 @@ func (c *Client) UploadHandle(ctx context.Context, mime string, data []byte) (st
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out struct {
 		H string `json:"h"`
 	}

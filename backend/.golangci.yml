@@ -10,6 +10,17 @@ linters:
     - revive
     - unconvert
   settings:
+    staticcheck:
+      checks:
+        - all
+        # A negated group ("not an admin and not a Teams admin") reads like
+        # the rule it implements; spreading the negation over it does not.
+        - -QF1001
+        # Doc comments are checked by revive's exported rule instead.
+        - -ST1000
+        - -ST1020
+        - -ST1021
+        - -ST1022
     revive:
       rules:
         - name: exported

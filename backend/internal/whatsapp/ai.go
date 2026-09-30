@@ -311,7 +311,7 @@ func askModel(ctx context.Context, key, model, system, prompt string, maxTokens 
 	if err != nil {
 		return "", fmt.Errorf("servise ulaşılamadı")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var out struct {
 		Content []struct {

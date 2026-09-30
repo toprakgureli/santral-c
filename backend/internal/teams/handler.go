@@ -73,7 +73,7 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.Create(c.UserContext(), id, CreateInput{Name: req.Name, Description: req.Description, PostPolicy: req.PostPolicy, MemberIDs: req.MemberIDs})
+	res, err := h.service.Create(c.UserContext(), id, CreateInput(req))
 	if err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.Update(c.UserContext(), id, gid, UpdateInput{Name: req.Name, Description: req.Description, PostPolicy: req.PostPolicy})
+	res, err := h.service.Update(c.UserContext(), id, gid, UpdateInput(req))
 	if err != nil {
 		return err
 	}
@@ -334,7 +334,7 @@ func (h *Handler) UpdateMember(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.UpdateMember(c.UserContext(), id, gid, uid, MemberInput{Role: req.Role, CanPost: req.CanPost})
+	res, err := h.service.UpdateMember(c.UserContext(), id, gid, uid, MemberInput(req))
 	if err != nil {
 		return err
 	}

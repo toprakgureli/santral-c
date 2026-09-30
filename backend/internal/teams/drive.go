@@ -178,7 +178,7 @@ func (d *Drive) Exchange(ctx context.Context, code string) (string, error) {
 		return "", err
 	}
 	if tok.RefreshToken == "" {
-		return "", errors.New("Google yenileme anahtarı vermedi; hesabın uygulama izinlerinden SantralC erişimini kaldırıp yeniden bağlanın")
+		return "", errors.New("Google yenileme anahtarı vermedi; hesabın uygulama izinlerinden SantralC erişimini kaldırıp yeniden bağlanın") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	email := ""
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, driveUserInfo, nil)
@@ -188,7 +188,7 @@ func (d *Drive) Exchange(ctx context.Context, code string) (string, error) {
 			Email string `json:"email"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&info)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		email = info.Email
 	}
 	enc, err := d.ring.Seal(DriveSealPurpose, tok.RefreshToken)
@@ -238,12 +238,12 @@ func (d *Drive) postForm(ctx context.Context, endpoint string, form url.Values, 
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := d.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("Google'a ulaşılamadı: %w", err)
+		return fmt.Errorf("Google'a ulaşılamadı: %w", err) //nolint:staticcheck,revive // starts with a proper noun
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("Google yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("Google yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(body))) //nolint:staticcheck,revive // starts with a proper noun
 	}
 	if out != nil {
 		return json.Unmarshal(body, out)
@@ -254,7 +254,7 @@ func (d *Drive) postForm(ctx context.Context, endpoint string, form url.Values, 
 // token returns a live access token, refreshing when needed.
 func (d *Drive) token(ctx context.Context) (string, error) {
 	if !d.Configured() {
-		return "", errors.New("Google Drive yapılandırılmamış (config.yml drive bölümü)")
+		return "", errors.New("Google Drive yapılandırılmamış (config.yml drive bölümü)") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -263,7 +263,7 @@ func (d *Drive) token(ctx context.Context) (string, error) {
 	}
 	enc := d.setting(ctx, keyDriveToken)
 	if enc == "" {
-		return "", errors.New("Google Drive hesabı bağlı değil")
+		return "", errors.New("Google Drive hesabı bağlı değil") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	refresh, err := d.ring.Open(DriveSealPurpose, enc)
 	if err != nil {
@@ -302,7 +302,7 @@ func (d *Drive) do(ctx context.Context, method, endpoint string, body io.Reader,
 	}
 	resp, err := d.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Drive'a ulaşılamadı: %w", err)
+		return nil, fmt.Errorf("Drive'a ulaşılamadı: %w", err) //nolint:staticcheck,revive // starts with a proper noun
 	}
 	return resp, nil
 }
@@ -319,7 +319,7 @@ func (d *Drive) doJSON(ctx context.Context, method, endpoint string, payload any
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return fmt.Errorf("Drive yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
@@ -400,7 +400,7 @@ func (d *Drive) StartUpload(ctx context.Context, folder, name, mime string, size
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		return "", fmt.Errorf("yükleme oturumu açılamadı (%d): %s", resp.StatusCode, strings.TrimSpace(string(data)))
@@ -428,7 +428,7 @@ func (d *Drive) Put(ctx context.Context, folder, name, mime string, data []byte)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		return "", fmt.Errorf("Drive yükleme yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
@@ -455,7 +455,7 @@ func (d *Drive) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 && resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("Drive silme yanıtı %d", resp.StatusCode)
 	}
@@ -475,7 +475,7 @@ func (d *Drive) Open(ctx context.Context, id, rangeHeader string) (*http.Respons
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("Drive okuma yanıtı %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 	}
 	return resp, nil

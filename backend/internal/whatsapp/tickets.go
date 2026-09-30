@@ -93,7 +93,10 @@ func (s *Service) distribute(ctx context.Context, ch *models.WAChannel, ticketID
 	if err := s.db.WithContext(ctx).First(&t, ticketID).Error; err != nil || t.OwnerID != nil || t.Status == "resolved" || t.Status == "bot" {
 		return false
 	}
-	for _, uid := range s.eligible(ctx, ch, t.TeamID) {
+	// The fairest agent gets it; eligible puts them first.
+	candidates := s.eligible(ctx, ch, t.TeamID)
+	if len(candidates) > 0 {
+		uid := candidates[0]
 		before := s.audience(ctx, &t)
 		ok := false
 		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -110,7 +113,11 @@ func (s *Service) distribute(ctx context.Context, ch *models.WAChannel, ticketID
 			}
 			return tx.Exec("INSERT INTO wa_assignments (ticket_id, kind, to_user, team_id) VALUES (?, 'auto', ?, ?)", t.ID, uid, t.TeamID).Error
 		})
-		if err != nil || !ok {
+		if err != nil {
+			slog.ErrorContext(ctx, "whatsapp ticket could not be handed out", "ticket", t.ID, "error", err)
+			return false
+		}
+		if !ok {
 			return false
 		}
 		conv, _, _ := s.repo.Conversation(ctx, t.ConversationID)
@@ -201,7 +208,8 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 		return nil
 	})
 	if err != nil {
-		if e, ok := err.(*errs.Error); ok {
+		var e *errs.Error
+		if errors.As(err, &e) {
 			return e
 		}
 		return errs.Internal(err)

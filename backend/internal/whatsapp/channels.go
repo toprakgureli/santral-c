@@ -24,7 +24,7 @@ import (
 func (s *Service) cloudFor(ch *models.WAChannel) (*meta.Client, error) {
 	token := s.open(ch.AccessTokenEnc)
 	if token == "" {
-		return nil, errors.New("Bu cihazın erişim anahtarı (token) girilmemiş.")
+		return nil, errors.New("Bu cihazın erişim anahtarı (token) girilmemiş.") //nolint:staticcheck,revive // a sentence shown to people as it is
 	}
 	return &meta.Client{PhoneNumberID: ch.PhoneNumberID, WABAID: ch.WABAID, AppID: ch.AppID, Token: token, Version: ch.GraphVersion}, nil
 }

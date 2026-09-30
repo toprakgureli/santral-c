@@ -6,6 +6,7 @@ package profile
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -96,7 +97,7 @@ func NewRepository(db *gorm.DB) *Repository {
 func (r *Repository) User(ctx context.Context, id uint) (*models.User, error) {
 	var u models.User
 	err := r.db.WithContext(ctx).Preload("Roles").First(&u, id).Error
-	if err == gorm.ErrRecordNotFound {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {

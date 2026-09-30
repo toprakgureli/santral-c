@@ -24,6 +24,7 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // ---------------------------------------------------------------- settings
 
+// Setting reads a system setting's value, or "" when it is not set.
 func (r *Repository) Setting(ctx context.Context, key string) string {
 	var value string
 	if err := r.db.WithContext(ctx).Raw("SELECT value FROM system_settings WHERE key = ?", key).Scan(&value).Error; err != nil {
@@ -32,6 +33,7 @@ func (r *Repository) Setting(ctx context.Context, key string) string {
 	return value
 }
 
+// SetSetting stores a system setting's value.
 func (r *Repository) SetSetting(ctx context.Context, key, value string) error {
 	return r.db.WithContext(ctx).Exec(
 		"INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, now()) "+

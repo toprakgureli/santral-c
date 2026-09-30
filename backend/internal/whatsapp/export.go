@@ -159,17 +159,17 @@ func (e *Export) Write(ctx context.Context, w io.Writer) error {
 			if m.SenderLabel != "" && m.SenderUserID == nil {
 				it.Who += " · " + m.SenderLabel
 			}
-			switch {
-			case m.Status == "failed":
+			switch m.Status {
+			case "failed":
 				it.Failed = "Gönderilemedi"
 				if m.ErrorText != "" {
 					it.Failed += ": " + m.ErrorText
 				}
-			case m.Status == "read":
+			case "read":
 				it.Ticks = "read"
-			case m.Status == "delivered":
+			case "delivered":
 				it.Ticks = "✓✓"
-			case m.Status == "sent":
+			case "sent":
 				it.Ticks = "✓"
 			}
 		}
@@ -250,7 +250,7 @@ func (e *Export) copyMedia(ctx context.Context, zw *zip.Writer, m *models.WAMess
 		defer cancel()
 		resp, err := e.s.storage.Open(c, ref.StoreID, "")
 		if err == nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode < 300 {
 				src = resp.Body
 			}
@@ -270,7 +270,7 @@ func (e *Export) copyMedia(ctx context.Context, zw *zip.Writer, m *models.WAMess
 		}
 	}
 	if src == nil {
-		return 0, errors.New("Dosyaya artık ulaşılamıyor.")
+		return 0, errors.New("Dosyaya artık ulaşılamıyor.") //nolint:staticcheck,revive // a sentence shown to people as it is
 	}
 	fw, err := zw.CreateHeader(&zip.FileHeader{Name: file, Method: zip.Store, Modified: m.CreatedAt})
 	if err != nil {
@@ -278,7 +278,8 @@ func (e *Export) copyMedia(ctx context.Context, zw *zip.Writer, m *models.WAMess
 	}
 	n, err := io.Copy(fw, src)
 	if err != nil {
-		return n, errors.New("Dosya yarıda kaldı.")
+		slog.WarnContext(ctx, "exported file was cut off", "message", m.ID, "error", err)
+		return n, errors.New("Dosya yarıda kaldı.") //nolint:staticcheck,revive // a sentence shown to people as it is
 	}
 	return n, nil
 }

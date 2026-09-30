@@ -160,7 +160,7 @@ func (s *Service) metaMediaFor(ctx context.Context, ch *models.WAChannel, fileID
 		return "", f, fmt.Errorf("dosya okunamadı: %w", err)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, mediaLimit))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", f, fmt.Errorf("dosya okunamadı: %w", err)
 	}
