@@ -269,8 +269,19 @@ type ContactInput struct {
 
 // UpdateContact edits a customer's card.
 func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in ContactInput) (*ContactView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAContactManage, "Müşteri bilgilerini düzenleme yetkiniz yok."); err != nil {
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
 		return nil, err
+	}
+	if !v.can(enums.WAContactManage) {
+		return nil, errs.Forbidden("Müşteri bilgilerini düzenleme yetkiniz yok.")
+	}
+	visible, err := s.visibleTickets(ctx, v, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(visible) == 0 {
+		return nil, errs.NotFound("Müşteri bulunamadı.")
 	}
 	fields := map[string]any{"updated_at": time.Now()}
 	if in.Name != nil {
@@ -300,8 +311,8 @@ func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in Contac
 	for _, cid := range convs {
 		s.publish(ctx, cid, nil, nil)
 	}
-	v := contactView(c)
-	return &v, nil
+	view := contactView(c)
+	return &view, nil
 }
 
 // HistoryItem is one past ticket of a customer.
@@ -318,12 +329,59 @@ type HistoryItem struct {
 	Messages       int64      `json:"messages"`
 }
 
-// ContactHistory lists a customer's tickets on every device the person
-// sees, newest first.
+// visibleTickets returns the ids of a customer's recent tickets the viewer
+// may see, by the same rules as the conversation list.
+func (s *Service) visibleTickets(ctx context.Context, v *viewer, contactID uint) (map[uint]bool, error) {
+	var tickets []models.WATicket
+	if err := s.db.WithContext(ctx).
+		Select("id", "channel_id", "status", "owner_id", "team_id", "waiting_listed_at").
+		Where("contact_id = ?", contactID).Order("id DESC").Limit(historyLimit).
+		Find(&tickets).Error; err != nil {
+		return nil, errs.Internal(fmt.Errorf("customer tickets could not be listed: %w", err))
+	}
+	if len(tickets) == 0 {
+		return map[uint]bool{}, nil
+	}
+	ids := make([]uint, len(tickets))
+	for i := range tickets {
+		ids[i] = tickets[i].ID
+	}
+	var joined []uint
+	if err := s.db.WithContext(ctx).Raw("SELECT ticket_id FROM wa_ticket_participants WHERE user_id = ? AND ticket_id IN ?", v.user.ID, ids).
+		Scan(&joined).Error; err != nil {
+		return nil, errs.Internal(fmt.Errorf("ticket participants could not be listed: %w", err))
+	}
+	in := make(map[uint]bool, len(joined))
+	for _, id := range joined {
+		in[id] = true
+	}
+	out := make(map[uint]bool, len(tickets))
+	for i := range tickets {
+		t := &tickets[i]
+		if v.seesTicket(t, map[uint]bool{v.user.ID: in[t.ID]}) {
+			out[t.ID] = true
+		}
+	}
+	return out, nil
+}
+
+// historyLimit is how many of a customer's newest tickets the history
+// shows.
+const historyLimit = 50
+
+// ContactHistory lists the customer's tickets the person may see, newest
+// first. Ratings are shown only to those who may read ratings.
 func (s *Service) ContactHistory(ctx context.Context, actorID, contactID uint) ([]HistoryItem, error) {
 	v, err := s.viewerOf(ctx, actorID)
 	if err != nil {
 		return nil, err
+	}
+	visible, err := s.visibleTickets(ctx, v, contactID)
+	if err != nil {
+		return nil, err
+	}
+	if len(visible) == 0 {
+		return []HistoryItem{}, nil
 	}
 	var rows []struct {
 		ConversationID uint
@@ -342,16 +400,21 @@ func (s *Service) ContactHistory(ctx context.Context, actorID, contactID uint) (
 		COALESCE(u.name, '') AS owner, t.created_at, t.resolved_at, t.rating,
 		(SELECT count(*) FROM wa_messages m WHERE m.ticket_id = t.id AND m.direction IN ('in','out')) AS messages
 		FROM wa_tickets t JOIN wa_channels c ON c.id = t.channel_id LEFT JOIN users u ON u.id = t.owner_id
-		WHERE t.contact_id = ? ORDER BY t.id DESC LIMIT 50`, contactID).Scan(&rows).Error; err != nil {
+		WHERE t.contact_id = ? ORDER BY t.id DESC LIMIT ?`, contactID, historyLimit).Scan(&rows).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
+	ratings := v.can(enums.WARatings)
 	out := []HistoryItem{}
 	for _, r := range rows {
-		if !v.seesChannel(r.ChannelID) {
+		if !visible[r.TicketID] {
 			continue
 		}
-		out = append(out, HistoryItem{ConversationID: r.ConversationID, TicketID: r.TicketID, Number: r.Number, ChannelName: r.ChannelName, Status: r.Status,
-			Owner: r.Owner, CreatedAt: r.CreatedAt, ResolvedAt: r.ResolvedAt, Rating: r.Rating, Messages: r.Messages})
+		item := HistoryItem{ConversationID: r.ConversationID, TicketID: r.TicketID, Number: r.Number, ChannelName: r.ChannelName, Status: r.Status,
+			Owner: r.Owner, CreatedAt: r.CreatedAt, ResolvedAt: r.ResolvedAt, Messages: r.Messages}
+		if ratings {
+			item.Rating = r.Rating
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
