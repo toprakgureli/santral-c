@@ -43,7 +43,9 @@ const datePresetLabels: { key: string; label: string }[] = [
 
 export function Calls() {
   const { user } = useAuth();
-  const canRec = can(user, "call.record_access") || can(user, "cdr.view_all");
+  // Listening needs the recording permission; the server also limits
+  // someone who cannot see every call to their own calls.
+  const canRec = can(user, "call.record_access");
   const canAll = can(user, "cdr.view_all") || can(user, "call.view_all");
   const canExport = can(user, "cdr.export");
   const [exporting, setExporting] = useState(false);

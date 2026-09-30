@@ -255,7 +255,12 @@ func (h *Handler) Recording(c *fiber.Ctx) error {
 	if uuid == "" {
 		return errs.Invalid("Çağrı kimliği zorunlu.", nil)
 	}
-	res, err := h.service.Recording(c.UserContext(), id, uuid)
+	rng := c.Get("Range")
+	res, err := h.service.Recording(c.UserContext(), id, uuid, RecordingAccess{
+		IP:       c.IP(),
+		First:    rng == "" || strings.HasPrefix(rng, "bytes=0-"),
+		Download: c.Query("download") != "",
+	})
 	if err != nil {
 		return err
 	}

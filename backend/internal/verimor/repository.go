@@ -356,6 +356,18 @@ func (r *Repository) UsersWithExtension(ctx context.Context) ([]UserExtension, e
 	return rows, nil
 }
 
+// CallHasExtension reports whether the mirrored call record shows the
+// extension as the caller or the callee.
+func (r *Repository) CallHasExtension(ctx context.Context, callUUID, extension string) (bool, error) {
+	var hits []int
+	if err := r.db.WithContext(ctx).Raw(
+		"SELECT 1 FROM pbx_cdrs WHERE call_uuid = ? AND (caller_ext = ? OR dest_ext = ?) LIMIT 1",
+		callUUID, extension, extension).Scan(&hits).Error; err != nil {
+		return false, fmt.Errorf("call parties could not be checked: %w", err)
+	}
+	return len(hits) > 0, nil
+}
+
 // ExtensionOwner returns the id of the user bound to extension, or 0.
 func (r *Repository) ExtensionOwner(ctx context.Context, extension string) (uint, error) {
 	var ids []uint

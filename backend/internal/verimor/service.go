@@ -1107,20 +1107,48 @@ func canViewCalls(u *models.User) bool {
 		u.Can(enums.CDRViewOwn) || u.Can(enums.CallViewOwn)
 }
 
-func canAccessRecording(u *models.User) bool {
-	return u.Can(enums.CallRecordAccess) || u.Can(enums.CDRViewAll) || u.Can(enums.CallViewAll)
+// RecordingAccess says who opens a recording and how, for the audit log.
+type RecordingAccess struct {
+	IP string
+	// First is false for the follow-up requests a player makes while
+	// seeking, so one listen is logged once.
+	First    bool
+	Download bool
 }
 
 // Recording mints a one-time URL for a call's recording and returns the live
-// download response so the handler can stream it. The caller must close the
-// response body.
-func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string) (*http.Response, error) {
+// download response so the handler can stream it. It needs the recording
+// permission; someone who cannot see every call may only open a call their
+// own extension took part in. Every listen or download is audited. The
+// caller must close the response body.
+func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, access RecordingAccess) (*http.Response, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
-	if !canAccessRecording(actor) {
+	if !actor.Can(enums.CallRecordAccess) {
 		return nil, errs.Forbidden("Çağrı kaydına erişim yetkiniz yok.")
+	}
+	if !actor.Can(enums.CDRViewAll) && !actor.Can(enums.CallViewAll) {
+		own := false
+		if actor.SIPExtension != nil && *actor.SIPExtension != "" {
+			if own, err = s.repo.CallHasExtension(ctx, callUUID, *actor.SIPExtension); err != nil {
+				return nil, errs.Internal(err)
+			}
+		}
+		if !own {
+			return nil, errs.Forbidden("Bu kaydı yalnızca görüşmeyi yapan temsilci dinleyebilir.")
+		}
+	}
+	if access.First {
+		s.audit.Record(ctx, audit.Entry{
+			ActorID:    &actorID,
+			Action:     enums.AuditCallRecordingOpened,
+			TargetType: "call",
+			TargetID:   callUUID,
+			IP:         access.IP,
+			Detail:     map[string]any{"download": access.Download},
+		})
 	}
 	mintedURL, err := s.client.RecordingURL(ctx, callUUID)
 	if err != nil {

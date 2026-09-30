@@ -20,6 +20,7 @@ const ACTION_LABELS: Record<string, string> = {
   "user.roles_updated": "Roller değiştirildi",
   "user.sip_updated": "Dahili (SIP) değiştirildi",
   "pbx.sip_synced_all": "Tüm SIP şifreleri Verimor'dan çekildi",
+  "call.recording_opened": "Çağrı kaydına erişildi",
   "whatsapp.channel_deactivated": "WhatsApp numarası kapatıldı",
   "whatsapp.channel_deleted": "WhatsApp numarası silindi",
   "whatsapp.channel_purged": "WhatsApp numarası geçmişiyle silindi",
@@ -49,6 +50,7 @@ const MODULES: { key: string; label: string }[] = [
   { key: "security.", label: "Güvenlik" },
   { key: "shift.", label: "Mesai" },
   { key: "pbx.", label: "Santral" },
+  { key: "call.", label: "Çağrı kayıtları" },
   { key: "whatsapp.", label: "WhatsApp" },
 ];
 
@@ -59,6 +61,7 @@ const TARGET_LABELS: Record<string, string> = {
   settings: "Ayar",
   ip_ban: "IP banı",
   shift: "Mesai",
+  call: "Çağrı",
   wa_channel: "WhatsApp numarası",
   wa_bot: "Chatbot",
 };
