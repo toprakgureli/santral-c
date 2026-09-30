@@ -8,6 +8,7 @@ package sse
 import (
 	"bufio"
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -19,6 +20,12 @@ import (
 // under nginx's proxy_read_timeout (30 s) so the connection is not cut, and
 // it is also how often the session is re-checked.
 const Heartbeat = 20 * time.Second
+
+// streams counts the event streams open right now, for the metrics page.
+var streams atomic.Int64
+
+// Open returns how many event streams are open right now.
+func Open() int64 { return streams.Load() }
 
 // Stream is one open event stream.
 type Stream struct {
@@ -40,6 +47,8 @@ func Serve(c *fiber.Ctx, s Stream) error {
 	// nginx must pass events through instead of buffering the response.
 	c.Set("X-Accel-Buffering", "no")
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		streams.Add(1)
+		defer streams.Add(-1)
 		if s.Close != nil {
 			defer s.Close()
 		}

@@ -26,6 +26,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/games"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/internal/ops"
 	"github.com/toprakgureli/santral-c/backend/internal/performance"
 	"github.com/toprakgureli/santral-c/backend/internal/profile"
 	"github.com/toprakgureli/santral-c/backend/internal/role"
@@ -162,9 +163,9 @@ func run() error {
 		AllowOrigins:     configs.Cnf.App.CORSOrigins,
 		AllowCredentials: configs.Cnf.App.CORSOrigins != "",
 	}))
-	app.Get("/healthz", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok", "version": version, "buildTime": buildTime})
-	})
+	// The health check the uptime monitor and deploy.sh call, and the queue
+	// numbers for whoever runs the server.
+	ops.NewHandler(sqlDB, redis.Get(), ops.Build{Version: version, Time: buildTime}).Routes(app)
 
 	api := app.Group("/api/v1")
 	// Public build stamp so the panel can show whether the running backend is the
