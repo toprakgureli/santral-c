@@ -29,7 +29,9 @@ type UserFormProps = {
 export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: UserFormProps) {
   const { user: me } = useAuth();
   const editing = Boolean(user);
-  const canAssign = can(me, "role.assign");
+  const self = editing && user?.id === me?.id;
+  // Nobody changes their own roles; the server refuses it as well.
+  const canAssign = can(me, "role.assign") && !self;
   const canDeactivate = can(me, "user.deactivate");
 
   const [form, setForm] = useState({
@@ -225,7 +227,8 @@ export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: U
             })}
             {!roles.length && <FieldHint>Rol listesi yüklenemedi.</FieldHint>}
           </div>
-          {editing && !canAssign && <FieldHint>Rolleri değiştirmek için rol atama yetkisi gerekir.</FieldHint>}
+          {self && <FieldHint>Kendi rollerini değiştiremezsin.</FieldHint>}
+          {editing && !self && !canAssign && <FieldHint>Rolleri değiştirmek için rol atama yetkisi gerekir.</FieldHint>}
         </FieldGroup>
 
         {!editing && (

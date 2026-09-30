@@ -274,7 +274,7 @@ func ensureCanGrant(actor *models.User, current, next []models.Permission) error
 		if existing[next[i].ID] {
 			continue
 		}
-		if !actor.Can(enums.Permission(next[i].Key)) {
+		if !actor.CanGrant(enums.Permission(next[i].Key)) {
 			return errs.Forbidden("Kendinizde olmayan bir yetkiyi role veremezsiniz.")
 		}
 	}

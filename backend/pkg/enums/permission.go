@@ -245,3 +245,31 @@ func (p Permission) Module() Module {
 	}
 	return ""
 }
+
+// narrowerOf maps a permission to the broader one that already includes it:
+// whoever sees every call also sees their own.
+var narrowerOf = map[Permission]Permission{
+	CallViewOwn:         CallViewAll,
+	CDRViewOwn:          CDRViewAll,
+	EscalationListOwn:   EscalationListAll,
+	PerformanceViewRole: PerformanceViewAll,
+	WAViewTeam:          WAViewAll,
+}
+
+// behaviours change what the panel does for the user rather than what they
+// may reach, so handing them out raises nobody's rights.
+var behaviours = map[Permission]bool{
+	EscalationAuto:  true,
+	WASurveyMyCalls: true,
+}
+
+// Grantable reports whether someone for whom has reports their permissions
+// may give p to another user or role: they hold p, or a broader permission
+// that includes it, or p is only a behaviour.
+func Grantable(has func(Permission) bool, p Permission) bool {
+	if has(p) || behaviours[p] {
+		return true
+	}
+	broader, ok := narrowerOf[p]
+	return ok && has(broader)
+}

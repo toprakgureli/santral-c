@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -108,7 +109,7 @@ func (s *Service) CreateUser(ctx context.Context, actorID uint, req requests.Use
 		return nil, err
 	}
 
-	roles, err := s.resolveRoles(ctx, actor, req.RoleIDs)
+	roles, err := s.resolveRoles(ctx, actor, req.RoleIDs, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +212,9 @@ func (s *Service) SetActive(ctx context.Context, actorID, targetID uint, active 
 	if err != nil {
 		return err
 	}
+	if err := ensureNotAbove(actor, target); err != nil {
+		return err
+	}
 
 	if err := s.repo.SetActive(ctx, target.ID, active); err != nil {
 		return errs.Internal(err)
@@ -243,13 +247,7 @@ func (s *Service) SetRoles(ctx context.Context, actorID, targetID uint, roleIDs 
 	if err != nil {
 		return nil, err
 	}
-	// An actor may not strip the invisible-admin role from an invisible admin,
-	// nor grant it; resolveRoles blocks granting, and this blocks demotion of a
-	// hidden owner by a non-owner.
-	if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
-		return nil, errs.Forbidden("Bu kullanıcının rollerini değiştiremezsiniz.")
-	}
-	roles, err := s.resolveRoles(ctx, actor, roleIDs)
+	roles, err := s.rolesFor(ctx, actor, target, roleIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -299,15 +297,19 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, targetID uint, req re
 		currentRoles = append(currentRoles, r.ID)
 	}
 	rolesChanged := !sameIDs(currentRoles, req.RoleIDs)
+	// A new email lets whoever set it take the account over through a
+	// password reset, so it needs the same standing as a password reset.
+	if email != target.Email {
+		if err := ensureNotAbove(actor, target); err != nil {
+			return nil, err
+		}
+	}
 	var roles []models.Role
 	if rolesChanged {
 		if _, err := s.require(actor, enums.RoleAssign); err != nil {
 			return nil, err
 		}
-		if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
-			return nil, errs.Forbidden("Bu kullanıcının rollerini değiştiremezsiniz.")
-		}
-		roles, err = s.resolveRoles(ctx, actor, req.RoleIDs)
+		roles, err = s.rolesFor(ctx, actor, target, req.RoleIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -353,6 +355,9 @@ func (s *Service) ResetPassword(ctx context.Context, actorID, targetID uint, pw 
 
 	target, err := s.visibleTarget(ctx, actor, targetID)
 	if err != nil {
+		return err
+	}
+	if err := ensureNotAbove(actor, target); err != nil {
 		return err
 	}
 	if err := password.Validate(pw); err != nil {
@@ -422,9 +427,24 @@ func (s *Service) require(actor *models.User, perm enums.Permission) (*models.Us
 	return actor, nil
 }
 
-// resolveRoles loads the requested roles and blocks non invisible-admins from
-// assigning the invisible-admin role.
-func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []uint) ([]models.Role, error) {
+// rolesFor checks that actor may give target the roles ids and loads them.
+// Nobody changes their own roles, and nobody changes the roles of someone who
+// holds a permission they lack, so a role assigner cannot raise themselves or
+// demote those above them.
+func (s *Service) rolesFor(ctx context.Context, actor, target *models.User, ids []uint) ([]models.Role, error) {
+	if actor.ID == target.ID {
+		return nil, errs.Forbidden("Kendi rollerinizi değiştiremezsiniz.")
+	}
+	if err := ensureNotAbove(actor, target); err != nil {
+		return nil, err
+	}
+	return s.resolveRoles(ctx, actor, ids, target.Roles)
+}
+
+// resolveRoles loads the requested roles. A role the user does not have yet
+// may only be given when the actor holds every permission in it; roles the
+// user already has are kept as they are.
+func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []uint, current []models.Role) ([]models.Role, error) {
 	roles, err := s.repo.RolesByIDs(ctx, ids)
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -432,14 +452,41 @@ func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []ui
 	if len(roles) != len(dedupe(ids)) {
 		return nil, errs.Invalid("Geçersiz rol seçimi.", nil)
 	}
-	if !actor.IsInvisibleAdmin() {
-		for i := range roles {
-			if enums.Role(roles[i].Name) == enums.RoleInvisibleAdmin {
-				return nil, errs.Forbidden("Bu rolü atayamazsınız.")
+	if actor.IsInvisibleAdmin() {
+		return roles, nil
+	}
+	held := make(map[uint]bool, len(current))
+	for i := range current {
+		held[current[i].ID] = true
+	}
+	for i := range roles {
+		if held[roles[i].ID] {
+			continue
+		}
+		if enums.Role(roles[i].Name) == enums.RoleInvisibleAdmin {
+			return nil, errs.Forbidden("Bu rolü atayamazsınız.")
+		}
+		for _, p := range roles[i].Permissions {
+			if !actor.CanGrant(enums.Permission(p.Key)) {
+				return nil, errs.Forbidden(fmt.Sprintf("%q rolünde sizde olmayan yetkiler var, bu rolü atayamazsınız.", roles[i].DisplayName))
 			}
 		}
 	}
 	return roles, nil
+}
+
+// ensureNotAbove blocks changes to a user who holds a permission the actor
+// lacks. Invisible admins may change anyone.
+func ensureNotAbove(actor, target *models.User) error {
+	if actor.IsInvisibleAdmin() {
+		return nil
+	}
+	for _, p := range target.Permissions() {
+		if !actor.CanGrant(p) {
+			return errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
+		}
+	}
+	return nil
 }
 
 // visibleTarget loads a target user, hiding invisible-admin accounts from

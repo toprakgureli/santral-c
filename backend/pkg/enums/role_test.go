@@ -44,3 +44,18 @@ func TestPermissionModule(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerCanGrantTeamRoles(t *testing.T) {
+	held := make(map[Permission]bool)
+	for _, p := range RolePermissions(RoleManager) {
+		held[p] = true
+	}
+	has := func(p Permission) bool { return held[p] }
+	for _, r := range []Role{RoleTechnicalTeam, RoleSalesTeam} {
+		for _, p := range RolePermissions(r) {
+			if !Grantable(has, p) {
+				t.Errorf("a manager cannot hand out %s of %s", p, r)
+			}
+		}
+	}
+}

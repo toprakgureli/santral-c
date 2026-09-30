@@ -67,6 +67,12 @@ func (u *User) Can(p enums.Permission) bool {
 	return false
 }
 
+// CanGrant reports whether the user may give p to someone else; see
+// enums.Grantable.
+func (u *User) CanGrant(p enums.Permission) bool {
+	return enums.Grantable(u.Can, p)
+}
+
 // IsInvisibleAdmin reports whether the user carries the invisible-admin role.
 func (u *User) IsInvisibleAdmin() bool {
 	for _, r := range u.Roles {
