@@ -8,6 +8,9 @@
 package testdb
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -46,7 +49,7 @@ func Open(t testing.TB) *gorm.DB {
 			openErr = err
 			return
 		}
-		if err := migrations.Run(sqlDB); err != nil {
+		if err := migrate(sqlDB); err != nil {
 			openErr = err
 			return
 		}
@@ -56,4 +59,22 @@ func Open(t testing.TB) *gorm.DB {
 		t.Fatalf("test database: %v", openErr)
 	}
 	return shared
+}
+
+// migrateLock keeps test binaries of different packages, which run at the
+// same time, from bringing the schema up to date together.
+const migrateLock = 731_0012
+
+func migrate(db *sql.DB) error {
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("test database connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrateLock); err != nil {
+		return fmt.Errorf("migration lock: %w", err)
+	}
+	defer func() { _, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrateLock) }()
+	return migrations.Run(db)
 }
