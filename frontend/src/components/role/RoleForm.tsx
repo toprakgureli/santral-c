@@ -3,7 +3,7 @@ import { Copy, Info, Loader2, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import type { PermissionGroup, PermissionItem, Role } from "@/api/types";
 import AuthError from "@/components/auth/AuthError";
-import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Notice } from "@/components/ui";
+import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Notice, useDirty } from "@/components/ui";
 import { errorMessage } from "@/components/auth/messages";
 import { LIMITS } from "@/lib/limits";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,8 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
   const [selected, setSelected] = useState<Set<number>>(() => new Set(role?.permissionIds ?? copyFrom?.permissionIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty([form, [...selected].sort()]);
 
   const update = (key: "name" | "displayName" | "description") => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -99,7 +101,7 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
   };
 
   return (
-    <Modal
+    <Modal dirty={dirty && !busy}
       open
       onClose={onClose}
       size="lg"

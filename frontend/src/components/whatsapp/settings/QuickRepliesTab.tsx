@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Copy, Pencil, Plus, Search, Trash2, Zap } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { Toolbar } from "@/components/ui/rows";
 import { areaCls, DeviceChips, DevicePicker, FormField, inputCls } from "@/components/whatsapp/settings/parts";
 import { waText } from "@/components/whatsapp/waText";
@@ -85,6 +85,8 @@ function Form({ item, channels, onClose, onSaved }: { item: WAQuickReply | null;
   const [body, setBody] = useState(item?.body ?? "");
   const [ids, setIds] = useState<number[]>(item?.channelIds ?? channels.map((c) => c.id));
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty([shortcut, title, body, ids]);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setBusy(true);
@@ -99,7 +101,7 @@ function Form({ item, channels, onClose, onSaved }: { item: WAQuickReply | null;
     }
   };
   return (
-    <Modal open onClose={onClose} title={item ? "Hazır yanıtı düzenle" : "Yeni hazır yanıt"} footer={<>
+    <Modal dirty={dirty && !busy} open onClose={onClose} title={item ? "Hazır yanıtı düzenle" : "Yeni hazır yanıt"} footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button onClick={() => void save()} disabled={busy || !shortcut.trim() || !body.trim()}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>

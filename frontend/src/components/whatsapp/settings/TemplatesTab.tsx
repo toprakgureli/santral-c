@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, FileText, ImageIcon, Phone, Plus, RefreshCw, Reply, Search, Trash2, Upload, Video, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { Toolbar } from "@/components/ui/rows";
 import { areaCls, FormField, inputCls } from "@/components/whatsapp/settings/parts";
 import { waText } from "@/components/whatsapp/waText";
@@ -279,6 +279,8 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
   const [handle, setHandle] = useState("");
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty([name, language, category, d, headerExample, examples, fills]);
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -335,7 +337,7 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
   const quickCount = d.buttons.filter((b) => b.type === "QUICK_REPLY").length;
 
   return (
-    <Modal open onClose={onClose} title="Yeni şablon" description="Meta'ya onaya gönderilir. Onaylanınca kullanılabilir hale gelir." size="lg" footer={<>
+    <Modal dirty={dirty && !busy} open onClose={onClose} title="Yeni şablon" description="Meta'ya onaya gönderilir. Onaylanınca kullanılabilir hale gelir." size="lg" footer={<>
       {error && <span className="mr-auto max-w-md text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button onClick={() => void save()} disabled={busy || !name || !d.body.trim()}>{busy ? "Gönderiliyor..." : "Onaya gönder"}</Button>

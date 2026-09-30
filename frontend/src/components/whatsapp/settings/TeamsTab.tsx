@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2, UsersRound } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { ListRow } from "@/components/ui/rows";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { FormField, inputCls, PeoplePicker } from "@/components/whatsapp/settings/parts";
@@ -69,6 +69,8 @@ function TeamForm({ team, people, onClose, onSaved }: { team: WATeam | null; peo
   const [color, setColor] = useState(team?.color || COLORS[0]);
   const [ids, setIds] = useState<number[]>(team?.memberIds ?? []);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty([name, color, ids]);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setBusy(true);
@@ -83,7 +85,7 @@ function TeamForm({ team, people, onClose, onSaved }: { team: WATeam | null; peo
     }
   };
   return (
-    <Modal open onClose={onClose} title={team ? `${team.name} ekibini düzenle` : "Yeni ekip"} size="lg" footer={<>
+    <Modal dirty={dirty && !busy} open onClose={onClose} title={team ? `${team.name} ekibini düzenle` : "Yeni ekip"} size="lg" footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <span className="mr-auto text-xs text-muted-foreground">{ids.length} kişi seçili</span>
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>

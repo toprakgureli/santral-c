@@ -5,7 +5,7 @@ import type { Role, User } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import AuthError from "@/components/auth/AuthError";
 import { errorMessage } from "@/components/auth/messages";
-import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Separator } from "@/components/ui";
+import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Separator, useDirty } from "@/components/ui";
 import PasswordField, { PasswordRules } from "@/components/ui/PasswordField";
 import type { Handoff } from "@/components/user/CredentialsHandoff";
 import { LIMITS } from "@/lib/limits";
@@ -45,6 +45,8 @@ export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: U
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty(form);
 
   const update = (key: "name" | "email" | "password" | "sipExtension" | "sipPassword") => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -156,7 +158,7 @@ export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: U
   };
 
   return (
-    <Modal
+    <Modal dirty={dirty && !busy}
       open
       onClose={onClose}
       title={editing ? "Kullanıcıyı Düzenle" : "Yeni Kullanıcı"}

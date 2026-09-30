@@ -1,7 +1,10 @@
-import { createContext, forwardRef, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { createContext, forwardRef, useCallback, useContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, TriangleAlert, type LucideIcon } from "lucide-react";
+import { useDialogFocus, useTopmost } from "@/components/ui/windowStack";
 import { cn } from "@/lib/utils";
+
+export { useDirty } from "@/components/ui/windowStack";
 
 const buttonBase =
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl text-sm font-medium whitespace-nowrap h-10 px-4 " +
@@ -16,13 +19,12 @@ const buttonVariants: Record<string, string> = {
   ghost: "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
 };
 
-export function Button({
-  variant = "primary",
-  className = "",
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }) {
-  return <button className={cn(buttonBase, buttonVariants[variant], className)} {...props} />;
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }>(function Button(
+  { variant = "primary", className = "", ...props },
+  ref,
+) {
+  return <button ref={ref} className={cn(buttonBase, buttonVariants[variant], className)} {...props} />;
+});
 
 const fieldBase =
   "flex h-10 w-full min-w-0 rounded-xl border border-border/70 bg-muted/40 px-3.5 text-sm text-foreground shadow-sm outline-none " +
@@ -193,6 +195,9 @@ function useLayer(base: number): number {
   return Math.max(base, useContext(Layer) + 1);
 }
 
+// Modal is a window over the page. Escape or a click outside closes it;
+// when dirty is set, it asks first so unsaved changes are not lost by
+// accident (the window's own cancel button still closes at once).
 export function Modal({
   open,
   onClose,
@@ -200,6 +205,7 @@ export function Modal({
   description,
   size = "md",
   footer,
+  dirty = false,
   children,
 }: {
   open: boolean;
@@ -208,25 +214,72 @@ export function Modal({
   description?: string;
   size?: "md" | "lg";
   footer?: ReactNode;
+  dirty?: boolean;
   children: ReactNode;
 }) {
   const z = useLayer(50);
+  const isTop = useTopmost(open);
+  const box = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descId = useId();
+  const [asking, setAsking] = useState(false);
+  // A press that starts inside and ends outside (selecting text) must not
+  // close the window, so the press has to start on the backdrop too.
+  const pressedOutside = useRef(false);
+  useDialogFocus(open, box, isTop);
+  const requestClose = useCallback(() => {
+    if (dirty) setAsking(true);
+    else onClose();
+  }, [dirty, onClose]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !isTop()) return;
+      e.preventDefault();
+      requestClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, isTop, requestClose]);
+  useEffect(() => {
+    if (!open) setAsking(false);
+  }, [open]);
   if (!open) return null;
   const width = size === "lg" ? "max-w-3xl" : "max-w-md";
   return createPortal(
     <Layer.Provider value={z}>
-    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4" style={{ zIndex: z }} onClick={onClose}>
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/40 p-4"
+      style={{ zIndex: z }}
+      onMouseDown={(e) => { pressedOutside.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (pressedOutside.current && e.target === e.currentTarget) requestClose(); }}
+    >
       <div
-        className={cn("flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl", width)}
-        onClick={(e) => e.stopPropagation()}
+        ref={box}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descId : undefined}
+        tabIndex={-1}
+        className={cn("flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-xl outline-none", width)}
       >
         <header className="border-b border-border/60 px-5 py-4">
-          <h2 className="text-base font-semibold">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+          <h2 id={titleId} className="text-base font-semibold">{title}</h2>
+          {description && <p id={descId} className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
         </header>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
         {footer && <footer className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3">{footer}</footer>}
       </div>
+      <ConfirmDialog
+        open={asking}
+        tone="warning"
+        title="Kaydedilmemiş değişiklikler var"
+        description="Kapatırsan bu pencerede yaptığın değişiklikler kaybolur."
+        confirmLabel="Kapat"
+        cancelLabel="Düzenlemeye dön"
+        onCancel={() => setAsking(false)}
+        onConfirm={() => { setAsking(false); onClose(); }}
+      />
     </div>
     </Layer.Provider>,
     document.body,
@@ -377,35 +430,53 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   const z = useLayer(80);
+  const isTop = useTopmost(open);
+  const box = useRef<HTMLDivElement>(null);
+  // A step that cannot be undone starts on the safe choice.
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descId = useId();
+  const pressedOutside = useRef(false);
   const [typed, setTyped] = useState("");
   useEffect(() => {
     if (open) setTyped("");
   }, [open]);
   const locked = !!confirmText && typed.trim().toLocaleLowerCase("tr") !== confirmText.trim().toLocaleLowerCase("tr");
+  useDialogFocus(open, box, isTop, cancelRef);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onCancel();
+      if (e.key !== "Escape" || busy || !isTop()) return;
+      e.preventDefault();
+      onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, busy, onCancel]);
+  }, [open, busy, onCancel, isTop]);
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: z }} onClick={() => !busy && onCancel()}>
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-4"
+      style={{ zIndex: z }}
+      onMouseDown={(e) => { pressedOutside.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (pressedOutside.current && e.target === e.currentTarget && !busy) onCancel(); }}
+    >
       <div
+        ref={box}
         role="alertdialog"
         aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-        className="animate-in fade-in zoom-in-95 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl duration-200"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        tabIndex={-1}
+        className="animate-in fade-in zoom-in-95 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-2xl outline-none duration-200"
       >
         <div className="flex items-start gap-3">
           <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-xl", tone === "danger" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning")}>
             <TriangleAlert className="size-5" />
           </span>
           <div className="space-y-1">
-            <h3 className="text-base font-semibold leading-tight">{title}</h3>
-            <div className="text-sm leading-relaxed text-muted-foreground">{description}</div>
+            <h3 id={titleId} className="text-base font-semibold leading-tight">{title}</h3>
+            <div id={descId} className="text-sm leading-relaxed text-muted-foreground">{description}</div>
           </div>
         </div>
         {confirmText && (
@@ -416,7 +487,7 @@ export function ConfirmDialog({
         )}
         {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</Button>
+          <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</Button>
           <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={busy || locked} className={tone === "warning" ? "bg-warning text-black hover:bg-warning/90" : undefined}>
             {busy ? "Bekleyin..." : confirmLabel}
           </Button>

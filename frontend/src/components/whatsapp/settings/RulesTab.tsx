@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowDown, ArrowUp, Bot, Copy, Pencil, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { areaCls, DeviceChips, DevicePicker, FormField, inputCls, Switch } from "@/components/whatsapp/settings/parts";
 import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
@@ -208,6 +208,8 @@ function RuleForm({ draft, channels, onClose, onSaved }: { draft: Draft & { id?:
   const [people, setPeople] = useState<WAAgent[]>([]);
   const [templates, setTemplates] = useState<WATemplate[]>([]);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty(d);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -248,7 +250,7 @@ function RuleForm({ draft, channels, onClose, onSaved }: { draft: Draft & { id?:
   };
 
   return (
-    <Modal open onClose={onClose} title={draft.id ? "Kuralı düzenle" : "Yeni kural"} size="lg" footer={<>
+    <Modal dirty={dirty && !busy} open onClose={onClose} title={draft.id ? "Kuralı düzenle" : "Yeni kural"} size="lg" footer={<>
       {error && <span className="mr-auto max-w-md text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button onClick={() => void save()} disabled={busy || !d.name.trim() || d.actions.length === 0}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>

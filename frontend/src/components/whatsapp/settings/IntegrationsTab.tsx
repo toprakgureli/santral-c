@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { Pencil, Play, Plug, Plus, Trash2, X } from "lucide-react";
 import { ApiError } from "@/api/client";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { ListRow } from "@/components/ui/rows";
 import { areaCls, FormField, inputCls } from "@/components/whatsapp/settings/parts";
 import { cn } from "@/lib/utils";
@@ -66,6 +66,8 @@ function Form({ item, onClose, onSaved }: { item: WAIntegration | null; onClose:
   const [timeoutSec, setTimeoutSec] = useState(item?.timeoutSec ?? 8);
   const [headers, setHeaders] = useState<{ k: string; v: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty([name, method, url, body, timeoutSec, headers]);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setBusy(true);
@@ -81,7 +83,7 @@ function Form({ item, onClose, onSaved }: { item: WAIntegration | null; onClose:
     }
   };
   return (
-    <Modal open onClose={onClose} title={item ? "Bağlantıyı düzenle" : "Yeni bağlantı"} size="lg" footer={<>
+    <Modal dirty={dirty && !busy} open onClose={onClose} title={item ? "Bağlantıyı düzenle" : "Yeni bağlantı"} size="lg" footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button onClick={() => void save()} disabled={busy || !name.trim() || !url.startsWith("http")}>{busy ? "Kaydediliyor..." : "Kaydet"}</Button>

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Activity, CheckCircle2, CircleAlert, Pencil, Plus, Smartphone, Trash2, Users } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { Button, Card, ConfirmDialog, EmptyState, Modal } from "@/components/ui";
+import { Button, Card, ConfirmDialog, EmptyState, Modal, useDirty } from "@/components/ui";
 import { ListRow } from "@/components/ui/rows";
 import { CopyField, FormField, inputCls, PeoplePicker } from "@/components/whatsapp/settings/parts";
 import { can } from "@/lib/permissions";
@@ -165,6 +165,8 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
   });
   const [existing, setExisting] = useState(!!channel?.existingHookUrl);
   const [busy, setBusy] = useState(false);
+  // Closing by accident (Escape, a click outside) asks first once something changed.
+  const dirty = useDirty(f);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string | boolean) => setF((cur) => ({ ...cur, [k]: v }));
 
@@ -183,7 +185,7 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
   };
 
   return (
-    <Modal open onClose={onClose} title={channel ? `${channel.name} numarasını düzenle` : "WhatsApp numarası ekle"} description="Bu bilgiler Meta Business panelindeki WhatsApp > API Kurulumu sayfasında yazar. Anahtarlar şifreli saklanır ve bir daha gösterilmez." size="lg"
+    <Modal dirty={dirty && !busy} open onClose={onClose} title={channel ? `${channel.name} numarasını düzenle` : "WhatsApp numarası ekle"} description="Bu bilgiler Meta Business panelindeki WhatsApp > API Kurulumu sayfasında yazar. Anahtarlar şifreli saklanır ve bir daha gösterilmez." size="lg"
       footer={<>
         {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
         <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
