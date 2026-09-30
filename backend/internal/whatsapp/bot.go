@@ -922,10 +922,13 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 	if err := s.db.WithContext(ctx).First(&in, id).Error; err != nil {
 		return nil, errors.New("dış sorgu bulunamadı")
 	}
-	url := fillVars(in.URL, vars)
+	target, err := fillURL(in.URL, vars)
+	if err != nil {
+		return nil, err
+	}
 	var body io.Reader
 	if in.Method != "GET" && strings.TrimSpace(in.Body) != "" {
-		body = bytes.NewReader([]byte(fillVars(in.Body, vars)))
+		body = bytes.NewReader([]byte(fillJSON(in.Body, vars)))
 	}
 	timeout := time.Duration(in.TimeoutSec) * time.Second
 	if timeout <= 0 || timeout > 30*time.Second {
@@ -933,7 +936,7 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 	}
 	c, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(c, in.Method, url, body)
+	req, err := http.NewRequestWithContext(c, in.Method, target, body)
 	if err != nil {
 		return nil, err
 	}
@@ -945,7 +948,7 @@ func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]
 		var hs map[string]string
 		if json.Unmarshal([]byte(raw), &hs) == nil {
 			for k, v := range hs {
-				req.Header.Set(k, fillVars(v, vars))
+				req.Header.Set(k, fillHeader(v, vars))
 			}
 		}
 	}

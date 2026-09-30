@@ -486,6 +486,9 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return errs.Invalid("Adres http:// ya da https:// ile başlayan tam bir adres olmalı.", nil)
 	}
+	if err := checkURLTemplate(strings.TrimSpace(in.URL)); err != nil {
+		return errs.Invalid("Değişkenler ({ad} gibi) adresin sunucu kısmında kullanılamaz; yalnızca yolda ve sorguda olabilir.", err)
+	}
 	if strings.TrimSpace(in.Name) == "" {
 		return errs.Invalid("Bir ad verin.", nil)
 	}
