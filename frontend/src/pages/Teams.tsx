@@ -209,7 +209,7 @@ export function Teams() {
               const r = e.currentTarget.getBoundingClientRect();
               setPlus({ x: r.left - 150, y: r.bottom + 4 });
             }}
-            data-tip="Yeni"
+            aria-label="Yeni" data-tip="Yeni"
             className={cn("flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md shadow-primary/30 transition-transform hover:scale-105", plus && "scale-95")}
           >
             <Plus className="size-4" />
@@ -289,7 +289,7 @@ export function Teams() {
                   setProfile({ userId: detail.peer.id, x: r.left, y: r.bottom, room: detail.id });
                 }}
                 className="relative inline-flex shrink-0 rounded-full disabled:cursor-default"
-                data-tip={detail.kind === "dm" ? "Profili aç" : undefined}
+                aria-label={detail.kind === "dm" ? "Profili aç" : undefined} data-tip={detail.kind === "dm" ? "Profili aç" : undefined}
               >
                 <GroupAvatar group={detail} className="size-10 text-sm" />
                 {detail.kind === "dm" && <OnlineDot presence={teams.presenceOf(detail.peer, detail.id)} />}
@@ -306,7 +306,7 @@ export function Teams() {
                   if (typing) return <p className="truncate text-xs italic text-primary">{typing}</p>;
                   if (detail.kind === "dm") {
                     const p = teams.presenceOf(detail.peer, detail.id);
-                    return <p className={cn("truncate text-xs", presenceTone(p))}>{p.here ? "Sohbette · aynı sohbettesiniz" : seenLabel(p)}</p>;
+                    return <p className={cn("truncate text-xs", presenceTone(p))}>{p.here ? "Sohbette · aynı sohbettesin" : seenLabel(p)}</p>;
                   }
                   const on = detail.members.filter((m) => teams.presenceOf(m, detail.id).online).length;
                   const here = detail.members.filter((m) => teams.presenceOf(m, detail.id).here).length;
@@ -314,15 +314,15 @@ export function Teams() {
                 })()}
               </div>
               {canPlay && detail.canPost && (
-                <button type="button" onClick={() => setStartGame(true)} data-tip="Oyun başlat" className="flex size-9 items-center justify-center rounded-full text-violet-500 transition-colors hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
+                <button type="button" onClick={() => setStartGame(true)} aria-label="Oyun başlat" data-tip="Oyun başlat" className="flex size-9 items-center justify-center rounded-full text-violet-500 transition-colors hover:bg-violet-500/10"><Gamepad2 className="size-4" /></button>
               )}
-              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} data-tip="Mesajlarda ara" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "search" && "bg-primary/10 text-primary")}><Search className="size-4" /></button>
-              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} data-tip="Görseller, videolar ve dosyalar" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "media" && "bg-primary/10 text-primary")}><Images className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "search" ? null : "search"))} aria-label="Mesajlarda ara" data-tip="Mesajlarda ara" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "search" && "bg-primary/10 text-primary")}><Search className="size-4" /></button>
+              <button type="button" onClick={() => setPanel((p) => (p === "media" ? null : "media"))} aria-label="Görseller, videolar ve dosyalar" data-tip="Görseller, videolar ve dosyalar" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "media" && "bg-primary/10 text-primary")}><Images className="size-4" /></button>
               {detail.kind === "group" && (
                 <>
-                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} data-tip="Üyeler" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "members" && "bg-primary/10 text-primary")}><Users className="size-4" /></button>
+                  <button type="button" onClick={() => setPanel((p) => (p === "members" ? null : "members"))} aria-label="Üyeler" data-tip="Üyeler" className={cn("flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground", panel === "members" && "bg-primary/10 text-primary")}><Users className="size-4" /></button>
                   {detail.canManage && (
-                    <button type="button" onClick={() => setSettings(true)} data-tip="Grup ayarları" className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
+                    <button type="button" onClick={() => setSettings(true)} aria-label="Grup ayarları" data-tip="Grup ayarları" className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><Settings2 className="size-4" /></button>
                   )}
                 </>
               )}

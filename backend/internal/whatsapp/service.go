@@ -298,7 +298,7 @@ func (s *Service) viewerOf(ctx context.Context, userID uint) (*viewer, error) {
 		return nil, err
 	}
 	if !u.Can(enums.WAView) {
-		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkiniz yok.")
+		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkin yok.")
 	}
 	v := &viewer{user: u, channels: map[uint]bool{}, teams: map[uint]bool{}}
 	var chans []uint
@@ -323,7 +323,7 @@ func (s *Service) require(ctx context.Context, userID uint, p enums.Permission, 
 	// Everything in the module starts from using WhatsApp at all; the
 	// panel guards its WhatsApp pages the same way.
 	if !u.Can(enums.WAView) {
-		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkiniz yok.")
+		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkin yok.")
 	}
 	if !u.Can(p) {
 		return nil, errs.Forbidden(msg)

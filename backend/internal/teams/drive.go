@@ -204,7 +204,7 @@ func (d *Drive) Exchange(ctx context.Context, code string) (string, error) {
 		return "", err
 	}
 	if tok.RefreshToken == "" {
-		return "", errors.New("Google yenileme anahtarı vermedi; hesabın uygulama izinlerinden SantralC erişimini kaldırıp yeniden bağlanın") //nolint:staticcheck,revive // starts with a proper noun
+		return "", errors.New("Google yenileme anahtarı vermedi; hesabın uygulama izinlerinden SantralC erişimini kaldırıp yeniden bağlan") //nolint:staticcheck,revive // starts with a proper noun
 	}
 	email := ""
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, driveUserInfo, nil)

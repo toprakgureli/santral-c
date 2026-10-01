@@ -140,10 +140,10 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
 
         {(onReply || onReact) && m.direction !== "note" && (
           <div className={cn("absolute top-1 hidden items-center gap-0.5 rounded-full bg-card/95 px-1 py-0.5 shadow-md ring-1 ring-border/60 backdrop-blur group-hover:flex", out ? "-left-2 -translate-x-full" : "-right-2 translate-x-full", emoji && "flex")}>
-            {onReply && <button type="button" onClick={() => onReply(m)} data-tip="Yanıtla" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-3.5" /></button>}
+            {onReply && <button type="button" onClick={() => onReply(m)} aria-label="Yanıtla" data-tip="Yanıtla" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-3.5" /></button>}
             {onReact && m.status !== "queued" && (
               <span className="relative">
-                <button type="button" onClick={() => setEmoji((v) => !v)} data-tip="Tepki ver" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-3.5" /></button>
+                <button type="button" onClick={() => setEmoji((v) => !v)} aria-label="Tepki ver" data-tip="Tepki ver" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-3.5" /></button>
                 {emoji && (
                   <span className="absolute bottom-full left-1/2 z-10 mb-1 flex -translate-x-1/2 gap-0.5 rounded-full bg-card px-1.5 py-1 shadow-lg ring-1 ring-border/60">
                     {QUICK.map((e) => <button key={e} type="button" onClick={() => { onReact(m, e); setEmoji(false); }} className="rounded-full px-1 text-lg leading-none transition-transform hover:scale-125">{e}</button>)}
@@ -151,7 +151,7 @@ export default function MessageBubble({ m, head, onReply, onReact, onRetry, onIm
                 )}
               </span>
             )}
-            {m.body && <button type="button" onClick={() => void navigator.clipboard?.writeText(m.body)} data-tip="Metni kopyala" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Copy className="size-3.5" /></button>}
+            {m.body && <button type="button" onClick={() => void navigator.clipboard?.writeText(m.body)} aria-label="Metni kopyala" data-tip="Metni kopyala" className="rounded-full p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Copy className="size-3.5" /></button>}
           </div>
         )}
         {m.status === "failed" && (
@@ -185,7 +185,7 @@ function Media({ m, onImage }: { m: WAMessage; onImage?: (m: WAMessage) => void 
     case "image":
     case "sticker":
       return (
-        <button type="button" onClick={() => onImage?.(m)} className={cn("block overflow-hidden rounded-md", m.kind === "sticker" ? "size-32 bg-transparent" : "max-h-80 bg-foreground/5")}>
+        <button type="button" onClick={() => onImage?.(m)} aria-label="Görseli aç" className={cn("block overflow-hidden rounded-md", m.kind === "sticker" ? "size-32 bg-transparent" : "max-h-80 bg-foreground/5")}>
           <img src={md.url} alt="" loading="lazy" className={cn(m.kind === "sticker" ? "size-full object-contain" : "max-h-80 w-full min-w-48 object-cover")} />
         </button>
       );

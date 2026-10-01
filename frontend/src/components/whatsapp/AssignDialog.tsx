@@ -60,7 +60,7 @@ export default function AssignDialog({ conv, open, onClose }: { conv: WAConversa
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Sohbeti aktar" description="Seçtiğiniz kişi sorumlu olur. Siz yardımcı olarak kalırsınız; notunuz geçmişe yazılır."
+    <Modal open={open} onClose={onClose} title="Sohbeti aktar" description="Seçtiğin kişi sorumlu olur. Sen yardımcı olarak kalırsın; notun geçmişe yazılır."
       footer={<>
         {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
         <Button variant="secondary" onClick={onClose}>Vazgeç</Button>

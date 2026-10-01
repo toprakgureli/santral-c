@@ -65,7 +65,7 @@ export default function AITab() {
             </p>
           )}
           <SwitchRow title="Temsilciler öneri alabilsin" sub="Açıkken mesaj kutusunda mor yıldız düğmesi çıkar. Yetkisi olmayanlar görmez." on={s.enabled} onChange={(v) => setS({ ...s, enabled: v })} disabled={!s.hasKey && !key} />
-          <FormField label="Anthropic API anahtarı" hint={s.hasKey ? "Kayıtlı. Değiştirmek için yenisini yapıştırın. Anahtar şifreli saklanır ve bir daha gösterilmez." : "console.anthropic.com adresindeki hesabınızdan alınan, sk-ant- ile başlayan anahtar."}>
+          <FormField label="Anthropic API anahtarı" hint={s.hasKey ? "Kayıtlı. Değiştirmek için yenisini yapıştır. Anahtar şifreli saklanır ve bir daha gösterilmez." : "console.anthropic.com adresindeki hesabından alınan, sk-ant- ile başlayan anahtar."}>
             <span className="flex gap-2">
               <span className="relative flex-1">
                 <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -85,7 +85,7 @@ export default function AITab() {
               ))}
             </div>
           </div>
-          <FormField label="Şirketiniz hakkında bilmesi gerekenler" hint="Ne satıyorsunuz, çalışma saatleri, iade ve kargo kuralları, nasıl hitap edilmeli. Burada yazmayan bir bilgiyi uydurmaz; boşluk bırakır.">
+          <FormField label="Şirketin hakkında bilmesi gerekenler" hint="Ne satıyorsun, çalışma saatleri, iade ve kargo kuralları, nasıl hitap edilmeli. Burada yazmayan bir bilgiyi uydurmaz; boşluk bırakır.">
             <textarea className={areaCls} rows={9} value={s.instructions} onChange={(e) => setS({ ...s, instructions: e.target.value })} placeholder={"Örnek:\nFirmamız internet ve telefon hizmeti veriyor.\nArıza kayıtları 24 saat içinde çözülür.\nMüşterilere \"siz\" diye hitap edilir, emoji kullanılmaz."} />
           </FormField>
           <label className="flex items-center gap-2 text-sm">

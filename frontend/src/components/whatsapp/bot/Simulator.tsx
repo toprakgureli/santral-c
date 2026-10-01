@@ -98,7 +98,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
           <p className="text-[0.7rem] text-muted-foreground">Taslak akış, müşteri gibi. Kimseye mesaj gitmez.</p>
         </div>
         {channels.length === 0 ? (
-          <button type="button" onClick={() => { setHoursOpen((v) => !v); }} data-tip={hoursOpen ? "Mesai içi sayılıyor. Değiştirmek için tıklayın." : "Mesai dışı sayılıyor. Değiştirmek için tıklayın."} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", hoursOpen ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
+          <button type="button" onClick={() => { setHoursOpen((v) => !v); }} data-tip={hoursOpen ? "Mesai içi sayılıyor. Değiştirmek için tıkla." : "Mesai dışı sayılıyor. Değiştirmek için tıkla."} className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", hoursOpen ? "text-amber-600 ring-amber-500/30" : "text-indigo-500 ring-indigo-500/30")}>
             {hoursOpen ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />} {hoursOpen ? "Mesai içi" : "Mesai dışı"}
           </button>
         ) : assumed && (
@@ -109,7 +109,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
         <button type="button" onClick={() => setClockOpen((v) => !v)} data-tip="Denemede saat kaç olsun" className={cn("flex h-8 items-center gap-1 rounded-full px-2.5 text-[0.7rem] font-medium ring-1", at ? "text-violet-600 ring-violet-500/30 dark:text-violet-400" : "text-muted-foreground ring-border/60")}>
           <Clock3 className="size-3.5" /> {at ? `${DAY_SHORT[at.day]} ${at.clock}` : "Şimdi"}
         </button>
-        <button type="button" onClick={restart} data-tip="Baştan başlat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><RotateCcw className="size-4" /></button>
+        <button type="button" onClick={restart} aria-label="Baştan başlat" data-tip="Baştan başlat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><RotateCcw className="size-4" /></button>
         <button type="button" onClick={onClose} aria-label="Kapat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></button>
       </header>
       {clockOpen && (
@@ -146,7 +146,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
         </details>
       )}
       <form className="flex items-center gap-2 border-t border-border/60 p-3" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send(text.trim()); }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} disabled={!state || state.done} placeholder={state?.done ? (skipped ? "Chatbot başlamadı" : "Chatbot bitti") : "Müşteri olarak yazın"} className="h-10 min-w-0 flex-1 rounded-full border border-border/60 bg-muted/40 px-4 text-sm outline-none focus:border-ring/50 disabled:opacity-60" />
+        <input value={text} onChange={(e) => setText(e.target.value)} disabled={!state || state.done} placeholder={state?.done ? (skipped ? "Chatbot başlamadı" : "Chatbot bitti") : "Müşteri olarak yaz"} className="h-10 min-w-0 flex-1 rounded-full border border-border/60 bg-muted/40 px-4 text-sm outline-none focus:border-ring/50 disabled:opacity-60" />
         <button type="submit" disabled={!text.trim() || !state || state.done || busy} className="flex size-10 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm disabled:opacity-40" aria-label="Gönder"><SendHorizontal className="size-4" /></button>
       </form>
     </aside>

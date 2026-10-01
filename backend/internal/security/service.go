@@ -57,7 +57,7 @@ func (s *Service) Guard(ctx context.Context, a Attempt) error {
 			return errs.Internal(err)
 		}
 		if left > 0 {
-			return errs.TooMany(fmt.Sprintf("Bu tarayıcıdan çok fazla hatalı deneme yapıldı. %s sonra tekrar deneyin.", minutes(left)))
+			return errs.TooMany(fmt.Sprintf("Bu tarayıcıdan çok fazla hatalı deneme yapıldı. %s sonra tekrar dene.", minutes(left)))
 		}
 	}
 	if !s.trusted(a.IP) {
@@ -66,7 +66,7 @@ func (s *Service) Guard(ctx context.Context, a Attempt) error {
 			return errs.Internal(err)
 		}
 		if ban != nil {
-			return errs.TooMany("Çok fazla başarısız deneme yapıldı. Lütfen daha sonra tekrar deneyin.")
+			return errs.TooMany("Çok fazla başarısız deneme yapıldı. Lütfen daha sonra tekrar dene.")
 		}
 	}
 	remaining, err := s.lockout.Remaining(ctx, key(a.Email))
@@ -74,7 +74,7 @@ func (s *Service) Guard(ctx context.Context, a Attempt) error {
 		return errs.Internal(err)
 	}
 	if remaining > 0 {
-		return errs.Locked("Hesap geçici olarak kilitli. Lütfen daha sonra tekrar deneyin.")
+		return errs.Locked("Hesap geçici olarak kilitli. Lütfen daha sonra tekrar dene.")
 	}
 	return nil
 }

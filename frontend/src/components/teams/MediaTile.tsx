@@ -55,12 +55,12 @@ export default function MediaTile({ item, onRemove, onRetry, onEdit }: { item: P
 
       <span className={cn("absolute top-1 right-1 flex gap-0.5", media ? "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100" : "")}>
         {item.status === "hata" && onRetry && (
-          <button type="button" onClick={onRetry} data-tip="Yeniden dene" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><RefreshCw className="size-3" /></button>
+          <button type="button" onClick={onRetry} aria-label="Yeniden dene" data-tip="Yeniden dene" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><RefreshCw className="size-3" /></button>
         )}
         {item.kind === "image" && onEdit && item.status !== "hazırlanıyor" && (
-          <button type="button" onClick={onEdit} data-tip="İşaretle / gizle" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><Pencil className="size-3" /></button>
+          <button type="button" onClick={onEdit} aria-label="İşaretle / gizle" data-tip="İşaretle / gizle" className="flex size-6 items-center justify-center rounded-md bg-black/60 text-white hover:bg-black/80"><Pencil className="size-3" /></button>
         )}
-        <button type="button" onClick={onRemove} data-tip="Kaldır" className={cn("flex size-6 items-center justify-center rounded-md", media ? "bg-black/60 text-white hover:bg-black/80" : "text-muted-foreground hover:bg-accent hover:text-foreground")}><X className="size-3" /></button>
+        <button type="button" onClick={onRemove} aria-label="Kaldır" data-tip="Kaldır" className={cn("flex size-6 items-center justify-center rounded-md", media ? "bg-black/60 text-white hover:bg-black/80" : "text-muted-foreground hover:bg-accent hover:text-foreground")}><X className="size-3" /></button>
       </span>
     </div>
   );

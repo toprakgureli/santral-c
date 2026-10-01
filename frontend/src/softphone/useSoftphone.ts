@@ -29,10 +29,10 @@ function mediaError(e: unknown): string {
   switch (name) {
     case "NotAllowedError":
     case "SecurityError":
-      return "Mikrofon izni verilmedi. Adres çubuğundaki kilit simgesinden mikrofona izin verip sayfayı yenileyin.";
+      return "Mikrofon izni verilmedi. Adres çubuğundaki kilit simgesinden mikrofona izin verip sayfayı yenile.";
     case "NotFoundError":
     case "OverconstrainedError":
-      return "Mikrofon bulunamadı. Bir mikrofon bağlayıp sayfayı yenileyin.";
+      return "Mikrofon bulunamadı. Bir mikrofon bağlayıp sayfayı yenile.";
     case "NotReadableError":
     case "AbortError":
       return "Mikrofon başka bir uygulama tarafından kullanılıyor.";
@@ -274,7 +274,7 @@ export function useSoftphone(enabled: boolean): Phone {
           // failed call does not collide with the PBX's own announcement.
           if (wasEstablished) {
             tones.endBeep();
-            setEndReason(localEndRef.current ? "Kapattınız" : "Karşı taraf kapattı");
+            setEndReason(localEndRef.current ? "Kapattın" : "Karşı taraf kapattı");
           }
           const duration = wasEstablished ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0;
           if (wasEstablished && callIdRef.current) {
@@ -675,7 +675,7 @@ export function useSoftphone(enabled: boolean): Phone {
     try {
       await s.refer(uri, {
         requestDelegate: {
-          onReject: () => setError("Santral aktarmayı kabul etmedi. Numarayı kontrol edip tekrar deneyin."),
+          onReject: () => setError("Santral aktarmayı kabul etmedi. Numarayı kontrol edip tekrar dene."),
         },
       });
     } catch {

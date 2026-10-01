@@ -45,7 +45,7 @@ func (r *Reader) List(ctx context.Context, actorID uint, f requests.AuditFilter)
 		return nil, err
 	}
 	if !actor.Can(enums.SystemAuditView) {
-		return nil, errs.Forbidden("Denetim kayıtlarını görüntüleme yetkiniz yok.")
+		return nil, errs.Forbidden("Denetim kayıtlarını görüntüleme yetkin yok.")
 	}
 	if f.Page < 1 {
 		f.Page = 1

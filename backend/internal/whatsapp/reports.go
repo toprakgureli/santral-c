@@ -49,7 +49,7 @@ type Report struct {
 
 // Reports computes the figures for an inclusive local day range.
 func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay string, channelID uint) (*Report, error) {
-	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	from, err := time.ParseInLocation("2006-01-02", fromDay, hours.Zone)

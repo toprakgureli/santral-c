@@ -41,7 +41,7 @@ type Draft = Omit<WARule, "id" | "runs" | "lastRunAt" | "lastError" | "updatedAt
 const RECIPES: { title: string; sub: string; make: (ids: number[]) => Draft }[] = [
   {
     title: "Mesai dışı cevabı",
-    sub: "Mesai dışında yazana ne zaman döneceğinizi söyler.",
+    sub: "Mesai dışında yazana ne zaman döneceğini söyler.",
     make: (ids) => ({ name: "Mesai dışı cevabı", active: true, channelIds: ids, trigger: "outside_hours", conditions: [], cooldownMin: 720, actions: [{ kind: "send_text", text: "Merhaba {musteri}, şu an mesai saatleri dışındayız. Mesajınızı aldık, ilk iş saatinde size dönüş yapacağız." }] }),
   },
   {
@@ -106,7 +106,7 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
           <Button onClick={() => setEdit({ name: "", active: true, channelIds: device ? [device] : allIds.slice(0, 1), trigger: "message_in", conditions: [], actions: [{ kind: "send_text", text: "" }], cooldownMin: 0 })}><Plus /> Yeni kural</Button>
         </span>
       }>
-        <p className="mb-4 text-sm text-muted-foreground">Bir şey olduğunda, şartlar tutuyorsa sistem sizin yerinize bir iş yapar. Kurallar yukarıdan aşağıya sırayla çalışır. Müşteri son 24 saatte yazmadıysa düz mesaj gidemez; öyle durumlar için şablon seçin.</p>
+        <p className="mb-4 text-sm text-muted-foreground">Bir şey olduğunda, şartlar tutuyorsa sistem senin yerine bir iş yapar. Kurallar yukarıdan aşağıya sırayla çalışır. Müşteri son 24 saatte yazmadıysa düz mesaj gidemez; öyle durumlar için şablon seç.</p>
         {channels.length > 1 && (
           <div className="mb-3 flex flex-wrap gap-1">
             <DeviceFilter active={device === 0} onClick={() => setDevice(0)}>Tümü</DeviceFilter>
@@ -116,7 +116,7 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
         {msg && <p className="mb-3 text-sm text-destructive">{msg}</p>}
         {info && <p className="mb-3 rounded-xl bg-success/10 px-3 py-2 text-sm text-success">{info}</p>}
         {shown.length === 0 ? (
-          <EmptyState icon={<Wand2 />} title="Henüz kural yok" description="Aşağıdaki hazır örneklerden biriyle başlayabilirsiniz." />
+          <EmptyState icon={<Wand2 />} title="Henüz kural yok" description="Aşağıdaki hazır örneklerden biriyle başlayabilirsin." />
         ) : (
           <div className="space-y-2">
             {shown.map((r, i) => (
@@ -148,8 +148,8 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
                 </div>
                 <span className="flex shrink-0 items-center gap-1">
                   <span data-tip={r.active ? "Açık" : "Kapalı"}><Switch on={r.active} onChange={() => void toggle(r)} label="Açık" /></span>
-                  <button type="button" data-tip="Düzenle" onClick={() => setEdit({ ...r })} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
-                  <button type="button" data-tip="Sil" onClick={() => setDel(r)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
+                  <button type="button" aria-label="Düzenle" data-tip="Düzenle" onClick={() => setEdit({ ...r })} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
+                  <button type="button" aria-label="Sil" data-tip="Sil" onClick={() => setDel(r)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
                 </span>
               </div>
             ))}
@@ -169,7 +169,7 @@ export default function RulesTab({ channels }: { channels: WAChannel[] }) {
       </Card>
 
       {edit && <RuleForm draft={edit} channels={channels} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />}
-      {copy && <CopyRules channels={channels} onClose={() => setCopy(false)} onDone={(n) => { setCopy(false); setMsg(null); setInfo(`${n} kural kopyalandı. Kopyalar kapalı olarak eklendi, kontrol edip açabilirsiniz.`); void load(); }} />}
+      {copy && <CopyRules channels={channels} onClose={() => setCopy(false)} onDone={(n) => { setCopy(false); setMsg(null); setInfo(`${n} kural kopyalandı. Kopyalar kapalı olarak eklendi, kontrol edip açabilirsin.`); void load(); }} />}
       <ConfirmDialog open={!!del} title="Kural silinsin mi?" description={`"${del?.name}" silinir.`} confirmLabel="Sil" onCancel={() => { setDel(null); setDeleteError(null); }}
         busy={deleting} error={deleteError}
         onConfirm={() => {
@@ -282,7 +282,7 @@ function RuleForm({ draft, channels, onClose, onSaved }: { draft: Draft & { id?:
                 {CONDITIONS[c.kind]?.needs === "text" && <input className={cn(inputCls, "h-9 min-w-40 flex-1")} value={c.value} onChange={(e) => setCond(i, { value: e.target.value })} placeholder={CONDITIONS[c.kind].placeholder} />}
                 {CONDITIONS[c.kind]?.needs === "status" && (
                   <select className={cn(inputCls, "h-9 w-48")} value={c.value} onChange={(e) => setCond(i, { value: e.target.value })}>
-                    <option value="">Seçin</option>
+                    <option value="">Seç</option>
                     {Object.entries(STATUS_WORD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 )}
@@ -353,7 +353,7 @@ function ActionFields({ a, set, teams, people, templates }: { a: WARuleAction; s
       return (
         <>
           <select className={cn(inputCls, "h-9")} value={a.templateId ?? ""} onChange={(e) => set({ templateId: Number(e.target.value) || undefined, params: [] })}>
-            <option value="">Şablon seçin</option>
+            <option value="">Şablon seç</option>
             {templates.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.language})</option>)}
           </select>
           {t && <p className="rounded-lg bg-card px-2 py-1.5 text-xs text-muted-foreground">{t.components.find((c) => c.type === "BODY")?.text}</p>}
@@ -370,7 +370,7 @@ function ActionFields({ a, set, teams, people, templates }: { a: WARuleAction; s
     case "assign_team":
       return (
         <select className={cn(inputCls, "h-9")} value={a.teamId ?? ""} onChange={(e) => set({ teamId: Number(e.target.value) || undefined })}>
-          <option value="">Ekip seçin</option>
+          <option value="">Ekip seç</option>
           {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       );
@@ -378,7 +378,7 @@ function ActionFields({ a, set, teams, people, templates }: { a: WARuleAction; s
       return (
         <>
           <select className={cn(inputCls, "h-9")} value={a.userId ?? ""} onChange={(e) => set({ userId: Number(e.target.value) || undefined })}>
-            <option value="">Kişi seçin</option>
+            <option value="">Kişi seç</option>
             {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <p className="text-[0.7rem] text-muted-foreground">Sohbet zaten birindeyse ondan alınmaz.</p>
@@ -390,7 +390,7 @@ function ActionFields({ a, set, teams, people, templates }: { a: WARuleAction; s
     case "set_priority":
       return (
         <select className={cn(inputCls, "h-9")} value={a.value ?? ""} onChange={(e) => set({ value: e.target.value })}>
-          <option value="">Seçin</option>
+          <option value="">Seç</option>
           {Object.entries(PRIORITY_WORD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       );

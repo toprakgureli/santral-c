@@ -33,7 +33,7 @@ func Require(actors IActorLoader, perms ...enums.Permission) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		id, ok := c.Locals(UserIDKey).(uint)
 		if !ok {
-			return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+			return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 		}
 		actor, err := actors.GetByID(c.UserContext(), id)
 		if err != nil {
@@ -44,6 +44,6 @@ func Require(actors IActorLoader, perms ...enums.Permission) fiber.Handler {
 				return c.Next()
 			}
 		}
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 }

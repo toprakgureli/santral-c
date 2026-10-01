@@ -66,7 +66,7 @@ func (s *Service) callSurveySettings(ctx context.Context) CallSurveySettings {
 
 // CallSurvey returns the settings.
 func (s *Service) CallSurvey(ctx context.Context, actorID uint) (*CallSurveySettings, error) {
-	if _, err := s.require(ctx, actorID, enums.WACallSurvey, "Çağrı sonrası anket ayarlarını görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WACallSurvey, "Çağrı sonrası anket ayarlarını görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	set := s.callSurveySettings(ctx)
@@ -75,13 +75,13 @@ func (s *Service) CallSurvey(ctx context.Context, actorID uint) (*CallSurveySett
 
 // SaveCallSurvey stores the settings after checking the template fits.
 func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurveySettings) (*CallSurveySettings, error) {
-	if _, err := s.require(ctx, actorID, enums.WACallSurvey, "Çağrı sonrası anket ayarlarını değiştirme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WACallSurvey, "Çağrı sonrası anket ayarlarını değiştirme yetkin yok."); err != nil {
 		return nil, err
 	}
 	switch in.Mode {
 	case "buttons", "link":
 	default:
-		return nil, errs.Invalid("Anket türünü seçin.", nil)
+		return nil, errs.Invalid("Anket türünü seç.", nil)
 	}
 	switch in.Directions {
 	case "inbound", "outbound", "both":
@@ -105,15 +105,15 @@ func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurve
 	if in.Enabled {
 		ch, err := s.repo.Channel(ctx, in.ChannelID)
 		if err != nil {
-			return nil, errs.Invalid("Anketin gideceği WhatsApp numarasını seçin.", nil)
+			return nil, errs.Invalid("Anketin gideceği WhatsApp numarasını seç.", nil)
 		}
 		var tpl models.WATemplate
 		if s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ? AND status = 'APPROVED'", ch.WABAID, in.Template, in.TemplateLang).First(&tpl).Error != nil {
-			return nil, errs.Invalid("Onaylı bir şablon seçin.", nil)
+			return nil, errs.Invalid("Onaylı bir şablon seç.", nil)
 		}
 		quick, urlVar := templateButtons(&tpl)
 		if in.Mode == "buttons" && quick == 0 {
-			return nil, errs.Invalid("Bu şablonda cevap düğmesi yok. Düğmeli anket için hızlı cevap düğmeli bir şablon seçin.", nil)
+			return nil, errs.Invalid("Bu şablonda cevap düğmesi yok. Düğmeli anket için hızlı cevap düğmeli bir şablon seç.", nil)
 		}
 		if in.Mode == "link" {
 			if !strings.HasPrefix(strings.TrimSpace(in.LinkURL), "https://") {
@@ -130,7 +130,7 @@ func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurve
 			}
 		}
 		if n := bodyVars(&tpl); len(in.Params) < n {
-			return nil, errs.Invalid(fmt.Sprintf("Şablondaki %d boşluğun hepsini doldurun.", n), nil)
+			return nil, errs.Invalid(fmt.Sprintf("Şablondaki %d boşluğun hepsini doldur.", n), nil)
 		}
 	}
 	in.LinkURL = strings.TrimSpace(in.LinkURL)
@@ -535,7 +535,7 @@ type CallSurveyReport struct {
 
 // CallSurveyReport summarises the surveys of calls in the day range.
 func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, toDay string) (*CallSurveyReport, error) {
-	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	from, err := time.ParseInLocation("2006-01-02", fromDay, hours.Zone)

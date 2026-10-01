@@ -49,7 +49,7 @@ export function Escalation({ categories, activePeer, connected, callId, canSearc
     return (
       <EscalationFrame>
         <p className="rounded-xl bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
-          Bir çağrı başladığında müşteri bilgisi burada belirir ve eskalasyon girebilirsiniz.
+          Bir çağrı başladığında müşteri bilgisi burada belirir ve eskalasyon girebilirsin.
         </p>
       </EscalationFrame>
     );

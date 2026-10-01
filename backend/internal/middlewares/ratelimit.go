@@ -26,7 +26,7 @@ func RateLimitBy(max int, window time.Duration, key func(c *fiber.Ctx) string) f
 		Expiration:   window,
 		KeyGenerator: key,
 		LimitReached: func(c *fiber.Ctx) error {
-			return errs.TooMany("Çok fazla istek gönderildi. Lütfen biraz bekleyin.")
+			return errs.TooMany("Çok fazla istek gönderildi. Lütfen biraz bekle.")
 		},
 	})
 }

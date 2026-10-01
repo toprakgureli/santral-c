@@ -25,7 +25,7 @@ type RemoveResult struct {
 // RemoveChannel deletes a device that never had a conversation, and turns off
 // one that did, so its conversations stay readable.
 func (s *Service) RemoveChannel(ctx context.Context, actorID, id uint, ip string) (*RemoveResult, error) {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz silme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz silme yetkin yok."); err != nil {
 		return nil, err
 	}
 	ch, err := s.repo.Channel(ctx, id)
@@ -57,7 +57,7 @@ func (s *Service) RemoveChannel(ctx context.Context, actorID, id uint, ip string
 // one that was, so its versions and reports stay. Customers inside the flow
 // go to a person either way.
 func (s *Service) RemoveBot(ctx context.Context, actorID, id uint, ip string) (*RemoveResult, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot silme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot silme yetkin yok."); err != nil {
 		return nil, err
 	}
 	b, err := s.repo.Bot(ctx, id)

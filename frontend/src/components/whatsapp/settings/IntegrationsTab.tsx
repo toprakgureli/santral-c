@@ -23,7 +23,7 @@ export default function IntegrationsTab() {
   useEffect(() => { void load(); }, []);
   return (
     <Card title="Dış sistemler" icon={Plug} actions={<Button onClick={() => setEdit("new")}><Plus /> Yeni bağlantı</Button>}>
-      <p className="mb-4 text-sm text-muted-foreground">Chatbot'un soru sorabileceği adresler. Örneğin müşterinin yazdığı sipariş numarasıyla kargo durumunu sorup cevabı müşteriye yazdırabilirsiniz. Adreste <code className="rounded bg-muted px-1 font-mono text-xs">{"{siparis}"}</code> gibi alanlar chatbot'un topladığı bilgilerle doldurulur.</p>
+      <p className="mb-4 text-sm text-muted-foreground">Chatbot'un soru sorabileceği adresler. Örneğin müşterinin yazdığı sipariş numarasıyla kargo durumunu sorup cevabı müşteriye yazdırabilirsin. Adreste <code className="rounded bg-muted px-1 font-mono text-xs">{"{siparis}"}</code> gibi alanlar chatbot'un topladığı bilgilerle doldurulur.</p>
       {items.length === 0 ? (
         <EmptyState icon={<Plug />} title="Henüz bağlantı yok" description="Chatbot'lar başka bir sisteme soru sormayacaksa buna gerek yok." />
       ) : (
@@ -33,9 +33,9 @@ export default function IntegrationsTab() {
               sub={<span className="font-mono"><b className="mr-1.5 text-foreground/70">{x.method}</b>{x.url}</span>}
               trailing={<>
                 {x.headerNames.length > 0 && <span className="hidden rounded-full bg-muted px-2 py-0.5 text-[0.65rem] text-muted-foreground sm:inline" data-tip={x.headerNames.join(", ")}>{x.headerNames.length} başlık</span>}
-                <button type="button" data-tip="Dene" onClick={() => setTest(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Play className="size-3.5" /></button>
-                <button type="button" data-tip="Düzenle" onClick={() => setEdit(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
-                <button type="button" data-tip="Sil" onClick={() => setDel(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
+                <button type="button" aria-label="Dene" data-tip="Dene" onClick={() => setTest(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Play className="size-3.5" /></button>
+                <button type="button" aria-label="Düzenle" data-tip="Düzenle" onClick={() => setEdit(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
+                <button type="button" aria-label="Sil" data-tip="Sil" onClick={() => setDel(x)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
               </>}
             />
           ))}
@@ -98,7 +98,7 @@ function Form({ item, onClose, onSaved }: { item: WAIntegration | null; onClose:
         {method !== "GET" && <FormField label="Gönderilecek JSON"><textarea className={cn(areaCls, "font-mono")} rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder={'{"telefon": "{numara}"}'} /></FormField>}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Başlıklar (anahtar, yetki bilgisi)</p>
-          {item && item.headerNames.length > 0 && headers.length === 0 && <p className="text-[0.7rem] text-muted-foreground">Kayıtlı: {item.headerNames.join(", ")}. Değiştirmek için hepsini yeniden girin; boş bırakırsanız olduğu gibi kalır.</p>}
+          {item && item.headerNames.length > 0 && headers.length === 0 && <p className="text-[0.7rem] text-muted-foreground">Kayıtlı: {item.headerNames.join(", ")}. Değiştirmek için hepsini yeniden gir; boş bırakırsan olduğu gibi kalır.</p>}
           {headers.map((h, i) => (
             <div key={i} className="flex gap-2">
               <input className={cn(inputCls, "h-9 w-48 font-mono")} value={h.k} onChange={(e) => setHeaders((c) => c.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} placeholder="Authorization" />
@@ -132,7 +132,7 @@ function TestDialog({ item, onClose }: { item: WAIntegration; onClose: () => voi
     }
   };
   return (
-    <Modal open onClose={onClose} title={`${item.name} · dene`} description="Sorgu gerçekten gönderilir. Gelen cevaptaki alanları chatbot'ta kullanabilirsiniz." size="lg" footer={<><Button variant="secondary" onClick={onClose}>Kapat</Button><Button onClick={() => void run()} disabled={busy}><Play /> {busy ? "Soruluyor..." : "Gönder"}</Button></>}>
+    <Modal open onClose={onClose} title={`${item.name} · dene`} description="Sorgu gerçekten gönderilir. Gelen cevaptaki alanları chatbot'ta kullanabilirsin." size="lg" footer={<><Button variant="secondary" onClick={onClose}>Kapat</Button><Button onClick={() => void run()} disabled={busy}><Play /> {busy ? "Soruluyor..." : "Gönder"}</Button></>}>
       <div className="space-y-3">
         {names.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2">

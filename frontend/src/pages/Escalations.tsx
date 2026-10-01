@@ -79,7 +79,7 @@ export function Escalations() {
         }
       >
         <p className="mb-4 text-sm text-muted-foreground">
-          Kategori bazlı durumları burada tanımlarsınız, temsilciler çağrı sırasında bunları seçer. Oklarla verdiğiniz sıra temsilcilerin listesine aynen yansır. Excel/CSV dosyasında ilk sütun kategori, ikinci sütun durum olmalıdır.
+          Kategori bazlı durumları burada tanımlarsın, temsilciler çağrı sırasında bunları seçer. Oklarla verdiğin sıra temsilcilerin listesine aynen yansır. Excel/CSV dosyasında ilk sütun kategori, ikinci sütun durum olmalıdır.
         </p>
         {importInfo && <p className="mb-3 text-sm text-success">{importInfo}</p>}
         <ErrorText>{error}</ErrorText>
@@ -260,7 +260,7 @@ function OrderButton({ dir, small, disabled, onClick, title }: { dir: -1 | 1; sm
       type="button"
       onClick={onClick}
       disabled={disabled}
-      data-tip={title}
+      aria-label={title} data-tip={title}
       className={cn("rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground disabled:opacity-25 disabled:hover:bg-transparent", small ? "p-0.5" : "p-1")}
     >
       <Icon className={small ? "size-3.5" : "size-4"} />

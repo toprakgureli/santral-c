@@ -253,10 +253,10 @@ export function Calls() {
                       <span className="w-16 text-right font-mono text-sm tabular-nums">{c.disposition === "answered" || c.disposition === "in_progress" ? formatDuration(c.durationSeconds) : "—"}</span>
                       {c.recording && canRec ? (
                         <span className="flex items-center gap-1">
-                          <button type="button" onClick={() => setPlaying({ uuid: c.uuid, label })} data-tip="Dinle" className={cn("flex size-8 items-center justify-center rounded-xl transition-colors", isPlaying ? "bg-primary text-primary-foreground" : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground")}>
+                          <button type="button" onClick={() => setPlaying({ uuid: c.uuid, label })} aria-label="Dinle" data-tip="Dinle" className={cn("flex size-8 items-center justify-center rounded-xl transition-colors", isPlaying ? "bg-primary text-primary-foreground" : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground")}>
                             <Play className="size-3.5" />
                           </button>
-                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} target="_blank" rel="noopener" data-tip="İndir" className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                          <a href={`/api/v1/calls/${encodeURIComponent(c.uuid)}/recording?download=1`} target="_blank" rel="noopener" aria-label="İndir" data-tip="İndir" className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
                             <Download className="size-3.5" />
                           </a>
                         </span>
@@ -307,10 +307,10 @@ function RecordingBar({ uuid, label, onClose }: { uuid: string; label: string; o
         </div>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio key={uuid} controls autoPlay src={src} className="h-10 flex-1" />
-        <a href={`${src}?download=1`} target="_blank" rel="noopener" data-tip="İndir" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
+        <a href={`${src}?download=1`} target="_blank" rel="noopener" aria-label="İndir" data-tip="İndir" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
           <Download className="size-5" />
         </a>
-        <button onClick={onClose} data-tip="Kapat" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
+        <button onClick={onClose} aria-label="Kapat" data-tip="Kapat" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
           <X className="size-5" />
         </button>
       </div>

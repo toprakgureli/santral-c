@@ -23,7 +23,7 @@ func NewHandler(reader *Reader) *Handler {
 func (h *Handler) List(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	res, err := h.reader.List(c.UserContext(), id, requests.AuditFilter{
 		Action:  c.Query("action"),

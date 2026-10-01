@@ -61,12 +61,12 @@ type TeamInput struct {
 
 // SaveTeam creates (id 0) or updates a team with its members.
 func (s *Service) SaveTeam(ctx context.Context, actorID, id uint, in TeamInput) error {
-	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Ekip düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Ekip düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return errs.Invalid("Ekibe bir ad verin.", nil)
+		return errs.Invalid("Ekibe bir ad ver.", nil)
 	}
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if id == 0 {
@@ -97,7 +97,7 @@ func (s *Service) SaveTeam(ctx context.Context, actorID, id uint, in TeamInput) 
 
 // DeleteTeam removes a team; its tickets keep going without it.
 func (s *Service) DeleteTeam(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Ekip düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Ekip düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	if err := s.db.WithContext(ctx).Delete(&models.WATeam{}, id).Error; err != nil {
@@ -176,7 +176,7 @@ func (s *Service) QuickReplies(ctx context.Context, actorID, channelID uint) ([]
 	if channelID > 0 {
 		q = q.Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", channelID))
 	} else if !v.can(enums.WAQuickReply) {
-		return nil, errs.Forbidden("Hazır yanıtları düzenleme yetkiniz yok.")
+		return nil, errs.Forbidden("Hazır yanıtları düzenleme yetkin yok.")
 	}
 	var list []models.WAQuickReply
 	if err := q.Find(&list).Error; err != nil {
@@ -191,7 +191,7 @@ func (s *Service) QuickReplies(ctx context.Context, actorID, channelID uint) ([]
 
 // SaveQuickReply creates (id 0) or updates a ready answer.
 func (s *Service) SaveQuickReply(ctx context.Context, actorID, id uint, in QuickReplyView) error {
-	if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	in.Shortcut = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(in.Shortcut, "/")))
@@ -215,7 +215,7 @@ func (s *Service) SaveQuickReply(ctx context.Context, actorID, id uint, in Quick
 
 // DeleteQuickReply removes a ready answer.
 func (s *Service) DeleteQuickReply(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Delete(&models.WAQuickReply{}, id).Error
@@ -230,7 +230,7 @@ func (s *Service) CopyToChannel(ctx context.Context, actorID, from, to uint, wha
 	n := 0
 	switch what {
 	case "quick_replies":
-		if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkiniz yok."); err != nil {
+		if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkin yok."); err != nil {
 			return 0, err
 		}
 		// The same answer is simply switched on for the target number too; a
@@ -245,7 +245,7 @@ func (s *Service) CopyToChannel(ctx context.Context, actorID, from, to uint, wha
 		}
 		n = int(res.RowsAffected)
 	case "rules":
-		if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkiniz yok."); err != nil {
+		if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkin yok."); err != nil {
 			return 0, err
 		}
 		var list []models.WAAutomation
@@ -283,7 +283,7 @@ func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in Contac
 		return nil, err
 	}
 	if !v.can(enums.WAContactManage) {
-		return nil, errs.Forbidden("Müşteri bilgilerini düzenleme yetkiniz yok.")
+		return nil, errs.Forbidden("Müşteri bilgilerini düzenleme yetkin yok.")
 	}
 	visible, err := s.visibleTickets(ctx, v, id)
 	if err != nil {
@@ -458,7 +458,7 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 		return nil, err
 	}
 	if !v.can(enums.WATemplateSend) || !v.seesChannel(channelID) {
-		return nil, errs.Forbidden("Bu cihazdan yeni sohbet başlatma yetkiniz yok.")
+		return nil, errs.Forbidden("Bu cihazdan yeni sohbet başlatma yetkin yok.")
 	}
 	e164, err := phone.Normalize(number)
 	if err != nil {
@@ -550,7 +550,7 @@ type IntegrationInput struct {
 
 // SaveIntegration creates (id 0) or updates an outside system.
 func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in IntegrationInput) error {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	in.Method = strings.ToUpper(strings.TrimSpace(in.Method))
@@ -567,7 +567,7 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 		return errs.Invalid("Değişkenler ({ad} gibi) adresin sunucu kısmında kullanılamaz; yalnızca yolda ve sorguda olabilir.", err)
 	}
 	if strings.TrimSpace(in.Name) == "" {
-		return errs.Invalid("Bir ad verin.", nil)
+		return errs.Invalid("Bir ad ver.", nil)
 	}
 	fields := map[string]any{"name": strings.TrimSpace(in.Name), "method": in.Method, "url": strings.TrimSpace(in.URL), "body": in.Body, "timeout_sec": in.TimeoutSec, "updated_at": time.Now()}
 	if in.Headers != nil {
@@ -600,7 +600,7 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 
 // DeleteIntegration removes an outside system.
 func (s *Service) DeleteIntegration(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Delete(&models.WAIntegration{}, id).Error
@@ -608,7 +608,7 @@ func (s *Service) DeleteIntegration(ctx context.Context, actorID, id uint) error
 
 // TestIntegration calls an outside system with sample values.
 func (s *Service) TestIntegration(ctx context.Context, actorID, id uint, vars map[string]string) (map[string]any, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	res, err := s.callIntegration(ctx, id, vars)
@@ -656,7 +656,7 @@ func (s *Service) createCallback(ctx context.Context, ch *models.WAChannel, conv
 
 // Callbacks lists the requests, open ones first.
 func (s *Service) Callbacks(ctx context.Context, actorID uint, all bool) ([]CallbackView, error) {
-	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	q := `SELECT b.id, COALESCE(ch.name, '') AS channel_name, COALESCE(t.conversation_id, 0) AS conversation_id,
@@ -680,7 +680,7 @@ func (s *Service) Callbacks(ctx context.Context, actorID uint, all bool) ([]Call
 
 // DoneCallback closes a request.
 func (s *Service) DoneCallback(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini kapatma yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini kapatma yetkin yok."); err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Exec("UPDATE wa_callbacks SET status = 'done', done_by = ?, done_at = now() WHERE id = ?", actorID, id).Error

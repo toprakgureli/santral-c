@@ -93,7 +93,7 @@ func (a *Admin) authorize(ctx context.Context, actorID uint) error {
 		return err
 	}
 	if !actor.Can(enums.SystemLogs) {
-		return errs.Forbidden("Güvenlik kayıtlarını görüntüleme yetkiniz yok.")
+		return errs.Forbidden("Güvenlik kayıtlarını görüntüleme yetkin yok.")
 	}
 	return nil
 }

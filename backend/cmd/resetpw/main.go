@@ -94,11 +94,11 @@ func run() error {
 			return fmt.Errorf("şifre kaydedilemedi: %w", err)
 		}
 	case !*create:
-		return fmt.Errorf("%s adında bir kullanıcı yok; yeni sahip hesabı açmak için -create ekleyin", address)
+		return fmt.Errorf("%s adında bir kullanıcı yok; yeni sahip hesabı açmak için -create ekle", address)
 	default:
 		var role models.Role
 		if err := db.WithContext(ctx).Where("name = ?", string(enums.RoleInvisibleAdmin)).First(&role).Error; err != nil {
-			return fmt.Errorf("sahip rolü bulunamadı (sunucuyu bir kez çalıştırın): %w", err)
+			return fmt.Errorf("sahip rolü bulunamadı (sunucuyu bir kez çalıştır): %w", err)
 		}
 		u = models.User{Name: *name, Email: address, Password: hashed, Active: true, MustChangePassword: true, Roles: []models.Role{role}}
 		if err := db.WithContext(ctx).Omit("Roles.*").Create(&u).Error; err != nil {

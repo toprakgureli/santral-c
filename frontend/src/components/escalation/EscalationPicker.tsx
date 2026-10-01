@@ -122,7 +122,7 @@ export function EscalationPicker({
                 </li>
               );
             })}
-            {!current && <li className="px-3 py-6 text-center text-xs text-muted-foreground">Önce soldan bir kategori seçin.</li>}
+            {!current && <li className="px-3 py-6 text-center text-xs text-muted-foreground">Önce soldan bir kategori seç.</li>}
             {current && current.reasons.length === 0 && <li className="px-3 py-6 text-center text-xs text-muted-foreground">Bu kategoride durum yok.</li>}
           </ul>
         </div>
@@ -140,7 +140,7 @@ export function EscalationPicker({
             </span>
           </>
         ) : (
-          <span className="text-xs">Kategoriyi, sonra durumu seçin.</span>
+          <span className="text-xs">Kategoriyi, sonra durumu seç.</span>
         )}
       </div>
     </div>

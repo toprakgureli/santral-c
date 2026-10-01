@@ -43,7 +43,7 @@ export function scheduleText(b: Pick<WABot, "trigger" | "schedule">): string {
 // chatbots follow the device's working hours by definition.
 function ScheduleChoice({ trigger, value, onChange }: { trigger: WABot["trigger"]; value: BotSchedule; onChange: (v: BotSchedule) => void }) {
   if (trigger === "after_hours") {
-    return <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Bu chatbot cihazın mesai saatleri dışında çalışır. Mesai saatlerini Ayarlar &gt; Cihaz ayarları'ndan değiştirebilirsiniz.</p>;
+    return <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">Bu chatbot cihazın mesai saatleri dışında çalışır. Mesai saatlerini Ayarlar &gt; Cihaz ayarları'ndan değiştirebilirsin.</p>;
   }
   return (
     <div className="space-y-2">
@@ -56,8 +56,8 @@ function ScheduleChoice({ trigger, value, onChange }: { trigger: WABot["trigger"
       </div>
       <p className="text-[0.7rem] leading-relaxed text-muted-foreground">
         {value.mode === "always" && "Saat fark etmeksizin çalışır."}
-        {(value.mode === "hours" || value.mode === "off_hours") && "Cihaz ayarlarındaki mesai saatleri ve tatil günleri kullanılır (Türkiye saati). Oradaki saatleri değiştirirseniz bu chatbot da ona göre çalışır."}
-        {value.mode === "custom" && "Sadece bu saatlerde çalışır (Türkiye saati). Bitişi başlangıçtan önce yazarsanız, örneğin 22:00–06:00, ertesi sabaha kadar sürer. Saatli chatbot, kendi saatlerinde her zaman açık olan chatbot'un önüne geçer."}
+        {(value.mode === "hours" || value.mode === "off_hours") && "Cihaz ayarlarındaki mesai saatleri ve tatil günleri kullanılır (Türkiye saati). Oradaki saatleri değiştirirsen bu chatbot da ona göre çalışır."}
+        {value.mode === "custom" && "Sadece bu saatlerde çalışır (Türkiye saati). Bitişi başlangıçtan önce yazarsan, örneğin 22:00–06:00, ertesi sabaha kadar sürer. Saatli chatbot, kendi saatlerinde her zaman açık olan chatbot'un önüne geçer."}
       </p>
       {value.mode === "custom" && <SpanList spans={value.spans} onChange={(spans) => onChange({ mode: "custom", spans })} />}
     </div>
@@ -94,13 +94,13 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
 
   return (
     <Card title="Chatbot'lar" icon={Bot} actions={manage && <Button onClick={() => setCreating(true)}><Plus /> Yeni chatbot</Button>}>
-      <p className="mb-4 text-sm text-muted-foreground">Chatbot müşteriyi karşılar, menüden seçtirir, bilgi toplar ve gerektiğinde bir temsilciye aktarır. Her chatbot sadece seçtiğiniz cihazlarda çalışır. Bir cihazda aynı anda saat sınırı olmayan tek bir "her yeni sohbette" ve tek bir "mesai dışında" chatbot'u açık olabilir. Belirli saatlerde çalışan chatbot'lar bunların yanında açık kalabilir ve kendi saatlerinde önce onlar karşılar.</p>
+      <p className="mb-4 text-sm text-muted-foreground">Chatbot müşteriyi karşılar, menüden seçtirir, bilgi toplar ve gerektiğinde bir temsilciye aktarır. Her chatbot sadece seçtiğin cihazlarda çalışır. Bir cihazda aynı anda saat sınırı olmayan tek bir "her yeni sohbette" ve tek bir "mesai dışında" chatbot'u açık olabilir. Belirli saatlerde çalışan chatbot'lar bunların yanında açık kalabilir ve kendi saatlerinde önce onlar karşılar.</p>
       {msg && <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{msg}</p>}
       {notice && <p className="mb-3 rounded-xl bg-success/10 px-3 py-2 text-sm text-success">{notice}</p>}
       {loading ? (
         <div className="grid gap-3 md:grid-cols-2">{[0, 1].map((i) => <div key={i} className="h-40 animate-pulse rounded-2xl bg-muted/50" />)}</div>
       ) : bots.length === 0 ? (
-        <EmptyState icon={<Bot />} title="Henüz chatbot yok" description={manage ? "İlk chatbot'u oluşturun. Hazır bir karşılama akışıyla başlar, üzerinde istediğiniz gibi değiştirirsiniz." : undefined} />
+        <EmptyState icon={<Bot />} title="Henüz chatbot yok" description={manage ? "İlk chatbot'u oluştur. Hazır bir karşılama akışıyla başlar, üzerinde istediğin gibi değiştirirsin." : undefined} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
           {bots.map((b) => {
@@ -114,7 +114,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
                     <p className="truncate text-sm font-semibold">{b.name}</p>
                     <p className="line-clamp-2 text-xs text-muted-foreground">{b.description || T.sub}</p>
                   </div>
-                  {publish && <span data-tip={b.active ? "Çalışıyor. Kapatmak için tıklayın." : live ? "Kapalı. Açmak için tıklayın." : "Önce yayınlayın"}><Switch on={b.active} onChange={() => void toggle(b)} disabled={!live && !b.active} label="Açık" /></span>}
+                  {publish && <span data-tip={b.active ? "Çalışıyor. Kapatmak için tıkla." : live ? "Kapalı. Açmak için tıkla." : "Önce yayınla"}><Switch on={b.active} onChange={() => void toggle(b)} disabled={!live && !b.active} label="Açık" /></span>}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem]">
                   <span className="flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 font-medium text-sky-700 dark:text-sky-400"><T.icon className="size-3" /> {T.label}</span>
@@ -179,7 +179,7 @@ function CreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Modal open onClose={onClose} title="Yeni chatbot" description="Hazır bir karşılama akışıyla başlar. Cihazları ve açılışı akışı bitirince seçersiniz." size="lg" footer={<>
+    <Modal open onClose={onClose} title="Yeni chatbot" description="Hazır bir karşılama akışıyla başlar. Cihazları ve açılışı akışı bitirince seçersin." size="lg" footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button disabled={busy || !name.trim()} onClick={() => { setBusy(true); waApi.createBot({ name, description, trigger, schedule }).then(onCreated).catch((e) => setError(e instanceof ApiError ? e.message : "Oluşturulamadı.")).finally(() => setBusy(false)); }}>{busy ? "Oluşturuluyor..." : "Oluştur ve akışı aç"}</Button>
@@ -241,14 +241,14 @@ export function BotSettingsDialog({ bot, channels, canPublish, onClose, onSaved 
           <p className="text-xs font-medium text-muted-foreground">Hangi saatlerde çalışsın <span className="font-normal">(isteğe bağlı)</span></p>
           <ScheduleChoice trigger={trigger} value={schedule} onChange={setSchedule} />
         </div>
-        {trigger === "keyword" && <FormField label="Başlatan kelimeler" hint="Müşterinin mesajı bu kelimelerden birini içerirse başlar. Enter ile ekleyin."><Words values={keywords} onChange={setKeywords} placeholder="kampanya, sipariş" /></FormField>}
+        {trigger === "keyword" && <FormField label="Başlatan kelimeler" hint="Müşterinin mesajı bu kelimelerden birini içerirse başlar. Enter ile ekle."><Words values={keywords} onChange={setKeywords} placeholder="kampanya, sipariş" /></FormField>}
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-muted-foreground">Bu chatbot hangi cihazlarda kullanılsın</p>
           <DevicePicker channels={channels} value={ids} onChange={setIds} />
         </div>
         <label className={cn("flex items-center gap-2 text-sm", (!canPublish || bot.publishedVersion === 0) && "opacity-60")}>
           <input type="checkbox" className="size-4 accent-primary" checked={active} disabled={!canPublish || bot.publishedVersion === 0} onChange={(e) => setActive(e.target.checked)} />
-          Açık {bot.publishedVersion === 0 ? "(önce akışı yayınlayın)" : !canPublish ? "(açıp kapatma yetkiniz yok)" : ""}
+          Açık {bot.publishedVersion === 0 ? "(önce akışı yayınla)" : !canPublish ? "(açıp kapatma yetkin yok)" : ""}
         </label>
       </div>
     </Modal>

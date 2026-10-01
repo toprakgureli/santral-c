@@ -125,7 +125,7 @@ func (s *Service) distribute(ctx context.Context, ch *models.WAChannel, ticketID
 			s.event(ctx, nil, conv, t.ID, 0, s.repo.UserName(ctx, uid)+" sohbete otomatik olarak atandı.")
 			s.publish(ctx, conv.ID, nil, before)
 		}
-		s.push.Push([]uint{uid}, Event{Type: "wa.assigned", ConversationID: t.ConversationID, Text: "Size yeni bir WhatsApp sohbeti atandı."})
+		s.push.Push([]uint{uid}, Event{Type: "wa.assigned", ConversationID: t.ConversationID, Text: "Sana yeni bir WhatsApp sohbeti atandı."})
 		if conv != nil {
 			s.runAutomations(ctx, ch, "ticket_assigned", conv, s.repo.Ticket(ctx, t.ID), nil)
 		}
@@ -163,7 +163,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 		return err
 	}
 	if !v.can(enums.WAReply) {
-		return errs.Forbidden("Müşteriye yazma yetkiniz yok.")
+		return errs.Forbidden("Müşteriye yazma yetkin yok.")
 	}
 	if ticket.Status == "resolved" {
 		return errs.Invalid("Bu sohbet çözülmüş. Müşteri yazınca yeniden açılır.", nil)
@@ -182,7 +182,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 		}
 		if cur.OwnerID == nil {
 			if !v.can(enums.WAPool) && !v.can(enums.WAViewAll) && cur.WaitingListedAt == nil {
-				return errs.Forbidden("Havuzdan sohbet alma yetkiniz yok.")
+				return errs.Forbidden("Havuzdan sohbet alma yetkin yok.")
 			}
 			role = "owner"
 			if err := tx.Exec("UPDATE wa_tickets SET owner_id = ?, status = CASE WHEN status = 'bot' THEN 'open' ELSE status END, updated_at = now() WHERE id = ?", actorID, cur.ID).Error; err != nil {
@@ -194,7 +194,7 @@ func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error
 		} else if *cur.OwnerID == actorID {
 			role = "owner"
 		} else if cur.WaitingListedAt != nil && !v.can(enums.WAWaiting) && !v.can(enums.WAViewAll) {
-			return errs.Forbidden("Cevap Bekleyenler'e katılma yetkiniz yok.")
+			return errs.Forbidden("Cevap Bekleyenler'e katılma yetkin yok.")
 		}
 		res := tx.Exec(`INSERT INTO wa_ticket_participants (ticket_id, user_id, role) VALUES (?, ?, ?)
 			ON CONFLICT (ticket_id, user_id) DO NOTHING`, cur.ID, actorID, role)
@@ -282,7 +282,7 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 		return err
 	}
 	if !v.can(enums.WATake) {
-		return errs.Forbidden("Sohbeti devralma yetkiniz yok.")
+		return errs.Forbidden("Sohbeti devralma yetkin yok.")
 	}
 	before := s.audience(ctx, ticket)
 	var previous *uint
@@ -318,7 +318,7 @@ func (s *Service) Take(ctx context.Context, actorID, conversationID uint) error 
 	}
 	s.event(ctx, nil, conv, ticket.ID, actorID, s.repo.UserName(ctx, actorID)+" sohbeti devraldı.")
 	if previous != nil {
-		s.push.Push([]uint{*previous}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.repo.UserName(ctx, actorID) + " bir sohbetinizi devraldı. Siz yardımcı olarak kaldınız.", Level: "info"})
+		s.push.Push([]uint{*previous}, Event{Type: "wa.alert", ConversationID: conv.ID, Text: s.repo.UserName(ctx, actorID) + " bir sohbetini devraldı. Sen yardımcı olarak kaldın.", Level: "info"})
 	}
 	s.publish(ctx, conv.ID, nil, before)
 	return nil
@@ -338,10 +338,10 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 		return err
 	}
 	if !v.can(enums.WAAssign) {
-		return errs.Forbidden("Sohbet aktarma yetkiniz yok.")
+		return errs.Forbidden("Sohbet aktarma yetkin yok.")
 	}
 	if in.UserID == 0 && in.TeamID == 0 {
-		return errs.Invalid("Kime aktarılacağını seçin.", nil)
+		return errs.Invalid("Kime aktarılacağını seç.", nil)
 	}
 	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
@@ -414,7 +414,7 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 			line += " Not: " + n
 		}
 		s.event(ctx, nil, conv, ticket.ID, actorID, line)
-		s.push.Push([]uint{in.UserID}, Event{Type: "wa.assigned", ConversationID: conv.ID, Text: who + " size bir WhatsApp sohbeti aktardı."})
+		s.push.Push([]uint{in.UserID}, Event{Type: "wa.assigned", ConversationID: conv.ID, Text: who + " sana bir WhatsApp sohbeti aktardı."})
 	default:
 		line := who + " sohbeti " + teamName + " ekibine aktardı."
 		if n := strings.TrimSpace(in.Note); n != "" {
@@ -437,7 +437,7 @@ func (s *Service) Resolve(ctx context.Context, actorID, conversationID uint) err
 		return err
 	}
 	if !v.can(enums.WAResolve) {
-		return errs.Forbidden("Sohbeti çözüldü olarak kapatma yetkiniz yok.")
+		return errs.Forbidden("Sohbeti çözüldü olarak kapatma yetkin yok.")
 	}
 	if ticket.Status == "resolved" {
 		return nil
@@ -486,7 +486,7 @@ func (s *Service) Reopen(ctx context.Context, actorID, conversationID uint) erro
 		return err
 	}
 	if !v.can(enums.WAResolve) {
-		return errs.Forbidden("Sohbeti yeniden açma yetkiniz yok.")
+		return errs.Forbidden("Sohbeti yeniden açma yetkin yok.")
 	}
 	if ticket.Status != "resolved" {
 		return nil
@@ -520,7 +520,7 @@ func (s *Service) UpdateTicket(ctx context.Context, actorID, conversationID uint
 		return err
 	}
 	if !v.can(enums.WAReply) {
-		return errs.Forbidden("Sohbeti düzenleme yetkiniz yok.")
+		return errs.Forbidden("Sohbeti düzenleme yetkin yok.")
 	}
 	fields := map[string]any{"updated_at": time.Now()}
 	var lines []string
@@ -565,7 +565,7 @@ func (s *Service) UpdateTicket(ctx context.Context, actorID, conversationID uint
 		return errs.Internal(res.Error)
 	}
 	if res.RowsAffected == 0 {
-		return errs.Conflict("Sohbet bu arada kapatıldı. Değiştirmek için önce yeniden açın.", nil)
+		return errs.Conflict("Sohbet bu arada kapatıldı. Değiştirmek için önce yeniden aç.", nil)
 	}
 	for _, l := range lines {
 		s.event(ctx, nil, conv, ticket.ID, actorID, l)

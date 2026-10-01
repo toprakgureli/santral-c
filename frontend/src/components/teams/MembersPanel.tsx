@@ -134,12 +134,12 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
         <span className="rounded-full bg-muted px-1.5 text-[0.65rem] font-semibold tabular-nums text-muted-foreground">{group.members.length}</span>
         <span className="ml-auto flex items-center gap-0.5">
           {group.canAdd && (
-            <button type="button" onClick={onAdd} data-tip="Üye ekle (doğrudan katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+            <button type="button" onClick={onAdd} aria-label="Üye ekle (doğrudan katılır)" data-tip="Üye ekle (doğrudan katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
               <UserPlus className="size-4" />
             </button>
           )}
           {group.canInvite && (
-            <button type="button" onClick={onInvite} data-tip="Davet gönder (kabul edince katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+            <button type="button" onClick={onInvite} aria-label="Davet gönder (kabul edince katılır)" data-tip="Davet gönder (kabul edince katılır)" className="flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
               <MailPlus className="size-4" />
             </button>
           )}

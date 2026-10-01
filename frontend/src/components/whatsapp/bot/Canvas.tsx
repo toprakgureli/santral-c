@@ -235,7 +235,7 @@ export default function Canvas({
         </svg>
 
         {selMid && !readOnly && (
-          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => sel && onDeleteEdge(sel.id)} data-tip="Oku kaldır" className="absolute z-20 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md" style={{ left: selMid.x, top: selMid.y }}>
+          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => sel && onDeleteEdge(sel.id)} aria-label="Oku kaldır" data-tip="Oku kaldır" className="absolute z-20 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md" style={{ left: selMid.x, top: selMid.y }}>
             <X className="size-3.5" />
           </button>
         )}
@@ -286,7 +286,7 @@ export default function Canvas({
                         <span className={cn("truncate text-[0.7rem]", p.tone === "ok" ? "text-success" : p.tone === "bad" ? "text-destructive" : p.tone === "muted" ? "text-muted-foreground/80 italic" : "text-foreground/80")}>{p.label}</span>
                         <span
                           onPointerDown={(e) => startLink(e, n, p.id)}
-                          data-tip={readOnly ? undefined : has ? "Sürükleyip başka kutuya bırakın" : "Buradan bir kutuya ok çekin"}
+                          data-tip={readOnly ? undefined : has ? "Sürükleyip başka kutuya bırak" : "Buradan bir kutuya ok çek"}
                           className={cn("absolute top-1/2 -right-[7px] size-3.5 -translate-y-1/2 rounded-full border-2 transition-transform", readOnly ? "" : "cursor-crosshair hover:scale-125", has ? "border-card bg-primary" : p.tone === "muted" ? "border-muted-foreground/40 bg-card" : "border-warning bg-card")}
                         />
                       </div>
@@ -336,13 +336,13 @@ export default function Canvas({
       )}
 
       <div className="absolute right-3 bottom-3 z-10 flex items-center gap-0.5 rounded-full bg-card/95 p-1 shadow-lg ring-1 ring-border/60 backdrop-blur" onPointerDown={(e) => e.stopPropagation()}>
-        <button type="button" onClick={() => zoomBy(1 / 1.2)} data-tip="Uzaklaş" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Minus className="size-3.5" /></button>
+        <button type="button" onClick={() => zoomBy(1 / 1.2)} aria-label="Uzaklaş" data-tip="Uzaklaş" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Minus className="size-3.5" /></button>
         <span className="w-10 text-center text-[0.68rem] font-medium tabular-nums text-muted-foreground">%{Math.round(view.z * 100)}</span>
-        <button type="button" onClick={() => zoomBy(1.2)} data-tip="Yakınlaş" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="size-3.5" /></button>
-        <button type="button" onClick={fit} data-tip="Hepsini sığdır" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Maximize2 className="size-3.5" /></button>
+        <button type="button" onClick={() => zoomBy(1.2)} aria-label="Yakınlaş" data-tip="Yakınlaş" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Plus className="size-3.5" /></button>
+        <button type="button" onClick={fit} aria-label="Hepsini sığdır" data-tip="Hepsini sığdır" className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Maximize2 className="size-3.5" /></button>
       </div>
       <p className="pointer-events-none absolute bottom-3 left-3 hidden rounded-full bg-card/80 px-3 py-1 text-[0.65rem] text-muted-foreground ring-1 ring-border/50 backdrop-blur lg:block">
-        Boş yeri sürükleyerek kaydırın · Ctrl + tekerlek ile yakınlaştırın · Ok çekmek için sağdaki noktayı sürükleyin
+        Boş yeri sürükleyerek kaydır · Ctrl + tekerlek ile yakınlaştır · Ok çekmek için sağdaki noktayı sürükle
       </p>
     </div>
   );

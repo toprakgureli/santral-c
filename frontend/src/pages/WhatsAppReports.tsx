@@ -103,7 +103,7 @@ export function WhatsAppReports() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/whatsapp" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
+        <Link to="/whatsapp" aria-label="Gelen kutusuna dön" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
         <h1 className="flex-1 text-lg font-semibold tracking-tight">WhatsApp raporları</h1>
         {can(user, "whatsapp.ratings") && <Link to="/whatsapp/ratings" className="flex h-9 items-center gap-1.5 rounded-xl bg-card px-3 text-sm font-medium shadow-sm ring-1 ring-border/60 hover:bg-accent"><Star className="size-4 fill-warning text-warning" /> Bütün puanlamalar</Link>}
       </div>

@@ -29,11 +29,11 @@ func existingPath(raw string) (string, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return "", errs.Invalid("Kayıtlı webhook adresini tam yazın. Örnek: https://alanadi.com/webhook/whatsapp", nil)
+		return "", errs.Invalid("Kayıtlı webhook adresini tam yaz. Örnek: https://alanadi.com/webhook/whatsapp", nil)
 	}
 	p := "/" + strings.Trim(u.EscapedPath(), "/")
 	if p == "/" || strings.HasPrefix(p, "/api/") || p == "/healthz" {
-		return "", errs.Invalid("Bu adres kullanılamaz; Meta'da kayıtlı olan webhook adresini yazın.", nil)
+		return "", errs.Invalid("Bu adres kullanılamaz; Meta'da kayıtlı olan webhook adresini yaz.", nil)
 	}
 	return p, nil
 }
@@ -140,7 +140,7 @@ func (s *Service) ReceiveExisting(ctx context.Context, path, signature string, b
 			return errs.Unauthorized("İmza doğrulanamadı.")
 		}
 	case !unsigned:
-		s.rejected(ctx, list, "Meta'dan bildirim geldi ama kabul edilmedi: uygulama gizli anahtarı girilmemiş. Cihazı düzenleyip anahtarı girin ya da \"imzasız bildirimleri kabul et\" kutusunu işaretleyin.")
+		s.rejected(ctx, list, "Meta'dan bildirim geldi ama kabul edilmedi: uygulama gizli anahtarı girilmemiş. Cihazı düzenleyip anahtarı gir ya da \"imzasız bildirimleri kabul et\" kutusunu işaretle.")
 		return errs.Forbidden("Cihazın uygulama gizli anahtarı girilmemiş.")
 	}
 	if !json.Valid(body) {

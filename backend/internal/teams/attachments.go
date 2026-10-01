@@ -118,13 +118,13 @@ func (s *Service) BeginUpload(ctx context.Context, actorID, groupID uint, in Upl
 		return nil, err
 	}
 	if !canPost(g, m) {
-		return nil, errs.Forbidden("Bu grupta yazma yetkiniz yok.")
+		return nil, errs.Forbidden("Bu grupta yazma yetkin yok.")
 	}
 	if !s.drive.Configured() {
 		return nil, errs.Invalid("Dosya paylaşımı kapalı: Google Drive yapılandırılmamış.", nil)
 	}
 	if !s.drive.Connected(ctx) {
-		return nil, errs.Invalid("Dosya paylaşımı kapalı: Google Drive hesabı bağlanmamış. Yönetim ekranından bağlayın.", nil)
+		return nil, errs.Invalid("Dosya paylaşımı kapalı: Google Drive hesabı bağlanmamış. Yönetim ekranından bağla.", nil)
 	}
 	name := strings.TrimSpace(path.Base(strings.ReplaceAll(in.Name, "\\", "/")))
 	if name == "" || name == "." || name == "/" {
@@ -509,7 +509,7 @@ func (s *Service) DriveCallback(ctx context.Context, actorID uint, state, code s
 	}
 	uid, err := s.drive.VerifyState(ctx, state)
 	if err != nil || uid != actorID {
-		return "", errs.Invalid("Bağlantı isteği doğrulanamadı, yeniden deneyin.", nil)
+		return "", errs.Invalid("Bağlantı isteği doğrulanamadı, yeniden dene.", nil)
 	}
 	email, err := s.drive.Exchange(ctx, code)
 	if err != nil {

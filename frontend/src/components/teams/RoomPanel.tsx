@@ -184,7 +184,7 @@ function MediaView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: nu
                   <span className="block truncate text-xs font-medium">{a.name}</span>
                   <span className="block truncate text-[0.65rem] text-muted-foreground">{extensionOf(a.name, a.mime)} · {formatSize(a.size)} · {a.sender} · {when(a.createdAt)}</span>
                 </button>
-                <a href={attachmentUrl(a.id, true)} download={a.name} data-tip="İndir" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Download className="size-4" /></a>
+                <a href={attachmentUrl(a.id, true)} download={a.name} aria-label="İndir" data-tip="İndir" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><Download className="size-4" /></a>
               </li>
             ))}
           </ul>

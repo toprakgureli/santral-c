@@ -20,7 +20,7 @@ import { clockTime, fmt, isToday } from "@/lib/time";
 function until(iso?: string) {
   if (!iso) return "";
   const d = new Date(iso);
-  if (d.getFullYear() > 9000) return "siz açana kadar";
+  if (d.getFullYear() > 9000) return "sen açana kadar";
   return `${isToday(d) ? "bugün" : fmt(d, { day: "numeric", month: "long" })} ${clockTime(d)} olana kadar`;
 }
 
@@ -57,7 +57,7 @@ export function Preferences() {
         <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SlidersHorizontal className="size-5" /></span>
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Ayarlarım</h1>
-          <p className="text-xs text-muted-foreground">Buradaki ayarlar sadece sizin için geçerli, başka kimseyi etkilemez.</p>
+          <p className="text-xs text-muted-foreground">Buradaki ayarlar sadece senin için geçerli, başka kimseyi etkilemez.</p>
         </div>
       </div>
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
@@ -68,10 +68,10 @@ export function Preferences() {
         <>
           <Card title="WhatsApp bildirimleri" icon={Bell}>
             <div className="space-y-2">
-              <SwitchRow title="Yeni mesajda ses çal" sub="Size düşen, havuzdaki ve cevap bekleyen sohbetlerde." on={wa.prefs.sound} onChange={(v) => void run(() => wa.setPrefs({ sound: v }))} />
+              <SwitchRow title="Yeni mesajda ses çal" sub="Sana düşen, havuzdaki ve cevap bekleyen sohbetlerde." on={wa.prefs.sound} onChange={(v) => void run(() => wa.setPrefs({ sound: v }))} />
               <SwitchRow
                 title="Masaüstü bildirimi göster"
-                sub={permission === "denied" ? "Tarayıcı bu site için bildirimleri engellemiş. Adres çubuğundaki kilit simgesinden izin verebilirsiniz." : "Panel arka plandayken ekranın köşesinde çıkar."}
+                sub={permission === "denied" ? "Tarayıcı bu site için bildirimleri engellemiş. Adres çubuğundaki kilit simgesinden izin verebilirsin." : "Panel arka plandayken ekranın köşesinde çıkar."}
                 on={wa.prefs.desktop}
                 onChange={(v) => void run(async () => {
                   if (v && typeof Notification !== "undefined" && Notification.permission === "default") setPermission(await Notification.requestPermission());
@@ -90,7 +90,7 @@ export function Preferences() {
               </div>
             ) : (
               <>
-                <p className="mb-3 text-sm text-muted-foreground">Toplantıdayken ya da başka bir işe odaklanırken seçin. Mesajlar gelmeye devam eder, sadece ses ve bildirim çıkmaz.</p>
+                <p className="mb-3 text-sm text-muted-foreground">Toplantıdayken ya da başka bir işe odaklanırken seç. Mesajlar gelmeye devam eder, sadece ses ve bildirim çıkmaz.</p>
                 <div className="flex flex-wrap gap-2">
                   {MUTES.map((m) => (
                     <button key={m.key} type="button" onClick={() => void run(() => wa.setPrefs({ mute: m.key as WAMute }))} className="rounded-full bg-muted/70 px-4 py-2 text-sm font-medium transition-colors hover:bg-accent">{m.label}</button>
@@ -100,9 +100,9 @@ export function Preferences() {
             )}
           </Card>
 
-          <Card title="Sessize aldığınız sohbetler" icon={MessageCircle}>
+          <Card title="Sessize aldığın sohbetler" icon={MessageCircle}>
             {muted.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Yok. Bir sohbete sağ tıklayıp "Sessize al" diyebilirsiniz; o sohbet ses çıkarmaz ve sayaçlara katılmaz.</p>
+              <p className="text-sm text-muted-foreground">Yok. Bir sohbete sağ tıklayıp "Sessize al" diyebilirsin; o sohbet ses çıkarmaz ve sayaçlara katılmaz.</p>
             ) : (
               <div className="divide-y divide-border/50">
                 {muted.map((m) => <ConvLine key={m.id} id={m.id} note={until(m.mutedUntil)} action="Sesi aç" onAction={() => void run(() => wa.setConvPref(m.id, { mute: "off" }))} />)}
@@ -111,7 +111,7 @@ export function Preferences() {
           </Card>
 
           {pinned.length > 0 && (
-            <Card title="Sabitlediğiniz sohbetler" icon={Pin}>
+            <Card title="Sabitlediğin sohbetler" icon={Pin}>
               <div className="divide-y divide-border/50">
                 {pinned.map((p) => <ConvLine key={p.id} id={p.id} note="listenin en üstünde" action="Kaldır" onAction={() => void run(() => wa.setConvPref(p.id, { pin: false }))} />)}
               </div>

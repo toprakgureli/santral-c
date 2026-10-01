@@ -99,18 +99,18 @@ export default function BackupCard() {
 
         {steps && (
           <ol className="list-decimal space-y-1.5 rounded-xl bg-muted/40 p-3.5 pl-8 text-xs leading-relaxed text-muted-foreground">
-            <li>Google Cloud Console'da bir proje açın, Google Drive API'yi etkinleştirin.</li>
-            <li>IAM bölümünde bir servis hesabı oluşturun ve JSON anahtarını indirin.</li>
-            <li>Google Workspace'te bir Ortak Drive açın; servis hesabının e-posta adresini bu Ortak Drive'a <b>"Katkıda bulunan"</b> rolüyle ekleyin (İçerik yöneticisi ya da Yönetici değil).</li>
-            <li>Ortak Drive'da bir klasör açın ve adresini aşağıya yapıştırın.</li>
-            <li>JSON anahtarının içeriğini aşağıya yapıştırıp kaydedin, sonra "Bağlantıyı denetle" deyin. Her şey yeşilse yedeklemeyi açın.</li>
+            <li>Google Cloud Console'da bir proje aç, Google Drive API'yi etkinleştir.</li>
+            <li>IAM bölümünde bir servis hesabı oluştur ve JSON anahtarını indir.</li>
+            <li>Google Workspace'te bir Ortak Drive aç; servis hesabının e-posta adresini bu Ortak Drive'a <b>"Katkıda bulunan"</b> rolüyle ekle (İçerik yöneticisi ya da Yönetici değil).</li>
+            <li>Ortak Drive'da bir klasör aç ve adresini aşağıya yapıştır.</li>
+            <li>JSON anahtarının içeriğini aşağıya yapıştırıp kaydet, sonra "Bağlantıyı denetle" de. Her şey yeşilse yedeklemeyi aç.</li>
           </ol>
         )}
 
         {view && !view.pgDumpExists && (
           <p className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
             <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            Sunucuda pg_dump bulunamadı; yedek alınamaz. Sunucuya PostgreSQL istemcisini kurun (postgresql-client).
+            Sunucuda pg_dump bulunamadı; yedek alınamaz. Sunucuya PostgreSQL istemcisini kur (postgresql-client).
           </p>
         )}
 
@@ -133,7 +133,7 @@ export default function BackupCard() {
                 onChange={(e) => setKey(e.target.value)}
                 rows={3}
                 spellCheck={false}
-                placeholder='İndirdiğiniz JSON dosyasının içeriği: { "type": "service_account", ... }'
+                placeholder='İndirdiğin JSON dosyasının içeriği: { "type": "service_account", ... }'
                 className="w-full rounded-xl border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring/30"
                 disabled={busy}
               />

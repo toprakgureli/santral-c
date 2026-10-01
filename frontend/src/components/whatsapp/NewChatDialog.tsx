@@ -79,7 +79,7 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
 
   return (
     <>
-      <Modal open={open && !picking} onClose={onClose} title="WhatsApp'tan yaz" description="Müşteriye ilk mesaj yalnızca Meta'nın onayladığı bir şablonla gönderilebilir. Numarayı yazın, sonra şablonu seçin."
+      <Modal open={open && !picking} onClose={onClose} title="WhatsApp'tan yaz" description="Müşteriye ilk mesaj yalnızca Meta'nın onayladığı bir şablonla gönderilebilir. Numarayı yaz, sonra şablonu seç."
         footer={<>
           {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
           <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
@@ -87,7 +87,7 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
         </>}
       >
         {channels.length === 0 ? (
-          <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">Şirketin WhatsApp numarasından yazamıyorsunuz: ya açık bir numara yok ya da size bir numara atanmamış. Yöneticinizin Ayarlar &gt; Cihazlar'dan sizi bir numaraya eklemesi gerekiyor.</p>
+          <p className="rounded-xl bg-muted/40 px-4 py-6 text-center text-sm text-muted-foreground">Şirketin WhatsApp numarasından yazamıyorsun: ya açık bir numara yok ya da sana bir numara atanmamış. Yöneticinin Ayarlar &gt; Cihazlar'dan seni bir numaraya eklemesi gerekiyor.</p>
         ) : (
           <div className="space-y-3">
             {channels.length > 1 && (
@@ -108,7 +108,7 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
             </label>
             {existing.length > 0 && (
               <div className="space-y-1.5 rounded-2xl bg-emerald-500/8 p-3 ring-1 ring-emerald-600/20">
-                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Bu numarayla zaten sohbet var{sameDevice && sameDevice.windowEndsAt && Date.parse(sameDevice.windowEndsAt) > now ? ". Müşteri son 24 saatte yazmış, şablonsuz da yazabilirsiniz." : "."}</p>
+                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Bu numarayla zaten sohbet var{sameDevice && sameDevice.windowEndsAt && Date.parse(sameDevice.windowEndsAt) > now ? ". Müşteri son 24 saatte yazmış, şablonsuz da yazabilirsin." : "."}</p>
                 {existing.slice(0, 3).map((c) => (
                   <button key={c.id} type="button" onClick={() => openChat(c)} className="flex w-full items-center gap-2.5 rounded-xl bg-card px-2.5 py-2 text-left ring-1 ring-border/60 hover:bg-accent/60">
                     <MessageCircle className="size-4 shrink-0 text-emerald-600" />

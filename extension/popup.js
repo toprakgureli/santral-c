@@ -21,10 +21,10 @@ document.getElementById("save").addEventListener("click", async () => {
     if (url.protocol !== "https:" && !(local && url.protocol === "http:")) throw new Error("https");
     origin = url.origin;
   } catch {
-    say("Geçerli bir https adresi yazın (örneğin https://cm.ornek.com).", "bad");
+    say("Geçerli bir https adresi yaz (örneğin https://cm.ornek.com).", "bad");
     return;
   }
   await chrome.storage.local.set({ panelOrigin: origin });
   input.value = origin;
-  say("Kaydedildi. Panel sekmesini ve diğer sekmeleri yenileyin.", "good");
+  say("Kaydedildi. Panel sekmesini ve diğer sekmeleri yenile.", "good");
 });

@@ -37,7 +37,7 @@ export default function QuickRepliesTab({ channels }: { channels: WAChannel[] })
         <Button onClick={() => setEdit("new")}><Plus /> Yeni yanıt</Button>
       </span>
     }>
-      <p className="mb-4 text-sm text-muted-foreground">Mesaj yazarken <b>/</b> tuşuna basıp kısayolu yazınca hazır yanıt gelir. <code className="rounded bg-muted px-1 font-mono text-xs">{"{musteri}"}</code> müşterinin adıyla, <code className="rounded bg-muted px-1 font-mono text-xs">{"{ad}"}</code> sizin adınızla değişir.</p>
+      <p className="mb-4 text-sm text-muted-foreground">Mesaj yazarken <b>/</b> tuşuna basıp kısayolu yazınca hazır yanıt gelir. <code className="rounded bg-muted px-1 font-mono text-xs">{"{musteri}"}</code> müşterinin adıyla, <code className="rounded bg-muted px-1 font-mono text-xs">{"{ad}"}</code> senin adınla değişir.</p>
       <Toolbar className="mb-3">
         <span className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -52,7 +52,7 @@ export default function QuickRepliesTab({ channels }: { channels: WAChannel[] })
         {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
       </Toolbar>
       {shown.length === 0 ? (
-        <EmptyState icon={<Zap />} title={items.length ? "Aramaya uyan yanıt yok" : "Henüz hazır yanıt yok"} description={items.length ? undefined : "Sık yazdığınız cevapları buraya ekleyin, ekip aynı cümleyi her seferinde yazmasın."} />
+        <EmptyState icon={<Zap />} title={items.length ? "Aramaya uyan yanıt yok" : "Henüz hazır yanıt yok"} description={items.length ? undefined : "Sık yazdığın cevapları buraya ekle, ekip aynı cümleyi her seferinde yazmasın."} />
       ) : (
         <div className="divide-y divide-border/50 overflow-hidden rounded-2xl ring-1 ring-border/60">
           {shown.map((q) => (
@@ -64,8 +64,8 @@ export default function QuickRepliesTab({ channels }: { channels: WAChannel[] })
                 {channels.length > 1 && <DeviceChips channels={channels} ids={q.channelIds} />}
               </div>
               <span className="flex shrink-0 gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                <button type="button" data-tip="Düzenle" onClick={() => setEdit(q)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
-                <button type="button" data-tip="Sil" onClick={() => setDel(q)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
+                <button type="button" aria-label="Düzenle" data-tip="Düzenle" onClick={() => setEdit(q)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
+                <button type="button" aria-label="Sil" data-tip="Sil" onClick={() => setDel(q)} className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
               </span>
             </div>
           ))}

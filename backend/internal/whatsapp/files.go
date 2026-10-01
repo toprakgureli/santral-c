@@ -73,7 +73,7 @@ func (s *Service) UploadFile(ctx context.Context, actorID uint, name, mime strin
 		return nil, err
 	}
 	if !u.Can(enums.WABotManage) && !u.Can(enums.WATemplateSend) && !u.Can(enums.WATemplateManage) {
-		return nil, errs.Forbidden("Dosya yükleme yetkiniz yok.")
+		return nil, errs.Forbidden("Dosya yükleme yetkin yok.")
 	}
 	if s.storage == nil || !s.storage.Connected(ctx) {
 		return nil, errs.Invalid("Dosyaları saklamak için önce Sistem Ayarları'ndan Google Drive bağlanmalı.", nil)
@@ -121,7 +121,7 @@ func (s *Service) file(ctx context.Context, id uint) (*models.WAFile, error) {
 
 // OpenFile streams an uploaded file for the panel's previews.
 func (s *Service) OpenFile(ctx context.Context, actorID, id uint, rangeHeader string) (*MediaStream, error) {
-	if _, err := s.require(ctx, actorID, enums.WAView, "WhatsApp'ı görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAView, "WhatsApp'ı görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	f, err := s.file(ctx, id)

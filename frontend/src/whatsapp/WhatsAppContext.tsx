@@ -244,8 +244,8 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
           break;
         case "wa.assigned":
           if (quiet(e.conversationId).sound) tones.mention();
-          alert(e.text ?? "Size bir sohbet atandı.", "info", e.conversationId);
-          if (e.conversationId && quiet(e.conversationId).desktop) notifyBrowser("WhatsApp", e.text ?? "Size bir sohbet atandı.", e.conversationId);
+          alert(e.text ?? "Sana bir sohbet atandı.", "info", e.conversationId);
+          if (e.conversationId && quiet(e.conversationId).desktop) notifyBrowser("WhatsApp", e.text ?? "Sana bir sohbet atandı.", e.conversationId);
           break;
         case "wa.callback":
           setCallbackTick((n) => n + 1);

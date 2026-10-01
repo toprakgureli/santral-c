@@ -47,7 +47,7 @@ export default function Lightbox({ items, index, onIndex, onClose }: { items: Te
             {items.length > 1 ? ` · ${index + 1} / ${items.length}` : ""}
           </span>
         </span>
-        <a href={attachmentUrl(item.id, true)} download={item.name} data-tip="İndir" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"><Download className="size-5" /></a>
+        <a href={attachmentUrl(item.id, true)} download={item.name} aria-label="İndir" data-tip="İndir" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white"><Download className="size-5" /></a>
         <button type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-lg text-white/80 hover:bg-white/10 hover:text-white" data-tip="Kapat"><X className="size-5" /></button>
       </div>
 
@@ -78,7 +78,7 @@ export default function Lightbox({ items, index, onIndex, onClose }: { items: Te
       {items.length > 1 && (
         <div className="flex h-16 shrink-0 items-center justify-center gap-1.5 px-4" onClick={(e) => e.stopPropagation()}>
           {items.map((a, i) => (
-            <button key={a.id} type="button" onClick={() => onIndex(i)} className={cn("size-12 overflow-hidden rounded-md border-2 bg-white/10", i === index ? "border-white" : "border-transparent opacity-60 hover:opacity-100")}>
+            <button key={a.id} type="button" onClick={() => onIndex(i)} aria-label={a.name} className={cn("size-12 overflow-hidden rounded-md border-2 bg-white/10", i === index ? "border-white" : "border-transparent opacity-60 hover:opacity-100")}>
               {a.hasThumb || a.kind === "image" ? <img src={a.hasThumb ? `/api/v1/teams/attachments/${a.id}/thumb` : attachmentUrl(a.id)} alt="" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-[0.6rem]">video</span>}
             </button>
           ))}

@@ -512,14 +512,14 @@ func (s *Service) actor(ctx context.Context, id uint, need enums.Permission) (*m
 		return nil, errs.Forbidden("Oturum bulunamadı.")
 	}
 	if need != "" && !u.Can(need) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	return u, nil
 }
 
 func (s *Service) playable(ctx context.Context, actor *models.User) error {
 	if !actor.Can(enums.GamesPlay) {
-		return errs.Forbidden("Oyunlara katılma yetkiniz yok.")
+		return errs.Forbidden("Oyunlara katılma yetkin yok.")
 	}
 	st := s.settings(ctx)
 	if !st.Enabled {
@@ -667,7 +667,7 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 		return nil, err
 	}
 	if !s.rooms.IsMember(ctx, actorID, groupID) {
-		return nil, errs.Forbidden("Bu odada değilsiniz.")
+		return nil, errs.Forbidden("Bu odada değilsin.")
 	}
 	kind := kindOf(in.Kind)
 	if kind == nil {
@@ -680,7 +680,7 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 			return nil, errs.Internal(err)
 		}
 		if len(items) < meta.MinItems {
-			return nil, errs.Invalid(fmt.Sprintf("%s için en az %d içerik gerekli, şu an %d var. Yönetim > Mini oyunlar ekranından ekleyin.", meta.Name, meta.MinItems, len(items)), nil)
+			return nil, errs.Invalid(fmt.Sprintf("%s için en az %d içerik gerekli, şu an %d var. Yönetim > Mini oyunlar ekranından ekle.", meta.Name, meta.MinItems, len(items)), nil)
 		}
 	}
 	open, err := s.repo.OpenGamesInGroup(ctx, groupID)
@@ -688,7 +688,7 @@ func (s *Service) Create(ctx context.Context, actorID, groupID uint, in CreateIn
 		return nil, errs.Internal(err)
 	}
 	if len(open) >= 3 {
-		return nil, errs.Invalid("Bu odada zaten açık üç oyun var. Oyun başlat penceresindeki listeden birini kapatın; boş lobiler 30 dakika sonra kendiliğinden kapanır.", nil)
+		return nil, errs.Invalid("Bu odada zaten açık üç oyun var. Oyun başlat penceresindeki listeden birini kapat; boş lobiler 30 dakika sonra kendiliğinden kapanır.", nil)
 	}
 	cfg := Config{Rounds: meta.DefaultRounds, Seconds: meta.DefaultSeconds}
 	if in.Rounds > 0 && in.Rounds <= 30 {
@@ -738,7 +738,7 @@ func (s *Service) Get(ctx context.Context, actorID, gameID uint) (*GameView, err
 		return nil, err
 	}
 	if !s.rooms.IsMember(ctx, actorID, m.G.GroupID) && !actor.Can(enums.TeamsAdmin) {
-		return nil, errs.Forbidden("Bu odada değilsiniz.")
+		return nil, errs.Forbidden("Bu odada değilsin.")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -752,7 +752,7 @@ func (s *Service) Open(ctx context.Context, actorID, groupID uint) ([]GameView, 
 		return nil, err
 	}
 	if !s.rooms.IsMember(ctx, actorID, groupID) {
-		return nil, errs.Forbidden("Bu odada değilsiniz.")
+		return nil, errs.Forbidden("Bu odada değilsin.")
 	}
 	rows, err := s.repo.OpenGamesInGroup(ctx, groupID)
 	if err != nil {
@@ -785,7 +785,7 @@ func (s *Service) Join(ctx context.Context, actorID, gameID uint) (*GameView, er
 		return nil, err
 	}
 	if !s.rooms.IsMember(ctx, actorID, m.G.GroupID) {
-		return nil, errs.Forbidden("Bu odada değilsiniz.")
+		return nil, errs.Forbidden("Bu odada değilsin.")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -885,7 +885,7 @@ func (s *Service) Invite(ctx context.Context, actorID, gameID uint, userIDs []ui
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if p := m.player(actorID); p == nil || p.Left {
-		return nil, errs.Forbidden("Davet için oyunda oturuyor olmalısınız.")
+		return nil, errs.Forbidden("Davet için oyunda oturuyor olmalısın.")
 	}
 	if m.G.Status != statusLobby && !(m.G.Status == statusPlaying && m.Kind.Meta().JoinLate) {
 		return nil, errs.Invalid("Oyun başladı, davet gönderilemez.", nil)
@@ -1027,7 +1027,7 @@ func (s *Service) Act(ctx context.Context, actorID, gameID uint, action string, 
 	}
 	p := m.player(actorID)
 	if p == nil || p.Left {
-		return nil, errs.Forbidden("Bu oyunda oturmuyorsunuz.")
+		return nil, errs.Forbidden("Bu oyunda oturmuyorsun.")
 	}
 	if len(m.Paused) > 0 && action != "move" {
 		return nil, errs.Invalid("Oyun duraklatıldı.", nil)
@@ -1061,7 +1061,7 @@ func (s *Service) Move(ctx context.Context, actorID, gameID uint, x, y float64) 
 		return nil
 	}
 	if p := m.player(actorID); p == nil || p.Left {
-		return errs.Forbidden("Bu oyunda oturmuyorsunuz.")
+		return errs.Forbidden("Bu oyunda oturmuyorsun.")
 	}
 	raw, _ := json.Marshal(map[string]float64{"x": x, "y": y})
 	_, err := m.Kind.Act(ctx, m, s, actorID, "move", raw)

@@ -108,9 +108,9 @@ func (s *Service) List(ctx context.Context, actorID uint, q ListQuery) (*ListPag
 		scope = "own"
 		f.AgentID = actorID
 	case actor.Can(enums.EscalationSearch):
-		return nil, errs.Forbidden("Listeleme yetkiniz yok. Müşteri numarası girerek arayabilirsiniz.")
+		return nil, errs.Forbidden("Listeleme yetkin yok. Müşteri numarası girerek arayabilirsin.")
 	default:
-		return nil, errs.Forbidden("Eskalasyon kayıtlarını görme yetkiniz yok.")
+		return nil, errs.Forbidden("Eskalasyon kayıtlarını görme yetkin yok.")
 	}
 	if q.From != "" {
 		t, err := time.ParseInLocation("2006-01-02", q.From, tz.Istanbul)
@@ -161,7 +161,7 @@ func (s *Service) Categories(ctx context.Context, actorID uint) ([]Category, err
 	}
 	// Those who keep the catalogue see it, even without logging records.
 	if !actor.Can(enums.EscalationView) && !actor.Can(enums.EscalationManage) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	cats, err := s.repo.Categories(ctx)
 	if err != nil {
@@ -461,7 +461,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint, perm enums.Permis
 		return nil, err
 	}
 	if !actor.Can(perm) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	return actor, nil
 }

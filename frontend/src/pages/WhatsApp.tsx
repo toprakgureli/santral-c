@@ -147,7 +147,7 @@ export function WhatsApp() {
         <span className="flex size-16 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent"><Smartphone className="size-7" /></span>
         <div className="space-y-1">
           <p className="text-base font-semibold">Henüz bağlı bir WhatsApp numarası yok</p>
-          <p className="mx-auto max-w-md text-sm text-muted-foreground">{can(user, "whatsapp.channel_manage") ? "Ayarlardan bir numara ekleyin; Meta'dan gelen bilgileri girdikten sonra mesajlar burada görünür." : "Yöneticiniz bir numara bağladığında ve sizi o numaraya eklediğinde sohbetler burada görünür."}</p>
+          <p className="mx-auto max-w-md text-sm text-muted-foreground">{can(user, "whatsapp.channel_manage") ? "Ayarlardan bir numara ekle; Meta'dan gelen bilgileri girdikten sonra mesajlar burada görünür." : "Yöneticin bir numara bağladığında ve seni o numaraya eklediğinde sohbetler burada görünür."}</p>
         </div>
         {canSettings && <Link to="/whatsapp/settings" className="rounded-full bg-wa-accent px-4 py-2 text-sm font-semibold text-wa-on-accent shadow-sm">Ayarlara git</Link>}
       </div>
@@ -157,7 +157,7 @@ export function WhatsApp() {
   const header = (
     <div className="flex h-16 shrink-0 items-center gap-1 px-4">
       <h1 className="flex-1 text-xl font-bold tracking-tight">Sohbetler</h1>
-      {wa.mutedAll && <Link to="/preferences" data-tip="WhatsApp bildirimleri sessizde. Ayarlarım'dan açabilirsiniz." className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"><BellOff className="size-[1.15rem]" /></Link>}
+      {wa.mutedAll && <Link to="/preferences" aria-label="WhatsApp bildirimleri sessizde. Ayarlarım'dan açabilirsin." data-tip="WhatsApp bildirimleri sessizde. Ayarlarım'dan açabilirsin." className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"><BellOff className="size-[1.15rem]" /></Link>}
       {can(user, "whatsapp.template_send") && <HeadBtn tip="Yeni sohbet başlat" onClick={() => wa.startChat()}><MessageCirclePlus className="size-5" /></HeadBtn>}
       <HeadMenu>
         {can(user, "whatsapp.callbacks") && <MenuLink to="/whatsapp/callbacks" icon={PhoneCall} label="Geri arama talepleri" />}
@@ -173,7 +173,7 @@ export function WhatsApp() {
     <div ref={frame} className={cn("relative -mx-4 -my-6 flex h-[calc(100svh-4rem)] overflow-hidden bg-card md:-mx-6 lg:-mx-8", dragging && "cursor-col-resize select-none")}>
       <div style={{ "--list-w": `${listW}px` } as React.CSSProperties} className={cn("relative flex min-h-0 shrink-0 max-md:w-full md:w-[var(--list-w)]", openId && "max-md:hidden")}>
         <ConversationList channels={channels} activeId={openId} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} bucket={bucket} onBucket={chooseBucket} header={header} />
-        <div onPointerDown={startResize} onDoubleClick={resetWidth} data-tip="Sürükleyerek genişletin, çift tıklayınca eski haline döner" className="group absolute inset-y-0 -right-1.5 z-20 hidden w-3 cursor-col-resize md:block">
+        <div onPointerDown={startResize} onDoubleClick={resetWidth} data-tip="Sürükleyerek genişlet, çift tıklayınca eski haline döner" className="group absolute inset-y-0 -right-1.5 z-20 hidden w-3 cursor-col-resize md:block">
           <span className={cn("mx-auto block h-full w-0.5 rounded-full transition-colors", dragging ? "bg-wa-accent" : "bg-transparent group-hover:bg-wa-accent/60")} />
         </div>
       </div>
@@ -192,7 +192,7 @@ export function WhatsApp() {
           <div className="space-y-1.5">
             <p className="text-2xl font-light tracking-tight">{openId ? "Bu sohbet açılamadı" : "WhatsApp gelen kutusu"}</p>
             <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-              {openId ? "Bu sohbeti göremiyorsunuz ya da artık yok." : wa.counts.waiting > 0 ? `${wa.counts.waiting} müşteri uzun süredir cevap bekliyor. "Bekleyen" filtresine göz atın.` : "Soldan bir sohbet seçin. Yeni mesajlar geldikçe liste kendiliğinden güncellenir."}
+              {openId ? "Bu sohbeti göremiyorsun ya da artık yok." : wa.counts.waiting > 0 ? `${wa.counts.waiting} müşteri uzun süredir cevap bekliyor. "Bekleyen" filtresine göz at.` : "Soldan bir sohbet seç. Yeni mesajlar geldikçe liste kendiliğinden güncellenir."}
             </p>
           </div>
           {openId && <Link to="/whatsapp" className="text-sm font-semibold text-wa-accent md:hidden">Sohbet listesine dön</Link>}

@@ -140,7 +140,7 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 			return &Team{Scope: scope, From: fromDay, To: toDay, Items: []Row{}}, nil
 		}
 	default:
-		return nil, errs.Forbidden("Ekip performansını görme yetkiniz yok.")
+		return nil, errs.Forbidden("Ekip performansını görme yetkin yok.")
 	}
 
 	agents, err := s.repo.Agents(ctx, roleIDs)
@@ -288,10 +288,10 @@ func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay,
 			roleIDs = append(roleIDs, r.ID)
 		}
 		if len(roleIDs) == 0 {
-			return nil, errs.Forbidden("Bu temsilciyi görme yetkiniz yok.")
+			return nil, errs.Forbidden("Bu temsilciyi görme yetkin yok.")
 		}
 	default:
-		return nil, errs.Forbidden("Ekip performansını görme yetkiniz yok.")
+		return nil, errs.Forbidden("Ekip performansını görme yetkin yok.")
 	}
 	agents, err := s.repo.Agents(ctx, roleIDs)
 	if err != nil {
@@ -305,7 +305,7 @@ func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay,
 		}
 	}
 	if !visible {
-		return nil, errs.Forbidden("Bu temsilciyi görme yetkiniz yok.")
+		return nil, errs.Forbidden("Bu temsilciyi görme yetkin yok.")
 	}
 	logs, err := s.repo.CallsOf(ctx, userID, from, toStart.AddDate(0, 0, 1), 500)
 	if err != nil {

@@ -225,7 +225,7 @@ func (h *Handler) SetMyWhatsAppTemplate(c *fiber.Ctx) error {
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return 0, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return 0, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	return id, nil
 }

@@ -52,7 +52,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
 
   const dirty = useMemo(() => !!s && !!channel && JSON.stringify(s) !== JSON.stringify(normalizeSettings(channel.settings)), [s, channel]);
 
-  if (!channel || !s) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce Cihazlar sekmesinden bir numara ekleyin.</p>;
+  if (!channel || !s) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce Cihazlar sekmesinden bir numara ekle.</p>;
 
   const pRead = can(user, "whatsapp.setting_read_receipts");
   const pGreet = can(user, "whatsapp.setting_greeting");
@@ -110,7 +110,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
         <Block icon={Hand} title="Karşılama mesajı" locked={!pGreet} sub={'Temsilci "Karşıla" düğmesine bastığında müşteriye giden kısa tanıtım.'}>
           <SwitchRow title="Karşılama mesajı gönderilsin" on={s.greeting.enabled} onChange={(v) => up((d) => { d.greeting.enabled = v; })} disabled={!pGreet} />
           <div className={cn("space-y-3", !s.greeting.enabled && "opacity-60")}>
-            <FormField label="Mesaj" hint={<>Kullanabileceğiniz alanlar: <Var>{"{ad}"}</Var> temsilcinin adı, <Var>{"{adsoyad}"}</Var> adı soyadı, <Var>{"{unvan}"}</Var> profilindeki unvan ya da rolü, <Var>{"{musteri}"}</Var> müşterinin adı.</>}>
+            <FormField label="Mesaj" hint={<>Kullanabileceğin alanlar: <Var>{"{ad}"}</Var> temsilcinin adı, <Var>{"{adsoyad}"}</Var> adı soyadı, <Var>{"{unvan}"}</Var> profilindeki unvan ya da rolü, <Var>{"{musteri}"}</Var> müşterinin adı.</>}>
               <textarea className={areaCls} rows={3} value={s.greeting.text} onChange={(e) => up((d) => { d.greeting.text = e.target.value; })} disabled={!pGreet} />
             </FormField>
             <Preview text={s.greeting.text.replace("{ad}", user?.name?.split(" ")[0] ?? "Toprak").replace("{adsoyad}", user?.name ?? "").replace("{unvan}", "teknik destek uzmanınız").replace("{musteri}", "Ayşe")} />
@@ -132,7 +132,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
         </Block>
 
         <Block icon={Hourglass} title="Cevap bekleyenler" locked={!pGen} sub="Uzun süre cevapsız kalan müşteri herkesin önüne düşer.">
-          <FormField label="Kaç dakika cevapsız kalınca herkese gösterilsin" hint="Süre mesai saatleri içinde sayılır. Mesai dışında saat durur. 0 yazarsanız bu liste kapanır.">
+          <FormField label="Kaç dakika cevapsız kalınca herkese gösterilsin" hint="Süre mesai saatleri içinde sayılır. Mesai dışında saat durur. 0 yazarsan bu liste kapanır.">
             <div className="flex items-center gap-2">
               <input type="number" min={0} max={1440} className={cn(inputCls, "w-28")} value={s.waitingMinutes} onChange={(e) => up((d) => { d.waitingMinutes = Math.max(0, Number(e.target.value) || 0); })} disabled={!pGen} />
               <span className="text-sm text-muted-foreground">dakika</span>
@@ -168,16 +168,16 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
           </div>
           {s.survey.mode !== "off" && (
             <div className="space-y-3">
-              <FormField label="Müşteriye giden mesaj" hint={s.survey.mode === "tally" ? <>Link mesajın sonuna eklenir, başka bir yere koymak için <Var>{"{link}"}</Var> yazın. <Var>{"{musteri}"}</Var> ve <Var>{"{temsilci}"}</Var> kullanılabilir.</> : <>Altına 1'den 5'e puan listesi eklenir. <Var>{"{musteri}"}</Var> ve <Var>{"{temsilci}"}</Var> kullanılabilir.</>}>
+              <FormField label="Müşteriye giden mesaj" hint={s.survey.mode === "tally" ? <>Link mesajın sonuna eklenir, başka bir yere koymak için <Var>{"{link}"}</Var> yaz. <Var>{"{musteri}"}</Var> ve <Var>{"{temsilci}"}</Var> kullanılabilir.</> : <>Altına 1'den 5'e puan listesi eklenir. <Var>{"{musteri}"}</Var> ve <Var>{"{temsilci}"}</Var> kullanılabilir.</>}>
                 <textarea className={areaCls} rows={2} value={s.survey.text} onChange={(e) => up((d) => { d.survey.text = e.target.value; })} disabled={!pGen} placeholder="Görüşmemizi değerlendirir misiniz?" />
               </FormField>
               {s.survey.mode === "tally" && (
                 <>
-                  <FormField label="Tally form linki" hint="Formda şu gizli alanları (hidden fields) açın: ticket, number, agent, channel, token. Sistem bunları doldurur.">
+                  <FormField label="Tally form linki" hint="Formda şu gizli alanları (hidden fields) aç: ticket, number, agent, channel, token. Sistem bunları doldurur.">
                     <input className={inputCls} value={s.survey.url} onChange={(e) => up((d) => { d.survey.url = e.target.value; })} disabled={!pGen} placeholder="https://tally.so/r/..." />
                   </FormField>
                   {channel.surveyHookPath && <CopyField label="Tally > Integrations > Webhooks'a girilecek adres" value={window.location.origin + channel.surveyHookPath} />}
-                  <FormField label="Tally imza anahtarı (Signing secret)" hint={channel.hasSurveySecret ? "Kayıtlı. Değiştirmek için yenisini yazın, silmek için tek bir - yazın." : "Webhook ayarında oluşturduğunuz anahtar. Cevapların gerçekten Tally'den geldiğini doğrular."}>
+                  <FormField label="Tally imza anahtarı (Signing secret)" hint={channel.hasSurveySecret ? "Kayıtlı. Değiştirmek için yenisini yaz, silmek için tek bir - yaz." : "Webhook ayarında oluşturduğun anahtar. Cevapların gerçekten Tally'den geldiğini doğrular."}>
                     <input type="password" autoComplete="off" className={cn(inputCls, "font-mono")} value={secret} onChange={(e) => setSecret(e.target.value)} disabled={!pGen} placeholder={channel.hasSurveySecret ? "••••••••" : ""} />
                   </FormField>
                 </>
@@ -185,7 +185,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
               <FormField label="24 saat geçtiyse bu şablonla gönder">
                 <select className={inputCls} value={s.survey.template ? s.survey.template + "|" + s.survey.templateLang : ""} onChange={(e) => up((d) => { const [n, l] = e.target.value.split("|"); d.survey.template = n ?? ""; d.survey.templateLang = l ?? ""; })} disabled={!pGen}>{tplOptions}</select>
               </FormField>
-              <FormField label="Aynı müşteriye tekrar anket gönderme" hint={s.survey.repeatHours > 0 ? `Anket giden müşteriye ${s.survey.repeatHours} saat boyunca yeni anket gitmez; bu sürede kaç sohbeti çözülürse çözülsün. 0 yazarsanız her çözülüşte gider.` : "Her çözülüşte anket gider (müşteri anketten sonra hiç yazmadıysa yine gitmez)."}>
+              <FormField label="Aynı müşteriye tekrar anket gönderme" hint={s.survey.repeatHours > 0 ? `Anket giden müşteriye ${s.survey.repeatHours} saat boyunca yeni anket gitmez; bu sürede kaç sohbeti çözülürse çözülsün. 0 yazarsan her çözülüşte gider.` : "Her çözülüşte anket gider (müşteri anketten sonra hiç yazmadıysa yine gitmez)."}>
                 <div className="flex flex-wrap items-center gap-2">
                   <input type="number" min={0} max={2160} className={cn(inputCls, "w-24")} value={s.survey.repeatHours} onChange={(e) => up((d) => { d.survey.repeatHours = Math.min(2160, Math.max(0, Math.round(Number(e.target.value) || 0))); })} disabled={!pGen} />
                   <span className="text-sm text-muted-foreground">saat boyunca</span>
@@ -196,7 +196,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
                   </span>
                 </div>
               </FormField>
-              <FormField label="Bu puanın altında yöneticilere haber ver" hint="0 yazarsanız haber verilmez.">
+              <FormField label="Bu puanın altında yöneticilere haber ver" hint="0 yazarsan haber verilmez.">
                 <input type="number" min={0} max={5} className={cn(inputCls, "w-24")} value={s.survey.alertBelow} onChange={(e) => up((d) => { d.survey.alertBelow = Math.min(5, Math.max(0, Number(e.target.value) || 0)); })} disabled={!pGen} />
               </FormField>
             </div>
@@ -204,7 +204,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
         </Block>
 
         <Block icon={BellRing} title="Chatbot" locked={!pGen} sub="Bu numaradaki bütün chatbot'lar için geçerli.">
-          <FormField label="Müşteri bu kelimelerden birini yazarsa chatbot'u bırakıp temsilciye aktar" hint="Enter ile ekleyin.">
+          <FormField label="Müşteri bu kelimelerden birini yazarsa chatbot'u bırakıp temsilciye aktar" hint="Enter ile ekle.">
             <Words values={s.humanKeywords} onChange={(v) => up((d) => { d.humanKeywords = v; })} disabled={!pGen} placeholder="temsilci, insan, yetkili" />
           </FormField>
           <FormField label="Müşteri bu kadar dakika cevap vermezse chatbot sohbeti kapatsın">
@@ -213,7 +213,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
               <span className="text-sm text-muted-foreground">dakika</span>
             </div>
           </FormField>
-          <FormField label="Sohbet kapandıktan sonra müşteri bu süre içinde yeniden yazarsa chatbot'a girmeden aynı temsilciye bağlansın" hint="0 yazarsanız yeniden yazan her müşteriyi chatbot karşılar.">
+          <FormField label="Sohbet kapandıktan sonra müşteri bu süre içinde yeniden yazarsa chatbot'a girmeden aynı temsilciye bağlansın" hint="0 yazarsan yeniden yazan her müşteriyi chatbot karşılar.">
             <div className="flex items-center gap-2">
               <input type="number" min={0} max={10080} className={cn(inputCls, "w-28")} value={s.returnMinutes} onChange={(e) => up((d) => { d.returnMinutes = Math.min(10080, Math.max(0, Number(e.target.value) || 0)); })} disabled={!pGen} />
               <span className="text-sm text-muted-foreground">dakika</span>
@@ -225,7 +225,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
           <FormField label="Kelimeler">
             <Words values={s.optOutKeywords} onChange={(v) => up((d) => { d.optOutKeywords = v; })} disabled={!pGen} placeholder="DUR, iptal" />
           </FormField>
-          <FormField label="Müşteriye verilecek cevap" hint="Boş bırakırsanız cevap verilmez.">
+          <FormField label="Müşteriye verilecek cevap" hint="Boş bırakırsan cevap verilmez.">
             <textarea className={areaCls} rows={2} value={s.optOutReply} onChange={(e) => up((d) => { d.optOutReply = e.target.value; })} disabled={!pGen} />
           </FormField>
         </Block>
@@ -245,7 +245,7 @@ function Block({ icon, title, sub, locked, wide, children }: { icon: LucideIcon;
           <h3 className="text-sm font-semibold">{title}</h3>
           {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
         </div>
-        {locked && <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-medium text-muted-foreground" data-tip="Bu bölümü değiştirme yetkiniz yok">Sadece görüntüleme</span>}
+        {locked && <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-medium text-muted-foreground" data-tip="Bu bölümü değiştirme yetkin yok">Sadece görüntüleme</span>}
       </header>
       {children}
     </section>
@@ -312,7 +312,7 @@ function CopyDialog({ target, channels, onClose, onDone }: { target: WAChannel; 
   };
   const toggle = (list: string[], set: (v: string[]) => void, k: string) => set(list.includes(k) ? list.filter((x) => x !== k) : [...list, k]);
   return (
-    <Modal open onClose={onClose} title={`${target.name} için ayarları kopyala`} description="Seçtiğiniz bölümler diğer cihazdakiyle aynı olur. Seçmedikleriniz değişmez." footer={<>
+    <Modal open onClose={onClose} title={`${target.name} için ayarları kopyala`} description="Seçtiğin bölümler diğer cihazdakiyle aynı olur. Seçmediklerin değişmez." footer={<>
       {error && <span className="mr-auto text-xs text-destructive">{error}</span>}
       <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
       <Button onClick={() => void go()} disabled={busy || (!sections.length && !extra.length)}>{busy ? "Kopyalanıyor..." : "Kopyala"}</Button>
@@ -333,7 +333,7 @@ function CopyDialog({ target, channels, onClose, onDone }: { target: WAChannel; 
           <p className="text-xs font-medium text-muted-foreground">Ayrıca bu cihaza da ekle</p>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" checked={extra.includes("quick_replies")} onChange={() => toggle(extra, setExtra, "quick_replies")} /> Hazır yanıtlar</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" checked={extra.includes("rules")} onChange={() => toggle(extra, setExtra, "rules")} /> Otomatik mesaj kuralları</label>
-          <p className="text-[0.7rem] text-muted-foreground">Chatbot'ları Chatbot'lar sekmesinden cihaz seçerek ya da kopyalayarak paylaşabilirsiniz.</p>
+          <p className="text-[0.7rem] text-muted-foreground">Chatbot'ları Chatbot'lar sekmesinden cihaz seçerek ya da kopyalayarak paylaşabilirsin.</p>
         </div>
       </div>
     </Modal>

@@ -39,7 +39,7 @@ type serviceAccount struct {
 func parseServiceAccount(raw string) (*serviceAccount, error) {
 	var sa serviceAccount
 	if err := json.Unmarshal([]byte(raw), &sa); err != nil {
-		return nil, errors.New("anahtar dosyası okunamadı; Google Cloud'dan indirilen JSON dosyasının içeriğini yapıştırın")
+		return nil, errors.New("anahtar dosyası okunamadı; Google Cloud'dan indirilen JSON dosyasının içeriğini yapıştır")
 	}
 	if sa.Type != "service_account" || sa.ClientEmail == "" || sa.PrivateKey == "" {
 		return nil, errors.New("bu bir servis hesabı anahtarı değil (type, client_email ve private_key alanları olmalı)")
@@ -108,9 +108,9 @@ func (f FolderCheck) Problem() string {
 	case !f.SharedDrive:
 		return "Klasör bir Ortak Drive'da değil. Silme yetkisini Google'ın kendisinin engellemesi için yedekler bir Ortak Drive'a gitmeli."
 	case !f.CanAdd:
-		return "Servis hesabı bu klasöre dosya ekleyemiyor. Ortak Drive'a \"Katkıda bulunan\" olarak ekleyin."
+		return "Servis hesabı bu klasöre dosya ekleyemiyor. Ortak Drive'a \"Katkıda bulunan\" olarak ekle."
 	case f.CanDelete:
-		return "Servis hesabı bu klasördeki dosyaları silebiliyor. Güvenlik için yedek alınmadı: Ortak Drive'da rolünü \"Katkıda bulunan\" yapın."
+		return "Servis hesabı bu klasördeki dosyaları silebiliyor. Güvenlik için yedek alınmadı: Ortak Drive'da rolünü \"Katkıda bulunan\" yap."
 	}
 	return ""
 }
@@ -138,7 +138,7 @@ func (g *google) checkFolder(ctx context.Context, token, folder string) (*Folder
 		} `json:"capabilities"`
 	}
 	if err := g.doJSON(req, &f); err != nil {
-		return nil, fmt.Errorf("klasöre ulaşılamadı (kimliği ve paylaşımı kontrol edin): %w", err)
+		return nil, fmt.Errorf("klasöre ulaşılamadı (kimliği ve paylaşımı kontrol et): %w", err)
 	}
 	if f.MimeType != "application/vnd.google-apps.folder" {
 		return nil, errors.New("bu kimlik bir klasöre ait değil")

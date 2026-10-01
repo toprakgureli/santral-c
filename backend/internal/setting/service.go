@@ -113,7 +113,7 @@ func (s *Service) Update(ctx context.Context, actorID uint, req requests.Setting
 		return nil, err
 	}
 	if req.MFAMode == MFATrusted && len(trusted) == 0 {
-		return nil, errs.Invalid("Güvenilir IP modu için en az bir adres girin.", nil)
+		return nil, errs.Invalid("Güvenilir IP modu için en az bir adres gir.", nil)
 	}
 	if err := s.set(ctx, KeyMFAMode, req.MFAMode); err != nil {
 		return nil, errs.Internal(err)
@@ -229,14 +229,14 @@ func (s *Service) BreakLimitMinutes(ctx context.Context) int {
 // SetBreakLimit stores the daily break allowance; needs agent.break_limit.
 func (s *Service) SetBreakLimit(ctx context.Context, actorID uint, minutes int, ip string) error {
 	if s.users == nil {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return err
 	}
 	if !actor.Can(enums.AgentBreakLimit) {
-		return errs.Forbidden("Mola sınırını değiştirme yetkiniz yok.")
+		return errs.Forbidden("Mola sınırını değiştirme yetkin yok.")
 	}
 	if minutes < MinBreakLimitMinutes || minutes > MaxBreakLimitMinutes {
 		return errs.Invalid(fmt.Sprintf("Mola sınırı %d ile %d dakika arasında olmalı.", MinBreakLimitMinutes, MaxBreakLimitMinutes), nil)
@@ -259,14 +259,14 @@ func (s *Service) SetBreakLimit(ctx context.Context, actorID uint, minutes int, 
 
 func (s *Service) authorize(ctx context.Context, actorID uint) error {
 	if s.users == nil {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return err
 	}
 	if !actor.Can(enums.SystemSettings) {
-		return errs.Forbidden("Sistem ayarlarını değiştirme yetkiniz yok.")
+		return errs.Forbidden("Sistem ayarlarını değiştirme yetkin yok.")
 	}
 	return nil
 }

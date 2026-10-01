@@ -62,7 +62,7 @@ func (s *Service) reachable(ctx context.Context, actorID, conversationID uint) (
 		return nil, nil, nil, errs.NotFound("Sohbet bulunamadı.")
 	}
 	if ticket == nil || !v.seesTicket(ticket, s.repo.Participants(ctx, ticket.ID)) {
-		return nil, nil, nil, errs.Forbidden("Bu sohbeti görme yetkiniz yok.")
+		return nil, nil, nil, errs.Forbidden("Bu sohbeti görme yetkin yok.")
 	}
 	return v, conv, ticket, nil
 }
@@ -75,7 +75,7 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		return nil, err
 	}
 	if !v.can(enums.WAReply) {
-		return nil, errs.Forbidden("Müşteriye yazma yetkiniz yok.")
+		return nil, errs.Forbidden("Müşteriye yazma yetkin yok.")
 	}
 	ch, err := s.repo.Channel(ctx, conv.ChannelID)
 	if err != nil {
@@ -106,13 +106,13 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 			return nil, errs.Invalid("Mesaj en fazla 4096 karakter olabilir.", nil)
 		}
 		if !windowOpen(conv) {
-			return nil, errs.Invalid("Müşterinin son mesajının üzerinden 24 saat geçti. Şablonla yazmanız gerekiyor.", nil)
+			return nil, errs.Invalid("Müşterinin son mesajının üzerinden 24 saat geçti. Şablonla yazman gerekiyor.", nil)
 		}
 		msg.Kind, msg.Body = "text", body
 		payload = map[string]any{"type": "text", "text": map[string]any{"body": body, "preview_url": strings.Contains(body, "http")}}
 	case "template":
 		if !v.can(enums.WATemplateSend) {
-			return nil, errs.Forbidden("Şablonla mesaj gönderme yetkiniz yok.")
+			return nil, errs.Forbidden("Şablonla mesaj gönderme yetkin yok.")
 		}
 		tpl, err := s.repo.Template(ctx, in.TemplateID)
 		if err != nil {
@@ -426,7 +426,7 @@ func (s *Service) flagStaleSends(ctx context.Context, age time.Duration) {
 	var stale []models.WAMessage
 	err := s.db.WithContext(ctx).Raw(`UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?
 		WHERE status = 'sending' AND sending_at < ? RETURNING *`,
-		"Gönderilip gönderilmediği anlaşılamadı. Müşteriye ulaşıp ulaşmadığını kontrol edin, gerekirse tekrar gönderin.",
+		"Gönderilip gönderilmediği anlaşılamadı. Müşteriye ulaşıp ulaşmadığını kontrol et, gerekirse tekrar gönder.",
 		time.Now().Add(-age)).Scan(&stale).Error
 	if err != nil {
 		slog.ErrorContext(ctx, "whatsapp stale sends could not be checked", "error", err)
@@ -515,7 +515,7 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 		return err
 	}
 	if !v.can(enums.WAReply) {
-		return errs.Forbidden("Müşteriye yazma yetkiniz yok.")
+		return errs.Forbidden("Müşteriye yazma yetkin yok.")
 	}
 	if msg.Status != "failed" || msg.Direction != "out" {
 		return errs.Invalid("Yalnızca gönderilemeyen mesaj tekrar gönderilebilir.", nil)

@@ -26,7 +26,7 @@ export const KINDS: Record<BotNodeType, NodeKind> = {
   handoff: { label: "Temsilciye aktar", hint: "Chatbot'u bitirir, sohbeti bir kişiye verir.", icon: UserRound, chip: "bg-rose-500/15 text-rose-600 dark:text-rose-400", bar: "bg-rose-500", data: () => ({ text: "Sizi bir arkadaşımıza aktarıyorum, birazdan yazacak." }) },
   callback: { label: "Geri arama", hint: "Müşteri için geri arama talebi açar.", icon: PhoneCall, chip: "bg-teal-500/15 text-teal-600 dark:text-teal-400", bar: "bg-teal-500", data: () => ({ text: "Talebinizi aldık, sizi en kısa sürede arayacağız.", note: "" }) },
   survey: { label: "Anket", hint: "1'den 5'e puan ister.", icon: Star, chip: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400", bar: "bg-yellow-500", data: () => ({}) },
-  end: { label: "Bitir", hint: "Chatbot'u bitirir. İsterseniz sohbeti de kapatır.", icon: Flag, chip: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300", bar: "bg-zinc-500", data: () => ({ text: "", resolve: true }) },
+  end: { label: "Bitir", hint: "Chatbot'u bitirir. İstersen sohbeti de kapatır.", icon: Flag, chip: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300", bar: "bg-zinc-500", data: () => ({ text: "", resolve: true }) },
 };
 
 // PaletteItem is an entry of the "Kutu ekle" list. Most are plain box kinds;

@@ -106,7 +106,7 @@ export function EscalationForm({
 
   async function save() {
     if (!number.trim() || reasonId === null) {
-      setStatus({ kind: "err", text: "Durum seçin." });
+      setStatus({ kind: "err", text: "Durum seç." });
       return;
     }
     setSaving(true);

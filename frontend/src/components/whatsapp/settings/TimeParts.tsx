@@ -86,7 +86,7 @@ export function TimeInput({ value, onChange, disabled, className, label }: { val
           onChange(next);
         }
       }}
-      data-tip={bad ? "Saati 09:00 gibi yazın" : undefined}
+      data-tip={bad ? "Saati 09:00 gibi yaz" : undefined}
       className={cn(
         "h-9 w-[4.5rem] rounded-lg border bg-card px-2 text-center text-sm font-medium tabular-nums outline-none transition focus:ring-4 disabled:opacity-60",
         bad ? "border-destructive/60 text-destructive focus:ring-destructive/15" : "border-border/60 focus:border-ring/50 focus:ring-ring/15",

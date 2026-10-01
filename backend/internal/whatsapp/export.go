@@ -50,7 +50,7 @@ func (s *Service) PrepareExport(ctx context.Context, actorID, conversationID uin
 		return nil, err
 	}
 	if !v.can(enums.WAExport) {
-		return nil, errs.Forbidden("Yazışmayı dışa aktarma yetkiniz yok.")
+		return nil, errs.Forbidden("Yazışmayı dışa aktarma yetkin yok.")
 	}
 	contact, err := s.repo.Contact(ctx, conv.ContactID)
 	if err != nil {

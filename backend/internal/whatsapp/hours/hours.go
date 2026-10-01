@@ -102,7 +102,7 @@ func (sc Schedule) Check() error {
 		return nil
 	}
 	if len(sc.Spans) == 0 {
-		return fmt.Errorf("en az bir saat aralığı ekleyin")
+		return fmt.Errorf("en az bir saat aralığı ekle")
 	}
 	for _, sp := range sc.Spans {
 		if err := sp.Check(); err != nil {

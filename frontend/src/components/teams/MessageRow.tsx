@@ -74,7 +74,7 @@ export default function MessageRow({ m, head, day, unread, selfId, seats, flash,
         >
           <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
             {head && m.sender && (
-              <button type="button" onClick={(e) => onProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" data-tip="Profili aç">
+              <button type="button" onClick={(e) => onProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" aria-label="Profili aç" data-tip="Profili aç">
                 <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9 shadow-sm ring-2 ring-card" fallbackClassName="bg-primary/10 text-xs text-primary" />
               </button>
             )}
@@ -137,7 +137,7 @@ Sağ tık: kimler verdi`}
                     <span className="tabular-nums">{r.count}</span>
                   </button>
                 ))}
-                <button type="button" onClick={() => onPicker()} data-tip="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
+                <button type="button" onClick={() => onPicker()} aria-label="Başka tepki" data-tip="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
               </div>
             )}
           </div>
@@ -146,11 +146,11 @@ Sağ tık: kimler verdi`}
               {QUICK.map((e) => (
                 <button key={e} type="button" onClick={() => onReact(m, e)} data-tip="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
               ))}
-              <button type="button" onClick={() => onPicker()} data-tip="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
+              <button type="button" onClick={() => onPicker()} aria-label="Daha fazla tepki" data-tip="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
               <span className="mx-0.5 h-4 w-px bg-border" />
-              {canPost && <button type="button" onClick={() => onReply(m)} data-tip="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
-              {m.mine && canPost && <button type="button" onClick={() => onEdit(m)} data-tip="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
-              {m.canDelete && <button type="button" onClick={() => onDelete(m)} data-tip="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
+              {canPost && <button type="button" onClick={() => onReply(m)} aria-label="Yanıtla" data-tip="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
+              {m.mine && canPost && <button type="button" onClick={() => onEdit(m)} aria-label="Düzenle" data-tip="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
+              {m.canDelete && <button type="button" onClick={() => onDelete(m)} aria-label="Sil" data-tip="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
             </div>
           )}
           {picking && (

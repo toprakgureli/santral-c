@@ -207,7 +207,7 @@ func mediaKind(mime string, size int64) (string, error) {
 	switch mime {
 	case "image/jpeg", "image/png":
 		if size > 5<<20 {
-			return "", errs.Invalid("Görsel en fazla 5 MB olabilir. Belge olarak göndermeyi deneyin.", nil)
+			return "", errs.Invalid("Görsel en fazla 5 MB olabilir. Belge olarak göndermeyi dene.", nil)
 		}
 		return "image", nil
 	case "video/mp4", "video/3gpp":
@@ -222,7 +222,7 @@ func mediaKind(mime string, size int64) (string, error) {
 		return "audio", nil
 	}
 	if !documentTypes[mime] {
-		return "", errs.Invalid("Bu dosya türü gönderilemez. PDF, Word, Excel, PowerPoint ya da düz metin gönderebilirsiniz.", nil)
+		return "", errs.Invalid("Bu dosya türü gönderilemez. PDF, Word, Excel, PowerPoint ya da düz metin gönderebilirsin.", nil)
 	}
 	if size > 100<<20 {
 		return "", errs.Invalid("Dosya en fazla 100 MB olabilir.", nil)
@@ -259,10 +259,10 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 		return nil, err
 	}
 	if !v.can(enums.WAReply) {
-		return nil, errs.Forbidden("Müşteriye yazma yetkiniz yok.")
+		return nil, errs.Forbidden("Müşteriye yazma yetkin yok.")
 	}
 	if !windowOpen(conv) {
-		return nil, errs.Invalid("Müşterinin son mesajının üzerinden 24 saat geçti. Dosya gönderilemez, önce şablonla yazın.", nil)
+		return nil, errs.Invalid("Müşterinin son mesajının üzerinden 24 saat geçti. Dosya gönderilemez, önce şablonla yaz.", nil)
 	}
 	if len(data) == 0 {
 		return nil, errs.Invalid("Dosya boş.", nil)

@@ -131,7 +131,7 @@ func (s *Service) processBatch(ctx context.Context) bool {
 			status, attempts, err.Error(), time.Now().Add(wait), ev.ID).Error)
 		slog.WarnContext(ctx, "whatsapp webhook event failed", "event", ev.ID, "attempt", attempts, "error", err)
 		if status == "failed" && ev.ChannelID != nil {
-			s.alert(ctx, *ev.ChannelID, "Meta'dan gelen bir bildirim işlenemedi. Ayarlar > İşlenemeyen bildirimler ekranından tekrar deneyebilirsiniz.")
+			s.alert(ctx, *ev.ChannelID, "Meta'dan gelen bir bildirim işlenemedi. Ayarlar > İşlenemeyen bildirimler ekranından tekrar deneyebilirsin.")
 		}
 	}
 	return len(list) == 50
@@ -362,7 +362,7 @@ func (s *Service) onAccountNotice(ctx context.Context, wabaID, field string, raw
 	}
 	for _, ch := range chans {
 		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", "Meta hesap bildirimi ("+field+"): "+text, ch.ID).Error)
-		s.alert(ctx, ch.ID, "Meta, "+ch.Name+" hesabı hakkında bir bildirim gönderdi. Cihaz ayarlarında ayrıntısını görebilirsiniz.")
+		s.alert(ctx, ch.ID, "Meta, "+ch.Name+" hesabı hakkında bir bildirim gönderdi. Cihaz ayarlarında ayrıntısını görebilirsin.")
 	}
 }
 
@@ -393,7 +393,7 @@ type EventView struct {
 
 // Events lists stored calls that are not done.
 func (s *Service) Events(ctx context.Context, actorID uint) ([]EventView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu ekranı görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu ekranı görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	var list []models.WAWebhookEvent
@@ -413,7 +413,7 @@ func (s *Service) Events(ctx context.Context, actorID uint) ([]EventView, error)
 
 // RetryEvent queues a stored call again.
 func (s *Service) RetryEvent(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu işlem için yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu işlem için yetkin yok."); err != nil {
 		return err
 	}
 	if err := s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'pending', next_try_at = now() WHERE id = ? AND status <> 'done'", id).Error; err != nil {

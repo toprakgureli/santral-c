@@ -23,7 +23,7 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) Today(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	from, to := c.Query("from"), c.Query("to")
 	if from == "" && to == "" {
@@ -50,7 +50,7 @@ func (h *Handler) Today(c *fiber.Ctx) error {
 func (h *Handler) AgentCalls(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	userID := c.QueryInt("userId")
 	if userID < 1 {

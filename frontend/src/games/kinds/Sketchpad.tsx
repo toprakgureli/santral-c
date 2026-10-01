@@ -123,12 +123,12 @@ const Sketchpad = forwardRef<SketchpadHandle, Props>(function Sketchpad({ enable
           ))}
           <span className="mx-1 h-5 w-px bg-border" />
           {[2, 4, 8, 14].map((w) => (
-            <button key={w} type="button" onClick={() => setWidth(w)} className={cn("flex size-7 items-center justify-center rounded-full border", width === w ? "border-primary bg-primary/10" : "border-border")}>
+            <button key={w} type="button" onClick={() => setWidth(w)} aria-label={`Kalem kalınlığı ${w}`} className={cn("flex size-7 items-center justify-center rounded-full border", width === w ? "border-primary bg-primary/10" : "border-border")}>
               <span className="rounded-full bg-foreground" style={{ width: w + 2, height: w + 2 }} />
             </button>
           ))}
-          <button type="button" onClick={() => { setColor("#ffffff"); setWidth(20); }} data-tip="Silgi" className="ml-1 rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-accent"><Eraser className="size-4" /></button>
-          <button type="button" onClick={clear} data-tip="Temizle" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
+          <button type="button" onClick={() => { setColor("#ffffff"); setWidth(20); }} aria-label="Silgi" data-tip="Silgi" className="ml-1 rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-accent"><Eraser className="size-4" /></button>
+          <button type="button" onClick={clear} aria-label="Temizle" data-tip="Temizle" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>
         </div>
       )}
     </div>

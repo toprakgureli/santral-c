@@ -229,7 +229,7 @@ export function EscalationSearch() {
             </div>
           ) : items.length === 0 ? (
             searchOnly && !debounced ? (
-              <EmptyState title="Numara ile arayın" description="Bir müşteri numarası girerek o müşterinin geçmiş eskalasyonlarını görüntüleyin." />
+              <EmptyState title="Numara ile ara" description="Bir müşteri numarası girerek o müşterinin geçmiş eskalasyonlarını görüntüle." />
             ) : (
               <EmptyState title="Kayıt yok" description={debounced ? `${displayNumber(debounced)} için eskalasyon kaydı bulunamadı.` : "Bu filtrelerle eşleşen eskalasyon kaydı yok."} />
             )

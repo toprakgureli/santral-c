@@ -13,7 +13,7 @@ import type { WATemplate, WATemplateComponent } from "@/whatsapp/types";
 
 const CATEGORY: Record<string, string> = { MARKETING: "Pazarlama", UTILITY: "Hizmet", AUTHENTICATION: "Doğrulama" };
 const LAST_KEY = "santral.wa-last-template";
-const FILL_NOTE: Record<string, string> = { customer: "müşterinin adı", agent: "sizin adınız", agent_full: "adınız soyadınız" };
+const FILL_NOTE: Record<string, string> = { customer: "müşterinin adı", agent: "senin adın", agent_full: "adın soyadın" };
 
 function lastTemplate(): number {
   try {
@@ -141,13 +141,13 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
           </div>
           <div className="max-h-80 space-y-1 overflow-y-auto">
             {list === null && <p className="px-2 py-4 text-xs text-muted-foreground">Yükleniyor...</p>}
-            {list?.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground">Onaylı şablon yok. Ayarlar &gt; Şablonlar ekranından oluşturabilirsiniz.</p>}
+            {list?.length === 0 && <p className="px-2 py-4 text-xs text-muted-foreground">Onaylı şablon yok. Ayarlar &gt; Şablonlar ekranından oluşturabilirsin.</p>}
             {shown.map((t) => (
               <button key={t.id} type="button" onClick={() => setPick(t)} className={cn("flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors", pick?.id === t.id ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent/60")}>
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground"><FileText className="size-4" /></span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium">{t.name}</span>
-                  <span className="block text-[0.65rem] text-muted-foreground">{t.id === last ? "Son kullandığınız · " : ""}{CATEGORY[t.category] ?? t.category} · {t.language}</span>
+                  <span className="block text-[0.65rem] text-muted-foreground">{t.id === last ? "Son kullandığın · " : ""}{CATEGORY[t.category] ?? t.category} · {t.language}</span>
                 </span>
               </button>
             ))}
@@ -155,12 +155,12 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
         </div>
         <div className="min-w-0">
           {!pick ? (
-            <p className="flex h-full items-center justify-center rounded-2xl bg-muted/30 p-6 text-center text-sm text-muted-foreground">Soldan bir şablon seçin.</p>
+            <p className="flex h-full items-center justify-center rounded-2xl bg-muted/30 p-6 text-center text-sm text-muted-foreground">Soldan bir şablon seç.</p>
           ) : (
             <div className="space-y-4">
               {(header.length > 0 || body.length > 0 || buttons.length > 0 || mediaHeader) && (
                 <div className="space-y-2 rounded-2xl bg-muted/30 p-3">
-                  <p className="text-xs font-semibold text-muted-foreground">Boşlukları doldurun</p>
+                  <p className="text-xs font-semibold text-muted-foreground">Boşlukları doldur</p>
                   {mediaHeader && (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2">

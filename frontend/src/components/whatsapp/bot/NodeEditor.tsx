@@ -45,7 +45,7 @@ export default function NodeEditor({
         <button type="button" onClick={onClose} aria-label="Kapat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-4" /></button>
       </header>
       <fieldset disabled={readOnly} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {node.type === "start" && <Info>Müşteri yazınca akış buradan başlar. Başlangıçtan çıkan oku ilk kutuya bağlayın. Müşterinin adı <V>{"{musteri}"}</V>, numarası <V>{"{numara}"}</V> olarak her yerde kullanılabilir.</Info>}
+        {node.type === "start" && <Info>Müşteri yazınca akış buradan başlar. Başlangıçtan çıkan oku ilk kutuya bağla. Müşterinin adı <V>{"{musteri}"}</V>, numarası <V>{"{numara}"}</V> olarak her yerde kullanılabilir.</Info>}
 
         {node.type === "message" && (
           <>
@@ -59,7 +59,7 @@ export default function NodeEditor({
         {node.type === "ask" && (
           <>
             <TextWithVars label="Soru" value={d.text ?? ""} onChange={(v) => set({ text: v }, "text")} vars={vars} rows={3} placeholder="Sipariş numaranızı yazar mısınız?" />
-            <FormField label="Cevap hangi isimle saklansın" hint="Sonraki kutularda {bu_isim} yazarak cevabı kullanabilirsiniz.">
+            <FormField label="Cevap hangi isimle saklansın" hint="Sonraki kutularda {bu_isim} yazarak cevabı kullanabilirsin.">
               <span className="relative block">
                 <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">{"{"}</span>
                 <input className={cn(inputCls, "px-6 font-mono")} value={d.var ?? ""} onChange={(e) => set({ var: cleanVar(e.target.value) }, "var")} placeholder="siparis" />
@@ -114,7 +114,7 @@ export default function NodeEditor({
                   {!timeRule && (
                     <div className="grid grid-cols-2 gap-2">
                       <select className={cn(inputCls, "h-9 font-mono text-xs")} value={r.var} onChange={(e) => setRule({ var: e.target.value })}>
-                        <option value="">Bilgi seçin</option>
+                        <option value="">Bilgi seç</option>
                         {vars.map((v) => <option key={v} value={v}>{`{${v}}`}</option>)}
                       </select>
                       <select className={cn(inputCls, "h-9")} value={r.op} onChange={(e) => setRule({ op: e.target.value })}>
@@ -132,9 +132,9 @@ export default function NodeEditor({
 
         {node.type === "api" && (
           <>
-            <FormField label="Hangi sisteme sorulsun" hint="Bağlantıları Ayarlar > Dış sistemler'den eklersiniz.">
+            <FormField label="Hangi sisteme sorulsun" hint="Bağlantıları Ayarlar > Dış sistemler'den eklersin.">
               <select className={inputCls} value={d.integration ?? ""} onChange={(e) => set({ integration: Number(e.target.value) || undefined }, "integration")}>
-                <option value="">Seçin</option>
+                <option value="">Seç</option>
                 {integrations.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </select>
             </FormField>
@@ -149,7 +149,7 @@ export default function NodeEditor({
                 </div>
               ))}
               <AddBtn onClick={() => set({ map: [...(d.map ?? []), { var: "", path: "" }] }, "map")}>Bilgi ekle</AddBtn>
-              <Info>Soldaki cevaptaki yeri, sağdaki bu bilginin adını gösterir. Örneğin cevap {`{"data": {"durum": "kargoda"}}`} ise <V>data.durum</V> → <V>durum</V> yazın, sonra mesajda <V>{"{durum}"}</V> kullanın. Liste içinde <V>items.0.ad</V> gibi sıra numarası verilebilir.</Info>
+              <Info>Soldaki cevaptaki yeri, sağdaki bu bilginin adını gösterir. Örneğin cevap {`{"data": {"durum": "kargoda"}}`} ise <V>data.durum</V> → <V>durum</V> yaz, sonra mesajda <V>{"{durum}"}</V> kullan. Liste içinde <V>items.0.ad</V> gibi sıra numarası verilebilir.</Info>
             </div>
           </>
         )}
@@ -163,14 +163,14 @@ export default function NodeEditor({
                 {Object.entries(PRIORITY_WORD).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </FormField>
-            <FormField label="Konu" hint="Seçim sonucu yazmak için değişken kullanabilirsiniz, örn. {konu}."><input className={inputCls} value={d.category ?? ""} onChange={(e) => set({ category: e.target.value }, "category")} placeholder="Fatura" /></FormField>
+            <FormField label="Konu" hint="Seçim sonucu yazmak için değişken kullanabilirsin, örn. {konu}."><input className={inputCls} value={d.category ?? ""} onChange={(e) => set({ category: e.target.value }, "category")} placeholder="Fatura" /></FormField>
           </>
         )}
 
         {node.type === "handoff" && (
           <>
             <TextWithVars label="Müşteriye son mesaj (isteğe bağlı)" value={d.text ?? ""} onChange={(v) => set({ text: v }, "text")} vars={vars} rows={3} />
-            <FormField label="Hangi ekibe" hint="Seçmezseniz numarada çalışan müsait kişiye verilir.">
+            <FormField label="Hangi ekibe" hint="Seçmezsen numarada çalışan müsait kişiye verilir.">
               <select className={inputCls} value={d.teamId ?? ""} onChange={(e) => set({ teamId: Number(e.target.value) || undefined }, "teamId")}>
                 <option value="">Müsait olan herhangi biri</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -195,7 +195,7 @@ export default function NodeEditor({
           <>
             <TextWithVars label="Son mesaj (isteğe bağlı)" value={d.text ?? ""} onChange={(v) => set({ text: v }, "text")} vars={vars} rows={3} placeholder="Görüşmek üzere, iyi günler!" />
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-primary" checked={!!d.resolve} onChange={(e) => set({ resolve: e.target.checked }, "resolve")} /> Sohbeti de çözüldü olarak kapat</label>
-            <Info>Kapatmazsanız sohbet açık kalır ve temsilcilerin önüne düşer.</Info>
+            <Info>Kapatmazsan sohbet açık kalır ve temsilcilerin önüne düşer.</Info>
           </>
         )}
       </fieldset>
@@ -296,9 +296,9 @@ function MenuFields({ d, set, vars }: { d: BotData; set: (p: Partial<BotData>, k
           </div>
         ))}
         {opts.length < max && <AddBtn onClick={() => set({ options: [...opts, { id: rid(), label: "" }] }, "options")}>Seçenek ekle</AddBtn>}
-        {!list && opts.length >= 3 && <p className="text-[0.7rem] text-muted-foreground">Daha fazla seçenek için Liste görünümünü seçin.</p>}
+        {!list && opts.length >= 3 && <p className="text-[0.7rem] text-muted-foreground">Daha fazla seçenek için Liste görünümünü seç.</p>}
       </div>
-      <FormField label="Seçilen cevap bir isimle saklansın (isteğe bağlı)" hint="Örn. konu yazarsanız sonraki kutularda {konu} ile kullanılır.">
+      <FormField label="Seçilen cevap bir isimle saklansın (isteğe bağlı)" hint="Örn. konu yazarsan sonraki kutularda {konu} ile kullanılır.">
         <input className={cn(inputCls, "font-mono")} value={d.var ?? ""} onChange={(e) => set({ var: cleanVar(e.target.value) }, "var")} placeholder="konu" />
       </FormField>
       <RetryField d={d} set={set} />
