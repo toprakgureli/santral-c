@@ -289,9 +289,10 @@ derlemesi, eklentinin testleri ve derlemesi, deploy betiğinin testi.
 Tek bir Ubuntu sunucu: nginx derlenmiş ön yüzü sunar ve `/api`'yi systemd
 altındaki Go servisine yönlendirir; PostgreSQL ve Redis aynı makinede. Adım
 adım anlatım [DEPLOY.md](DEPLOY.md)'de; systemd, nginx ve izleme dosyaları
-`deploy/` altında. nginx'te iki şey önemli: `/api/v1/wa/` için 110 MB gövde
-sınırı, tamponlamanın kapalı olması ve uzun zaman aşımı (dosyalar ve arşiv
-indirme). Canlı akışlar düz `/api/` bölümünden geçer; arka uç bu akışlarla
+`deploy/` altında. nginx'te iki şey önemli: 110 MB'a kadar dosya sadece
+WhatsApp'ın üç yükleme adresine gönderilebilir, nginx de bunu ancak oturumu
+kontrol ettikten sonra kabul eder. `/api/v1/wa/`'nın geri kalanında
+tamponlama kapalıdır ve zaman aşımı uzundur (dosyalar ve arşiv indirme). Canlı akışlar düz `/api/` bölümünden geçer; arka uç bu akışlarla
 `X-Accel-Buffering: no` başlığını gönderir, nginx de bunu görünce akışı
 biriktirmeden iletir. 20 saniyede bir giden ping, nginx'in 30 saniyelik
 bekleme sınırına takılmamasını sağlar.

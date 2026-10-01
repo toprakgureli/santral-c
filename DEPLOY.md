@@ -274,7 +274,15 @@ What the site file does:
   switched to Full (strict) without a gap;
 - limits the WhatsApp webhook and survey addresses to 50 requests a second
   per address (bursts of 300) and 1 MB bodies;
-- lets `/api/v1/wa/` take 110 MB bodies with no buffering and 300-second
+- lets only the three WhatsApp upload addresses (`/api/v1/wa/files`,
+  `/api/v1/wa/templates/media`, `/api/v1/wa/conversations/:id/media`)
+  take bodies up to 110 MB, and only after asking the backend whether the
+  request carries a valid session, before the body is read; at most four
+  such uploads run at once per address. Every other address takes 8 MB at
+  most. The session check uses nginx's auth_request module, which Ubuntu's
+  nginx includes (`nginx -V 2>&1 | grep -o http_auth_request_module`
+  prints its name);
+- gives the rest of `/api/v1/wa/` unbuffered answers and 300-second
   timeouts, for media and streamed exports;
 - streams chat attachments (`/api/v1/teams/attachments/`) from Drive to the
   browser without buffering and with 900-second timeouts; their uploads go
@@ -600,7 +608,15 @@ Grafana sends alerts only to a contact point you add:
    that contact point.
 
 When `deploy/observability` changes in an update, `deploy.sh` reminds you
-to run the `docker compose ... up -d` line above again.
+to recreate the stack. Prometheus and Grafana read their files (scrape
+targets, alert rules) only when their containers are created, so a plain
+`up -d` would leave the new alerts unloaded:
+
+```bash
+sudo docker compose -f /opt/santral-c/deploy/observability/docker-compose.yml up -d --force-recreate
+```
+
+The collected numbers and Grafana's settings live in volumes and stay.
 
 ## 12. Updates
 

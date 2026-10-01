@@ -282,9 +282,10 @@ script test.
 A single Ubuntu host: nginx serves the built frontend and proxies `/api` to
 the Go binary under systemd; PostgreSQL and Redis on the same machine.
 [DEPLOY.md](DEPLOY.md) is the full walkthrough; `deploy/` has the systemd unit,
-nginx sites and the monitoring stack. Two nginx details matter: `/api/v1/wa/`
-needs a 110 MB body limit, no buffering and long timeouts (media and
-streamed exports); the live event streams work through the plain `/api/`
+nginx sites and the monitoring stack. Two nginx details matter: only the three
+WhatsApp upload addresses take bodies up to 110 MB, after nginx has checked
+the session, while the rest of `/api/v1/wa/` needs unbuffered answers and
+long timeouts (media and streamed exports); the live event streams work through the plain `/api/`
 location because the backend sends `X-Accel-Buffering: no` with them, which
 tells nginx not to buffer, and a ping every 20 seconds keeps them under its
 30-second read timeout.

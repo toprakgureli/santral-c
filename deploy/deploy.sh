@@ -226,8 +226,11 @@ if ! run_as_app git -C "$APP_DIR" diff --quiet "$PREV_SHA" "$GIT_SHA" -- deploy/
   echo "    running; install the certificate first (DEPLOY.md, section 7)." >&2
 fi
 if ! run_as_app git -C "$APP_DIR" diff --quiet "$PREV_SHA" "$GIT_SHA" -- deploy/observability; then
-  echo "!!! deploy/observability changed; restart the monitoring stack:" >&2
-  echo "    sudo docker compose -f $APP_DIR/deploy/observability/docker-compose.yml up -d" >&2
+  # Prometheus and Grafana read their files (scrape targets, alert rules)
+  # only when their containers are created; "up -d" alone leaves running
+  # ones as they are, so new alerts would never load.
+  echo "!!! deploy/observability changed; recreate the monitoring stack so it reads the new files:" >&2
+  echo "    sudo docker compose -f $APP_DIR/deploy/observability/docker-compose.yml up -d --force-recreate" >&2
 fi
 
 echo "==> Reloading nginx"
