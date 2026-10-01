@@ -231,6 +231,9 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 
 type idsBody struct {
 	UserIDs []uint `json:"userIds"`
+	// History is how much earlier conversation the newcomers may read:
+	// none (the default), 50, 100 or all.
+	History string `json:"history"`
 }
 
 // AddMembers seats users directly.
@@ -247,7 +250,7 @@ func (h *Handler) AddMembers(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.AddMembers(c.UserContext(), id, gid, req.UserIDs)
+	res, err := h.service.AddMembers(c.UserContext(), id, gid, req.UserIDs, req.History)
 	if err != nil {
 		return err
 	}
@@ -268,7 +271,7 @@ func (h *Handler) Invite(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return errs.Invalid("İstek gövdesi okunamadı.", err)
 	}
-	res, err := h.service.Invite(c.UserContext(), id, gid, req.UserIDs)
+	res, err := h.service.Invite(c.UserContext(), id, gid, req.UserIDs, req.History)
 	if err != nil {
 		return err
 	}

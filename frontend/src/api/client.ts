@@ -24,6 +24,7 @@ import type {
   DriveStatus,
   TeamsAttachment,
   TeamsGroupDetail,
+  TeamsHistory,
   TeamsMediaItem,
   TeamsMessage,
   TeamsOverview,
@@ -327,10 +328,10 @@ export const api = {
   teamsSetGroupAvatar: (id: number, avatar: string) =>
     request<TeamsGroupDetail>(`/teams/groups/${id}/avatar`, { method: "PUT", body: JSON.stringify({ avatar }) }),
   teamsDeleteGroup: (id: number) => request<void>(`/teams/groups/${id}`, { method: "DELETE" }),
-  teamsAddMembers: (id: number, userIds: number[]) =>
-    request<TeamsGroupDetail>(`/teams/groups/${id}/members`, { method: "POST", body: JSON.stringify({ userIds }) }),
-  teamsInvite: (id: number, userIds: number[]) =>
-    request<TeamsGroupDetail>(`/teams/groups/${id}/invites`, { method: "POST", body: JSON.stringify({ userIds }) }),
+  teamsAddMembers: (id: number, userIds: number[], history: TeamsHistory) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/members`, { method: "POST", body: JSON.stringify({ userIds, history }) }),
+  teamsInvite: (id: number, userIds: number[], history: TeamsHistory) =>
+    request<TeamsGroupDetail>(`/teams/groups/${id}/invites`, { method: "POST", body: JSON.stringify({ userIds, history }) }),
   teamsDecideInvite: (inviteId: number, decision: "accept" | "decline") =>
     request<void>(`/teams/invites/${inviteId}/${decision}`, { method: "POST" }),
   teamsUpdateMember: (id: number, userId: number, body: { role?: string; canPost?: boolean }) =>

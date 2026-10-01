@@ -23,17 +23,20 @@ func (ChatGroup) TableName() string { return "chat_groups" }
 
 // ChatMember is one person's seat in a room, with their in-room role.
 type ChatMember struct {
-	GroupID         uint      `gorm:"column:group_id;primarykey"`
-	UserID          uint      `gorm:"column:user_id;primarykey"`
-	Role            string    `gorm:"column:role;size:8;not null;default:member"`
-	CanPost         bool      `gorm:"column:can_post;not null;default:true"`
-	Muted           bool      `gorm:"column:muted;not null;default:false"`
-	Mute            string    `gorm:"column:mute;size:10;not null;default:none"`
-	MarkedUnread    bool      `gorm:"column:marked_unread;not null;default:false"`
-	LastReadID      uint      `gorm:"column:last_read_id;not null;default:0"`
-	LastDeliveredID uint      `gorm:"column:last_delivered_id;not null;default:0"`
-	InvitedBy       *uint     `gorm:"column:invited_by"`
-	JoinedAt        time.Time `gorm:"column:joined_at"`
+	GroupID         uint   `gorm:"column:group_id;primarykey"`
+	UserID          uint   `gorm:"column:user_id;primarykey"`
+	Role            string `gorm:"column:role;size:8;not null;default:member"`
+	CanPost         bool   `gorm:"column:can_post;not null;default:true"`
+	Muted           bool   `gorm:"column:muted;not null;default:false"`
+	Mute            string `gorm:"column:mute;size:10;not null;default:none"`
+	MarkedUnread    bool   `gorm:"column:marked_unread;not null;default:false"`
+	LastReadID      uint   `gorm:"column:last_read_id;not null;default:0"`
+	LastDeliveredID uint   `gorm:"column:last_delivered_id;not null;default:0"`
+	// HistoryFrom is the first line id the member may read; 0 is the whole
+	// history. It is set once, when the person is added or accepts an invite.
+	HistoryFrom uint      `gorm:"column:history_from;not null;default:0"`
+	InvitedBy   *uint     `gorm:"column:invited_by"`
+	JoinedAt    time.Time `gorm:"column:joined_at"`
 }
 
 // TableName pins the table name.
@@ -41,11 +44,14 @@ func (ChatMember) TableName() string { return "chat_members" }
 
 // ChatInvite is a pending seat the person still has to accept.
 type ChatInvite struct {
-	ID        uint       `gorm:"column:id;primarykey"`
-	GroupID   uint       `gorm:"column:group_id;not null"`
-	UserID    uint       `gorm:"column:user_id;not null"`
-	InvitedBy *uint      `gorm:"column:invited_by"`
-	Status    string     `gorm:"column:status;size:10;not null;default:pending"`
+	ID        uint   `gorm:"column:id;primarykey"`
+	GroupID   uint   `gorm:"column:group_id;not null"`
+	UserID    uint   `gorm:"column:user_id;not null"`
+	InvitedBy *uint  `gorm:"column:invited_by"`
+	Status    string `gorm:"column:status;size:10;not null;default:pending"`
+	// History is how much earlier conversation the invitee will see once
+	// they accept: none, 50, 100 or all.
+	History   string     `gorm:"column:history;size:4;not null;default:none"`
 	CreatedAt time.Time  `gorm:"column:created_at"`
 	DecidedAt *time.Time `gorm:"column:decided_at"`
 }

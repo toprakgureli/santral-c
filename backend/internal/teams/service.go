@@ -90,6 +90,9 @@ type MemberView struct {
 	JoinedAt    string `json:"joinedAt"`
 	DeliveredID uint   `json:"deliveredId"`
 	ReadID      uint   `json:"readId"`
+	// HistoryFrom is the first line this member may read (0: all of them);
+	// earlier lines do not wait for their receipts.
+	HistoryFrom uint `json:"historyFrom"`
 }
 
 // GroupDetail is the open room: the list card plus its members.
@@ -144,12 +147,15 @@ type MessageView struct {
 	ReadBy []string `json:"readBy,omitempty"`
 }
 
-// ReplyView is the quoted line above a reply.
+// ReplyView is the quoted line above a reply. Hidden: the quoted line is
+// from before the reader joined and they may not read it, so it comes
+// without its text or sender.
 type ReplyView struct {
 	ID      uint   `json:"id"`
 	Body    string `json:"body"`
 	Sender  string `json:"sender"`
 	Deleted bool   `json:"deleted"`
+	Hidden  bool   `json:"hidden,omitempty"`
 }
 
 // Overview is the whole left column in one call.
@@ -277,6 +283,61 @@ func (s *Service) seat(ctx context.Context, actor *models.User, groupID uint) (*
 	return g, m, nil
 }
 
+// floor is the first line id a seat may read. Without a seat (a chat
+// administrator looking in) everything is readable.
+func floor(m *models.ChatMember) uint {
+	if m == nil {
+		return 0
+	}
+	return m.HistoryFrom
+}
+
+// sees reports whether the seat may read a line.
+func sees(m *models.ChatMember, lineID uint) bool {
+	return lineID >= floor(m)
+}
+
+// hiddenReply is the quote shown to someone who may not read the quoted line.
+func hiddenReply(id uint) *ReplyView {
+	return &ReplyView{ID: id, Hidden: true}
+}
+
+// sendLine pushes an event about one line to the seats that may read it.
+// When the event carries the line and it quotes one a seat may not read,
+// that seat gets the quote without its text.
+func (s *Service) sendLine(seats []models.ChatMember, lineID uint, ev Event) {
+	var full, blind []uint
+	for i := range seats {
+		st := &seats[i]
+		if !sees(st, lineID) {
+			continue
+		}
+		if ev.Message != nil && ev.Message.ReplyTo != nil && !sees(st, ev.Message.ReplyTo.ID) {
+			blind = append(blind, st.UserID)
+			continue
+		}
+		full = append(full, st.UserID)
+	}
+	if len(full) > 0 {
+		s.hub.Send(full, ev)
+	}
+	if len(blind) > 0 {
+		msg := *ev.Message
+		msg.ReplyTo = hiddenReply(ev.Message.ReplyTo.ID)
+		ev.Message = &msg
+		s.hub.Send(blind, ev)
+	}
+}
+
+// notifyLine tells the seats that may read a line about a change to it.
+func (s *Service) notifyLine(ctx context.Context, groupID, lineID uint, ev Event) {
+	seats, err := s.repo.Members(ctx, groupID)
+	if err != nil {
+		return
+	}
+	s.sendLine(seats, lineID, ev)
+}
+
 func isAdmin(m *models.ChatMember) bool {
 	return m != nil && (m.Role == roleOwner || m.Role == roleAdmin)
 }
@@ -327,7 +388,8 @@ func (s *Service) status(actorID uint, msg *models.ChatMessage, seats []models.C
 	others, delivered, read := 0, 0, 0
 	readBy := []string{}
 	for _, st := range seats {
-		if st.UserID == actorID {
+		// Someone who joined later and may not read the line is not waited on.
+		if st.UserID == actorID || !sees(&st, msg.ID) {
 			continue
 		}
 		others++
@@ -420,7 +482,7 @@ func (s *Service) Overview(ctx context.Context, actorID uint) (*Overview, error)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	last, err := s.repo.LastMessages(ctx, ids)
+	last, err := s.repo.LastMessages(ctx, actorID, ids)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -574,6 +636,8 @@ func (s *Service) Create(ctx context.Context, actorID uint, in CreateInput) (*Gr
 		policy = policyEveryone
 	}
 	g := &models.ChatGroup{Kind: "group", Name: name, Description: strings.TrimSpace(in.Description), PostPolicy: policy, CreatedBy: &actorID, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	// The first members arrive with the room, before its first line, so
+	// there is no earlier conversation to choose about: they read it all.
 	seats := []models.ChatMember{{UserID: actorID, Role: roleOwner, CanPost: true, JoinedAt: time.Now()}}
 	seen := map[uint]bool{actorID: true}
 	for _, id := range in.MemberIDs {
@@ -672,7 +736,7 @@ func (s *Service) Detail(ctx context.Context, actorID, groupID uint) (*GroupDeta
 	d.Editable = d.CanManage
 	for _, st := range seats {
 		p := people[st.UserID]
-		d.Members = append(d.Members, MemberView{Person: p, Role: st.Role, CanPost: canPost(g, &st), JoinedAt: stamp(st.JoinedAt), DeliveredID: st.LastDeliveredID, ReadID: st.LastReadID})
+		d.Members = append(d.Members, MemberView{Person: p, Role: st.Role, CanPost: canPost(g, &st), JoinedAt: stamp(st.JoinedAt), DeliveredID: st.LastDeliveredID, ReadID: st.LastReadID, HistoryFrom: st.HistoryFrom})
 		if g.Kind == "dm" && st.UserID != actorID {
 			peer := p
 			d.Peer = &peer
@@ -802,11 +866,17 @@ func (s *Service) Delete(ctx context.Context, actorID, groupID uint) error {
 
 // ---------------------------------------------------------------- members
 
-// AddMembers seats users directly (group admin, or the global add permission).
-func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs []uint) (*GroupDetail, error) {
+// AddMembers seats users directly (group admin, or the global add
+// permission). history is how much earlier conversation they may read:
+// none (the default), 50, 100 or all.
+func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs []uint, history string) (*GroupDetail, error) {
 	actor, err := s.actor(ctx, actorID)
 	if err != nil {
 		return nil, err
+	}
+	h, ok := ParseHistory(history)
+	if !ok {
+		return nil, errs.Invalid("Eski mesajlar için geçerli bir seçim yap.", nil)
 	}
 	g, m, err := s.seat(ctx, actor, groupID)
 	if err != nil {
@@ -825,7 +895,7 @@ func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs
 		}
 		seats = append(seats, models.ChatMember{GroupID: groupID, UserID: id, Role: roleMember, CanPost: true, InvitedBy: &actorID})
 	}
-	if err := s.repo.AddMembers(ctx, seats); err != nil {
+	if err := s.repo.AddMembers(ctx, groupID, seats, h); err != nil {
 		return nil, errs.Internal(err)
 	}
 	people, _ := s.repo.PeopleByID(ctx, userIDs)
@@ -842,11 +912,16 @@ func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs
 	return s.Detail(ctx, actorID, groupID)
 }
 
-// Invite opens pending invites (group admin, or the global invite permission).
-func (s *Service) Invite(ctx context.Context, actorID, groupID uint, userIDs []uint) (*GroupDetail, error) {
+// Invite opens pending invites (group admin, or the global invite
+// permission). history is applied when the invite is accepted.
+func (s *Service) Invite(ctx context.Context, actorID, groupID uint, userIDs []uint, history string) (*GroupDetail, error) {
 	actor, err := s.actor(ctx, actorID)
 	if err != nil {
 		return nil, err
+	}
+	h, ok := ParseHistory(history)
+	if !ok {
+		return nil, errs.Invalid("Eski mesajlar için geçerli bir seçim yap.", nil)
 	}
 	g, m, err := s.seat(ctx, actor, groupID)
 	if err != nil {
@@ -858,7 +933,7 @@ func (s *Service) Invite(ctx context.Context, actorID, groupID uint, userIDs []u
 	if !(isAdmin(m) || actor.Can(enums.TeamsAdmin) || actor.Can(enums.TeamsMemberInvite)) {
 		return nil, errs.Forbidden("Davet gönderme yetkin yok.")
 	}
-	if err := s.repo.CreateInvites(ctx, groupID, actorID, userIDs); err != nil {
+	if err := s.repo.CreateInvites(ctx, groupID, actorID, userIDs, h); err != nil {
 		return nil, errs.Internal(err)
 	}
 	s.hub.Send(userIDs, Event{Type: "invite"})
@@ -1085,7 +1160,7 @@ func (s *Service) Messages(ctx context.Context, actorID, groupID, beforeID uint)
 	if err != nil {
 		return nil, false, err
 	}
-	rows, err := s.repo.Messages(ctx, groupID, beforeID, pageSize+1)
+	rows, err := s.repo.Messages(ctx, groupID, floor(m), beforeID, pageSize+1)
 	if err != nil {
 		return nil, false, errs.Internal(err)
 	}
@@ -1118,8 +1193,11 @@ func (s *Service) MessagesAround(ctx context.Context, actorID, groupID, aroundID
 	if err != nil {
 		return nil, false, false, err
 	}
+	if !sees(m, aroundID) {
+		return nil, false, false, errs.NotFound("Bu mesaj sen gruba katılmadan önce yazılmış, göremezsin.")
+	}
 	half := pageSize / 2
-	older, err := s.repo.Messages(ctx, groupID, aroundID, half+1)
+	older, err := s.repo.Messages(ctx, groupID, floor(m), aroundID, half+1)
 	if err != nil {
 		return nil, false, false, errs.Internal(err)
 	}
@@ -1127,7 +1205,7 @@ func (s *Service) MessagesAround(ctx context.Context, actorID, groupID, aroundID
 	if moreOlder {
 		older = older[:half]
 	}
-	newer, err := s.repo.MessagesAfter(ctx, groupID, aroundID-1, half+1)
+	newer, err := s.repo.MessagesAfter(ctx, groupID, floor(m), aroundID-1, half+1)
 	if err != nil {
 		return nil, false, false, errs.Internal(err)
 	}
@@ -1157,7 +1235,7 @@ func (s *Service) MessagesAfter(ctx context.Context, actorID, groupID, afterID u
 	if err != nil {
 		return nil, false, err
 	}
-	rows, err := s.repo.MessagesAfter(ctx, groupID, afterID, pageSize+1)
+	rows, err := s.repo.MessagesAfter(ctx, groupID, floor(m), afterID, pageSize+1)
 	if err != nil {
 		return nil, false, errs.Internal(err)
 	}
@@ -1186,7 +1264,7 @@ func (s *Service) Search(ctx context.Context, actorID, groupID uint, q string) (
 	if len([]rune(q)) < 2 {
 		return []MessageView{}, nil
 	}
-	rows, err := s.repo.SearchMessages(ctx, groupID, q, 50)
+	rows, err := s.repo.SearchMessages(ctx, groupID, floor(m), q, 50)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -1207,14 +1285,15 @@ func (s *Service) Media(ctx context.Context, actorID, groupID uint, kind string,
 	if err != nil {
 		return nil, false, err
 	}
-	if _, _, err := s.seat(ctx, actor, groupID); err != nil {
+	_, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
 		return nil, false, err
 	}
 	if kind != "image" && kind != "video" && kind != "file" {
 		kind = ""
 	}
 	const limit = 60
-	rows, err := s.repo.GroupAttachments(ctx, groupID, kind, beforeID, limit+1)
+	rows, err := s.repo.GroupAttachments(ctx, groupID, floor(m), kind, beforeID, limit+1)
 	if err != nil {
 		return nil, false, errs.Internal(err)
 	}
@@ -1302,7 +1381,9 @@ func (s *Service) views(ctx context.Context, actor *models.User, g *models.ChatG
 			v.Attachments = append(v.Attachments, attachmentView(&a))
 		}
 		if rows[i].ReplyToID != nil {
-			if rm, ok := replies[*rows[i].ReplyToID]; ok {
+			if rm, ok := replies[*rows[i].ReplyToID]; ok && !sees(m, rm.ID) {
+				v.ReplyTo = hiddenReply(rm.ID)
+			} else if ok {
 				rv := ReplyView{ID: rm.ID, Body: rm.Body, Deleted: rm.DeletedAt != nil}
 				if rm.SenderID != nil {
 					rv.Sender = people[*rm.SenderID].Name
@@ -1390,7 +1471,8 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		if err != nil {
 			return nil, errs.Internal(err)
 		}
-		if rm != nil && rm.GroupID == groupID {
+		// A line from before the sender's history start cannot be quoted.
+		if rm != nil && rm.GroupID == groupID && sees(m, rm.ID) {
 			msg.ReplyToID = &replyTo
 		}
 	}
@@ -1472,7 +1554,7 @@ func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID u
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil {
+	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil || !sees(m, msg.ID) {
 		return nil, errs.NotFound("Mesaj bulunamadı.")
 	}
 	if msg.Kind != "text" || msg.SenderID == nil || *msg.SenderID != actorID {
@@ -1517,7 +1599,7 @@ func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID u
 	shared.CanDelete = false
 	shared.Status = ""
 	shared.ReadBy = nil
-	s.notifyGroup(ctx, groupID, Event{Type: "message.edited", GroupID: groupID, ID: messageID, Message: &shared})
+	s.notifyLine(ctx, groupID, messageID, Event{Type: "message.edited", GroupID: groupID, ID: messageID, Message: &shared})
 	return &mine, nil
 }
 
@@ -1590,14 +1672,15 @@ func (s *Service) MessageReceipts(ctx context.Context, actorID, groupID, message
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err := s.seat(ctx, actor, groupID); err != nil {
+	_, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
 		return nil, err
 	}
 	msg, err := s.repo.Message(ctx, messageID)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	if msg == nil || msg.GroupID != groupID {
+	if msg == nil || msg.GroupID != groupID || !sees(m, msg.ID) {
 		return nil, errs.NotFound("Mesaj bulunamadı.")
 	}
 	seats, err := s.repo.Members(ctx, groupID)
@@ -1622,7 +1705,8 @@ func (s *Service) MessageReceipts(ctx context.Context, actorID, groupID, message
 	}
 	out := []ReceiptView{}
 	for _, st := range seats {
-		if msg.SenderID != nil && st.UserID == *msg.SenderID {
+		// Members who joined later and may not read the line are left out.
+		if (msg.SenderID != nil && st.UserID == *msg.SenderID) || !sees(&st, msg.ID) {
 			continue
 		}
 		v := ReceiptView{Person: people[st.UserID]}
@@ -1703,7 +1787,7 @@ func (s *Service) broadcastMessage(ctx context.Context, g *models.ChatGroup, msg
 	for _, st := range seats {
 		ids = append(ids, st.UserID)
 	}
-	s.hub.Send(ids, Event{Type: "message", GroupID: g.ID, Message: &view})
+	s.sendLine(seats, msg.ID, Event{Type: "message", GroupID: g.ID, Message: &view})
 	// Whoever has the chat open right now has received the line.
 	online := s.hub.Online(ids)
 	for _, st := range seats {
@@ -1731,7 +1815,7 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 	if err != nil {
 		return errs.Internal(err)
 	}
-	if msg == nil || msg.GroupID != groupID {
+	if msg == nil || msg.GroupID != groupID || !sees(m, msg.ID) {
 		return errs.NotFound("Mesaj bulunamadı.")
 	}
 	if msg.Kind != "text" {
@@ -1746,7 +1830,7 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 		return errs.Internal(err)
 	}
 	s.dropAttachments(ctx, messageID)
-	s.notifyGroup(ctx, groupID, Event{Type: "message.deleted", GroupID: groupID, ID: messageID})
+	s.notifyLine(ctx, groupID, messageID, Event{Type: "message.deleted", GroupID: groupID, ID: messageID})
 	return nil
 }
 
@@ -1756,7 +1840,8 @@ func (s *Service) React(ctx context.Context, actorID, groupID, messageID uint, e
 	if err != nil {
 		return err
 	}
-	if _, _, err := s.seat(ctx, actor, groupID); err != nil {
+	_, m, err := s.seat(ctx, actor, groupID)
+	if err != nil {
 		return err
 	}
 	emoji = strings.TrimSpace(emoji)
@@ -1767,7 +1852,7 @@ func (s *Service) React(ctx context.Context, actorID, groupID, messageID uint, e
 	if err != nil {
 		return errs.Internal(err)
 	}
-	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil {
+	if msg == nil || msg.GroupID != groupID || msg.DeletedAt != nil || !sees(m, msg.ID) {
 		return errs.NotFound("Mesaj bulunamadı.")
 	}
 	added, err := s.repo.ToggleReaction(ctx, messageID, actorID, emoji)
@@ -1778,7 +1863,7 @@ func (s *Service) React(ctx context.Context, actorID, groupID, messageID uint, e
 	if msg.SenderID != nil {
 		ev.SenderID = *msg.SenderID
 	}
-	s.notifyGroup(ctx, groupID, ev)
+	s.notifyLine(ctx, groupID, messageID, ev)
 	return nil
 }
 

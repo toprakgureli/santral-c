@@ -375,8 +375,13 @@ func (s *Service) OpenAttachment(ctx context.Context, actorID, attachmentID uint
 	if a == nil || a.DeletedAt != nil {
 		return nil, errs.NotFound("Dosya bulunamadı.")
 	}
-	if _, _, err := s.seat(ctx, actor, a.GroupID); err != nil {
+	_, m, err := s.seat(ctx, actor, a.GroupID)
+	if err != nil {
 		return nil, err
+	}
+	// A file on a line from before the reader's history start stays hidden.
+	if a.MessageID != nil && !sees(m, *a.MessageID) {
+		return nil, errs.NotFound("Dosya bulunamadı.")
 	}
 	if a.Status != "ready" && a.UploaderID != actorID {
 		return nil, errs.NotFound("Dosya henüz hazır değil.")

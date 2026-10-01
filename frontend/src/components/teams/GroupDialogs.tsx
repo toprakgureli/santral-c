@@ -1,11 +1,11 @@
 // The group dialogs: create a group, edit its settings (name, description,
 // photo, posting policy), add or invite people, start a direct message.
 
-import { useEffect, useRef, useState } from "react";
-import { Camera, Megaphone, Trash2, Users } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Camera, EyeOff, History, Megaphone, ScrollText, Trash2, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "@/api/client";
-import type { TeamsGroupDetail } from "@/api/types";
+import type { TeamsGroupDetail, TeamsHistory } from "@/api/types";
 import AvatarCropper from "@/components/profile/AvatarCropper";
 import GroupAvatar from "@/components/teams/GroupAvatar";
 import PeoplePicker from "@/components/teams/PeoplePicker";
@@ -37,6 +37,47 @@ function PolicyPicker({ value, onChange }: { value: "everyone" | "admins"; onCha
           </span>
         </button>
       ))}
+    </div>
+  );
+}
+
+const HISTORY: { key: TeamsHistory; label: string; hint: string; icon: typeof Users }[] = [
+  { key: "none", label: "Hiçbirini gösterme", hint: "Yalnızca katıldıktan sonra yazılanlar", icon: EyeOff },
+  { key: "50", label: "Son 50 mesaj", hint: "Katılmadan önceki son 50 mesaj", icon: History },
+  { key: "100", label: "Son 100 mesaj", hint: "Katılmadan önceki son 100 mesaj", icon: History },
+  { key: "all", label: "Tüm eski mesajlar", hint: "Grubun bütün geçmişi", icon: ScrollText },
+];
+
+// HistoryPicker: how much of the room's earlier conversation the people
+// being added or invited may read. Nothing earlier is the default.
+export function HistoryPicker({ value, onChange, invite, disabled }: { value: TeamsHistory; onChange: (v: TeamsHistory) => void; invite?: boolean; disabled?: boolean }) {
+  const labelId = useId();
+  return (
+    <div className="space-y-1.5">
+      <p id={labelId} className="text-xs text-muted-foreground">Eski mesajlardan ne kadarını görsünler?</p>
+      <div role="radiogroup" aria-labelledby={labelId} className="grid grid-cols-2 gap-2">
+        {HISTORY.map((o) => {
+          const on = value === o.key;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              onClick={() => onChange(o.key)}
+              className={cn("flex items-start gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors disabled:opacity-60", on ? "border-primary bg-primary/10" : "border-border/70 hover:bg-accent")}
+            >
+              <o.icon className={cn("mt-0.5 size-4 shrink-0", on ? "text-primary" : "text-muted-foreground")} />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium leading-tight">{o.label}</span>
+                <span className="block text-xs text-muted-foreground">{o.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {invite && value !== "none" && value !== "all" && <p className="text-[0.7rem] text-muted-foreground">Mesajlar, daveti kabul ettiği andan geriye doğru sayılır.</p>}
     </div>
   );
 }
@@ -271,11 +312,13 @@ export function GroupSettingsDialog({ group, open, onClose, onSaved }: { group: 
 // AddPeopleDialog adds directly or invites, whichever the caller may do.
 export function AddPeopleDialog({ group, mode, open, onClose, onDone }: { group: TeamsGroupDetail; mode: "add" | "invite"; open: boolean; onClose: () => void; onDone: (g: TeamsGroupDetail) => void }) {
   const [selected, setSelected] = useState<number[]>([]);
+  const [history, setHistory] = useState<TeamsHistory>("none");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setSelected([]);
+      setHistory("none");
       setError(null);
     }
   }, [open]);
@@ -285,7 +328,7 @@ export function AddPeopleDialog({ group, mode, open, onClose, onDone }: { group:
     setBusy(true);
     setError(null);
     try {
-      const g = mode === "add" ? await api.teamsAddMembers(group.id, selected) : await api.teamsInvite(group.id, selected);
+      const g = mode === "add" ? await api.teamsAddMembers(group.id, selected, history) : await api.teamsInvite(group.id, selected, history);
       onDone(g);
       onClose();
     } catch (e) {
@@ -310,8 +353,11 @@ export function AddPeopleDialog({ group, mode, open, onClose, onDone }: { group:
         </>
       }
     >
-      <PeoplePicker selected={selected} onChange={setSelected} exclude={exclude} height={300} />
-      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+      <div className="space-y-4">
+        <PeoplePicker selected={selected} onChange={setSelected} exclude={exclude} height={260} />
+        <HistoryPicker value={history} onChange={setHistory} invite={mode === "invite"} disabled={busy} />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
     </Modal>
   );
 }

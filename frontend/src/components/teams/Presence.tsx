@@ -65,13 +65,14 @@ export function Ticks({ status, readBy, className, size = "size-[1.05rem]" }: { 
 
 // statusOf grades one of the reader's own lines from the other seats'
 // pointers, mirroring the server so live receipts update it in place.
-export function statusOf(messageId: number, selfId: number, seats: Record<number, { deliveredId: number; readId: number; name: string }>): { status: Status; readBy: string[] } {
+export function statusOf(messageId: number, selfId: number, seats: Record<number, { deliveredId: number; readId: number; name: string; historyFrom?: number }>): { status: Status; readBy: string[] } {
   let others = 0;
   let delivered = 0;
   let read = 0;
   const readBy: string[] = [];
   for (const [id, s] of Object.entries(seats)) {
-    if (Number(id) === selfId) continue;
+    // Someone who joined later and may not read the line is not waited on.
+    if (Number(id) === selfId || (s.historyFrom ?? 0) > messageId) continue;
     others++;
     if (s.readId >= messageId) {
       read++;

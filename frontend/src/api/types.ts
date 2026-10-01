@@ -320,7 +320,9 @@ export interface TeamsMessage {
   // A game card: the match the line stands for.
   gameId?: number;
   sender?: TeamsPerson;
-  replyTo?: { id: number; body: string; sender: string; deleted: boolean };
+  // hidden: the quoted line is from before the reader joined and they may
+  // not read it; it comes without text or sender.
+  replyTo?: { id: number; body: string; sender: string; deleted: boolean; hidden?: boolean };
   deleted: boolean;
   mine: boolean;
   canDelete: boolean;
@@ -364,7 +366,13 @@ export interface TeamsMember extends TeamsPerson {
   joinedAt: string;
   deliveredId: number;
   readId: number;
+  // The first line this member may read (0: all); earlier lines do not
+  // wait for their receipts.
+  historyFrom: number;
 }
+
+// How much earlier conversation people added or invited to a room may read.
+export type TeamsHistory = "none" | "50" | "100" | "all";
 
 export interface TeamsGroupDetail extends TeamsGroup {
   members: TeamsMember[];

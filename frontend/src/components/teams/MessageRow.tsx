@@ -1,4 +1,4 @@
-import { CornerUpLeft, Pencil, SmilePlus, Trash2 } from "lucide-react";
+import { CornerUpLeft, EyeOff, Pencil, SmilePlus, Trash2 } from "lucide-react";
 import AttachmentGrid, { mediaOf } from "@/components/teams/AttachmentGrid";
 import type { TeamsAttachment, TeamsMessage, TeamsPerson } from "@/api/types";
 import { EVERYONE } from "@/components/teams/Composer";
@@ -13,7 +13,9 @@ import { clockTime, numericDateTime } from "@/lib/time";
 // mesajlar" mark when they fall before it, the sender, the quoted reply,
 // the text or attachments, the reactions and the hover actions.
 
-export type Seats = Record<number, { deliveredId: number; readId: number; name: string }>;
+// historyFrom: the first line the seat may read; earlier ones do not wait
+// for that seat's receipt.
+export type Seats = Record<number, { deliveredId: number; readId: number; name: string; historyFrom?: number }>;
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🔥", "✅"];
 const ALL = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅", "👏", "🎉", "👀", "💯"];
@@ -81,7 +83,16 @@ export default function MessageRow({ m, head, day, unread, selfId, seats, flash,
             {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{clockTime(m.createdAt)}</span>}
           </div>
           <div className="min-w-0 flex-1">
-            {m.replyTo && (
+            {m.replyTo?.hidden ? (
+              <span
+                data-tip="Bu mesaj sen gruba katılmadan önce yazılmış, göremezsin."
+                className="relative mb-1 flex h-5 w-fit max-w-[75%] items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <span className="pointer-events-none absolute top-1/2 -left-[30px] h-[14px] w-[24px] rounded-tl-lg border-t-2 border-l-2 border-border" />
+                <EyeOff className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate italic">Katılmadan önceki bir mesaja yanıt</span>
+              </span>
+            ) : m.replyTo && (
               <button
                 type="button"
                 onClick={() => onJump(m.replyTo!.id)}

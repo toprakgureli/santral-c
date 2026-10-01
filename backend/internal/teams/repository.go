@@ -139,15 +139,20 @@ func (r *Repository) MyGroups(ctx context.Context, userID uint) ([]models.ChatGr
 	return groups, byGroup, nil
 }
 
-// LastMessages returns the newest message per room.
-func (r *Repository) LastMessages(ctx context.Context, groupIDs []uint) (map[uint]models.ChatMessage, error) {
+// LastMessages returns, per room, the newest live line the user may read:
+// a line from before their seat's history start never shows as a preview.
+func (r *Repository) LastMessages(ctx context.Context, userID uint, groupIDs []uint) (map[uint]models.ChatMessage, error) {
 	out := make(map[uint]models.ChatMessage)
 	if len(groupIDs) == 0 {
 		return out, nil
 	}
 	var rows []models.ChatMessage
+	// One index probe per room, from the top of its lines.
 	err := r.db.WithContext(ctx).Raw(
-		"SELECT DISTINCT ON (group_id) * FROM chat_messages WHERE group_id IN ? AND deleted_at IS NULL ORDER BY group_id, id DESC", groupIDs,
+		"SELECT m.* FROM chat_members s CROSS JOIN LATERAL ("+
+			"SELECT * FROM chat_messages x WHERE x.group_id = s.group_id AND x.deleted_at IS NULL "+
+			"AND x.id >= s.history_from ORDER BY x.id DESC LIMIT 1) m "+
+			"WHERE s.user_id = ? AND s.group_id IN ?", userID, groupIDs,
 	).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("last messages could not be loaded: %w", err)
@@ -170,7 +175,7 @@ func (r *Repository) Unread(ctx context.Context, userID uint) (map[uint]int64, e
 	// on every refresh.
 	err := r.db.WithContext(ctx).Raw(
 		"SELECT s.group_id, (SELECT count(*) FROM (SELECT 1 FROM chat_messages m "+
-			"WHERE m.group_id = s.group_id AND m.id > s.last_read_id AND m.deleted_at IS NULL "+
+			"WHERE m.group_id = s.group_id AND m.id > s.last_read_id AND m.id >= s.history_from AND m.deleted_at IS NULL "+
 			"AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) LIMIT ?) c) AS n "+
 			"FROM chat_members s WHERE s.user_id = ?", unreadCap, userID,
 	).Scan(&rows).Error
@@ -276,36 +281,100 @@ func (r *Repository) DeleteGroup(ctx context.Context, id uint) error {
 	return r.UpdateGroup(ctx, id, map[string]any{"deleted_at": time.Now()})
 }
 
-// AddMembers seats users, skipping ones already seated.
-func (r *Repository) AddMembers(ctx context.Context, seats []models.ChatMember) error {
+// History is how much of a room's earlier conversation a newcomer may read.
+type History string
+
+// The choices offered when people are added or invited.
+const (
+	HistoryNone History = "none"
+	History50   History = "50"
+	History100  History = "100"
+	HistoryAll  History = "all"
+)
+
+// ParseHistory reads a choice; an empty one means nothing earlier.
+func ParseHistory(v string) (History, bool) {
+	switch h := History(v); h {
+	case "":
+		return HistoryNone, true
+	case HistoryNone, History50, History100, HistoryAll:
+		return h, true
+	}
+	return "", false
+}
+
+// lines is how many earlier lines the choice shows, or -1 for all of them.
+func (h History) lines() int {
+	switch h {
+	case History50:
+		return 50
+	case History100:
+		return 100
+	case HistoryAll:
+		return -1
+	}
+	return 0
+}
+
+// startOf works out, inside the seating transaction, where a newcomer's
+// view of a room begins and which line is its newest. They start with
+// everything up to that line read, whatever they may scroll back to.
+func startOf(tx *gorm.DB, groupID uint, h History) (from, top uint, err error) {
+	if err := tx.Raw("SELECT COALESCE(max(id), 0) FROM chat_messages WHERE group_id = ?", groupID).Scan(&top).Error; err != nil {
+		return 0, 0, fmt.Errorf("newest line could not be read: %w", err)
+	}
+	n := h.lines()
+	switch {
+	case n < 0:
+		return 0, top, nil
+	case n == 0:
+		return top + 1, top, nil
+	}
+	// The last n messages people wrote; the grey notices between them come
+	// along, and a room with fewer than n shows them all.
+	var ids []uint
+	if err := tx.Raw(
+		"SELECT id FROM chat_messages WHERE group_id = ? AND kind <> 'system' AND deleted_at IS NULL "+
+			"ORDER BY id DESC OFFSET ? LIMIT 1", groupID, n-1,
+	).Scan(&ids).Error; err != nil {
+		return 0, 0, fmt.Errorf("history start could not be found: %w", err)
+	}
+	if len(ids) == 0 {
+		return 0, top, nil
+	}
+	return ids[0], top, nil
+}
+
+// AddMembers seats users in one room, skipping ones already seated. The
+// choice decides how far back each newcomer may read.
+func (r *Repository) AddMembers(ctx context.Context, groupID uint, seats []models.ChatMember, h History) error {
 	if len(seats) == 0 {
 		return nil
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var added []struct {
-			GroupID uint
-			UserID  uint
+		from, top, err := startOf(tx, groupID, h)
+		if err != nil {
+			return err
 		}
-		if err := tx.Raw(
-			"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at) VALUES "+placeholders(len(seats), 6)+
-				" ON CONFLICT DO NOTHING RETURNING group_id, user_id",
+		for i := range seats {
+			seats[i].GroupID = groupID
+			seats[i].HistoryFrom = from
+			seats[i].LastReadID = top
+			seats[i].LastDeliveredID = top
+		}
+		if err := tx.Exec(
+			"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at, history_from, last_read_id, last_delivered_id) VALUES "+
+				placeholders(len(seats), seatCols)+" ON CONFLICT DO NOTHING",
 			seatArgs(seats)...,
-		).Scan(&added).Error; err != nil {
+		).Error; err != nil {
 			return fmt.Errorf("members could not be added: %w", err)
-		}
-		// A new member can scroll back through the room's history, but it
-		// does not count as unread for them.
-		for _, a := range added {
-			if err := tx.Exec(
-				"UPDATE chat_members SET last_read_id = x.top, last_delivered_id = x.top "+
-					"FROM (SELECT COALESCE(max(id), 0) AS top FROM chat_messages WHERE group_id = ?) x "+
-					"WHERE group_id = ? AND user_id = ?", a.GroupID, a.GroupID, a.UserID).Error; err != nil {
-				return fmt.Errorf("new member's read pointer could not be set: %w", err)
-			}
 		}
 		return nil
 	})
 }
+
+// seatCols is how many columns seatArgs fills per seat.
+const seatCols = 9
 
 func placeholders(rows, cols int) string {
 	out := ""
@@ -326,10 +395,10 @@ func placeholders(rows, cols int) string {
 }
 
 func seatArgs(seats []models.ChatMember) []any {
-	args := make([]any, 0, len(seats)*6)
+	args := make([]any, 0, len(seats)*seatCols)
 	now := time.Now()
 	for _, s := range seats {
-		args = append(args, s.GroupID, s.UserID, s.Role, s.CanPost, s.InvitedBy, now)
+		args = append(args, s.GroupID, s.UserID, s.Role, s.CanPost, s.InvitedBy, now, s.HistoryFrom, s.LastReadID, s.LastDeliveredID)
 	}
 	return args
 }
@@ -350,13 +419,13 @@ func (r *Repository) UpdateMember(ctx context.Context, groupID, userID uint, fie
 	return nil
 }
 
-// CreateInvites opens pending invites, skipping duplicates.
-func (r *Repository) CreateInvites(ctx context.Context, groupID, by uint, userIDs []uint) error {
+// CreateInvites opens pending invites with the history choice, skipping
+// duplicates.
+func (r *Repository) CreateInvites(ctx context.Context, groupID, by uint, userIDs []uint, h History) error {
 	for _, uid := range userIDs {
-		inv := models.ChatInvite{GroupID: groupID, UserID: uid, InvitedBy: &by, Status: "pending"}
 		if err := r.db.WithContext(ctx).Exec(
-			"INSERT INTO chat_invites (group_id, user_id, invited_by, status, created_at) VALUES (?, ?, ?, 'pending', now()) ON CONFLICT DO NOTHING",
-			inv.GroupID, inv.UserID, inv.InvitedBy,
+			"INSERT INTO chat_invites (group_id, user_id, invited_by, status, history, created_at) VALUES (?, ?, ?, 'pending', ?, now()) ON CONFLICT DO NOTHING",
+			groupID, uid, by, string(h),
 		).Error; err != nil {
 			return fmt.Errorf("invite could not be created: %w", err)
 		}
@@ -395,7 +464,9 @@ func (r *Repository) PendingInviteIDs(ctx context.Context, groupID uint) ([]uint
 	return ids, nil
 }
 
-// DecideInvite closes an invite and, when accepted, seats the person.
+// DecideInvite closes an invite and, when accepted, seats the person the
+// same way an added member is seated: starting at the newest line, read,
+// with as much history as the inviter chose.
 func (r *Repository) DecideInvite(ctx context.Context, inv *models.ChatInvite, accept bool) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		status := "declined"
@@ -408,9 +479,18 @@ func (r *Repository) DecideInvite(ctx context.Context, inv *models.ChatInvite, a
 			return fmt.Errorf("invite could not be decided: %w", err)
 		}
 		if accept {
+			h, ok := ParseHistory(inv.History)
+			if !ok {
+				h = HistoryNone
+			}
+			from, top, err := startOf(tx, inv.GroupID, h)
+			if err != nil {
+				return err
+			}
 			if err := tx.Exec(
-				"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at) VALUES (?, ?, 'member', true, ?, now()) ON CONFLICT DO NOTHING",
-				inv.GroupID, inv.UserID, inv.InvitedBy,
+				"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at, history_from, last_read_id, last_delivered_id) "+
+					"VALUES (?, ?, 'member', true, ?, now(), ?, ?, ?) ON CONFLICT DO NOTHING",
+				inv.GroupID, inv.UserID, inv.InvitedBy, from, top, top,
 			).Error; err != nil {
 				return fmt.Errorf("member could not be seated: %w", err)
 			}
@@ -419,9 +499,13 @@ func (r *Repository) DecideInvite(ctx context.Context, inv *models.ChatInvite, a
 	})
 }
 
-// Messages pages a room's history, newest first, before a given id.
-func (r *Repository) Messages(ctx context.Context, groupID uint, beforeID uint, limit int) ([]models.ChatMessage, error) {
+// Messages pages a room's history, newest first, before a given id and
+// from the reader's history start (0: from the beginning).
+func (r *Repository) Messages(ctx context.Context, groupID, from, beforeID uint, limit int) ([]models.ChatMessage, error) {
 	q := r.db.WithContext(ctx).Where("group_id = ?", groupID)
+	if from > 0 {
+		q = q.Where("id >= ?", from)
+	}
 	if beforeID > 0 {
 		q = q.Where("id < ?", beforeID)
 	}
@@ -432,8 +516,12 @@ func (r *Repository) Messages(ctx context.Context, groupID uint, beforeID uint, 
 	return out, nil
 }
 
-// MessagesAfter lists lines newer than an id, oldest first.
-func (r *Repository) MessagesAfter(ctx context.Context, groupID uint, afterID uint, limit int) ([]models.ChatMessage, error) {
+// MessagesAfter lists lines newer than an id, oldest first, never before
+// the reader's history start.
+func (r *Repository) MessagesAfter(ctx context.Context, groupID, from, afterID uint, limit int) ([]models.ChatMessage, error) {
+	if from > 0 && afterID < from-1 {
+		afterID = from - 1
+	}
 	var out []models.ChatMessage
 	if err := r.db.WithContext(ctx).Where("group_id = ? AND id > ?", groupID, afterID).Order("id ASC").Limit(limit).Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("messages could not be listed: %w", err)
@@ -441,9 +529,10 @@ func (r *Repository) MessagesAfter(ctx context.Context, groupID uint, afterID ui
 	return out, nil
 }
 
-// SearchMessages finds live text lines containing the words, newest first.
-func (r *Repository) SearchMessages(ctx context.Context, groupID uint, q string, limit int) ([]models.ChatMessage, error) {
-	db := r.db.WithContext(ctx).Where("group_id = ? AND kind = 'text' AND deleted_at IS NULL", groupID)
+// SearchMessages finds live text lines containing the words, newest first,
+// from the reader's history start.
+func (r *Repository) SearchMessages(ctx context.Context, groupID, from uint, q string, limit int) ([]models.ChatMessage, error) {
+	db := r.db.WithContext(ctx).Where("group_id = ? AND id >= ? AND kind = 'text' AND deleted_at IS NULL", groupID, from)
 	for _, w := range strings.Fields(q) {
 		db = db.Where("body ILIKE ?", "%"+strings.NewReplacer("%", "\\%", "_", "\\_").Replace(w)+"%")
 	}
@@ -454,11 +543,12 @@ func (r *Repository) SearchMessages(ctx context.Context, groupID uint, q string,
 	return out, nil
 }
 
-// GroupAttachments pages a room's shared files of one kind, newest first.
-func (r *Repository) GroupAttachments(ctx context.Context, groupID uint, kind string, beforeID uint, limit int) ([]models.ChatAttachment, error) {
+// GroupAttachments pages a room's shared files of one kind, newest first,
+// only from lines at or after the reader's history start.
+func (r *Repository) GroupAttachments(ctx context.Context, groupID, from uint, kind string, beforeID uint, limit int) ([]models.ChatAttachment, error) {
 	db := r.db.WithContext(ctx).
 		Where("chat_attachments.group_id = ? AND chat_attachments.deleted_at IS NULL AND chat_attachments.status = 'ready' AND chat_attachments.message_id IS NOT NULL", groupID).
-		Joins("JOIN chat_messages m ON m.id = chat_attachments.message_id AND m.deleted_at IS NULL")
+		Joins("JOIN chat_messages m ON m.id = chat_attachments.message_id AND m.deleted_at IS NULL AND m.id >= ?", from)
 	if kind != "" {
 		db = db.Where("chat_attachments.kind = ?", kind)
 	}
@@ -541,7 +631,7 @@ func (r *Repository) MarkRead(ctx context.Context, groupID, userID, messageID ui
 	if err := r.db.WithContext(ctx).Exec(
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at, read_at) "+
 			"SELECT m.id, s.user_id, now(), now() FROM chat_members s "+
-			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_read_id AND m.id <= ? "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_read_id AND m.id <= ? AND m.id >= s.history_from "+
 			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO UPDATE SET "+
@@ -603,7 +693,7 @@ func (r *Repository) MarkDelivered(ctx context.Context, groupID, userID, message
 	if err := r.db.WithContext(ctx).Exec(
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
 			"SELECT m.id, s.user_id, now() FROM chat_members s "+
-			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id AND m.id <= ? "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id AND m.id <= ? AND m.id >= s.history_from "+
 			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO NOTHING",
@@ -633,7 +723,7 @@ func (r *Repository) MarkDeliveredAll(ctx context.Context, userID uint) ([]Deliv
 	if err := r.db.WithContext(ctx).Exec(
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
 			"SELECT m.id, s.user_id, now() FROM chat_members s "+
-			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id "+
+			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id AND m.id >= s.history_from "+
 			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO NOTHING", userID).Error; err != nil {
