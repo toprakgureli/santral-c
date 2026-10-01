@@ -1114,7 +1114,12 @@ func TestRenewFromTwoTabs(t *testing.T) {
 	srv, db := testServer(t, officeSecurity)
 	people := seedPeople(t, db, 100, enums.RoleSalesTeam, false)
 	browsers := make([]*browser, len(people))
+	// Signing in is not what this test is about; eight at a time keeps it
+	// quick under the race detector too.
+	gate := make(chan struct{}, 8)
 	together(len(people), func(i int) {
+		gate <- struct{}{}
+		defer func() { <-gate }()
 		browsers[i] = newBrowser(t, srv.app, nil, people[i])
 		if r := browsers[i].login(loadPassword); r.status != fiber.StatusOK {
 			t.Errorf("%s: sign in answered %d %s", people[i].Email, r.status, r.body)

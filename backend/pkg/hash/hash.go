@@ -63,10 +63,11 @@ func Password(plain string) (string, error) {
 var ErrBusy = errors.New("password checks are all busy")
 
 // slotWait is the longest a sign-in waits for a password-check slot. A
-// flood of sign-in attempts then turns into a short "busy, try again"
-// for the people behind it instead of requests that hang until they time
-// out.
-const slotWait = 5 * time.Second
+// whole office signing in at nine fits well inside it, even on a small
+// server; a flood of sign-in attempts turns into a "busy, try again" for
+// the people behind it instead of requests that hang until nginx gives
+// up (30 seconds).
+const slotWait = 20 * time.Second
 
 // Check is Compare for a sign-in: it waits for a slot at most slotWait,
 // or until ctx ends, and then gives up with ErrBusy.
