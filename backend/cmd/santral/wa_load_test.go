@@ -51,13 +51,11 @@ type fakeMeta struct {
 	next  int
 	sent  map[string][]sentMessage // by customer number
 	reads atomic.Int64
-	// arrived wakes whoever waits for a message to a customer.
-	arrived chan struct{}
 }
 
 func newFakeMeta(t *testing.T) *fakeMeta {
 	t.Helper()
-	m := &fakeMeta{sent: map[string][]sentMessage{}, arrived: make(chan struct{}, 1)}
+	m := &fakeMeta{sent: map[string][]sentMessage{}}
 	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/messages") {
@@ -78,10 +76,6 @@ func newFakeMeta(t *testing.T) *fakeMeta {
 		id := fmt.Sprintf("wamid.out.%d.%06d", time.Now().UnixNano(), m.next)
 		m.sent[to] = append(m.sent[to], sentMessage{ID: id, To: to, Payload: p})
 		m.mu.Unlock()
-		select {
-		case m.arrived <- struct{}{}:
-		default:
-		}
 		_, _ = fmt.Fprintf(w, `{"messages":[{"id":%q}]}`, id)
 	}))
 	t.Cleanup(m.srv.Close)
@@ -362,8 +356,9 @@ func TestLoadWhatsApp(t *testing.T) {
 
 	// Ten agents work the pool at the same time. Two of them may pick the
 	// same conversation in the same instant; the first owns it, the second
-	// joins as a helper, and anyone later is told a colleague took it.
-	var handled atomic.Int64
+	// joins as a helper and leaves the answer to the owner, and anyone later
+	// is told a colleague took it (409, the only refusal allowed here).
+	var handled, conflicts, helpers atomic.Int64
 	var doneMu sync.Mutex
 	done := map[uint]bool{}
 	together(len(agents), func(k int) {
@@ -399,13 +394,38 @@ func TestLoadWhatsApp(t *testing.T) {
 				// "Karşıla" picks a waiting conversation from the pool. Another
 				// agent may be faster; then this one moves on.
 				if r := b.do(fiber.MethodPost, fmt.Sprintf("/api/v1/wa/conversations/%d/greet", c.ID), nil); r.status >= 300 {
-					if r.status != fiber.StatusConflict {
-						t.Errorf("%s: greet answered %d %s", b.user.Email, r.status, r.body)
+					if r.status == fiber.StatusConflict {
+						conflicts.Add(1)
+					} else {
+						t.Errorf("%s: greet answered %d, only 409 may refuse it: %s", b.user.Email, r.status, r.body)
 					}
 					continue
 				}
 				took++
 				path := fmt.Sprintf("/api/v1/wa/conversations/%d", c.ID)
+				// Whoever lost the race joined as a helper: the screen shows
+				// the colleague as owner, and the owner answers.
+				var conv struct {
+					Ticket *struct {
+						Owner *struct {
+							ID uint `json:"id"`
+						} `json:"owner"`
+					} `json:"ticket"`
+				}
+				r := b.do(fiber.MethodGet, path, nil)
+				if r.status != fiber.StatusOK {
+					t.Errorf("%s: conversation answered %d %s", b.user.Email, r.status, r.body)
+					continue
+				}
+				r.json(t, &conv)
+				if conv.Ticket == nil || conv.Ticket.Owner == nil {
+					t.Errorf("%s: conversation %d has no owner right after greeting it", b.user.Email, c.ID)
+					continue
+				}
+				if conv.Ticket.Owner.ID != b.user.ID {
+					helpers.Add(1)
+					continue
+				}
 				for _, step := range []struct {
 					path string
 					body any
@@ -438,6 +458,31 @@ func TestLoadWhatsApp(t *testing.T) {
 	})
 	if n := handled.Load(); n != customers {
 		t.Errorf("agents handled %d different conversations, want %d", n, customers)
+	}
+	t.Logf("whatsapp pool: %d greets refused with 409, %d joined as helper after losing the race", conflicts.Load(), helpers.Load())
+
+	// Each conversation was claimed once: one owner, one claim recorded,
+	// and one answer from an agent, even where two agents greeted it in
+	// the same instant.
+	var claims []struct {
+		ConversationID uint
+		Owners         int
+		Claims         int
+		Answers        int
+	}
+	db.Raw(`SELECT v.id AS conversation_id,
+			(SELECT count(*) FROM wa_ticket_participants p WHERE p.ticket_id = v.ticket_id AND p.role = 'owner') AS owners,
+			(SELECT count(*) FROM wa_assignments a WHERE a.ticket_id = v.ticket_id AND a.kind = 'claim') AS claims,
+			(SELECT count(*) FROM wa_messages m WHERE m.conversation_id = v.id AND m.direction = 'out' AND m.sender_kind = 'agent') AS answers
+		FROM wa_conversations v JOIN wa_contacts c ON c.id = v.contact_id
+		WHERE v.channel_id = ? AND c.wa_id LIKE ?`, ch.id, numbers[0][:8]+"%").Scan(&claims)
+	if len(claims) != customers {
+		t.Errorf("%d conversations of this run found, want %d", len(claims), customers)
+	}
+	for _, c := range claims {
+		if c.Owners != 1 || c.Claims != 1 || c.Answers != 1 {
+			t.Errorf("conversation %d: %d owners, %d claims, %d agent answers; want one of each", c.ConversationID, c.Owners, c.Claims, c.Answers)
+		}
 	}
 
 	// Every customer got the menu, the hand-over line and the agent's answer.
@@ -501,5 +546,6 @@ func TestLoadWhatsApp(t *testing.T) {
 	if n := refused.Load(); n > 0 {
 		t.Errorf("%d of Meta's notices were refused for load (429); Meta retries them late", n)
 	}
-	stats.report(t, "whatsapp panel", elapsed)
+	// About 60 ms p95 and 450 ms at most on a developer machine.
+	stats.report(t, "whatsapp panel", elapsed, budget{p95: time.Second, max: 5 * time.Second})
 }

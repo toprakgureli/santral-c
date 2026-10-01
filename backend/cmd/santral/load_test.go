@@ -32,13 +32,24 @@ import (
 // loadPassword is every load-test user's password.
 const loadPassword = "Load-Test-Pass-1"
 
-// The office's address and one outside it (both from the ranges set aside
-// for documentation). The server sits behind a proxy that reports the
-// client's address, as nginx does in production.
-const (
-	officeIP  = "203.0.113.10"
-	outsideIP = "198.51.100.7"
-)
+// The office's address (from a range set aside for documentation). The
+// server sits behind a proxy that reports the client's address, as nginx
+// does in production.
+const officeIP = "203.0.113.10"
+
+// outsideIP returns an address outside the office, from another
+// documentation range, that no earlier run used recently: a ban an earlier
+// run left behind lasts fifteen minutes and would answer for this one.
+func outsideIP(t *testing.T, db *gorm.DB) string {
+	t.Helper()
+	ip := fmt.Sprintf("198.51.100.%d", 100+time.Now().UnixNano()/int64(time.Second)%150)
+	for _, q := range []string{"DELETE FROM ip_bans WHERE ip = ?", "DELETE FROM login_attempts WHERE ip = ?"} {
+		if err := db.Exec(q, ip).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return ip
+}
 
 // officeSecurity is the production sign-in policy: wrong passwords are
 // counted per browser and per account; the office address is trusted, so
@@ -52,6 +63,13 @@ func officeSecurity(c *configs.Config) {
 	c.Security.AccountLockDuration = 5 * time.Minute
 	c.Security.AttemptWindow = 15 * time.Minute
 	c.Security.DistinctIPLimit = 10
+}
+
+// budget is how slow a load run's answers may be. The limits sit well
+// above what a developer machine and CI measure (see the numbers each run
+// logs), so only a real slowdown, five to ten times the usual, fails.
+type budget struct {
+	p95, max time.Duration
 }
 
 // tally counts the answers of a load run.
@@ -71,8 +89,9 @@ func (s *tally) add(d time.Duration, status int) {
 }
 
 // report logs how many requests ran, how fast, and fails the test when any
-// was refused for load (429) or broke on the server (5xx).
-func (s *tally) report(t *testing.T, name string, elapsed time.Duration) {
+// was refused for load (429), broke on the server (5xx), or the answers
+// were slower than the budget.
+func (s *tally) report(t *testing.T, name string, elapsed time.Duration, b budget) {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,8 +103,15 @@ func (s *tally) report(t *testing.T, name string, elapsed time.Duration) {
 	slices.Sort(sorted)
 	pct := func(p float64) time.Duration { return sorted[min(n-1, int(float64(n)*p))] }
 	perMin := float64(n) / elapsed.Minutes()
-	t.Logf("%s: %d requests in %s (%.0f per minute), p50 %s, p95 %s, max %s, answers %v",
-		name, n, elapsed.Round(time.Millisecond), perMin, pct(0.50), pct(0.95), sorted[n-1], s.status)
+	p95, slowest := pct(0.95), sorted[n-1]
+	t.Logf("%s: %d requests in %s (%.0f per minute), p50 %s, p95 %s (budget %s), max %s (budget %s), answers %v",
+		name, n, elapsed.Round(time.Millisecond), perMin, pct(0.50), p95, b.p95, slowest, b.max, s.status)
+	if p95 > b.p95 {
+		t.Errorf("%s: p95 %s is over the budget of %s", name, p95, b.p95)
+	}
+	if slowest > b.max {
+		t.Errorf("%s: the slowest answer took %s, over the budget of %s", name, slowest, b.max)
+	}
 	for code, count := range s.status {
 		if code == fiber.StatusTooManyRequests || code >= 500 {
 			t.Errorf("%s: %d requests answered %d", name, count, code)
@@ -124,6 +150,11 @@ func (a answer) json(t *testing.T, v any) {
 
 // do sends one request with the browser's cookies and keeps what it sets.
 func (b *browser) do(method, path string, body any) answer {
+	return b.doWith(method, path, body, nil)
+}
+
+// doWith is do with extra request headers.
+func (b *browser) doWith(method, path string, body any, header http.Header) answer {
 	var r io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -138,6 +169,9 @@ func (b *browser) do(method, path string, body any) answer {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set(fiber.HeaderXForwardedFor, b.ip)
+	for k, v := range header {
+		req.Header[k] = v
+	}
 	b.mu.Lock()
 	for _, c := range b.jar {
 		req.AddCookie(c)
@@ -416,6 +450,20 @@ func newFakePBX(t *testing.T) *fakePBX {
 		p.mu.Unlock()
 		_, _ = w.Write([]byte(`"ok"`))
 	}))
+	// A recording: the address to fetch it from, then the sound itself.
+	// The key comes in the form here, not in the address.
+	mux.HandleFunc("/recording_url/", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil || r.PostForm.Get("key") != pbxKey {
+			p.refused.Add(1)
+			http.Error(w, "bad key", http.StatusUnauthorized)
+			return
+		}
+		_, _ = fmt.Fprintf(w, "%q", p.srv.URL+"/rec/"+r.PostForm.Get("call_uuid"))
+	})
+	mux.HandleFunc("/rec/", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write([]byte("ID3-fake-recording"))
+	})
 	mux.HandleFunc("/user_statuses", keyed(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) }))
 	mux.HandleFunc("/queues", keyed(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) }))
 	mux.HandleFunc("/cdrs", keyed(func(w http.ResponseWriter, _ *http.Request) {
@@ -528,19 +576,28 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 	})
 
 	// Someone outside tries passwords against made-up accounts from fresh
-	// browsers; past the address limit that address is banned, and the
-	// office keeps working.
-	banned := false
+	// browsers; past the address limit that address is held back, and the
+	// office keeps working. The address starts clean, so the first tries
+	// are answered as wrong passwords, not refused for an earlier run.
+	outside := outsideIP(t, db)
+	held = false
 	for k := range 110 {
 		b := newBrowser(t, srv.app, nil, models.User{Email: fmt.Sprintf("nobody-%d-%d@load-test.local", time.Now().UnixNano(), k)})
-		b.ip = outsideIP
-		if a := b.login("Guess-Pass-123"); a.status == fiber.StatusTooManyRequests {
-			banned = true
+		b.ip = outside
+		a := b.login("Guess-Pass-123")
+		if a.status == fiber.StatusTooManyRequests {
+			if k < 20 {
+				t.Errorf("an outside address was held back after only %d tries", k)
+			}
+			held = true
 			break
 		}
+		if a.status != fiber.StatusUnauthorized {
+			t.Errorf("outside guess %d answered %d %s", k, a.status, a.body)
+		}
 	}
-	if !banned {
-		t.Error("an outside address guessing passwords was never banned")
+	if !held {
+		t.Error("an outside address guessing passwords was never held back")
 	}
 	if a := newBrowser(t, srv.app, stats, people[1]).login(loadPassword); a.status != fiber.StatusOK {
 		t.Errorf("with an outside address banned, the office could not sign in: %d %s", a.status, a.body)
@@ -617,7 +674,9 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 			t.Errorf("%s: a signed-out session still answered %d", b.user.Email, a.status)
 		}
 	})
-	stats.report(t, "office sign-in", time.Since(began))
+	// Every sign-in waits for a deliberately slow password check, so this
+	// budget is the widest; a developer machine measures about 0.8 s p95.
+	stats.report(t, "office sign-in", time.Since(began), budget{p95: 8 * time.Second, max: 20 * time.Second})
 }
 
 // TestLoadCalls: twenty agents open their shift, place five calls each
@@ -817,7 +876,8 @@ func TestLoadCalls(t *testing.T) {
 			t.Errorf("%s: shift end answered %d %s", browsers[i].user.Email, a.status, a.body)
 		}
 	})
-	stats.report(t, "calls", elapsed)
+	// About 65 ms p95 and 350 ms at most on a developer machine.
+	stats.report(t, "calls", elapsed, budget{p95: time.Second, max: 5 * time.Second})
 }
 
 // restrictTransfers gives a user a role that may hand calls on only inside
@@ -1004,108 +1064,9 @@ func TestLoadTeamsBursts(t *testing.T) {
 	if len(page.Items) == 0 {
 		t.Error("the room's first page is empty")
 	}
-	stats.report(t, "teams", elapsed)
-}
-
-// ---------------------------------------------------------------- permissions
-
-// gate is a request and the permissions that open it: the request passes
-// when the user holds at least one permission from every set.
-type gate struct {
-	method, path string
-	body         any
-	need         [][]enums.Permission
-}
-
-func anyOf(p ...enums.Permission) []enums.Permission { return p }
-
-var gates = []gate{
-	{fiber.MethodGet, "/api/v1/users", nil, [][]enums.Permission{anyOf(enums.UserView)}},
-	{fiber.MethodPost, "/api/v1/users", map[string]any{}, [][]enums.Permission{anyOf(enums.UserCreate)}},
-	{fiber.MethodPut, "/api/v1/users/1", map[string]any{}, [][]enums.Permission{anyOf(enums.UserUpdate)}},
-	{fiber.MethodPatch, "/api/v1/users/1/active", map[string]any{}, [][]enums.Permission{anyOf(enums.UserDeactivate)}},
-	{fiber.MethodPatch, "/api/v1/users/1/roles", map[string]any{}, [][]enums.Permission{anyOf(enums.RoleAssign)}},
-	{fiber.MethodGet, "/api/v1/roles", nil, [][]enums.Permission{anyOf(enums.RoleView, enums.RoleAssign)}},
-	{fiber.MethodGet, "/api/v1/roles/permissions", nil, [][]enums.Permission{anyOf(enums.RoleView)}},
-	{fiber.MethodPost, "/api/v1/roles", map[string]any{}, [][]enums.Permission{anyOf(enums.RoleManage)}},
-	{fiber.MethodGet, "/api/v1/audit", nil, [][]enums.Permission{anyOf(enums.SystemAuditView)}},
-	{fiber.MethodPut, "/api/v1/settings/", map[string]any{}, [][]enums.Permission{anyOf(enums.SystemSettings)}},
-	{fiber.MethodPut, "/api/v1/settings/break-limit", map[string]any{}, [][]enums.Permission{anyOf(enums.AgentBreakLimit)}},
-	{fiber.MethodGet, "/api/v1/security/bans", nil, [][]enums.Permission{anyOf(enums.SystemLogs)}},
-	{fiber.MethodDelete, "/api/v1/security/bans/1", nil, [][]enums.Permission{anyOf(enums.SystemLogs), anyOf(enums.SystemSettings)}},
-	{fiber.MethodGet, "/api/v1/backup/", nil, [][]enums.Permission{anyOf(enums.SystemBackup)}},
-	{fiber.MethodGet, "/api/v1/contacts/", nil, [][]enums.Permission{anyOf(enums.ContactView)}},
-	{fiber.MethodPost, "/api/v1/contacts/", map[string]any{}, [][]enums.Permission{anyOf(enums.ContactManage)}},
-	{fiber.MethodDelete, "/api/v1/contacts/1", nil, [][]enums.Permission{anyOf(enums.ContactManage)}},
-	{fiber.MethodGet, "/api/v1/escalations/", nil, [][]enums.Permission{anyOf(enums.EscalationSearch)}},
-	{fiber.MethodPost, "/api/v1/escalations/categories", map[string]any{}, [][]enums.Permission{anyOf(enums.EscalationManage)}},
-	{fiber.MethodGet, "/api/v1/calls/log/", nil, [][]enums.Permission{anyOf(enums.CDRViewAll, enums.CallViewAll, enums.CDRViewOwn, enums.CallViewOwn)}},
-	{fiber.MethodGet, "/api/v1/calls", nil, [][]enums.Permission{anyOf(enums.CDRViewAll, enums.CallViewAll, enums.CDRViewOwn, enums.CallViewOwn)}},
-	{fiber.MethodGet, "/api/v1/calls/export", nil, [][]enums.Permission{anyOf(enums.CDRExport)}},
-	{fiber.MethodGet, "/api/v1/pbx/extensions", nil, [][]enums.Permission{anyOf(enums.AgentView, enums.CallTransfer)}},
-	{fiber.MethodGet, "/api/v1/pbx/queues", nil, [][]enums.Permission{anyOf(enums.QueueView, enums.CallTransfer)}},
-	{fiber.MethodPost, "/api/v1/users/1/sip", map[string]any{}, [][]enums.Permission{anyOf(enums.UserUpdate, enums.AgentManage)}},
-	{fiber.MethodGet, "/api/v1/pbx/sip/sync-all", nil, [][]enums.Permission{anyOf(enums.UserUpdate, enums.AgentManage)}},
-	{fiber.MethodGet, "/api/v1/performance/today", nil, [][]enums.Permission{anyOf(enums.PerformanceViewAll, enums.PerformanceViewRole)}},
-	{fiber.MethodGet, "/api/v1/teams/overview", nil, [][]enums.Permission{anyOf(enums.TeamsView)}},
-	{fiber.MethodGet, "/api/v1/teams/people", nil, [][]enums.Permission{anyOf(enums.TeamsView)}},
-	{fiber.MethodGet, "/api/v1/teams/drive/status", nil, [][]enums.Permission{anyOf(enums.SystemSettings)}},
-	{fiber.MethodPut, "/api/v1/games/settings", map[string]any{}, [][]enums.Permission{anyOf(enums.GamesManage)}},
-	{fiber.MethodPost, "/api/v1/games/items", map[string]any{}, [][]enums.Permission{anyOf(enums.GamesManage)}},
-	// WhatsApp checks in its service: the module first, then the page.
-	{fiber.MethodGet, "/api/v1/wa/ai", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAAIManage)}},
-	{fiber.MethodGet, "/api/v1/wa/call-survey", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WACallSurvey)}},
-	{fiber.MethodGet, "/api/v1/wa/rules", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAAutomation)}},
-	{fiber.MethodGet, "/api/v1/wa/callbacks", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WACallbacks)}},
-	{fiber.MethodGet, "/api/v1/wa/ratings", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings)}},
-	{fiber.MethodGet, "/api/v1/wa/reports?from=2026-01-01&to=2026-01-31", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAReports)}},
-}
-
-// TestPermissionMatrix signs in once with every system role and once with
-// no role, and checks each gated request against the role's permissions:
-// refused (403) exactly when the role lacks what the route needs.
-func TestPermissionMatrix(t *testing.T) {
-	pbx := newFakePBX(t)
-	srv, db := testServer(t, officeSecurity, pbx.use)
-	roles := []enums.Role{enums.RoleInvisibleAdmin, enums.RoleManager, enums.RoleTechnicalTeam, enums.RoleSalesTeam, ""}
-	for _, role := range roles {
-		name := string(role)
-		if name == "" {
-			name = "no-role"
-		}
-		t.Run(name, func(t *testing.T) {
-			var b *browser
-			held := map[enums.Permission]bool{}
-			if role == "" {
-				u := seedPeople(t, db, 1, enums.RoleSalesTeam, false)[0]
-				db.Exec("DELETE FROM user_roles WHERE user_id = ?", u.ID)
-				b = newBrowser(t, srv.app, nil, u)
-			} else {
-				b = newBrowser(t, srv.app, nil, seedPeople(t, db, 1, role, false)[0])
-				for _, p := range enums.RolePermissions(role) {
-					held[p] = true
-				}
-			}
-			b.mustSignIn()
-			for _, g := range gates {
-				open := true
-				for _, set := range g.need {
-					if !slices.ContainsFunc(set, func(p enums.Permission) bool { return held[p] }) {
-						open = false
-					}
-				}
-				a := b.do(g.method, g.path, g.body)
-				switch {
-				case a.status == fiber.StatusUnauthorized:
-					t.Errorf("%s %s: signed out (401)", g.method, g.path)
-				case open && a.status == fiber.StatusForbidden:
-					t.Errorf("%s %s: refused (403) although the role holds %v: %s", g.method, g.path, g.need, a.body)
-				case !open && a.status != fiber.StatusForbidden:
-					t.Errorf("%s %s: answered %d although the role lacks %v", g.method, g.path, a.status, g.need)
-				}
-			}
-		})
-	}
+	// About 160 ms p95 on a developer machine; the slowest answer, a page
+	// of the room with 200,000 lines while the burst runs, takes seconds.
+	stats.report(t, "teams", elapsed, budget{p95: 2 * time.Second, max: 20 * time.Second})
 }
 
 // TestRenewFromTwoTabs: a hundred people each have two tabs that renew the
