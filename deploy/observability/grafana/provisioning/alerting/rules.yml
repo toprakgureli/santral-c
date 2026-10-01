@@ -1,6 +1,13 @@
 # Alerts on the santral-c numbers. Grafana sends them to its contact
 # points; add one (e-mail, a chat webhook, ...) under Alerting > Contact
 # points, then point the default notification policy at it.
+#
+# When a number is missing (noDataState): "Sunucu kapalı", "Yedek gecikti"
+# and "Disk ölçülemiyor" alert, since a missing number there is the problem
+# itself (no backend, so no backups either; no disk numbers). The numbers
+# the backend reads from the database are all missing while PostgreSQL is
+# down; "Veritabanı ya da Redis kapalı" alerts then, and the other rules keep
+# the state they had (KeepLast) instead of turning OK.
 apiVersion: 1
 
 groups:
@@ -48,7 +55,7 @@ groups:
         title: Yedek gecikti
         condition: C
         for: 10m
-        noDataState: OK
+        noDataState: Alerting
         execErrState: Error
         labels:
           severity: critical
@@ -83,7 +90,7 @@ groups:
         title: Son yedek başarısız
         condition: C
         for: 1m
-        noDataState: OK
+        noDataState: KeepLast
         execErrState: Error
         labels:
           severity: warning
@@ -118,19 +125,19 @@ groups:
         title: İşlenemeyen WhatsApp bildirimi
         condition: C
         for: 5m
-        noDataState: OK
+        noDataState: KeepLast
         execErrState: Error
         labels:
           severity: warning
         annotations:
-          summary: "Meta'dan gelen bazı bildirimler işlenemedi; müşteri mesajı kaçmış olabilir. Log'lara bakın."
+          summary: "Son bir saatte Meta'dan gelen bazı bildirimler işlenemedi; müşteri mesajı kaçmış olabilir. WhatsApp > Ayarlar > İşlenemeyenler'den tekrar deneyin. Bir saat yeni hata olmazsa uyarı kendiliğinden kapanır."
         data:
           - refId: A
             relativeTimeRange: {from: 600, to: 0}
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 'santral_whatsapp_webhook_events_failed'
+              expr: 'max(santral_whatsapp_webhook_events_failed_recent)'
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -153,7 +160,7 @@ groups:
         title: WhatsApp gönderimi takıldı
         condition: C
         for: 5m
-        noDataState: OK
+        noDataState: KeepLast
         execErrState: Error
         labels:
           severity: critical
@@ -188,7 +195,7 @@ groups:
         title: Mesaj sonrası işler birikiyor
         condition: C
         for: 10m
-        noDataState: OK
+        noDataState: KeepLast
         execErrState: Error
         labels:
           severity: warning
@@ -223,7 +230,7 @@ groups:
         title: Sunucu hataları arttı
         condition: C
         for: 10m
-        noDataState: OK
+        noDataState: KeepLast
         execErrState: Error
         labels:
           severity: critical
@@ -254,3 +261,143 @@ groups:
                 - evaluator:
                     type: gt
                     params: [0.05]
+      - uid: dependency-down
+        title: Veritabanı ya da Redis kapalı
+        condition: C
+        for: 2m
+        noDataState: KeepLast
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend {{ $labels.dep }} bağlantısını kuramıyor; panel çalışmıyor ya da aksıyor. systemctl status postgresql / redis-server ve journalctl -u santral ile bakın."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'santral_dependency_up'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+      - uid: disk-root
+        title: Kök disk doluyor
+        condition: C
+        for: 5m
+        noDataState: KeepLast
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sunucunun kök diskinin %85'inden fazlası dolu. Eski deploy kopyalarını (/var/backups/santral) ve günlükleri temizleyin ya da diski büyütün."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '1 - node_filesystem_avail_bytes{job="node",mountpoint="/"} / node_filesystem_size_bytes{job="node",mountpoint="/"}'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.85]
+      - uid: disk-database
+        title: Veritabanı diski doluyor
+        condition: C
+        for: 5m
+        noDataState: KeepLast
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Veritabanı dosyalarının durduğu diskin (database.dataPath) %85'inden fazlası dolu. Dolarsa PostgreSQL yazamaz ve panel durur."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(santral_database_disk_used_ratio)'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.85]
+      - uid: node-exporter-down
+        title: Disk ölçülemiyor
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus node_exporter'a ulaşamıyor; disk dolarsa uyarı gelmez. sudo docker compose -f /opt/santral-c/deploy/observability/docker-compose.yml up -d ile başlatın."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(up{job="node"})'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
