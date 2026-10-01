@@ -28,18 +28,14 @@ func (s *Service) MarkRead(ctx context.Context, actorID, conversationID, message
 	if messageID == 0 {
 		return nil
 	}
-	if err := s.db.WithContext(ctx).Exec(`INSERT INTO wa_reads (conversation_id, user_id, message_id, read_at) VALUES (?, ?, ?, now())
-		ON CONFLICT (conversation_id, user_id) DO UPDATE SET message_id = GREATEST(wa_reads.message_id, EXCLUDED.message_id), read_at = now()`,
-		conversationID, actorID, messageID).Error; err != nil {
+	if err := s.repo.RecordRead(ctx, conversationID, actorID, messageID); err != nil {
 		return errs.Internal(err)
 	}
-	res := s.db.WithContext(ctx).Exec(`UPDATE wa_conversations SET team_read_id = ?,
-		unread = (SELECT count(*) FROM wa_messages m WHERE m.conversation_id = wa_conversations.id AND m.direction = 'in' AND m.kind <> 'reaction' AND m.id > ?)
-		WHERE id = ? AND team_read_id < ?`, messageID, messageID, conversationID, messageID)
-	if res.Error != nil {
-		return errs.Internal(res.Error)
+	changed, err := s.repo.MarkTeamRead(ctx, conversationID, messageID)
+	if err != nil {
+		return errs.Internal(err)
 	}
-	if res.RowsAffected > 0 {
+	if changed > 0 {
 		s.publish(ctx, conversationID, nil, nil)
 	}
 	s.sendReadReceipt(ctx, conv, messageID)
@@ -53,17 +49,15 @@ func (s *Service) sendReadReceipt(ctx context.Context, conv *models.WAConversati
 	if err != nil || !device.Parse(ch.Settings).ReadReceipts {
 		return
 	}
-	var last models.WAMessage
-	if err := s.db.WithContext(ctx).Where("conversation_id = ? AND direction = 'in' AND id <= ? AND id > ? AND wamid IS NOT NULL", conv.ID, upTo, conv.MetaReadID).
-		Order("id DESC").Limit(1).Find(&last).Error; err != nil || last.ID == 0 || last.WAMID == nil {
+	last, err := s.repo.LastUnreceiptedInbound(ctx, conv.ID, upTo, conv.MetaReadID)
+	if err != nil || last.ID == 0 || last.WAMID == nil {
 		return
 	}
 	// Meta only accepts it for messages from the last 30 days.
 	if time.Since(last.CreatedAt) > 29*24*time.Hour {
 		return
 	}
-	res := s.db.WithContext(ctx).Exec("UPDATE wa_conversations SET meta_read_id = ? WHERE id = ? AND meta_read_id < ?", last.ID, conv.ID, last.ID)
-	if res.Error != nil || res.RowsAffected == 0 {
+	if changed, err := s.repo.MarkMetaRead(ctx, conv.ID, last.ID); err != nil || changed == 0 {
 		return
 	}
 	cl, err := s.cloudFor(ch)
@@ -86,14 +80,14 @@ func (s *Service) MarkUnread(ctx context.Context, actorID, conversationID uint) 
 	if err != nil {
 		return err
 	}
-	var lastIn uint
-	if err := s.db.WithContext(ctx).Raw("SELECT COALESCE(max(id), 0) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND kind <> 'reaction'", conv.ID).Scan(&lastIn).Error; err != nil {
+	lastIn, err := s.repo.LastInboundID(ctx, conv.ID)
+	if err != nil {
 		return errs.Internal(err)
 	}
 	if lastIn == 0 {
 		return nil
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_conversations SET team_read_id = ?, unread = GREATEST(unread, 1) WHERE id = ?", lastIn-1, conv.ID).Error; err != nil {
+	if err := s.repo.MarkTeamUnread(ctx, conv.ID, lastIn-1); err != nil {
 		return errs.Internal(err)
 	}
 	s.publish(ctx, conv.ID, nil, nil)
@@ -132,12 +126,8 @@ func (s *Service) Reads(ctx context.Context, actorID, conversationID uint) ([]Re
 	if _, _, _, err := s.reachable(ctx, actorID, conversationID); err != nil {
 		return nil, err
 	}
-	var rows []struct {
-		UserID    uint
-		MessageID uint
-		ReadAt    time.Time
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT user_id, message_id, read_at FROM wa_reads WHERE conversation_id = ? ORDER BY read_at DESC", conversationID).Scan(&rows).Error; err != nil {
+	rows, err := s.repo.Reads(ctx, conversationID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	var ids []uint
@@ -167,7 +157,7 @@ func (s *Service) Note(ctx context.Context, actorID, conversationID uint, body s
 	}
 	m := &models.WAMessage{ChannelID: conv.ChannelID, ConversationID: conv.ID, TicketID: uintPtr(ticket.ID), Direction: "note", Kind: "text",
 		SenderKind: "agent", SenderUserID: uintPtr(actorID), Body: body, Status: "received", CreatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(m).Error; err != nil {
+	if err := s.repo.CreateMessage(ctx, m); err != nil {
 		return nil, errs.Internal(err)
 	}
 	s.publish(ctx, conv.ID, m, nil)

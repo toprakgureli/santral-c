@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
@@ -87,43 +88,6 @@ type RatingsView struct {
 
 const ratingPage = 50
 
-// singleQuestion is how a one-question survey (the list inside WhatsApp,
-// the buttons after a call) is named among the form's questions.
-const singleQuestion = "Tek soruluk anket"
-
-// ratingsSQL is every score in one list. Chat scores belong to whoever
-// closed the conversation, or else to its owner. Each row carries its
-// answers per question; a one-question survey counts as "Tek soruluk anket".
-// The slots are: what to select, what to join (the answers), and the tail.
-const ratingsSQL = `
-WITH r AS (
-	SELECT 'chat' AS source, t.rated_at AS at, t.rating AS score, t.rating_comment AS comment,
-		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(t.resolved_by, t.owner_id) AS agent_id,
-		c.wa_id, COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') AS name, 0 AS talk_seconds,
-		CASE WHEN jsonb_array_length(t.rating_answers) > 0 THEN t.rating_answers
-			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', t.rating)) END AS answers,
-		t.rating_texts AS texts
-	FROM wa_tickets t JOIN wa_contacts c ON c.id = t.contact_id
-	WHERE t.rating IS NOT NULL AND t.rated_at >= @from AND t.rated_at < @to
-	UNION ALL
-	SELECT 'call', s.answered_at, s.score, s.comment,
-		s.conversation_id, NULL, s.channel_id, s.user_id,
-		s.wa_id, COALESCE((SELECT COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') FROM wa_contacts c WHERE c.wa_id = s.wa_id LIMIT 1), ''), s.talk_seconds,
-		CASE WHEN jsonb_array_length(s.answers) > 0 THEN s.answers
-			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', s.score)) END,
-		s.texts
-	FROM wa_call_surveys s
-	WHERE s.status = 'answered' AND s.score IS NOT NULL AND s.answered_at >= @from AND s.answered_at < @to
-)
-SELECT %s FROM r %s WHERE
-	(@channel = 0 OR r.channel_id = @channel)
-	AND (@agent = 0 OR r.agent_id = @agent)
-	AND (@source = '' OR r.source = @source)
-	AND (@lo = 0 OR r.score BETWEEN @lo AND @hi)
-	AND (NOT @comment OR r.comment <> '')
-	AND (@q = '' OR r.name ILIKE @like OR r.wa_id LIKE @digits OR r.comment ILIKE @like)
-%s`
-
 func (f RatingFilter) args() (map[string]any, error) {
 	from, err := time.ParseInLocation("2006-01-02", f.From, hours.Zone)
 	if err != nil {
@@ -167,32 +131,7 @@ func (f RatingFilter) args() (map[string]any, error) {
 	}, nil
 }
 
-type ratingRow struct {
-	Source         string
-	At             time.Time
-	Score          int
-	Comment        string
-	ConversationID *uint
-	TicketNumber   *int64
-	ChannelID      *uint
-	AgentID        *uint
-	WAID           string
-	Name           string
-	TalkSeconds    int
-	Answers        string
-	Texts          string
-}
-
-func (s *Service) ratingRows(ctx context.Context, args map[string]any, tail string) ([]ratingRow, error) {
-	var rows []ratingRow
-	q := fmt.Sprintf(ratingsSQL, `r.source, r.at, r.score, r.comment, r.conversation_id, r.ticket_number, r.channel_id, r.agent_id, r.wa_id, r.name, r.talk_seconds, r.answers::text AS answers, r.texts::text AS texts`, "", tail)
-	if err := s.db.WithContext(ctx).Raw(q, args).Scan(&rows).Error; err != nil {
-		return nil, errs.Internal(err)
-	}
-	return rows, nil
-}
-
-func (s *Service) ratingItems(ctx context.Context, rows []ratingRow) []RatingItem {
+func (s *Service) ratingItems(ctx context.Context, rows []store.Rating) []RatingItem {
 	var ids []uint
 	for _, r := range rows {
 		if r.AgentID != nil {
@@ -238,56 +177,29 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 		return nil, err
 	}
 	out := &RatingsView{Agents: []RatingAgent{}, Items: []RatingItem{}, PageSize: ratingPage}
-	var tot struct {
-		Count, WithComment, S1, S2, S3, S4, S5 int64
-		Average                                float64
-	}
-	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `count(*) AS count, COALESCE(avg(r.score), 0) AS average,
-		count(*) FILTER (WHERE r.comment <> '') AS with_comment,
-		count(*) FILTER (WHERE r.score = 1) AS s1, count(*) FILTER (WHERE r.score = 2) AS s2, count(*) FILTER (WHERE r.score = 3) AS s3,
-		count(*) FILTER (WHERE r.score = 4) AS s4, count(*) FILTER (WHERE r.score = 5) AS s5`, "", ""), args).Scan(&tot).Error; err != nil {
+	tot, err := s.repo.RatingTotals(ctx, args)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out.Count, out.Total, out.Average, out.WithComment = tot.Count, tot.Count, tot.Average, tot.WithComment
 	out.Dist = [5]int64{tot.S1, tot.S2, tot.S3, tot.S4, tot.S5}
 
-	var agents []struct {
-		AgentID uint
-		Count   int64
-		Average float64
-		Low     int64
-	}
-	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, count(*) AS count, avg(r.score) AS average, count(*) FILTER (WHERE r.score <= 2) AS low`,
-		"", ` AND r.agent_id IS NOT NULL GROUP BY r.agent_id ORDER BY count(*) DESC`), args).Scan(&agents).Error; err != nil {
+	agents, err := s.repo.RatingAgents(ctx, args)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 
 	// per question, and per person and question
-	const answerJoin = "CROSS JOIN LATERAL jsonb_array_elements(r.answers) a"
-	var qs []struct {
-		Question           string
-		Count              int64
-		Average            float64
-		S1, S2, S3, S4, S5 int64
-	}
-	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average,
-		count(*) FILTER (WHERE (a->>'score')::int = 1) AS s1, count(*) FILTER (WHERE (a->>'score')::int = 2) AS s2,
-		count(*) FILTER (WHERE (a->>'score')::int = 3) AS s3, count(*) FILTER (WHERE (a->>'score')::int = 4) AS s4,
-		count(*) FILTER (WHERE (a->>'score')::int = 5) AS s5`, answerJoin, ` GROUP BY 1 ORDER BY count(*) DESC, 1`), args).Scan(&qs).Error; err != nil {
+	qs, err := s.repo.RatingQuestions(ctx, args)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out.Questions = make([]RatingQuestion, 0, len(qs))
 	for _, q := range qs {
 		out.Questions = append(out.Questions, RatingQuestion{Question: q.Question, Count: q.Count, Average: q.Average, Dist: [5]int64{q.S1, q.S2, q.S3, q.S4, q.S5}})
 	}
-	var aq []struct {
-		AgentID  uint
-		Question string
-		Count    int64
-		Average  float64
-	}
-	if err := s.db.WithContext(ctx).Raw(fmt.Sprintf(ratingsSQL, `r.agent_id, a->>'question' AS question, count(*) AS count, avg((a->>'score')::int) AS average`,
-		answerJoin, ` AND r.agent_id IS NOT NULL GROUP BY 1, 2`), args).Scan(&aq).Error; err != nil {
+	aq, err := s.repo.RatingAgentQuestions(ctx, args)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	byAgent := map[uint][]RatingAgentQuestion{}
@@ -313,9 +225,9 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 	if page < 1 {
 		page = 1
 	}
-	rows, err := s.ratingRows(ctx, args, fmt.Sprintf(" ORDER BY r.at DESC LIMIT %d OFFSET %d", ratingPage, (page-1)*ratingPage))
+	rows, err := s.repo.Ratings(ctx, args, ratingPage, (page-1)*ratingPage)
 	if err != nil {
-		return nil, err
+		return nil, errs.Internal(err)
 	}
 	out.Items = s.ratingItems(ctx, rows)
 	return out, nil
@@ -330,9 +242,9 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 	if err != nil {
 		return nil, "", err
 	}
-	rows, err := s.ratingRows(ctx, args, " ORDER BY r.at DESC LIMIT 50000")
+	rows, err := s.repo.LatestRatings(ctx, args, 50000)
 	if err != nil {
-		return nil, "", err
+		return nil, "", errs.Internal(err)
 	}
 	w := sheet.NewWriter()
 	items := s.ratingItems(ctx, rows)

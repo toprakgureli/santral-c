@@ -61,44 +61,14 @@ func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay stri
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}
 	to := toStart.AddDate(0, 0, 1)
-	chFilter, args := "", []any{}
-	if channelID > 0 {
-		chFilter = " AND t.channel_id = ?"
-		args = append(args, channelID)
-	}
 	out := &Report{From: fromDay, To: toDay, Agents: []AgentReport{}, Channels: []ChannelReport{}}
 
-	var agents []struct {
-		UserID         uint
-		Owned          int64
-		Helped         int64
-		Resolved       int64
-		AvgFirst       float64
-		AvgResolve     float64
-		WaitingEntries int64
-		Ratings        int64
-		AvgRating      float64
-	}
-	q := `SELECT p.user_id,
-		count(*) FILTER (WHERE p.role = 'owner') AS owned,
-		count(*) FILTER (WHERE p.role = 'helper') AS helped,
-		count(*) FILTER (WHERE t.resolved_by = p.user_id) AS resolved,
-		COALESCE(avg(EXTRACT(EPOCH FROM (p.first_reply_at - t.created_at))) FILTER (WHERE p.role = 'owner' AND p.first_reply_at IS NOT NULL), 0) AS avg_first,
-		COALESCE(avg(EXTRACT(EPOCH FROM (t.resolved_at - t.created_at))) FILTER (WHERE t.resolved_by = p.user_id), 0) AS avg_resolve,
-		COALESCE(sum(t.waiting_count) FILTER (WHERE p.role = 'owner'), 0) AS waiting_entries,
-		count(t.rating) AS ratings,
-		COALESCE(avg(t.rating), 0) AS avg_rating
-		FROM wa_ticket_participants p JOIN wa_tickets t ON t.id = p.ticket_id
-		WHERE t.created_at >= ? AND t.created_at < ?` + chFilter + ` GROUP BY p.user_id`
-	if err := s.db.WithContext(ctx).Raw(q, append([]any{from, to}, args...)...).Scan(&agents).Error; err != nil {
+	agents, err := s.repo.AgentFigures(ctx, from, to, channelID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	var msgs []struct {
-		UserID uint
-		N      int64
-	}
-	mq := "SELECT m.sender_user_id AS user_id, count(*) AS n FROM wa_messages m JOIN wa_tickets t ON t.id = m.ticket_id WHERE m.direction = 'out' AND m.sender_user_id IS NOT NULL AND m.created_at >= ? AND m.created_at < ?" + chFilter + " GROUP BY m.sender_user_id"
-	if err := s.db.WithContext(ctx).Raw(mq, append([]any{from, to}, args...)...).Scan(&msgs).Error; err != nil {
+	msgs, err := s.repo.MessagesByAgent(ctx, from, to, channelID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	mm := map[uint]int64{}
@@ -115,42 +85,16 @@ func (s *Service) Reports(ctx context.Context, actorID uint, fromDay, toDay stri
 			AvgFirstReplySec: int64(a.AvgFirst), AvgResolveSec: int64(a.AvgResolve), WaitingEntries: a.WaitingEntries, Ratings: a.Ratings, AvgRating: a.AvgRating})
 	}
 
-	cq := `SELECT c.id, c.name,
-		(SELECT count(*) FROM wa_tickets t WHERE t.channel_id = c.id AND t.created_at >= ? AND t.created_at < ?) AS tickets,
-		(SELECT count(*) FROM wa_tickets t WHERE t.channel_id = c.id AND t.resolved_at >= ? AND t.resolved_at < ?) AS resolved,
-		(SELECT count(*) FROM wa_tickets t WHERE t.channel_id = c.id AND t.resolved_at >= ? AND t.resolved_at < ? AND t.resolved_by IS NULL) AS bot_resolved,
-		(SELECT count(*) FROM wa_messages m WHERE m.channel_id = c.id AND m.direction = 'in' AND m.created_at >= ? AND m.created_at < ?) AS inbound,
-		(SELECT count(*) FROM wa_messages m WHERE m.channel_id = c.id AND m.direction = 'out' AND m.created_at >= ? AND m.created_at < ?) AS outbound,
-		(SELECT count(*) FROM wa_messages m WHERE m.channel_id = c.id AND m.status = 'failed' AND m.created_at >= ? AND m.created_at < ?) AS failed,
-		(SELECT COALESCE(avg(EXTRACT(EPOCH FROM (t.first_response_at - t.created_at))), 0)::bigint FROM wa_tickets t WHERE t.channel_id = c.id AND t.first_response_at IS NOT NULL AND t.created_at >= ? AND t.created_at < ?) AS avg_first_reply_sec,
-		(SELECT COALESCE(sum(t.waiting_count), 0) FROM wa_tickets t WHERE t.channel_id = c.id AND t.created_at >= ? AND t.created_at < ?) AS waiting_entries,
-		(SELECT COALESCE(avg(t.rating), 0) FROM wa_tickets t WHERE t.channel_id = c.id AND t.rated_at >= ? AND t.rated_at < ?) AS avg_rating
-		FROM wa_channels c`
-	cargs := []any{}
-	for i := 0; i < 9; i++ {
-		cargs = append(cargs, from, to)
-	}
-	if channelID > 0 {
-		cq += " WHERE c.id = ?"
-		cargs = append(cargs, channelID)
-	}
-	if err := s.db.WithContext(ctx).Raw(cq+" ORDER BY c.id", cargs...).Scan(&out.Channels).Error; err != nil {
+	channels, err := s.repo.ChannelFigures(ctx, from, to, channelID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	if out.Channels == nil {
-		out.Channels = []ChannelReport{}
+	out.Channels = make([]ChannelReport, 0, len(channels))
+	for _, c := range channels {
+		out.Channels = append(out.Channels, ChannelReport(c))
 	}
-	var hours []struct {
-		H int
-		N int64
-	}
-	hq := "SELECT EXTRACT(HOUR FROM m.created_at AT TIME ZONE 'Europe/Istanbul')::int AS h, count(*) AS n FROM wa_messages m WHERE m.direction = 'in' AND m.created_at >= ? AND m.created_at < ?"
-	hargs := []any{from, to}
-	if channelID > 0 {
-		hq += " AND m.channel_id = ?"
-		hargs = append(hargs, channelID)
-	}
-	if err := s.db.WithContext(ctx).Raw(hq+" GROUP BY h", hargs...).Scan(&hours).Error; err != nil {
+	hours, err := s.repo.InboundByHour(ctx, from, to, channelID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	for _, h := range hours {

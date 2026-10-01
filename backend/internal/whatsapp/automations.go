@@ -56,8 +56,8 @@ var ruleTriggers = map[string]string{
 }
 
 func (s *Service) rulesFor(ctx context.Context, channelID uint, trigger string) []models.WAAutomation {
-	var list []models.WAAutomation
-	warnDB(ctx, s.db.WithContext(ctx).Where("active AND trigger = ? AND channel_ids @> ?::jsonb", trigger, fmt.Sprintf("[%d]", channelID)).Order("position, id").Find(&list).Error)
+	list, err := s.repo.RulesFor(ctx, channelID, trigger)
+	warnDB(ctx, err)
 	return list
 }
 
@@ -80,9 +80,8 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 		return
 	}
 	if r.CooldownMin > 0 {
-		var recent int64
-		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND contact_id = ? AND created_at > now() - make_interval(mins => ?)",
-			r.ID, conv.ContactID, r.CooldownMin).Scan(&recent).Error)
+		recent, err := s.repo.RecentRuleRuns(ctx, r.ID, conv.ContactID, r.CooldownMin)
+		warnDB(ctx, err)
 		if recent > 0 {
 			return
 		}
@@ -90,9 +89,8 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 	// The run is written before the rule acts: the cooldown and the timed
 	// rules count on it, so a rule whose run cannot be stored does not act,
 	// instead of acting again and again.
-	var runID uint
-	if err := s.db.WithContext(ctx).Raw("INSERT INTO wa_automation_runs (automation_id, contact_id, ticket_id, ok, detail) VALUES (?, ?, ?, true, '') RETURNING id",
-		r.ID, conv.ContactID, ticket.ID).Scan(&runID).Error; err != nil {
+	runID, err := s.repo.AddRuleRun(ctx, r.ID, conv.ContactID, ticket.ID)
+	if err != nil {
 		slog.WarnContext(ctx, "whatsapp rule run could not be stored; the rule did not act", "rule", r.ID, "error", err)
 		return
 	}
@@ -104,7 +102,7 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 		}
 	}
 	if !ok {
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_automation_runs SET ok = false, detail = ? WHERE id = ?", detail, runID).Error)
+		warnDB(ctx, s.repo.FailRuleRun(ctx, runID, detail))
 	}
 }
 
@@ -202,7 +200,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		}
 		s.queueObject(ctx, ch, conv.ID, ticket.ID, "automation", r.Name+" · "+tpl.Name, "template", preview, map[string]any{"type": "template", "template": obj})
 	case "assign_team":
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET team_id = ? WHERE id = ?", a.TeamID, ticket.ID).Error; err != nil {
+		if err := s.repo.SetTicketTeam(ctx, ticket.ID, a.TeamID); err != nil {
 			return err
 		}
 		if ticket.OwnerID == nil {
@@ -211,35 +209,35 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 		s.publish(ctx, conv.ID, nil, nil)
 	case "assign_user":
 		before := s.audience(ctx, ticket)
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET owner_id = ? WHERE id = ? AND owner_id IS NULL", a.UserID, ticket.ID).Error; err != nil {
+		if err := s.repo.SetOwnerIfNone(ctx, ticket.ID, a.UserID); err != nil {
 			return err
 		}
-		if err := s.db.WithContext(ctx).Exec("INSERT INTO wa_ticket_participants (ticket_id, user_id, role) VALUES (?, ?, 'owner') ON CONFLICT DO NOTHING", ticket.ID, a.UserID).Error; err != nil {
+		if err := s.repo.AddOwner(ctx, ticket.ID, a.UserID); err != nil {
 			return err
 		}
 		s.publish(ctx, conv.ID, nil, before)
 	case "add_tag":
 		t := s.repo.Ticket(ctx, ticket.ID)
 		if t != nil {
-			if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET tags = ? WHERE id = ?", jsonString(cleanTags(append(parseTags(t.Tags), a.Value))), ticket.ID).Error; err != nil {
+			if err := s.repo.SetTicketTags(ctx, ticket.ID, jsonString(cleanTags(append(parseTags(t.Tags), a.Value)))); err != nil {
 				return err
 			}
 			s.publish(ctx, conv.ID, nil, nil)
 		}
 	case "set_priority":
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET priority = ? WHERE id = ? AND ? IN ('low','normal','high','urgent')", a.Value, ticket.ID, a.Value).Error; err != nil {
+		if err := s.repo.SetTicketPriority(ctx, ticket.ID, a.Value); err != nil {
 			return err
 		}
 		s.publish(ctx, conv.ID, nil, nil)
 	case "set_category":
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET category = ? WHERE id = ?", strings.TrimSpace(a.Value), ticket.ID).Error; err != nil {
+		if err := s.repo.SetTicketCategory(ctx, ticket.ID, strings.TrimSpace(a.Value)); err != nil {
 			return err
 		}
 		s.publish(ctx, conv.ID, nil, nil)
 	case "note":
 		m := &models.WAMessage{ChannelID: ch.ID, ConversationID: conv.ID, TicketID: uintPtr(ticket.ID), Direction: "note", Kind: "text", SenderKind: "automation",
 			SenderLabel: r.Name, Body: varfill.Fill(a.Text, vars), Status: "received", CreatedAt: time.Now()}
-		if err := s.db.WithContext(ctx).Create(m).Error; err != nil {
+		if err := s.repo.CreateMessage(ctx, m); err != nil {
 			return err
 		}
 		s.publish(ctx, conv.ID, m, nil)
@@ -282,8 +280,8 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 
 // sweepTimedRules runs "no reply for N minutes" rules.
 func (s *Service) sweepTimedRules(ctx context.Context) {
-	var rules []models.WAAutomation
-	warnDB(ctx, s.db.WithContext(ctx).Where("active AND trigger = 'no_reply'").Find(&rules).Error)
+	rules, err := s.repo.TimedRules(ctx)
+	warnDB(ctx, err)
 	for i := range rules {
 		r := &rules[i]
 		var conds []RuleCondition
@@ -303,15 +301,15 @@ func (s *Service) sweepTimedRules(ctx context.Context) {
 				continue
 			}
 			h := device.Parse(ch.Settings).Hours
-			var list []models.WATicket
-			warnDB(ctx, s.db.WithContext(ctx).Where("channel_id = ? AND awaiting_since IS NOT NULL AND status IN ('open','pending')", chID).Find(&list).Error)
+			list, err := s.repo.AwaitingTickets(ctx, chID)
+			warnDB(ctx, err)
 			for j := range list {
 				t := &list[j]
 				if h.Elapsed(*t.AwaitingSince, time.Now()) < time.Duration(minutes)*time.Minute {
 					continue
 				}
-				var done int64
-				warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_automation_runs WHERE automation_id = ? AND ticket_id = ? AND created_at >= ?", r.ID, t.ID, *t.AwaitingSince).Scan(&done).Error)
+				done, err := s.repo.RuleRunsSince(ctx, r.ID, t.ID, *t.AwaitingSince)
+				warnDB(ctx, err)
 				if done > 0 {
 					continue
 				}
@@ -354,17 +352,10 @@ func (s *Service) ruleView(ctx context.Context, r *models.WAAutomation) RuleView
 	if v.Actions == nil {
 		v.Actions = []RuleAction{}
 	}
-	var st struct {
-		N    int64
-		Last *time.Time
-	}
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) AS n, max(created_at) AS last FROM wa_automation_runs WHERE automation_id = ?", r.ID).Scan(&st).Error)
+	st, err := s.repo.RuleRunStats(ctx, r.ID)
+	warnDB(ctx, err)
 	v.Runs, v.LastRunAt = st.N, st.Last
-	var last struct {
-		OK     bool
-		Detail string
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT ok, detail FROM wa_automation_runs WHERE automation_id = ? ORDER BY id DESC LIMIT 1", r.ID).Scan(&last).Error; err == nil && !last.OK {
+	if last, err := s.repo.LastRuleRun(ctx, r.ID); err == nil && !last.OK {
 		v.LastError = last.Detail
 		if v.LastError == "" {
 			v.LastError = "Bilinmeyen bir hata oldu."
@@ -378,8 +369,8 @@ func (s *Service) Rules(ctx context.Context, actorID uint) ([]RuleView, error) {
 	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları görme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	var list []models.WAAutomation
-	if err := s.db.WithContext(ctx).Order("position, id").Find(&list).Error; err != nil {
+	list, err := s.repo.Rules(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]RuleView, 0, len(list))
@@ -448,16 +439,16 @@ func (s *Service) SaveRule(ctx context.Context, actorID, id uint, in RuleInput) 
 		Conditions: jsonString(in.Conditions), Actions: jsonString(in.Actions), CooldownMin: in.CooldownMin, CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
 	var err error
 	if id == 0 {
-		err = s.db.WithContext(ctx).Create(r).Error
+		err = s.repo.CreateRule(ctx, r)
 	} else {
-		err = s.db.WithContext(ctx).Model(&models.WAAutomation{}).Where("id = ?", id).Updates(map[string]any{
+		err = s.repo.UpdateRule(ctx, id, map[string]any{
 			"name": r.Name, "active": r.Active, "channel_ids": r.ChannelIDs, "trigger": r.Trigger, "conditions": r.Conditions,
-			"actions": r.Actions, "cooldown_min": r.CooldownMin, "updated_at": time.Now()}).Error
+			"actions": r.Actions, "cooldown_min": r.CooldownMin, "updated_at": time.Now()})
 	}
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	warnDB(ctx, s.db.WithContext(ctx).First(r, r.ID).Error)
+	warnDB(ctx, s.repo.ReloadRule(ctx, r))
 	v := s.ruleView(ctx, r)
 	return &v, nil
 }
@@ -467,7 +458,7 @@ func (s *Service) DeleteRule(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkiniz yok."); err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Delete(&models.WAAutomation{}, id).Error
+	return s.repo.DeleteRule(ctx, id)
 }
 
 // ReorderRules sets the order rules run in.
@@ -476,7 +467,7 @@ func (s *Service) ReorderRules(ctx context.Context, actorID uint, ids []uint) er
 		return err
 	}
 	for i, id := range ids {
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_automations SET position = ? WHERE id = ?", i, id).Error; err != nil {
+		if err := s.repo.SetRulePosition(ctx, id, i); err != nil {
 			return errs.Internal(err)
 		}
 	}

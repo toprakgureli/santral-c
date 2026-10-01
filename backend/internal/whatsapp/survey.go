@@ -66,9 +66,8 @@ func linkTokenOK(keys [][]byte, subject, token string) bool {
 // not sent again either.
 func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t *models.WATicket, repeatHours int) bool {
 	if repeatHours > 0 {
-		var recent int64
-		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT count(*) FROM wa_tickets WHERE contact_id = ? AND survey_sent_at > now() - make_interval(hours => ?)",
-			t.ContactID, repeatHours).Scan(&recent).Error)
+		recent, err := s.repo.RecentSurveys(ctx, t.ContactID, repeatHours)
+		warnDB(ctx, err)
 		if recent > 0 {
 			return false
 		}
@@ -76,9 +75,8 @@ func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t 
 	if t.SurveySentAt == nil {
 		return true
 	}
-	var since int64
-	warnDB(ctx, s.db.WithContext(ctx).Raw(`SELECT count(*) FROM wa_messages WHERE conversation_id = ? AND direction = 'in' AND created_at > ?
-		AND kind <> 'reaction' AND COALESCE(payload->>'id', '') NOT LIKE '%rate-%'`, conv.ID, *t.SurveySentAt).Scan(&since).Error)
+	since, err := s.repo.InboundSince(ctx, conv.ID, *t.SurveySentAt)
+	warnDB(ctx, err)
 	return since > 0
 }
 
@@ -109,11 +107,11 @@ func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *mo
 		if windowOpen(conv) {
 			s.queueSystem(ctx, ch, conv.ID, t.ID, "automation", "Değerlendirme anketi", text)
 		} else if set.Template != "" {
-			var tpl models.WATemplate
-			if s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND status = 'APPROVED'", ch.WABAID, set.Template).First(&tpl).Error != nil {
+			tpl, err := s.repo.ApprovedTemplateAnyLanguage(ctx, ch.WABAID, set.Template)
+			if err != nil {
 				return
 			}
-			obj, preview, err := buildTemplate(&tpl, TemplateParams{Body: []string{link.String()}, Buttons: []string{link.RawQuery}})
+			obj, preview, err := buildTemplate(tpl, TemplateParams{Body: []string{link.String()}, Buttons: []string{link.RawQuery}})
 			if err != nil {
 				return
 			}
@@ -126,7 +124,7 @@ func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *mo
 	default:
 		return
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error)
+	warnDB(ctx, s.repo.MarkSurveySent(ctx, t.ID))
 }
 
 // surveyText fills {musteri} and {temsilci} in the survey message.
@@ -160,7 +158,7 @@ func (s *Service) sendNativeSurvey(ctx context.Context, ch *models.WAChannel, co
 	}
 	msg := flow.MenuMessage("list", text, "Puan ver", opts)
 	s.queueObject(ctx, ch, conv.ID, t.ID, "automation", "Değerlendirme anketi", "interactive", text, msg)
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET survey_sent_at = now() WHERE id = ?", t.ID).Error)
+	warnDB(ctx, s.repo.MarkSurveySent(ctx, t.ID))
 }
 
 // handleSurveyReply records a score picked from the native survey list.
@@ -192,8 +190,8 @@ func (s *Service) handleSurveyReply(ctx context.Context, ch *models.WAChannel, c
 // recordRating stores a score on its ticket and tells the managers when
 // it is low.
 func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uint, score int, comment string, answers ...RatingAnswer) {
-	var t models.WATicket
-	if s.db.WithContext(ctx).First(&t, ticketID).Error != nil || t.ConversationID != conversationID && conversationID != 0 {
+	t, err := s.repo.LoadTicket(ctx, ticketID)
+	if err != nil || t.ConversationID != conversationID && conversationID != 0 {
 		return
 	}
 	if answers == nil {
@@ -202,7 +200,7 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 	// The same survey answered again (a form can be sent more than once):
 	// the new answer replaces the old one, but nobody is alerted twice.
 	again := t.RatedAt != nil && (t.SurveySentAt == nil || t.RatedAt.After(*t.SurveySentAt))
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", score, strings.TrimSpace(comment), jsonString(answers), ticketID).Error; err != nil {
+	if err := s.repo.SetRating(ctx, ticketID, score, strings.TrimSpace(comment), jsonString(answers)); err != nil {
 		return
 	}
 	conv, _, err := s.repo.Conversation(ctx, t.ConversationID)
@@ -402,16 +400,18 @@ type RatingText struct {
 	Text     string `json:"text"`
 }
 
-// keepTexts stores the written answers of a form beside its score.
+// keepTexts stores the written answers of a form beside its score, on the
+// after-call survey when table is "wa_call_surveys" and on the ticket
+// otherwise.
 func (s *Service) keepTexts(ctx context.Context, table string, id uint, texts []RatingText) {
 	if texts == nil {
 		texts = []RatingText{}
 	}
-	col := "rating_texts"
 	if table == "wa_call_surveys" {
-		col = "texts"
+		warnDB(ctx, s.repo.SetCallSurveyTexts(ctx, id, jsonString(texts)))
+		return
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE "+table+" SET "+col+" = ? WHERE id = ?", jsonString(texts), id).Error)
+	warnDB(ctx, s.repo.SetRatingTexts(ctx, id, jsonString(texts)))
 }
 
 // questionTitle is a question's title as the form gave it, trimmed to fit.

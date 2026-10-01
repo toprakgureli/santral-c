@@ -26,15 +26,14 @@ import (
 // with an error and Meta sends the call again.
 
 func (s *Service) channelByHook(ctx context.Context, key string) (*models.WAChannel, error) {
-	var ch models.WAChannel
-	err := s.db.WithContext(ctx).Where("hook_key = ?", key).First(&ch).Error
+	ch, err := s.repo.ChannelByHook(ctx, key)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errs.NotFound("Bilinmeyen adres.")
 	}
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	return &ch, nil
+	return ch, nil
 }
 
 // Verify answers Meta's check when the webhook address is saved.
@@ -76,10 +75,10 @@ func (s *Service) Receive(ctx context.Context, key, signature string, body []byt
 // storeEvent keeps a notice for the worker and answers Meta right away.
 func (s *Service) storeEvent(ctx context.Context, ch *models.WAChannel, body []byte) error {
 	ev := &models.WAWebhookEvent{ChannelID: uintPtr(ch.ID), Payload: string(body), Status: "pending", NextTryAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(ev).Error; err != nil {
+	if err := s.repo.CreateWebhookEvent(ctx, ev); err != nil {
 		return errs.Internal(err)
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_webhook_at = now() WHERE id = ?", ch.ID).Error)
+	warnDB(ctx, s.repo.MarkWebhookSeen(ctx, ch.ID))
 	wake(s.wakeWebhook)
 	return nil
 }
@@ -103,8 +102,8 @@ func (s *Service) webhookWorker(ctx context.Context) {
 // processBatch handles up to a page of waiting calls; true when there may
 // be more.
 func (s *Service) processBatch(ctx context.Context) bool {
-	var list []models.WAWebhookEvent
-	if err := s.db.WithContext(ctx).Where("status = 'pending' AND next_try_at <= now()").Order("id").Limit(50).Find(&list).Error; err != nil {
+	list, err := s.repo.PendingWebhookEvents(ctx)
+	if err != nil {
 		slog.ErrorContext(ctx, "whatsapp webhook events could not be read", "error", err)
 		return false
 	}
@@ -114,7 +113,7 @@ func (s *Service) processBatch(ctx context.Context) bool {
 		// rest of the batch goes on.
 		err := safe.Call(func() error { return s.processEvent(ctx, ev) })
 		if err == nil {
-			warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'done', processed_at = now(), attempts = attempts + 1, last_error = '' WHERE id = ?", ev.ID).Error)
+			warnDB(ctx, s.repo.WebhookEventDone(ctx, ev.ID))
 			continue
 		}
 		attempts := ev.Attempts + 1
@@ -127,8 +126,7 @@ func (s *Service) processBatch(ctx context.Context) bool {
 		if p := (*safe.PanicError)(nil); errors.As(err, &p) {
 			slog.ErrorContext(ctx, "whatsapp webhook event panicked", "event", ev.ID, "panic", fmt.Sprint(p.Value), "stack", string(p.Stack))
 		}
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ? WHERE id = ?",
-			status, attempts, err.Error(), time.Now().Add(wait), ev.ID).Error)
+		warnDB(ctx, s.repo.WebhookEventFailed(ctx, ev.ID, status, attempts, err.Error(), time.Now().Add(wait)))
 		slog.WarnContext(ctx, "whatsapp webhook event failed", "event", ev.ID, "attempt", attempts, "error", err)
 		if status == "failed" && ev.ChannelID != nil {
 			s.alert(ctx, *ev.ChannelID, "Meta'dan gelen bir bildirim işlenemedi. Ayarlar > İşlenemeyen bildirimler ekranından tekrar deneyebilirsiniz.")
@@ -268,12 +266,11 @@ func (s *Service) processEvent(ctx context.Context, ev *models.WAWebhookEvent) e
 }
 
 func (s *Service) channelByNumber(ctx context.Context, phoneNumberID string) (*models.WAChannel, error) {
-	var ch models.WAChannel
-	err := s.db.WithContext(ctx).Where("phone_number_id = ?", phoneNumberID).First(&ch).Error
+	ch, err := s.repo.ChannelByPhoneNumberID(ctx, phoneNumberID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
-	return &ch, err
+	return ch, err
 }
 
 func (s *Service) onMessages(ctx context.Context, raw json.RawMessage) error {
@@ -312,7 +309,7 @@ func (s *Service) onMessages(ctx context.Context, raw json.RawMessage) error {
 }
 
 func (s *Service) recordChannelError(ctx context.Context, channelID uint, text string) {
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", text, channelID).Error)
+	warnDB(ctx, s.repo.SetChannelError(ctx, channelID, text))
 	s.alert(ctx, channelID, "WhatsApp cihazında hata: "+text)
 }
 
@@ -325,15 +322,15 @@ func (s *Service) onQuality(ctx context.Context, wabaID string, raw json.RawMess
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil
 	}
-	var chans []models.WAChannel
-	if err := s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error; err != nil {
+	chans, err := s.repo.ChannelsOfAccount(ctx, wabaID)
+	if err != nil {
 		return err
 	}
 	for _, ch := range chans {
 		if v.DisplayPhoneNumber != "" && digitsOnly(ch.DisplayPhone) != "" && !strings.HasSuffix(digitsOnly(v.DisplayPhoneNumber), digitsOnly(ch.DisplayPhone)) && !strings.HasSuffix(digitsOnly(ch.DisplayPhone), digitsOnly(v.DisplayPhoneNumber)) {
 			continue
 		}
-		if err := s.db.WithContext(ctx).Exec("UPDATE wa_channels SET messaging_limit = ? WHERE id = ?", v.CurrentLimit, ch.ID).Error; err != nil {
+		if err := s.repo.SetMessagingLimit(ctx, ch.ID, v.CurrentLimit); err != nil {
 			return err
 		}
 		switch v.Event {
@@ -354,14 +351,14 @@ func qualityWord(event string) string {
 }
 
 func (s *Service) onAccountNotice(ctx context.Context, wabaID, field string, raw json.RawMessage) {
-	var chans []models.WAChannel
-	warnDB(ctx, s.db.WithContext(ctx).Where("waba_id = ?", wabaID).Find(&chans).Error)
+	chans, err := s.repo.ChannelsOfAccount(ctx, wabaID)
+	warnDB(ctx, err)
 	text := strings.TrimSpace(string(raw))
 	if len(text) > 400 {
 		text = text[:400]
 	}
 	for _, ch := range chans {
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ?", "Meta hesap bildirimi ("+field+"): "+text, ch.ID).Error)
+		warnDB(ctx, s.repo.SetChannelError(ctx, ch.ID, "Meta hesap bildirimi ("+field+"): "+text))
 		s.alert(ctx, ch.ID, "Meta, "+ch.Name+" hesabı hakkında bir bildirim gönderdi. Cihaz ayarlarında ayrıntısını görebilirsiniz.")
 	}
 }
@@ -396,8 +393,8 @@ func (s *Service) Events(ctx context.Context, actorID uint) ([]EventView, error)
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu ekranı görme yetkiniz yok."); err != nil {
 		return nil, err
 	}
-	var list []models.WAWebhookEvent
-	if err := s.db.WithContext(ctx).Where("status <> 'done'").Order("id DESC").Limit(200).Find(&list).Error; err != nil {
+	list, err := s.repo.UnfinishedWebhookEvents(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]EventView, 0, len(list))
@@ -416,7 +413,7 @@ func (s *Service) RetryEvent(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Bu işlem için yetkiniz yok."); err != nil {
 		return err
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = 'pending', next_try_at = now() WHERE id = ? AND status <> 'done'", id).Error; err != nil {
+	if err := s.repo.RetryWebhookEvent(ctx, id); err != nil {
 		return errs.Internal(err)
 	}
 	wake(s.wakeWebhook)

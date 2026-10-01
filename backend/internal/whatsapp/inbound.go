@@ -13,7 +13,6 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -164,7 +163,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		at = &t
 	}
 	res := &inboundResult{}
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.repo.Transaction(ctx, func(tx *gorm.DB) error {
 		contact, err := store.UpsertContact(tx, m.From, profileName)
 		if err != nil {
 			return err
@@ -172,7 +171,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		res.contact = contact
 		if len(m.Referral) > 0 && string(m.Referral) != "null" {
 			ref := string(m.Referral)
-			if err := tx.Exec("UPDATE wa_contacts SET source = ? WHERE id = ?", ref, contact.ID).Error; err != nil {
+			if err := store.SetContactSource(tx, contact.ID, ref); err != nil {
 				return err
 			}
 		}
@@ -197,11 +196,11 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		if m.Context != nil && m.Context.ID != "" {
 			msg.ReplyToWAMID = strPtr(m.Context.ID)
 		}
-		tx2 := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "wamid"}}, DoNothing: true}).Create(msg)
-		if tx2.Error != nil {
-			return tx2.Error
+		stored, err := store.CreateMessageOnce(tx, msg)
+		if err != nil {
+			return err
 		}
-		if tx2.RowsAffected == 0 || msg.ID == 0 {
+		if stored == 0 || msg.ID == 0 {
 			// Seen before: Meta sent it again. Nothing more to do.
 			res.msg = nil
 			return nil
@@ -210,7 +209,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		// "DUR": leaving marketing messages is stored together with the
 		// message, so it can never be lost to a later step failing.
 		if optOutAsked(m, kind, body, device.Parse(ch.Settings).OptOutKeywords) {
-			if err := tx.Exec("UPDATE wa_contacts SET opted_out = true WHERE id = ?", contact.ID).Error; err != nil {
+			if err := store.OptOut(tx, contact.ID); err != nil {
 				return err
 			}
 			res.optedOut = true
@@ -219,14 +218,14 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			// A turned-off device keeps what customers still send, but
 			// nothing is opened, handed out or answered automatically.
 			res.conv, res.inactive = conv, true
-			return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
+			return store.SetLastInbound(tx, conv.ID, *at, msg.ID, time.Now())
 		}
 		if id, idx, ok := callSurveyAnswer(m); ok {
 			// An answer to the survey after a phone call: kept in the
 			// conversation, but it opens no support ticket.
 			res.conv, res.surveyID, res.surveyIdx = conv, id, idx
 			conv.LastInboundAt = at
-			return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
+			return store.SetLastInbound(tx, conv.ID, *at, msg.ID, time.Now())
 		}
 		if kind == "reaction" {
 			res.conv = conv
@@ -235,18 +234,18 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		if tid, score, ok := ratingAnswer(m); ok {
 			// A score for a closed conversation: kept in its history, but it
 			// does not open the conversation again.
-			var owner uint
-			if err := tx.Raw("SELECT conversation_id FROM wa_tickets WHERE id = ?", tid).Scan(&owner).Error; err != nil {
+			owner, err := store.TicketConversationID(tx, tid)
+			if err != nil {
 				return err
 			}
 			if owner == conv.ID {
 				res.conv, res.rateTicket, res.rateScore = conv, tid, score
 				conv.LastInboundAt = at
-				if err := tx.Exec("UPDATE wa_messages SET ticket_id = ? WHERE id = ?", tid, msg.ID).Error; err != nil {
+				if err := store.SetMessageTicket(tx, msg.ID, tid); err != nil {
 					return err
 				}
 				msg.TicketID = uintPtr(tid)
-				return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
+				return store.SetLastInbound(tx, conv.ID, *at, msg.ID, time.Now())
 			}
 		}
 		// Ticket: open one, or bring a resolved one back.
@@ -255,12 +254,11 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			return err
 		}
 		res.ticket, res.created, res.reopened, res.resolvedAt = ticket, created, reopened, wasResolved
-		if err := tx.Exec("UPDATE wa_messages SET ticket_id = ? WHERE id = ?", ticket.ID, msg.ID).Error; err != nil {
+		if err := store.SetMessageTicket(tx, msg.ID, ticket.ID); err != nil {
 			return err
 		}
 		msg.TicketID = uintPtr(ticket.ID)
-		if err := tx.Exec(`UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ?,
-			unread = unread + 1, ticket_id = ? WHERE id = ?`, *at, msg.ID, time.Now(), ticket.ID, conv.ID).Error; err != nil {
+		if err := store.RecordInbound(tx, conv.ID, *at, msg.ID, time.Now(), ticket.ID); err != nil {
 			return err
 		}
 		// What follows (chatbot, automatic messages) must see this message:
@@ -268,9 +266,8 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		conv.LastInboundAt, conv.TicketID = at, uintPtr(ticket.ID)
 		res.conv = conv
 		// Record the work that follows, so a restart cannot lose it.
-		return tx.Exec(`INSERT INTO wa_inbound_jobs (message_id, conversation_id, created, reopened, first, opted_out, resolved_at, owner_id, claimed_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, '-infinity')`,
-			msg.ID, conv.ID, res.created, res.reopened, res.first, res.optedOut, res.resolvedAt, ticket.OwnerID).Error
+		return store.AddInboundJob(tx, store.NewInboundJob{MessageID: msg.ID, ConversationID: conv.ID, Created: res.created, Reopened: res.reopened,
+			First: res.first, OptedOut: res.optedOut, ResolvedAt: res.resolvedAt, OwnerID: ticket.OwnerID})
 	})
 	if err != nil {
 		return err
@@ -406,28 +403,28 @@ func matchesWord(text string, words []string) bool {
 var statusRank = map[string]int{"queued": 0, "sending": 0, "sent": 1, "delivered": 2, "read": 3}
 
 func (s *Service) onStatus(ctx context.Context, ch *models.WAChannel, st *hookStatus) error {
-	var msg models.WAMessage
-	err := s.db.WithContext(ctx).Where("wamid = ?", st.ID).Limit(1).Find(&msg).Error
+	msg, err := s.repo.MessageByWAMID(ctx, st.ID)
 	if err != nil {
 		return err
 	}
 	if msg.ID == 0 {
 		// The status came before we stored the message's id; keep it.
 		raw, _ := json.Marshal(st)
-		if err := s.db.WithContext(ctx).Exec("INSERT INTO wa_pending_statuses (wamid, status, payload) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", st.ID, st.Status, string(raw)).Error; err != nil {
+		if err := s.repo.AddPendingStatus(ctx, st.ID, st.Status, string(raw)); err != nil {
 			return err
 		}
 		// The send may have stored the id in the meantime, after its own
 		// look at the waiting statuses; look once more so none is left.
-		if err := s.db.WithContext(ctx).Where("wamid = ?", st.ID).Limit(1).Find(&msg).Error; err != nil {
+		msg, err = s.repo.MessageByWAMID(ctx, st.ID)
+		if err != nil {
 			return err
 		}
 		if msg.ID != 0 {
-			s.applyPending(ctx, &msg)
+			s.applyPending(ctx, msg)
 		}
 		return nil
 	}
-	s.applyStatus(ctx, &msg, st)
+	s.applyStatus(ctx, msg, st)
 	return nil
 }
 
@@ -476,7 +473,7 @@ func (s *Service) applyStatus(ctx context.Context, msg *models.WAMessage, st *ho
 	if len(fields) == 0 {
 		return
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WAMessage{}).Where("id = ?", msg.ID).Updates(fields).Error; err != nil {
+	if err := s.repo.UpdateMessage(ctx, msg.ID, fields); err != nil {
 		slog.WarnContext(ctx, "whatsapp status could not be saved", "message", msg.ID, "error", err)
 		return
 	}
@@ -487,13 +484,9 @@ func (s *Service) applyStatus(ctx context.Context, msg *models.WAMessage, st *ho
 		if st.Status == "read" {
 			lower = []string{"sent", "delivered"}
 		}
-		warnDB(ctx, s.db.WithContext(ctx).Exec(`UPDATE wa_messages SET status = ?,
-			delivered_at = COALESCE(delivered_at, ?),
-			read_at = CASE WHEN ? = 'read' THEN COALESCE(read_at, ?) ELSE read_at END
-			WHERE conversation_id = ? AND direction = 'out' AND id < ? AND wamid IS NOT NULL AND status IN ?`,
-			st.Status, *at, st.Status, *at, msg.ConversationID, msg.ID, lower).Error)
+		warnDB(ctx, s.repo.CatchUpTicks(ctx, msg.ConversationID, msg.ID, st.Status, *at, lower))
 	}
-	warnDB(ctx, s.db.WithContext(ctx).First(msg, msg.ID).Error)
+	warnDB(ctx, s.repo.ReloadMessage(ctx, msg))
 	s.publish(ctx, msg.ConversationID, msg, nil)
 }
 
@@ -502,10 +495,8 @@ func (s *Service) applyPending(ctx context.Context, msg *models.WAMessage) {
 	if msg.WAMID == nil {
 		return
 	}
-	var rows []struct {
-		Payload string
-	}
-	warnDB(ctx, s.db.WithContext(ctx).Raw("DELETE FROM wa_pending_statuses WHERE wamid = ? RETURNING payload", *msg.WAMID).Scan(&rows).Error)
+	rows, err := s.repo.TakePendingStatuses(ctx, *msg.WAMID)
+	warnDB(ctx, err)
 	for _, r := range rows {
 		var st hookStatus
 		if json.Unmarshal([]byte(r.Payload), &st) == nil {
@@ -522,13 +513,15 @@ func (s *Service) publishReaction(ctx context.Context, conversationID uint, reac
 	if reaction.Payload != nil {
 		_ = json.Unmarshal([]byte(*reaction.Payload), &p)
 	}
-	var target models.WAMessage
+	var target *models.WAMessage
 	if p.MessageID != "" {
-		warnDB(ctx, s.db.WithContext(ctx).Where("wamid = ?", p.MessageID).Limit(1).Find(&target).Error)
+		t, err := s.repo.MessageByWAMID(ctx, p.MessageID)
+		warnDB(ctx, err)
+		target = t
 	}
-	if target.ID == 0 {
+	if target == nil || target.ID == 0 {
 		s.publish(ctx, conversationID, nil, nil)
 		return
 	}
-	s.publish(ctx, conversationID, &target, nil)
+	s.publish(ctx, conversationID, target, nil)
 }

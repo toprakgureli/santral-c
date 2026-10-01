@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -173,9 +172,8 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 	if err != nil {
 		return nil, err
 	}
-	var msgs []models.WAMessage
-	if err := s.db.WithContext(ctx).Where("conversation_id = ? AND direction IN ('in','out') AND kind <> 'reaction'", conv.ID).
-		Order("id DESC").Limit(30).Find(&msgs).Error; err != nil {
+	msgs, err := s.repo.RecentChat(ctx, conv.ID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	if len(msgs) == 0 && strings.TrimSpace(draft) == "" {
@@ -235,8 +233,8 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 		sys.WriteString("\n")
 	}
 	if set.UseQuickReplies {
-		var qs []models.WAQuickReply
-		warnDB(ctx, s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", conv.ChannelID)).Order("shortcut").Limit(40).Find(&qs).Error)
+		qs, err := s.repo.QuickRepliesForSuggestions(ctx, conv.ChannelID)
+		warnDB(ctx, err)
 		if len(qs) > 0 {
 			sys.WriteString("\nEkibin hazır cevapları (bilgi kaynağı ve üslup örneği olarak kullan):\n")
 			for _, q := range qs {
