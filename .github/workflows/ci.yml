@@ -70,11 +70,16 @@ jobs:
 
       - name: pg_dump for the backup test
         run: |
-          sudo apt-get update -qq
-          # The distribution's client, whatever its version: a newer pg_dump
-          # copies an older server too, so a runner image change keeps working.
-          sudo apt-get install -y -qq postgresql-client
-          pg_dump --version
+          # The client matches the server above (16), taken from
+          # PostgreSQL's own package list so a newer runner image does not
+          # swap it: a newer pg_dump writes lines an older server cannot read
+          # back. On the server, pg_dump comes with PostgreSQL itself, so the
+          # two always match there.
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version
 
       # Coverage is counted over every package, whichever test reaches it,
       # and kept in raw form so the two runs below can be added together.

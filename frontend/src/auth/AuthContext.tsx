@@ -53,6 +53,33 @@ export function sessionOver(e: unknown): boolean {
 // Pauses between tries while the server cannot be reached at start-up.
 export const START_RETRY_MS = [1000, 2000, 4000, 8000, 15000];
 
+// Pauses between sign-out tries when the server cannot be reached.
+export const LOGOUT_RETRY_MS = [1000, 2000];
+
+// LogoutFailed means the server never heard the sign-out: the session is
+// still open there, so this browser stays signed in too.
+export class LogoutFailed extends Error {
+  constructor() {
+    super("Sunucuya ulaşılamadı, oturumun hâlâ açık. Bağlantın gelince tekrar dene.");
+  }
+}
+
+// signOutOnServer ends the session on the server, trying again while it
+// cannot be reached. A refused session (401/403) is already over, which is
+// what signing out wants.
+async function signOutOnServer() {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await api.logout();
+      return;
+    } catch (e) {
+      if (sessionOver(e)) return;
+      if (attempt >= LOGOUT_RETRY_MS.length) throw new LogoutFailed();
+      await new Promise((resolve) => window.setTimeout(resolve, LOGOUT_RETRY_MS[attempt]));
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,14 +108,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // nothing more to do; the server closes a lost call by itself
     }
-    try {
-      await api.logout();
-    } finally {
-      clearUserStorage();
-      forgetDrafts();
-      setUser(null);
-      tellTabs();
-    }
+    // Only a sign-out the server took clears this browser: a screen that
+    // looks signed out over a session still open would leave it usable to
+    // whoever sits down next.
+    await signOutOnServer();
+    clearUserStorage();
+    forgetDrafts();
+    setUser(null);
+    tellTabs();
   }, []);
 
   // Start-up: find out who is signed in. A server that cannot answer yet

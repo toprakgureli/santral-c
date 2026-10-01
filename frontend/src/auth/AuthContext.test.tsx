@@ -20,7 +20,7 @@ vi.mock("../api/client", () => {
 });
 
 import { ApiError } from "../api/client";
-import { AuthProvider, useAuth } from "./AuthContext";
+import { AuthProvider, LogoutFailed, useAuth } from "./AuthContext";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -119,5 +119,63 @@ describe("start-up", () => {
       await mounted!.auth.current.refresh();
     });
     expect(mounted.auth.current.user?.id).toBe(3);
+  });
+});
+
+describe("sign-out", () => {
+  async function signedIn() {
+    apiMock.me.mockResolvedValue(user);
+    mounted = mount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mounted.auth.current.user?.id).toBe(3);
+    return mounted;
+  }
+
+  beforeEach(() => {
+    apiMock.logout.mockReset();
+  });
+
+  it("rides out a short outage and then signs out", async () => {
+    const m = await signedIn();
+    apiMock.logout
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new ApiError(502, "BAD_GATEWAY", "Bad gateway"))
+      .mockResolvedValue(undefined);
+    let done = false;
+    await act(async () => {
+      const p = m.auth.current.logout().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(5000);
+      await p;
+    });
+    expect(done).toBe(true);
+    expect(apiMock.logout).toHaveBeenCalledTimes(3);
+    expect(m.auth.current.user).toBeNull();
+  });
+
+  it("stays signed in when the server never hears the sign-out", async () => {
+    const m = await signedIn();
+    apiMock.logout.mockRejectedValue(new TypeError("Failed to fetch"));
+    let failure: unknown = null;
+    await act(async () => {
+      const p = m.auth.current.logout().catch((e) => (failure = e));
+      await vi.advanceTimersByTimeAsync(10000);
+      await p;
+    });
+    expect(failure).toBeInstanceOf(LogoutFailed);
+    expect(apiMock.logout).toHaveBeenCalledTimes(3);
+    // The session is still open on the server, so the screen says so too.
+    expect(m.auth.current.user?.id).toBe(3);
+  });
+
+  it("an already ended session counts as signed out", async () => {
+    const m = await signedIn();
+    apiMock.logout.mockRejectedValue(new ApiError(401, "UNAUTHORIZED", "Oturum bulunamadı."));
+    await act(async () => {
+      await m.auth.current.logout();
+    });
+    expect(apiMock.logout).toHaveBeenCalledTimes(1);
+    expect(m.auth.current.user).toBeNull();
   });
 });

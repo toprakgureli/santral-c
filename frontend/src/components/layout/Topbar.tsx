@@ -21,6 +21,7 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const [open, setOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const phone = useSoftphoneContext();
 
@@ -30,13 +31,24 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const live = phone.liveHere || phone.liveElsewhere;
   const leave = async () => {
     setLeaving(true);
+    setLeaveError(null);
     try {
       await phone.endCalls();
     } catch {
       // the stale sweeper closes a call whose end could not be sent
     }
+    try {
+      await logout();
+    } catch (e) {
+      // The session is still open on the server; say so instead of showing
+      // the sign-in page over it.
+      setLeaveError(e instanceof Error ? e.message : "Çıkış yapılamadı. Biraz sonra tekrar dene.");
+      setConfirmLeave(true);
+      setLeaving(false);
+      return;
+    }
     setConfirmLeave(false);
-    await logout();
+    setLeaving(false);
     navigate("/login");
   };
 
@@ -131,17 +143,21 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
       </div>
       <ConfirmDialog
         open={confirmLeave}
-        title="Görüşme sürüyor"
+        title={leaveError ? "Çıkış yapılamadı" : "Görüşme sürüyor"}
         description={
-          phone.liveHere
+          leaveError ??
+          (phone.liveHere
             ? "Çıkış yaparsan devam eden görüşme kapanır. Yine de çıkmak istiyor musun?"
-            : "Diğer sekmede bir görüşme sürüyor. Devam edersen görüşme kapanacak."
+            : "Diğer sekmede bir görüşme sürüyor. Devam edersen görüşme kapanacak.")
         }
-        confirmLabel="Çıkış yap"
+        confirmLabel={leaveError ? "Tekrar dene" : "Çıkış yap"}
         tone="warning"
         busy={leaving}
         onConfirm={() => void leave()}
-        onCancel={() => setConfirmLeave(false)}
+        onCancel={() => {
+          setConfirmLeave(false);
+          setLeaveError(null);
+        }}
       />
     </header>
   );
