@@ -57,13 +57,13 @@ export function WhatsAppSettings() {
   const choose = (k: string) => setParams((p) => { p.set("tab", k); return p; }, { replace: true });
 
   if (tabs.length === 0) {
-    return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">WhatsApp ayarlarını görme yetkiniz yok.</p>;
+    return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">WhatsApp ayarlarını görme yetkin yok.</p>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/whatsapp" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
+        <Link to="/whatsapp" aria-label="Gelen kutusuna dön" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
         <div>
           <h1 className="text-lg font-semibold tracking-tight">WhatsApp ayarları</h1>
           <p className="text-xs text-muted-foreground">{channels.length ? `${channels.length} numara bağlı` : "Henüz numara bağlı değil"}</p>

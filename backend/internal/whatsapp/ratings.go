@@ -230,7 +230,7 @@ func (s *Service) ratingItems(ctx context.Context, rows []ratingRow) []RatingIte
 
 // Ratings lists the scores of a period with totals and per person.
 func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*RatingsView, error) {
-	if _, err := s.require(ctx, actorID, enums.WARatings, "Puanlamaları görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WARatings, "Puanlamaları görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	args, err := f.args()
@@ -323,7 +323,7 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 
 // RatingsCSV writes the filtered scores as a spreadsheet file.
 func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) ([]byte, string, error) {
-	if _, err := s.require(ctx, actorID, enums.WARatings, "Puanlamaları görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WARatings, "Puanlamaları görme yetkin yok."); err != nil {
 		return nil, "", err
 	}
 	args, err := f.args()

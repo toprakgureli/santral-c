@@ -100,7 +100,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint) (*models.User, er
 		return nil, err
 	}
 	if !u.Can(enums.SystemBackup) {
-		return nil, errs.Forbidden("Yedekleme ayarlarını yönetme yetkiniz yok.")
+		return nil, errs.Forbidden("Yedekleme ayarlarını yönetme yetkin yok.")
 	}
 	return u, nil
 }
@@ -154,7 +154,7 @@ func (s *Service) Save(ctx context.Context, actorID uint, in Input, ip string) (
 		folder, _, _ = strings.Cut(folder, "?")
 	}
 	if len(folder) > 200 || strings.ContainsAny(folder, " /") {
-		return nil, errs.Invalid("Klasör kimliği okunamadı; klasörün adresini ya da kimliğini yapıştırın.", nil)
+		return nil, errs.Invalid("Klasör kimliği okunamadı; klasörün adresini ya da kimliğini yapıştır.", nil)
 	}
 	fields := map[string]any{"enabled": in.Enabled, "folder_id": folder, "updated_at": time.Now()}
 	if raw := strings.TrimSpace(in.Credentials); raw != "" {
@@ -340,11 +340,11 @@ func (s *Service) copy(ctx context.Context) (string, int64, error) {
 
 func (s *Service) client(st *models.BackupSettings) (*google, error) {
 	if st.FolderID == "" || st.CredentialsEnc == "" {
-		return nil, errors.New("önce klasörü ve servis hesabı anahtarını kaydedin")
+		return nil, errors.New("önce klasörü ve servis hesabı anahtarını kaydet")
 	}
 	raw, err := s.ring.Open(SealPurpose, st.CredentialsEnc)
 	if err != nil {
-		return nil, errors.New("kayıtlı anahtar açılamadı; anahtarı yeniden girin")
+		return nil, errors.New("kayıtlı anahtar açılamadı; anahtarı yeniden gir")
 	}
 	sa, err := parseServiceAccount(raw)
 	if err != nil {

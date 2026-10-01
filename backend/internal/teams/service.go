@@ -247,10 +247,10 @@ func (s *Service) actor(ctx context.Context, id uint) (*models.User, error) {
 		return nil, err
 	}
 	if u == nil || !u.Active {
-		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	if !u.Can(enums.TeamsView) {
-		return nil, errs.Forbidden("Teams için yetkiniz yok.")
+		return nil, errs.Forbidden("Teams için yetkin yok.")
 	}
 	return u, nil
 }
@@ -563,7 +563,7 @@ func (s *Service) Create(ctx context.Context, actorID uint, in CreateInput) (*Gr
 		return nil, err
 	}
 	if !actor.Can(enums.TeamsGroupCreate) {
-		return nil, errs.Forbidden("Grup oluşturma yetkiniz yok.")
+		return nil, errs.Forbidden("Grup oluşturma yetkin yok.")
 	}
 	name := strings.TrimSpace(in.Name)
 	if len([]rune(name)) < 2 || len([]rune(name)) > 120 {
@@ -601,7 +601,7 @@ func (s *Service) OpenDM(ctx context.Context, actorID, otherID uint) (*GroupDeta
 		return nil, err
 	}
 	if otherID == actorID {
-		return nil, errs.Invalid("Kendinize mesaj gönderemezsiniz.", nil)
+		return nil, errs.Invalid("Kendine mesaj gönderemezsin.", nil)
 	}
 	other, err := s.users.GetByID(ctx, otherID)
 	if err != nil {
@@ -712,7 +712,7 @@ func (s *Service) Update(ctx context.Context, actorID, groupID uint, in UpdateIn
 		return nil, err
 	}
 	if g.Kind == "dm" || !(isAdmin(m) || actor.Can(enums.TeamsAdmin)) {
-		return nil, errs.Forbidden("Grubu düzenleme yetkiniz yok.")
+		return nil, errs.Forbidden("Grubu düzenleme yetkin yok.")
 	}
 	name := strings.TrimSpace(in.Name)
 	if len([]rune(name)) < 2 || len([]rune(name)) > 120 {
@@ -753,7 +753,7 @@ func (s *Service) SetAvatar(ctx context.Context, actorID, groupID uint, avatar s
 		return nil, err
 	}
 	if g.Kind == "dm" || !(isAdmin(m) || actor.Can(enums.TeamsAdmin)) {
-		return nil, errs.Forbidden("Grubu düzenleme yetkiniz yok.")
+		return nil, errs.Forbidden("Grubu düzenleme yetkin yok.")
 	}
 	if err := s.repo.UpdateGroup(ctx, groupID, map[string]any{"avatar": avatar}); err != nil {
 		return nil, errs.Internal(err)
@@ -786,7 +786,7 @@ func (s *Service) Delete(ctx context.Context, actorID, groupID uint) error {
 		return err
 	}
 	if g.Kind == "dm" || !((m != nil && m.Role == roleOwner) || actor.Can(enums.TeamsAdmin)) {
-		return errs.Forbidden("Grubu silme yetkiniz yok.")
+		return errs.Forbidden("Grubu silme yetkin yok.")
 	}
 	ids, _ := s.repo.MemberIDs(ctx, groupID)
 	if err := s.repo.DeleteGroup(ctx, groupID); err != nil {
@@ -816,7 +816,7 @@ func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs
 		return nil, errs.Invalid("Özel mesaja üye eklenemez.", nil)
 	}
 	if !(isAdmin(m) || actor.Can(enums.TeamsAdmin) || actor.Can(enums.TeamsMemberAdd)) {
-		return nil, errs.Forbidden("Üye ekleme yetkiniz yok. Davet gönderebilirsiniz.")
+		return nil, errs.Forbidden("Üye ekleme yetkin yok. Davet gönderebilirsin.")
 	}
 	seats := make([]models.ChatMember, 0, len(userIDs))
 	for _, id := range userIDs {
@@ -856,7 +856,7 @@ func (s *Service) Invite(ctx context.Context, actorID, groupID uint, userIDs []u
 		return nil, errs.Invalid("Özel mesaja davet gönderilemez.", nil)
 	}
 	if !(isAdmin(m) || actor.Can(enums.TeamsAdmin) || actor.Can(enums.TeamsMemberInvite)) {
-		return nil, errs.Forbidden("Davet gönderme yetkiniz yok.")
+		return nil, errs.Forbidden("Davet gönderme yetkin yok.")
 	}
 	if err := s.repo.CreateInvites(ctx, groupID, actorID, userIDs); err != nil {
 		return nil, errs.Internal(err)
@@ -910,13 +910,13 @@ func (s *Service) RemoveMember(ctx context.Context, actorID, groupID, userID uin
 	}
 	self := userID == actorID
 	if !self && !(isAdmin(m) || actor.Can(enums.TeamsAdmin)) {
-		return errs.Forbidden("Üye çıkarma yetkiniz yok.")
+		return errs.Forbidden("Üye çıkarma yetkin yok.")
 	}
 	if target.Role == roleOwner && !self {
 		return errs.Forbidden("Grup sahibi çıkarılamaz.")
 	}
 	if target.Role == roleOwner && self {
-		return errs.Invalid("Grup sahibi ayrılamaz, önce sahipliği devredin ya da grubu silin.", nil)
+		return errs.Invalid("Grup sahibi ayrılamaz, önce sahipliği devret ya da grubu sil.", nil)
 	}
 	if err := s.repo.RemoveMember(ctx, groupID, userID); err != nil {
 		return errs.Internal(err)
@@ -950,7 +950,7 @@ func (s *Service) UpdateMember(ctx context.Context, actorID, groupID, userID uin
 		return nil, err
 	}
 	if g.Kind == "dm" || !(isAdmin(m) || actor.Can(enums.TeamsAdmin)) {
-		return nil, errs.Forbidden("Üye düzenleme yetkiniz yok.")
+		return nil, errs.Forbidden("Üye düzenleme yetkin yok.")
 	}
 	target, err := s.repo.Member(ctx, groupID, userID)
 	if err != nil {
@@ -1064,7 +1064,7 @@ func (s *Service) MarkUnread(ctx context.Context, actorID, groupID uint) error {
 		return err
 	}
 	if m == nil {
-		return errs.Forbidden("Bu odada üye değilsiniz.")
+		return errs.Forbidden("Bu odada üye değilsin.")
 	}
 	if err := s.repo.MarkUnread(ctx, groupID, actorID); err != nil {
 		return errs.Internal(err)
@@ -1375,7 +1375,7 @@ func (s *Service) Send(ctx context.Context, actorID, groupID uint, body string, 
 		return nil, err
 	}
 	if !canPost(g, m) {
-		return nil, errs.Forbidden("Bu grupta yazma yetkiniz yok.")
+		return nil, errs.Forbidden("Bu grupta yazma yetkin yok.")
 	}
 	body = strings.TrimSpace(body)
 	if body == "" && len(attachmentIDs) == 0 {
@@ -1466,7 +1466,7 @@ func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID u
 		return nil, err
 	}
 	if !canPost(g, m) {
-		return nil, errs.Forbidden("Bu grupta yazma yetkiniz yok.")
+		return nil, errs.Forbidden("Bu grupta yazma yetkin yok.")
 	}
 	msg, err := s.repo.Message(ctx, messageID)
 	if err != nil {
@@ -1476,7 +1476,7 @@ func (s *Service) EditMessage(ctx context.Context, actorID, groupID, messageID u
 		return nil, errs.NotFound("Mesaj bulunamadı.")
 	}
 	if msg.Kind != "text" || msg.SenderID == nil || *msg.SenderID != actorID {
-		return nil, errs.Forbidden("Yalnızca kendi mesajınızı düzenleyebilirsiniz.")
+		return nil, errs.Forbidden("Yalnızca kendi mesajını düzenleyebilirsin.")
 	}
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -1740,7 +1740,7 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 	mine := msg.SenderID != nil && *msg.SenderID == actorID
 	// In a direct conversation each side deletes only their own lines.
 	if !(mine || (g.Kind != "dm" && (isAdmin(m) || actor.Can(enums.TeamsAdmin)))) {
-		return errs.Forbidden("Bu mesajı silme yetkiniz yok.")
+		return errs.Forbidden("Bu mesajı silme yetkin yok.")
 	}
 	if err := s.repo.SoftDeleteMessage(ctx, messageID, actorID); err != nil {
 		return errs.Internal(err)

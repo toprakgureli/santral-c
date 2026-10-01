@@ -170,7 +170,7 @@ export function StatusBar({ totals, showTotals, extension, hasExtension, stats }
             value={agentState}
             onChange={(e) => changeState(e.target.value as AgentPresenceState)}
             disabled={!shift.active}
-            data-tip={shift.active ? undefined : "Durum değiştirmek için mesai başlatın"}
+            data-tip={shift.active ? undefined : "Durum değiştirmek için mesaini başlat"}
             className="h-9 w-40 rounded-xl"
           >
             {Object.entries(agentStates)

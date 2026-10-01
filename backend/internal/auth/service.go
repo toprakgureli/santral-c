@@ -84,7 +84,7 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, userID uint, current, n
 		return nil, err
 	}
 	if !u.Active {
-		return nil, errs.Forbidden("Hesabınız pasif durumda.")
+		return nil, errs.Forbidden("Hesabın pasif durumda.")
 	}
 	if err := s.security.Guard(ctx, attempt(u.Email, &u.ID, meta, "")); err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 
 	if !u.Active {
 		s.security.Failure(ctx, attempt(email, &u.ID, meta, security.ReasonInactive))
-		return nil, errs.Forbidden("Hesabınız pasif durumda. Yöneticinizle iletişime geçin.")
+		return nil, errs.Forbidden("Hesabın pasif durumda. Yöneticinle iletişime geç.")
 	}
 
 	// The policy decides whether this login is asked for a second factor at
@@ -203,7 +203,7 @@ func (s *Service) Me(ctx context.Context, userID uint) (*responses.User, error) 
 		return nil, err
 	}
 	if !u.Active {
-		return nil, errs.Forbidden("Hesabınız pasif durumda.")
+		return nil, errs.Forbidden("Hesabın pasif durumda.")
 	}
 	dto := responses.NewUser(u)
 	return &dto, nil
@@ -227,7 +227,7 @@ func (s *Service) mfaAsked(ctx context.Context, ip string) bool {
 // Refresh rotates a valid refresh session into a new access token.
 func (s *Service) Refresh(ctx context.Context, refreshToken string, meta RequestMeta) (*LoginResult, error) {
 	if refreshToken == "" {
-		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	tokenHash := hash.SHA256(refreshToken)
 	session, err := s.repo.SessionByHash(ctx, tokenHash)
@@ -247,14 +247,14 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 		}
 	}
 	if session == nil || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
-		return nil, errs.Unauthorized("Oturumunuz geçersiz veya süresi dolmuş.")
+		return nil, errs.Unauthorized("Oturumun geçersiz veya süresi dolmuş.")
 	}
 	u, err := s.user.GetByID(ctx, session.UserID)
 	if err != nil {
 		return nil, err
 	}
 	if !u.Active {
-		return nil, errs.Forbidden("Hesabınız pasif durumda.")
+		return nil, errs.Forbidden("Hesabın pasif durumda.")
 	}
 	if recent {
 		return s.accessOnly(u, session)
@@ -398,7 +398,7 @@ func (s *Service) MFAEnable(ctx context.Context, userID uint, code string) error
 		return err
 	}
 	if !totp.Validate(secret, code) {
-		return errs.Invalid("Kod doğrulanamadı. Uygulamadaki güncel kodu girin.", nil)
+		return errs.Invalid("Kod doğrulanamadı. Uygulamadaki güncel kodu gir.", nil)
 	}
 	if err := s.useCode(ctx, u.ID, code); err != nil {
 		return err
@@ -426,7 +426,7 @@ func (s *Service) MFAVerify(ctx context.Context, token, code string, meta Reques
 		return nil, err
 	}
 	if !u.Active || !u.MFAEnabled {
-		return nil, errs.Forbidden("Hesabınız bu işlem için uygun değil.")
+		return nil, errs.Forbidden("Hesabın bu işlem için uygun değil.")
 	}
 	secret, err := s.secret(u)
 	if err != nil {
@@ -445,7 +445,7 @@ func (s *Service) MFAVerify(ctx context.Context, token, code string, meta Reques
 
 func (s *Service) secret(u *models.User) (string, error) {
 	if u.MFASecret == nil || *u.MFASecret == "" {
-		return "", errs.Invalid("Önce iki adımlı doğrulama kurulumunu başlatın.", nil)
+		return "", errs.Invalid("Önce iki adımlı doğrulama kurulumunu başlat.", nil)
 	}
 	secret, err := crypt.Decrypt(s.sec.MFAKey, *u.MFASecret)
 	if err != nil {
@@ -506,7 +506,7 @@ func (s *Service) enrollUser(ctx context.Context, token string) (*models.User, *
 		return nil, nil, err
 	}
 	if !u.Active || u.MFAEnabled {
-		return nil, nil, errs.Forbidden("Hesabınız bu işlem için uygun değil.")
+		return nil, nil, errs.Forbidden("Hesabın bu işlem için uygun değil.")
 	}
 	return u, claims, nil
 }
@@ -531,7 +531,7 @@ func (s *Service) PasswordChange(ctx context.Context, req requests.PasswordChang
 		return nil, err
 	}
 	if !u.Active || !u.MustChangePassword {
-		return nil, errs.Forbidden("Hesabınız bu işlem için uygun değil.")
+		return nil, errs.Forbidden("Hesabın bu işlem için uygun değil.")
 	}
 	if hash.Compare(u.Password, req.Password) {
 		return nil, errs.Invalid("Yeni şifre eskisiyle aynı olamaz.", nil)
@@ -585,7 +585,7 @@ func (s *Service) checkCode(ctx context.Context, u *models.User, claims *jwt.Cla
 		}
 		if tries >= maxCodeTries {
 			s.revokeToken(ctx, claims)
-			return errs.Unauthorized("Çok fazla hatalı kod girildi. Lütfen yeniden giriş yapın.")
+			return errs.Unauthorized("Çok fazla hatalı kod girildi. Lütfen yeniden giriş yap.")
 		}
 		return errs.Unauthorized("Kod doğrulanamadı.")
 	}
@@ -599,7 +599,7 @@ func (s *Service) useCode(ctx context.Context, userID uint, code string) error {
 		return errs.Internal(err)
 	}
 	if !fresh {
-		return errs.Unauthorized("Bu kod az önce kullanıldı. Uygulamada yeni kodun çıkmasını bekleyin.")
+		return errs.Unauthorized("Bu kod az önce kullanıldı. Uygulamada yeni kodun çıkmasını bekle.")
 	}
 	return nil
 }

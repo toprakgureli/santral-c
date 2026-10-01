@@ -70,7 +70,7 @@ func Check(c Config) []Problem {
 		case strings.TrimSpace(v) == "":
 			add(key, "boş bırakılmış", true)
 		case example(v):
-			add(key, "hâlâ örnek değer; openssl rand -hex 32 ile üretin", true)
+			add(key, "hâlâ örnek değer; openssl rand -hex 32 ile üret", true)
 		case len(v) < min:
 			add(key, fmt.Sprintf("en az %d karakter olmalı", min), true)
 		}

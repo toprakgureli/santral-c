@@ -83,7 +83,7 @@ export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
     return items.filter((x) => (!status || x.status === status) && (!t || x.name.includes(t) || bodyOf(x).toLocaleLowerCase("tr").includes(t)));
   }, [items, search, status]);
 
-  if (channels.length === 0) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce bir numara ekleyin.</p>;
+  if (channels.length === 0) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce bir numara ekle.</p>;
 
   return (
     <Card title="Şablon mesajlar" icon={FileText} actions={
@@ -92,7 +92,7 @@ export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
         {manage && <Button onClick={() => setCreating(true)}><Plus /> Yeni şablon</Button>}
       </span>
     }>
-      <p className="mb-4 text-sm text-muted-foreground">Müşteri son 24 saatte yazmadıysa ona sadece Meta'nın onayladığı şablonlarla yazabilirsiniz. Şablonlar işletme hesabına bağlıdır; aynı hesaptaki numaralar aynı şablonları kullanır.</p>
+      <p className="mb-4 text-sm text-muted-foreground">Müşteri son 24 saatte yazmadıysa ona sadece Meta'nın onayladığı şablonlarla yazabilirsin. Şablonlar işletme hesabına bağlıdır; aynı hesaptaki numaralar aynı şablonları kullanır.</p>
       <Toolbar className="mb-3">
         {channels.length > 1 && (
           <select value={channelId} onChange={(e) => setChannelId(Number(e.target.value))} className="h-9 rounded-xl border border-border/60 bg-card px-3 text-sm">
@@ -112,7 +112,7 @@ export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
       {loading ? (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-32 animate-pulse rounded-2xl bg-muted/50" />)}</div>
       ) : shown.length === 0 ? (
-        <EmptyState icon={<FileText />} title={items.length ? "Aramaya uyan şablon yok" : "Henüz şablon yok"} description={items.length ? undefined : "Meta'da zaten şablonunuz varsa \"Meta'dan yenile\"ye basın."} />
+        <EmptyState icon={<FileText />} title={items.length ? "Aramaya uyan şablon yok" : "Henüz şablon yok"} description={items.length ? undefined : "Meta'da zaten şablonun varsa \"Meta'dan yenile\"ye bas."} />
       ) : (
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((t) => {
@@ -181,7 +181,7 @@ function FillEditor({ t, manage, onSaved }: { t: WATemplate; manage: boolean; on
   return (
     <div className="mt-4 space-y-2 rounded-2xl bg-muted/30 p-3">
       <p className="text-xs font-semibold">Boşluklar gönderirken nasıl dolsun?</p>
-      <p className="text-[0.72rem] text-muted-foreground">Seçtiğiniz boşluk, şablonu kim gönderiyorsa onun bilgisiyle kendiliğinden dolar. Gönderen isterse yine değiştirebilir. Bu ayar sadece bu panelde geçerli; Meta'ya gitmez, yeniden onay gerekmez.</p>
+      <p className="text-[0.72rem] text-muted-foreground">Seçtiğin boşluk, şablonu kim gönderiyorsa onun bilgisiyle kendiliğinden dolar. Gönderen isterse yine değiştirebilir. Bu ayar sadece bu panelde geçerli; Meta'ya gitmez, yeniden onay gerekmez.</p>
       <div className="grid gap-2 sm:grid-cols-2">
         {fill.map((f, i) => (
           <label key={i} className="flex items-center gap-2">
@@ -387,11 +387,11 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
               <div className="flex items-center gap-2">
                 <input ref={fileRef} type="file" hidden accept={d.headerFormat === "IMAGE" ? "image/jpeg,image/png" : d.headerFormat === "VIDEO" ? "video/mp4" : "application/pdf"} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
                 <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={uploading}><Upload /> {uploading ? "Yükleniyor..." : handle ? "Başka dosya seç" : "Örnek dosya yükle"}</Button>
-                <span className="text-xs text-muted-foreground">{handle ? `${d.mediaName} yüklendi` : "Meta onay için bir örnek ister. Gönderirken asıl dosyayı seçersiniz."}</span>
+                <span className="text-xs text-muted-foreground">{handle ? `${d.mediaName} yüklendi` : "Meta onay için bir örnek ister. Gönderirken asıl dosyayı seçersin."}</span>
               </div>
             )}
           </div>
-          <FormField label="Mesaj metni" hint={<>Müşteriye göre değişecek yerler için değişken ekleyin. *kalın*, _eğik_, ~üstü çizili~ yazabilirsiniz.</>}>
+          <FormField label="Mesaj metni" hint={<>Müşteriye göre değişecek yerler için değişken ekle. *kalın*, _eğik_, ~üstü çizili~ yazabilirsin.</>}>
             <textarea ref={bodyRef} className={areaCls} rows={5} maxLength={1024} value={d.body} onChange={(e) => setD((c) => ({ ...c, body: e.target.value }))} placeholder="Merhaba {{1}}, {{2}} numaralı siparişiniz hazır." />
           </FormField>
           <div className="flex flex-wrap items-center gap-2">
@@ -410,7 +410,7 @@ function TemplateForm({ channelId, onClose, onSaved }: { channelId: number; onCl
                   </div>
                 ))}
               </div>
-              <p className="text-[0.7rem] text-muted-foreground">"Gönderenin adı" seçilirse şablonu Ahmet gönderince Ahmet, Toprak gönderince Toprak yazar. Örneği boş bırakırsanız Meta'ya soluk yazılan değer gider.</p>
+              <p className="text-[0.7rem] text-muted-foreground">"Gönderenin adı" seçilirse şablonu Ahmet gönderince Ahmet, Toprak gönderince Toprak yazar. Örneği boş bırakırsan Meta'ya soluk yazılan değer gider.</p>
             </div>
           )}
           <FormField label="Alt yazı (isteğe bağlı)">

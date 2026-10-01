@@ -24,7 +24,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
         <span className="flex size-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive"><TriangleAlert className="size-6" /></span>
         <div className="space-y-1">
           <p className="text-base font-semibold">Bu sayfa açılırken bir sorun oldu</p>
-          <p className="mx-auto max-w-md text-sm text-muted-foreground">Sayfayı yenilemeyi deneyin. Düzelmezse aşağıdaki hata yazısını yöneticinize iletin.</p>
+          <p className="mx-auto max-w-md text-sm text-muted-foreground">Sayfayı yenilemeyi dene. Düzelmezse aşağıdaki hata yazısını yöneticine ilet.</p>
         </div>
         <button type="button" onClick={() => window.location.reload()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm">
           <RotateCcw className="size-4" /> Sayfayı yenile

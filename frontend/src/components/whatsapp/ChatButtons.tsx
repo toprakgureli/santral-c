@@ -14,7 +14,7 @@ export function IconBtn({ tip, on, onClick, children }: { tip: string; on?: bool
 
 export function TextBtn({ icon: Icon, label, tip, onClick, busy, tone }: { icon: typeof Hand; label: string; tip: string; onClick: () => void; busy?: boolean; tone?: "success" }) {
   return (
-    <button type="button" onClick={onClick} disabled={busy} data-tip={tip} className={cn("mr-1 flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors disabled:opacity-60", tone === "success" ? "bg-wa-accent/15 text-wa-accent hover:bg-wa-accent/25" : "bg-muted/70 text-foreground/80 hover:bg-accent")}>
+    <button type="button" onClick={onClick} disabled={busy} data-tip={tip} aria-label={label} className={cn("mr-1 flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors disabled:opacity-60", tone === "success" ? "bg-wa-accent/15 text-wa-accent hover:bg-wa-accent/25" : "bg-muted/70 text-foreground/80 hover:bg-accent")}>
       <Icon className="size-4" /> <span className="max-lg:hidden">{label}</span>
     </button>
   );

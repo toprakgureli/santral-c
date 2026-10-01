@@ -122,7 +122,7 @@ export default function StartGameDialog({ groupId, config, open, onClose, onCrea
               <span className="block text-[0.65rem] text-muted-foreground/70">İçeriğin kendi süresi varsa o geçerli olur.</span>
             </label>
           )}
-          {lacking(kind) && <p className="text-sm text-destructive">Bu oyun için yeterli içerik yok. Yönetim &gt; Mini oyunlar ekranından ekleyin.</p>}
+          {lacking(kind) && <p className="text-sm text-destructive">Bu oyun için yeterli içerik yok. Yönetim &gt; Mini oyunlar ekranından ekle.</p>}
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       )}

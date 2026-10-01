@@ -134,7 +134,7 @@ func cleanID(s string) string {
 // CreateChannel adds a device. It starts from the default settings and no
 // chatbot, quick reply or rule of any other device.
 func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInput) (*ChannelView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz ekleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz ekleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	in.PhoneNumberID, in.WABAID = cleanID(in.PhoneNumberID), cleanID(in.WABAID)
@@ -149,7 +149,7 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 		return nil, err
 	}
 	if in.AppSecret == "" && !(hookPath != "" && in.AcceptUnsigned) {
-		return nil, errs.Invalid("Uygulama gizli anahtarı (App secret) zorunlu. Meta'da kayıtlı bir webhook kullanıyorsanız ve anahtar elinizde değilse imzasız bildirimleri kabul etmeyi seçebilirsiniz.", nil)
+		return nil, errs.Invalid("Uygulama gizli anahtarı (App secret) zorunlu. Meta'da kayıtlı bir webhook kullanıyorsan ve anahtar elinde değilse imzasız bildirimleri kabul etmeyi seçebilirsin.", nil)
 	}
 	tok, err := s.seal(strings.TrimSpace(in.AccessToken))
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 
 // UpdateChannel changes a device's identity or credentials.
 func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in ChannelInput) (*ChannelView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	ch, err := s.repo.Channel(ctx, id)
@@ -269,7 +269,7 @@ type ChannelCheck struct {
 // TestChannel checks the credentials against Meta and reports what it
 // found, in words.
 func (s *Service) TestChannel(ctx context.Context, actorID, id uint) (*ChannelCheck, error) {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkin yok."); err != nil {
 		return nil, err
 	}
 	ch, err := s.repo.Channel(ctx, id)
@@ -293,7 +293,7 @@ func (s *Service) TestChannel(ctx context.Context, actorID, id uint) (*ChannelCh
 	out.OK = true
 	switch {
 	case !out.Subscribed:
-		out.Message = "Bilgiler doğru, ama Meta bu hesabın mesajlarını henüz bize göndermiyor. \"Mesajları almaya başla\" düğmesine basın."
+		out.Message = "Bilgiler doğru, ama Meta bu hesabın mesajlarını henüz bize göndermiyor. \"Mesajları almaya başla\" düğmesine bas."
 	case !out.WebhookSeen:
 		out.Message = "Bilgiler doğru. Meta'da webhook adresi ve doğrulama anahtarı girildikten sonra ilk mesaj burada görünür."
 	default:
@@ -304,7 +304,7 @@ func (s *Service) TestChannel(ctx context.Context, actorID, id uint) (*ChannelCh
 
 // SubscribeChannel asks Meta to send this account's messages to us.
 func (s *Service) SubscribeChannel(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAChannelManage, "Cihaz yönetme yetkin yok."); err != nil {
 		return err
 	}
 	ch, err := s.repo.Channel(ctx, id)
@@ -373,7 +373,7 @@ func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in Setti
 	next.Survey.SecretEnc = cur.Survey.SecretEnc
 	need := func(changed bool, p enums.Permission, what string) error {
 		if changed && !u.Can(p) {
-			return errs.Forbidden(what + " değiştirme yetkiniz yok.")
+			return errs.Forbidden(what + " değiştirme yetkin yok.")
 		}
 		return nil
 	}
@@ -466,14 +466,14 @@ func (s *Service) settingsEditor(ctx context.Context, actorID uint) (*models.Use
 		return nil, err
 	}
 	if !u.Can(enums.WAView) {
-		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkiniz yok.")
+		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkin yok.")
 	}
 	for _, p := range []enums.Permission{enums.WASetReadReceipts, enums.WASetGreeting, enums.WASetDistribution, enums.WASetGeneral} {
 		if u.Can(p) {
 			return u, nil
 		}
 	}
-	return nil, errs.Forbidden("Cihaz ayarlarını değiştirme yetkiniz yok.")
+	return nil, errs.Forbidden("Cihaz ayarlarını değiştirme yetkin yok.")
 }
 
 // CopySettings copies chosen sections of another device's settings onto
@@ -483,7 +483,7 @@ func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sect
 		return nil, err
 	}
 	if len(sections) == 0 {
-		return nil, errs.Invalid("Kopyalanacak en az bir bölüm seçin.", nil)
+		return nil, errs.Invalid("Kopyalanacak en az bir bölüm seç.", nil)
 	}
 	for _, sec := range sections {
 		if !settingsSections[sec] {
@@ -530,7 +530,7 @@ func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sect
 
 // SetMembers replaces who works on a device.
 func (s *Service) SetMembers(ctx context.Context, actorID, id uint, userIDs []uint) error {
-	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Cihaz üyelerini düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Cihaz üyelerini düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	if _, err := s.repo.Channel(ctx, id); err != nil {

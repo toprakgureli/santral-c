@@ -80,7 +80,7 @@ export function Login() {
       return;
     }
     if (!EMAIL_PATTERN.test(value)) {
-      setEmailError("Geçerli bir e-posta girin.");
+      setEmailError("Geçerli bir e-posta gir.");
       return;
     }
     setEmailError(null);

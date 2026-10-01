@@ -73,7 +73,7 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 		return err
 	}
 	if !actor.Can(enums.CallOriginate) && !canViewOwn(actor) {
-		return errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 
 	existing, err := s.repo.Get(ctx, req.CallID)
@@ -328,11 +328,11 @@ func (s *Service) Lookup(ctx context.Context, actorID uint, number string) (*Loo
 	case canViewOwn(actor):
 		only, scope = &actorID, "own"
 	default:
-		return nil, errs.Forbidden("Çağrı geçmişini görme yetkiniz yok.")
+		return nil, errs.Forbidden("Çağrı geçmişini görme yetkin yok.")
 	}
 	key := phone.Key(number)
 	if len(key) < 3 {
-		return nil, errs.Invalid("Aramak için en az üç rakam girin.", nil)
+		return nil, errs.Invalid("Aramak için en az üç rakam gir.", nil)
 	}
 	logs, err := s.repo.ByPeer(ctx, key, only, time.Now().AddDate(0, 0, -lookupDays), 60)
 	if err != nil {
@@ -390,7 +390,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 		return nil, err
 	}
 	if !canViewAll(actor) && !canViewOwn(actor) {
-		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
+		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkin yok.")
 	}
 	now := time.Now().In(tz.Istanbul)
 	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz.Istanbul)

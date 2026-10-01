@@ -31,7 +31,7 @@ export default function TeamsTab() {
       <p className="mb-4 text-sm text-muted-foreground">Sohbet bir ekibe aktarılınca o ekipteki müsait kişiye düşer. Bir kişi birden fazla ekipte olabilir. Ekibi görme yetkisi olanlar kendi ekiplerinin bütün sohbetlerini görür.</p>
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       {teams.length === 0 ? (
-        <EmptyState icon={<UsersRound />} title="Henüz ekip yok" description="Ekip kurmak zorunlu değil. Kurmazsanız sohbetler numarada çalışan herkese dağıtılır." />
+        <EmptyState icon={<UsersRound />} title="Henüz ekip yok" description="Ekip kurmak zorunlu değil. Kurmazsan sohbetler numarada çalışan herkese dağıtılır." />
       ) : (
         <div className="grid gap-2 md:grid-cols-2">
           {teams.map((t) => {
@@ -48,8 +48,8 @@ export default function TeamsTab() {
                     <span className="hidden -space-x-1.5 sm:flex">
                       {members.slice(0, 5).map((m) => <UserAvatar key={m.id} userId={m.id} name={m.name} hasAvatar={m.hasAvatar} version={m.avatarVersion} className="size-7 ring-2 ring-card" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />)}
                     </span>
-                    <button type="button" data-tip="Düzenle" onClick={() => setEdit(t)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
-                    <button type="button" data-tip="Sil" onClick={() => setDel(t)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
+                    <button type="button" aria-label="Düzenle" data-tip="Düzenle" onClick={() => setEdit(t)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-3.5" /></button>
+                    <button type="button" aria-label="Sil" data-tip="Sil" onClick={() => setDel(t)} className="flex size-8 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>
                   </>
                 }
               />

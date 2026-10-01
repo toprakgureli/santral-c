@@ -463,7 +463,7 @@ export function ConfirmDialog({
         </div>
         {confirmText && (
           <label className="mt-4 block space-y-1.5 text-xs text-muted-foreground">
-            <span>Onaylamak için <b className="font-semibold text-foreground">{confirmText}</b> yazın</span>
+            <span>Onaylamak için <b className="font-semibold text-foreground">{confirmText}</b> yaz</span>
             <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" onKeyDown={(e) => { if (e.key === "Enter" && !locked && !busy) onConfirm(); }} />
           </label>
         )}
@@ -471,7 +471,7 @@ export function ConfirmDialog({
         <div className="mt-5 flex justify-end gap-2">
           <Button ref={cancelRef} variant="secondary" onClick={onCancel} disabled={busy}>{cancelLabel}</Button>
           <Button variant={tone === "danger" ? "danger" : "primary"} onClick={onConfirm} disabled={busy || locked} className={tone === "warning" ? "bg-warning text-black hover:bg-warning/90" : undefined}>
-            {busy ? "Bekleyin..." : confirmLabel}
+            {busy ? "Bekle..." : confirmLabel}
           </Button>
         </div>
       </div>

@@ -32,7 +32,7 @@ const (
 	SessionKey string = "session"
 )
 
-var errSessionEnded = errs.Unauthorized("Oturumunuz sonlandırılmış. Lütfen tekrar giriş yapın.")
+var errSessionEnded = errs.Unauthorized("Oturumun sonlandırılmış. Lütfen tekrar giriş yap.")
 
 // Session is the signed-in caller of a request. Responses that stay open
 // (event streams) keep checking it, because the session can be revoked
@@ -103,12 +103,12 @@ func Auth(cfg configs.Auth, list IDenylist, accounts IAccounts) fiber.Handler {
 			}
 		}
 		if token == "" {
-			return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+			return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 		}
 
 		claims, err := jwt.Parse(cfg, token)
 		if err != nil {
-			return errs.Unauthorized("Oturumunuz geçersiz veya süresi dolmuş.")
+			return errs.Unauthorized("Oturumun geçersiz veya süresi dolmuş.")
 		}
 		if claims.Purpose != jwt.PurposeAccess {
 			return errs.Unauthorized("Bu token API erişimi için geçerli değil.")

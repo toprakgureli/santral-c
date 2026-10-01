@@ -85,7 +85,7 @@ func (s *Service) AIStatus(ctx context.Context, actorID uint) (map[string]bool, 
 
 // AI returns the assistant's settings.
 func (s *Service) AI(ctx context.Context, actorID uint) (*AIView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	set := s.aiSettings(ctx)
@@ -94,7 +94,7 @@ func (s *Service) AI(ctx context.Context, actorID uint) (*AIView, error) {
 
 // SaveAI stores the assistant's settings.
 func (s *Service) SaveAI(ctx context.Context, actorID uint, in AIInput) (*AIView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını değiştirme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını değiştirme yetkin yok."); err != nil {
 		return nil, err
 	}
 	set := s.aiSettings(ctx)
@@ -120,7 +120,7 @@ func (s *Service) SaveAI(ctx context.Context, actorID uint, in AIInput) (*AIView
 		set.KeyEnc = enc
 	}
 	if set.Enabled && set.KeyEnc == "" {
-		return nil, errs.Invalid("Açmak için önce anahtarı girin.", nil)
+		return nil, errs.Invalid("Açmak için önce anahtarı gir.", nil)
 	}
 	if len([]rune(set.Instructions)) > 8000 {
 		return nil, errs.Invalid("Şirket bilgisi en fazla 8000 karakter olabilir.", nil)
@@ -133,13 +133,13 @@ func (s *Service) SaveAI(ctx context.Context, actorID uint, in AIInput) (*AIView
 
 // TestAI asks the model a one-line question to prove the key works.
 func (s *Service) TestAI(ctx context.Context, actorID uint) (map[string]string, error) {
-	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını değiştirme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAIManage, "Yapay zekâ ayarlarını değiştirme yetkin yok."); err != nil {
 		return nil, err
 	}
 	set := s.aiSettings(ctx)
 	key := s.open(set.KeyEnc)
 	if key == "" {
-		return nil, errs.Invalid("Önce anahtarı girip kaydedin.", nil)
+		return nil, errs.Invalid("Önce anahtarı girip kaydet.", nil)
 	}
 	out, err := askModel(ctx, key, set.Model, "Kısa cevap ver.", "Merhaba de, tek kelime.", 20)
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 		return nil, err
 	}
 	if !v.can(enums.WAAISuggest) {
-		return nil, errs.Forbidden("Yapay zekâ önerisi alma yetkiniz yok.")
+		return nil, errs.Forbidden("Yapay zekâ önerisi alma yetkin yok.")
 	}
 	set := s.aiSettings(ctx)
 	key := s.open(set.KeyEnc)
@@ -165,7 +165,7 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 		return nil, errs.Invalid("Yapay zekâ önerisi kapalı.", nil)
 	}
 	if last, ok := aiLast.Load(actorID); ok && time.Since(last.(time.Time)) < 3*time.Second {
-		return nil, errs.Invalid("Biraz bekleyip yeniden deneyin.", nil)
+		return nil, errs.Invalid("Biraz bekleyip yeniden dene.", nil)
 	}
 	aiLast.Store(actorID, time.Now())
 
@@ -265,7 +265,7 @@ func (s *Service) Suggest(ctx context.Context, actorID, conversationID uint, dra
 	}
 	out = strings.Trim(strings.TrimSpace(out), "\"")
 	if out == "" {
-		return nil, errs.Invalid("Öneri boş geldi, yeniden deneyin.", nil)
+		return nil, errs.Invalid("Öneri boş geldi, yeniden dene.", nil)
 	}
 	return map[string]string{"text": out}, nil
 }
@@ -329,7 +329,7 @@ func askModel(ctx context.Context, key, model, system, prompt string, maxTokens 
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return "", fmt.Errorf("anahtar geçersiz")
 		case http.StatusTooManyRequests:
-			return "", fmt.Errorf("çok fazla istek, biraz sonra deneyin")
+			return "", fmt.Errorf("çok fazla istek, biraz sonra dene")
 		case http.StatusNotFound:
 			return "", fmt.Errorf("model bulunamadı")
 		}

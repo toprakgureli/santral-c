@@ -132,7 +132,7 @@ export function Audit() {
           ))}
         </div>
       ) : !items.length ? (
-        <EmptyState icon={<ScrollText />} title="Kayıt bulunamadı" description="Filtreleri değiştirip tekrar deneyin." />
+        <EmptyState icon={<ScrollText />} title="Kayıt bulunamadı" description="Filtreleri değiştirip tekrar dene." />
       ) : (
         <div className={cn("space-y-1 transition-opacity", loading && "opacity-60")}>
           {items.map((e) => {

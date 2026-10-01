@@ -231,7 +231,7 @@ export function WhatsAppBot() {
         setProblems(r.problems);
       } else if (r.bot) {
         setBot(r.bot);
-        setNotice(r.bot.active ? `Sürüm ${r.bot.publishedVersion} yayında. Yeni gelen müşteriler bu akışı görür.` : `Sürüm ${r.bot.publishedVersion} hazır. Müşterilere açmak için Ayarlar'dan cihaz seçip açın.`);
+        setNotice(r.bot.active ? `Sürüm ${r.bot.publishedVersion} yayında. Yeni gelen müşteriler bu akışı görür.` : `Sürüm ${r.bot.publishedVersion} hazır. Müşterilere açmak için Ayarlar'dan cihaz seçip aç.`);
       }
     } catch (e) {
       setNotice(e instanceof ApiError ? e.message : "Yayınlanamadı.");
@@ -254,7 +254,7 @@ export function WhatsAppBot() {
   }), [integrations, teams]);
 
   if (missing) {
-    return <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center"><p className="text-sm font-medium">Bu chatbot bulunamadı ya da görme yetkiniz yok.</p><Link to="/whatsapp/settings?tab=bots" className="text-sm font-medium text-primary">Chatbot'lara dön</Link></div>;
+    return <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center"><p className="text-sm font-medium">Bu chatbot bulunamadı ya da görme yetkin yok.</p><Link to="/whatsapp/settings?tab=bots" className="text-sm font-medium text-primary">Chatbot'lara dön</Link></div>;
   }
 
   const selNode = selection?.kind === "node" ? graph.nodes.find((n) => n.id === selection.id) : undefined;
@@ -264,7 +264,7 @@ export function WhatsAppBot() {
   return (
     <div className="-mx-4 -my-6 flex h-[calc(100svh-4rem)] flex-col overflow-hidden md:-mx-6 lg:-mx-8">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/50 bg-card/70 px-4 py-2.5">
-        <Link to="/whatsapp/settings?tab=bots" data-tip="Chatbot'lara dön" className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><ArrowLeft className="size-4" /></Link>
+        <Link to="/whatsapp/settings?tab=bots" aria-label="Chatbot'lara dön" data-tip="Chatbot'lara dön" className="flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground"><ArrowLeft className="size-4" /></Link>
         <div className="min-w-0">
           <p className="flex items-center gap-2 truncate text-sm font-semibold">
             {bot?.name ?? "…"}
@@ -287,7 +287,7 @@ export function WhatsAppBot() {
           <ToggleBtn on={showStats} onClick={() => setShowStats((v) => !v)} tip="Kaç müşteri hangi kutudan geçti"><BarChart3 className="size-4" /> Rapor</ToggleBtn>
           <ToggleBtn on={side === "versions"} onClick={() => setPanel(side === "versions" ? null : "versions")} tip="Yayınlanmış sürümler"><History className="size-4" /> Sürümler</ToggleBtn>
           {canEdit && <ToggleBtn on={false} onClick={() => setSettings(true)} tip="Ad, açılış ve cihazlar"><Settings2 className="size-4" /> Ayarlar</ToggleBtn>}
-          <ToggleBtn on={side === "test"} onClick={() => setPanel(side === "test" ? null : "test")} tip="Akışı müşteri gibi deneyin"><MessageCircleQuestion className="size-4" /> Dene</ToggleBtn>
+          <ToggleBtn on={side === "test"} onClick={() => setPanel(side === "test" ? null : "test")} tip="Akışı müşteri gibi dene"><MessageCircleQuestion className="size-4" /> Dene</ToggleBtn>
         </span>
         {canPublish && <Button className="h-9" onClick={() => void publish()} disabled={publishing || !bot}><Rocket /> {publishing ? "Yayınlanıyor..." : "Yayınla"}</Button>}
       </header>
@@ -356,7 +356,7 @@ export function WhatsAppBot() {
                   <button type="button" onClick={() => setPanel(null)} aria-label="Kapat" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent"><X className="size-4" /></button>
                 </header>
                 <div className="flex-1 space-y-1.5 overflow-y-auto p-3">
-                  <p className="px-1 pb-2 text-xs text-muted-foreground">Her yayın bir sürüm olarak saklanır. Eski bir sürümü geri yüklerseniz taslağa gelir; müşteriler yeniden yayınlayana kadar mevcut sürümü görmeye devam eder.</p>
+                  <p className="px-1 pb-2 text-xs text-muted-foreground">Her yayın bir sürüm olarak saklanır. Eski bir sürümü geri yüklersen taslağa gelir; müşteriler yeniden yayınlayana kadar mevcut sürümü görmeye devam eder.</p>
                   {versions.length === 0 && <p className="px-1 text-sm text-muted-foreground">Henüz yayınlanmadı.</p>}
                   {versions.map((v) => (
                     <div key={v.version} className="flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-border/60">
@@ -376,7 +376,7 @@ export function WhatsAppBot() {
       </div>
 
       {problems && (
-        <Modal open onClose={() => setProblems(null)} title="Yayınlamadan önce düzeltilecekler" description="Akış bu haliyle müşteriye gitmez. Aşağıdakileri düzeltip yeniden deneyin." footer={<Button onClick={() => setProblems(null)}>Tamam</Button>}>
+        <Modal open onClose={() => setProblems(null)} title="Yayınlamadan önce düzeltilecekler" description="Akış bu haliyle müşteriye gitmez. Aşağıdakileri düzeltip yeniden dene." footer={<Button onClick={() => setProblems(null)}>Tamam</Button>}>
           <ul className="space-y-1.5">
             {problems.map((p, i) => <li key={i} className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" /> {p}</li>)}
           </ul>

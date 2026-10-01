@@ -179,7 +179,7 @@ func (g *Graph) Validate() []string {
 				max = 3
 			}
 			if len(n.Data.Options) > max {
-				problems = append(problems, fmt.Sprintf("Menü düğmeli olduğunda en fazla %d seçenek alır; daha fazlası için liste türünü seçin.", max))
+				problems = append(problems, fmt.Sprintf("Menü düğmeli olduğunda en fazla %d seçenek alır; daha fazlası için liste türünü seç.", max))
 			}
 			for _, o := range n.Data.Options {
 				limit := 20
@@ -200,7 +200,7 @@ func (g *Graph) Validate() []string {
 		case "condition":
 			for _, r := range n.Data.Rules {
 				if r.Op == "time_between" && (hours.Span{Days: r.Days, From: r.From, To: r.To}).Check() != nil {
-					problems = append(problems, "Koşul kutusundaki saat aralığı eksik ya da hatalı; saatleri 09:00 gibi yazın.")
+					problems = append(problems, "Koşul kutusundaki saat aralığı eksik ya da hatalı; saatleri 09:00 gibi yaz.")
 				}
 			}
 		case "api":

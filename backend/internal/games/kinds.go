@@ -270,13 +270,13 @@ func (k *drawKind) Act(ctx context.Context, m *Match, s *Service, uid uint, acti
 			return false, err
 		}
 		if uid != drawer || st.Phase != "choose" || in.Index < 0 || in.Index >= len(st.Choices) {
-			return false, errs.Invalid("Şu an kelime seçemezsiniz.", nil)
+			return false, errs.Invalid("Şu an kelime seçemezsin.", nil)
 		}
 		k.begin(ctx, m, s, st.Choices[in.Index])
 		return true, nil
 	case "stroke":
 		if uid != drawer || st.Phase != "draw" {
-			return false, errs.Forbidden("Çizen siz değilsiniz.")
+			return false, errs.Forbidden("Çizen sen değilsin.")
 		}
 		if len(payload) > 20000 {
 			return false, errs.Invalid("Çizgi çok büyük.", nil)
@@ -288,7 +288,7 @@ func (k *drawKind) Act(ctx context.Context, m *Match, s *Service, uid uint, acti
 		return false, nil
 	case "clear":
 		if uid != drawer || st.Phase != "draw" {
-			return false, errs.Forbidden("Çizen siz değilsiniz.")
+			return false, errs.Forbidden("Çizen sen değilsin.")
 		}
 		m.Strokes = nil
 		s.push(ctx, m, "game.stroke", map[string]any{"clear": true})
@@ -299,10 +299,10 @@ func (k *drawKind) Act(ctx context.Context, m *Match, s *Service, uid uint, acti
 			return false, err
 		}
 		if uid == drawer || st.Phase != "draw" {
-			return false, errs.Invalid("Şu an tahmin edemezsiniz.", nil)
+			return false, errs.Invalid("Şu an tahmin edemezsin.", nil)
 		}
 		if _, done := st.Guessed[uid]; done {
-			return false, errs.Invalid("Zaten bildiniz.", nil)
+			return false, errs.Invalid("Zaten bildin.", nil)
 		}
 		text := strings.TrimSpace(in.Text)
 		if text == "" || len([]rune(text)) > 60 {
@@ -743,7 +743,7 @@ type solveKind struct{}
 
 func (solveKind) Meta() Meta {
 	return Meta{Key: "solve", Name: "60 Saniyede Çöz", Tagline: "Aynı senaryo, en iyi çözüm.", Icon: "timer",
-		How:        "Herkese aynı teknik senaryo gelir: 'Telefon çalıyor ama internet yok, kablo ışığı turuncu.' Süre içinde çözüm adımlarını yazarsınız. Sonra herkes başkasının çözümüne oy verir; oy başına 10 puan.",
+		How:        "Herkese aynı teknik senaryo gelir: 'Telefon çalıyor ama internet yok, kablo ışığı turuncu.' Süre içinde çözüm adımlarını yazarsın. Sonra herkes başkasının çözümüne oy verir; oy başına 10 puan.",
 		MinPlayers: 2, MaxPlayers: 0, ItemKind: "solve", ItemLabel: "Senaryo", ItemHint: "Metin: senaryo. Cevap: örnek çözüm (sonuçta gösterilir, isteğe bağlı). Süre: yazma saniyesi (boş: oyun ayarı).", MinItems: 3,
 		DefaultRounds: 3, RoundsLabel: "Senaryo sayısı", DefaultSeconds: 60, SecondsLabel: "Yazma süresi (sn)"}
 }
@@ -1074,7 +1074,7 @@ func (k *whosaidKind) Start(ctx context.Context, m *Match, s *Service) error {
 		}
 	}
 	if len(st.Lines) < 2 {
-		return errs.Invalid("Bu odada oyunculara ait yeterli mesaj yok (son 7 gün). Biraz yazışın, sonra deneyin.", nil)
+		return errs.Invalid("Bu odada oyunculara ait yeterli mesaj yok (son 7 gün). Biraz yazış, sonra dene.", nil)
 	}
 	st.Round = 0
 	st.Scores = nil
@@ -1358,7 +1358,7 @@ func (k *hockeyKind) Act(ctx context.Context, m *Match, s *Service, uid uint, ac
 	}
 	seat := k.seat(m, uid)
 	if seat < 0 {
-		return false, errs.Forbidden("Bu masada değilsiniz.")
+		return false, errs.Forbidden("Bu masada değilsin.")
 	}
 	var in struct{ X, Y float64 }
 	if err := decode(payload, &in); err != nil {
@@ -1919,7 +1919,7 @@ type voiceKind struct{}
 
 func (voiceKind) Meta() Meta {
 	return Meta{Key: "voice", Name: "Ses Tahmini", Tagline: "Alo, teknik destek... kim bu?", Icon: "mic",
-		How:        "Herkes aynı cümleyi üç saniyeliğine mikrofona söyler. Sonra kayıtlar biraz inceltilip kalınlaştırılarak sırayla çalınır; kimin sesi olduğunu tahmin edersiniz. Doğru tahmin 10 puan. Kaydı olmayan yalnızca tahmin eder.",
+		How:        "Herkes aynı cümleyi üç saniyeliğine mikrofona söyler. Sonra kayıtlar biraz inceltilip kalınlaştırılarak sırayla çalınır; kimin sesi olduğunu tahmin edersin. Doğru tahmin 10 puan. Kaydı olmayan yalnızca tahmin eder.",
 		MinPlayers: 3, MaxPlayers: 0, ItemKind: "voice", ItemLabel: "Söylenecek cümle", ItemHint: "Metin: herkesin okuyacağı kısa cümle. Boşsa 'Alo, teknik destek, nasıl yardımcı olabilirim?' kullanılır.", MinItems: 0,
 		DefaultRounds: 1, DefaultSeconds: 25, SecondsLabel: "Tahmin süresi (sn)"}
 }

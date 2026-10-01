@@ -409,7 +409,7 @@ func Describe(code int, fallback string) string {
 	case 130429:
 		return "Gönderim hızı sınırına takıldı. Biraz sonra tekrar denenecek."
 	case 131056:
-		return "Bu müşteriye çok kısa sürede çok fazla mesaj gönderildi. Biraz bekleyip tekrar deneyin."
+		return "Bu müşteriye çok kısa sürede çok fazla mesaj gönderildi. Biraz bekleyip tekrar dene."
 	case 131048:
 		return "Meta, numaranın gönderimlerini geçici olarak kısıtladı (spam şüphesi)."
 	case 131042:

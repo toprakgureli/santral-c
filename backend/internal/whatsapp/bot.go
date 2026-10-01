@@ -438,7 +438,7 @@ func (s *Service) botManager(ctx context.Context, actorID uint) (*models.User, e
 		return nil, err
 	}
 	if !u.Can(enums.WABotManage) && !u.Can(enums.WABotPublish) {
-		return nil, errs.Forbidden("Chatbot'ları görme yetkiniz yok.")
+		return nil, errs.Forbidden("Chatbot'ları görme yetkin yok.")
 	}
 	return u, nil
 }
@@ -545,7 +545,7 @@ func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string,
 					if err := s.db.WithContext(ctx).Raw("SELECT name FROM wa_channels WHERE id = ?", a).Scan(&name).Error; err != nil {
 						return errs.Internal(err)
 					}
-					return errs.Conflict(fmt.Sprintf("%s cihazında zaten açık bir %s var: %s. Önce onu kapatın ya da cihazdan çıkarın.", name, triggerWord(trigger), o.Name), nil)
+					return errs.Conflict(fmt.Sprintf("%s cihazında zaten açık bir %s var: %s. Önce onu kapat ya da cihazdan çıkar.", name, triggerWord(trigger), o.Name), nil)
 				}
 			}
 		}
@@ -563,12 +563,12 @@ func triggerWord(t string) string {
 // CreateBot makes a new chatbot with a small starter flow. It is off and
 // on no device until someone publishes it and picks devices.
 func (s *Service) CreateBot(ctx context.Context, actorID uint, in BotInput) (*BotView, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot oluşturma yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot oluşturma yetkin yok."); err != nil {
 		return nil, err
 	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return nil, errs.Invalid("Chatbot'a bir ad verin.", nil)
+		return nil, errs.Invalid("Chatbot'a bir ad ver.", nil)
 	}
 	trigger := normTrigger(in.Trigger)
 	sc, err := in.schedule(trigger)
@@ -620,10 +620,10 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	}
 	liveChange := active != b.Active || jsonString(channels) != jsonString(parseIDs(b.ChannelIDs)) || trigger != b.Trigger || jsonString(sc) != jsonString(hours.ParseSchedule(b.Schedule))
 	if liveChange && !u.Can(enums.WABotPublish) {
-		return nil, errs.Forbidden("Chatbot'u açıp kapatma ya da cihaz seçme yetkiniz yok.")
+		return nil, errs.Forbidden("Chatbot'u açıp kapatma ya da cihaz seçme yetkin yok.")
 	}
 	if active && b.PublishedVersion == 0 {
-		return nil, errs.Invalid("Chatbot'u açmadan önce yayına alın.", nil)
+		return nil, errs.Invalid("Chatbot'u açmadan önce yayına al.", nil)
 	}
 	if err := s.checkBotConflict(ctx, id, trigger, sc, channels, active); err != nil {
 		return nil, err
@@ -643,7 +643,7 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 
 // SaveDraft stores the drawing without touching what customers meet.
 func (s *Service) SaveDraft(ctx context.Context, actorID, id uint, g flow.Graph) (*BotView, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	if len(g.Nodes) > 300 {
@@ -663,7 +663,7 @@ type PublishResult struct {
 
 // PublishBot makes the draft what customers meet, after checking it.
 func (s *Service) PublishBot(ctx context.Context, actorID, id uint) (*PublishResult, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot yayınlama yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot yayınlama yetkin yok."); err != nil {
 		return nil, err
 	}
 	var b models.WABot
@@ -719,7 +719,7 @@ func (s *Service) BotVersions(ctx context.Context, actorID, id uint) ([]BotVersi
 
 // RestoreVersion puts an older version back into the draft.
 func (s *Service) RestoreVersion(ctx context.Context, actorID, id uint, version int) (*BotView, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	var raw string
@@ -734,7 +734,7 @@ func (s *Service) RestoreVersion(ctx context.Context, actorID, id uint, version 
 
 // CopyBot makes an independent copy, for another device or a variant.
 func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, channelIDs []uint) (*BotView, error) {
-	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot kopyalama yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot kopyalama yetkin yok."); err != nil {
 		return nil, err
 	}
 	var src models.WABot
@@ -870,7 +870,7 @@ func simGate(bot *models.WABot, h hours.Week, open bool, t time.Time, chName str
 	case bot.Trigger != "after_hours" && !sc.Fits(h, t):
 		return "Bu saatte bu chatbot çalışmaz (ayarlarındaki \"Hangi saatlerde çalışsın\" seçimine göre). Müşteri bu saatte yazarsa, o saatte çalışan başka bir chatbot varsa o karşılar; yoksa sohbet doğrudan temsilcilere düşer.", ""
 	case bot.Trigger != "after_hours" && sc.Mode == "always" && !open:
-		return "", "Bu saatte " + chName + " için mesai dışı. Bu chatbot \"Her zaman\" çalışacak şekilde ayarlı olduğu için yine karşılar. Mesai dışında karşılamasın istiyorsanız chatbot ayarlarından \"Mesai saatlerinde\" seçin ya da akışa Koşul > Mesai dışındaysa ekleyin."
+		return "", "Bu saatte " + chName + " için mesai dışı. Bu chatbot \"Her zaman\" çalışacak şekilde ayarlı olduğu için yine karşılar. Mesai dışında karşılamasın istiyorsan chatbot ayarlarından \"Mesai saatlerinde\" seç ya da akışa Koşul > Mesai dışındaysa ekle."
 	}
 	return "", ""
 }

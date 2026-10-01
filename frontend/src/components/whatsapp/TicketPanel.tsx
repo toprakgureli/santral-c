@@ -181,7 +181,7 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
         )}
 
         <Card title="Müşteri notu">
-          <textarea value={note} disabled={!canEditContact} onChange={(e) => setNote(e.target.value)} onBlur={() => note !== c.note && void saveContact({ note })} rows={3} placeholder={canEditContact ? "Bu müşteriyle ilgili kalıcı bir not yazın" : "Not yok"} className="w-full resize-none rounded-lg bg-muted/60 px-3 py-2 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30 disabled:opacity-70" />
+          <textarea value={note} disabled={!canEditContact} onChange={(e) => setNote(e.target.value)} onBlur={() => note !== c.note && void saveContact({ note })} rows={3} placeholder={canEditContact ? "Bu müşteriyle ilgili kalıcı bir not yaz" : "Not yok"} className="w-full resize-none rounded-lg bg-muted/60 px-3 py-2 text-sm outline-none focus:bg-card focus:ring-2 focus:ring-wa-accent/30 disabled:opacity-70" />
           <div className="mt-3"><Label hint="Müşteriye kalıcı olarak yapışır; bu kişinin bütün sohbetlerinde görünür. Örn. VIP, bayi, kurumsal.">Müşteri etiketleri</Label></div>
           <Tags values={c.tags} editable={canEditContact} onChange={(tags) => void saveContact({ tags })} />
         </Card>

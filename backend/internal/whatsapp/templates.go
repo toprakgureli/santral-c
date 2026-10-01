@@ -54,7 +54,7 @@ func templateView(t *models.WATemplate) TemplateView {
 
 // SetTemplateFill says what fills each blank of a template when it is sent.
 func (s *Service) SetTemplateFill(ctx context.Context, actorID, id uint, fill []string) (*TemplateView, error) {
-	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablonları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablonları düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	for _, f := range fill {
@@ -91,7 +91,7 @@ func (s *Service) Templates(ctx context.Context, actorID, channelID uint) ([]Tem
 	// needs the approved list too, not the right to send one.
 	pick := v.can(enums.WATemplateSend) || v.can(enums.WASetGreeting) || v.can(enums.WASetGeneral) || v.can(enums.WACallSurvey)
 	if !manage && !(pick && v.seesChannel(ch.ID)) {
-		return nil, errs.Forbidden("Şablonları görme yetkiniz yok.")
+		return nil, errs.Forbidden("Şablonları görme yetkin yok.")
 	}
 	q := s.db.WithContext(ctx).Where("waba_id = ?", ch.WABAID)
 	if !manage {
@@ -110,7 +110,7 @@ func (s *Service) Templates(ctx context.Context, actorID, channelID uint) ([]Tem
 
 // SyncTemplates reads every template of the device's account from Meta.
 func (s *Service) SyncTemplates(ctx context.Context, actorID, channelID uint) (int, error) {
-	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon yönetme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon yönetme yetkin yok."); err != nil {
 		return 0, err
 	}
 	ch, err := s.repo.Channel(ctx, channelID)
@@ -223,7 +223,7 @@ func countVars(text string) int {
 
 // CreateTemplate sends a template to Meta for approval.
 func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateInput) (*TemplateView, error) {
-	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkin yok."); err != nil {
 		return nil, err
 	}
 	ch, err := s.repo.Channel(ctx, in.ChannelID)
@@ -240,7 +240,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 	switch in.Category {
 	case "MARKETING", "UTILITY", "AUTHENTICATION":
 	default:
-		return nil, errs.Invalid("Kategori seçin: Pazarlama, Hizmet ya da Doğrulama.", nil)
+		return nil, errs.Invalid("Kategori seç: Pazarlama, Hizmet ya da Doğrulama.", nil)
 	}
 	body := strings.TrimSpace(in.Body)
 	if body == "" {
@@ -257,7 +257,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 		comps = append(comps, h)
 	case "IMAGE", "VIDEO", "DOCUMENT":
 		if in.HeaderHandle == "" {
-			return nil, errs.Invalid("Başlık için örnek dosya yükleyin.", nil)
+			return nil, errs.Invalid("Başlık için örnek dosya yükle.", nil)
 		}
 		comps = append(comps, map[string]any{"type": "HEADER", "format": in.HeaderFormat, "example": map[string]any{"header_handle": []string{in.HeaderHandle}}})
 	default:
@@ -266,7 +266,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 	b := map[string]any{"type": "BODY", "text": body}
 	if n := countVars(body); n > 0 {
 		if len(in.BodyExamples) < n {
-			return nil, errs.Invalid(fmt.Sprintf("Metinde %d değişken var. Her biri için örnek bir değer girin.", n), nil)
+			return nil, errs.Invalid(fmt.Sprintf("Metinde %d değişken var. Her biri için örnek bir değer gir.", n), nil)
 		}
 		b["example"] = map[string]any{"body_text": [][]string{in.BodyExamples[:n]}}
 	}
@@ -335,7 +335,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 
 // UploadTemplateMedia uploads an example file for a template header.
 func (s *Service) UploadTemplateMedia(ctx context.Context, actorID, channelID uint, mime string, data []byte) (string, error) {
-	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon oluşturma yetkin yok."); err != nil {
 		return "", err
 	}
 	ch, err := s.repo.Channel(ctx, channelID)
@@ -355,7 +355,7 @@ func (s *Service) UploadTemplateMedia(ctx context.Context, actorID, channelID ui
 
 // DeleteTemplate removes a template at Meta and here.
 func (s *Service) DeleteTemplate(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon silme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WATemplateManage, "Şablon silme yetkin yok."); err != nil {
 		return err
 	}
 	t, err := s.repo.Template(ctx, id)
@@ -501,7 +501,7 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 			case "TEXT":
 				if n := countVars(c.Text); n > 0 {
 					if len(p.Header) < n {
-						return nil, "", errs.Invalid("Şablon başlığındaki değişkenleri doldurun.", nil)
+						return nil, "", errs.Invalid("Şablon başlığındaki değişkenleri doldur.", nil)
 					}
 					out = append(out, map[string]any{"type": "header", "parameters": params(p.Header[:n])})
 				}
@@ -515,14 +515,14 @@ func buildTemplate(t *models.WATemplate, p TemplateParams) (map[string]any, stri
 				case strings.TrimSpace(p.HeaderMedia) != "":
 					media = map[string]any{"link": strings.TrimSpace(p.HeaderMedia)}
 				default:
-					return nil, "", errs.Invalid("Bu şablonun başlığı için bir dosya seçin.", nil)
+					return nil, "", errs.Invalid("Bu şablonun başlığı için bir dosya seç.", nil)
 				}
 				out = append(out, map[string]any{"type": "header", "parameters": []map[string]any{{"type": kind, kind: media}}})
 			}
 		case "BODY":
 			if n := countVars(c.Text); n > 0 {
 				if len(p.Body) < n {
-					return nil, "", errs.Invalid(fmt.Sprintf("Şablondaki %d değişkenin hepsini doldurun.", n), nil)
+					return nil, "", errs.Invalid(fmt.Sprintf("Şablondaki %d değişkenin hepsini doldur.", n), nil)
 				}
 				for i := 0; i < n; i++ {
 					if strings.TrimSpace(p.Body[i]) == "" {

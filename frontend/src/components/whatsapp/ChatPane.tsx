@@ -359,11 +359,11 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             <span className="flex size-16 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent"><Paperclip className="size-7" /></span>
             {canReply && open && !conv.contact.blocked ? (
               <>
-                <p className="text-lg font-semibold">Dosyaları buraya bırakın</p>
+                <p className="text-lg font-semibold">Dosyaları buraya bırak</p>
                 <p className="text-sm text-muted-foreground">Görsel, video, ses ya da belge. Tek seferde en fazla {MAX_FILES} dosya; her biri ayrı mesaj olarak gider.</p>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">{!open ? "Müşterinin son mesajının üzerinden 24 saat geçti; dosya gönderilemez, önce şablonla yazın." : "Bu sohbete dosya gönderemezsiniz."}</p>
+              <p className="text-sm text-muted-foreground">{!open ? "Müşterinin son mesajının üzerinden 24 saat geçti; dosya gönderilemez, önce şablonla yaz." : "Bu sohbete dosya gönderemezsin."}</p>
             )}
           </div>
         </div>
@@ -470,7 +470,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
         )}
       </div>
 
-      {exporting && <div className="flex items-center gap-2 border-t border-border/60 bg-muted/60 px-4 py-2 text-xs text-muted-foreground"><Download className="size-3.5 animate-pulse" /> Yazışma, görseller ve videolarla birlikte hazırlanıyor. Bitince zip olarak iner; açıp içindeki sohbet.html dosyasına çift tıklayın.</div>}
+      {exporting && <div className="flex items-center gap-2 border-t border-border/60 bg-muted/60 px-4 py-2 text-xs text-muted-foreground"><Download className="size-3.5 animate-pulse" /> Yazışma, görseller ve videolarla birlikte hazırlanıyor. Bitince zip olarak iner; açıp içindeki sohbet.html dosyasına çift tıkla.</div>}
       {error && <div className="flex items-center justify-between gap-2 border-t border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"><span>{error}</span><button type="button" onClick={() => setError(null)} aria-label="Kapat"><X className="size-3.5" /></button></div>}
 
       {canReply && t && !participant && !resolved && (
@@ -479,7 +479,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             {t.owner ? <UserAvatar userId={t.owner.id} name={t.owner.name} hasAvatar={t.owner.hasAvatar} version={t.owner.avatarVersion} className="size-8" fallbackClassName="bg-primary/10 text-xs text-primary" /> : <span className="flex size-8 items-center justify-center rounded-full bg-wa-accent/15 text-wa-accent">{t.status === "bot" ? <Bot className="size-4" /> : <UserCheck className="size-4" />}</span>}
             <p className="min-w-0 flex-1 text-xs text-foreground/80">{claimHint}</p>
             <button type="button" disabled={busy === "greet"} onClick={() => void act("greet", () => waApi.greet(conv.id))} className="flex shrink-0 items-center gap-1.5 rounded-full bg-wa-accent px-4 py-2 text-xs font-semibold text-wa-on-accent shadow-sm transition-transform hover:scale-105 disabled:opacity-60">
-              <Hand className="size-3.5" /> {busy === "greet" ? "Bekleyin..." : claimLabel}
+              <Hand className="size-3.5" /> {busy === "greet" ? "Bekle..." : claimLabel}
             </button>
           </div>
         </div>
@@ -505,7 +505,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             throw new Error(e instanceof ApiError ? e.message : "Öneri alınamadı.");
           }
         } : undefined}
-        disabledReason={!canReply && !canNote ? "Bu sohbete yazma yetkiniz yok." : conv.contact.blocked && !canNote ? "Müşteri engellenmiş." : undefined}
+        disabledReason={!canReply && !canNote ? "Bu sohbete yazma yetkin yok." : conv.contact.blocked && !canNote ? "Müşteri engellenmiş." : undefined}
       />
 
       <TemplatePicker channelId={conv.channelId} open={templates} onClose={() => setTemplates(false)} onSend={sendTemplate} defaults={vars} />

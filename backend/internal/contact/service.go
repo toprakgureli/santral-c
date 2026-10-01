@@ -257,7 +257,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint, perm enums.Permis
 		return nil, err
 	}
 	if !actor.Can(perm) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	return actor, nil
 }

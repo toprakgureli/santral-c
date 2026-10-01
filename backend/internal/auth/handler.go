@@ -76,7 +76,7 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 func (h *Handler) Me(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	res, err := h.service.Me(c.UserContext(), id)
 	if err != nil {
@@ -137,7 +137,7 @@ func (h *Handler) MFAEnrollVerify(c *fiber.Ctx) error {
 func (h *Handler) MFASetup(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	res, err := h.service.MFASetup(c.UserContext(), id)
 	if err != nil {
@@ -150,7 +150,7 @@ func (h *Handler) MFASetup(c *fiber.Ctx) error {
 func (h *Handler) MFAEnable(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	var req requests.MFACode
 	if err := c.BodyParser(&req); err != nil {
@@ -186,7 +186,7 @@ func (h *Handler) PasswordChange(c *fiber.Ctx) error {
 func (h *Handler) ChangeOwnPassword(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	var req requests.OwnPasswordChange
 	if err := c.BodyParser(&req); err != nil {
@@ -206,7 +206,7 @@ func (h *Handler) ChangeOwnPassword(c *fiber.Ctx) error {
 func (h *Handler) LogoutEverywhere(c *fiber.Ctx) error {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {
-		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	if err := h.service.LogoutEverywhere(c.UserContext(), id); err != nil {
 		return err

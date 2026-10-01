@@ -143,7 +143,7 @@ export function AgentsQueues({ exts, queues, canCall, loading }: { exts: PBXExte
       {confirmExt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmExt(null)}>
           <div className="w-full max-w-xs rounded-2xl border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm">{confirmExt} dahilisini aramak ister misiniz?</p>
+            <p className="text-sm">{confirmExt} dahilisini aramak ister misin?</p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setConfirmExt(null)}>İptal</Button>
               <Button onClick={() => { phone.call(confirmExt).catch(() => undefined); setConfirmExt(null); }}>Ara</Button>

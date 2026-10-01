@@ -120,7 +120,7 @@ export function Users() {
             ))}
           </div>
         ) : !items.length ? (
-          <EmptyState icon={<UsersIcon />} title="Kullanıcı bulunamadı" description="Filtreleri değiştirip tekrar deneyin." />
+          <EmptyState icon={<UsersIcon />} title="Kullanıcı bulunamadı" description="Filtreleri değiştirip tekrar dene." />
         ) : (
           <div className={cn("space-y-1 transition-opacity", loading && "opacity-60")}>
             {items.map((u) => (

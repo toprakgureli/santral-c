@@ -184,7 +184,7 @@ func (s *Service) runAction(ctx context.Context, ch *models.WAChannel, r *models
 			conv = fresh
 		}
 		if !windowOpen(conv) {
-			return fmt.Errorf("müşterinin son mesajının üzerinden 24 saat geçmiş; düz metin gönderilemedi, şablon kullanın")
+			return fmt.Errorf("müşterinin son mesajının üzerinden 24 saat geçmiş; düz metin gönderilemedi, şablon kullan")
 		}
 		s.queueSystem(ctx, ch, conv.ID, ticket.ID, "automation", r.Name, text)
 	case "send_template":
@@ -375,7 +375,7 @@ func (s *Service) ruleView(ctx context.Context, r *models.WAAutomation) RuleView
 
 // Rules lists the automatic message rules.
 func (s *Service) Rules(ctx context.Context, actorID uint) ([]RuleView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları görme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları görme yetkin yok."); err != nil {
 		return nil, err
 	}
 	var list []models.WAAutomation
@@ -403,13 +403,13 @@ type RuleInput struct {
 func validateRule(in *RuleInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
-		return errs.Invalid("Kurala bir ad verin.", nil)
+		return errs.Invalid("Kurala bir ad ver.", nil)
 	}
 	if _, ok := ruleTriggers[in.Trigger]; !ok {
-		return errs.Invalid("Ne zaman çalışacağını seçin.", nil)
+		return errs.Invalid("Ne zaman çalışacağını seç.", nil)
 	}
 	if len(in.Actions) == 0 {
-		return errs.Invalid("En az bir yapılacak iş ekleyin.", nil)
+		return errs.Invalid("En az bir yapılacak iş ekle.", nil)
 	}
 	if in.Trigger == "no_reply" {
 		ok := false
@@ -419,7 +419,7 @@ func validateRule(in *RuleInput) error {
 			}
 		}
 		if !ok {
-			return errs.Invalid("Kaç dakika sonra çalışacağını girin.", nil)
+			return errs.Invalid("Kaç dakika sonra çalışacağını gir.", nil)
 		}
 	}
 	for _, a := range in.Actions {
@@ -438,7 +438,7 @@ func validateRule(in *RuleInput) error {
 
 // SaveRule creates (id 0) or updates a rule.
 func (s *Service) SaveRule(ctx context.Context, actorID, id uint, in RuleInput) (*RuleView, error) {
-	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
 	if err := validateRule(&in); err != nil {
@@ -464,7 +464,7 @@ func (s *Service) SaveRule(ctx context.Context, actorID, id uint, in RuleInput) 
 
 // DeleteRule removes a rule.
 func (s *Service) DeleteRule(ctx context.Context, actorID, id uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	return s.db.WithContext(ctx).Delete(&models.WAAutomation{}, id).Error
@@ -472,7 +472,7 @@ func (s *Service) DeleteRule(ctx context.Context, actorID, id uint) error {
 
 // ReorderRules sets the order rules run in.
 func (s *Service) ReorderRules(ctx context.Context, actorID uint, ids []uint) error {
-	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkiniz yok."); err != nil {
+	if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkin yok."); err != nil {
 		return err
 	}
 	for i, id := range ids {

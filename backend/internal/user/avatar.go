@@ -52,7 +52,7 @@ func (s *Service) SetAvatar(ctx context.Context, actorID uint, avatar string) (*
 		return nil, errs.Internal(err)
 	}
 	if actor == nil {
-		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	avatar = strings.TrimSpace(avatar)
 	if avatar != "" {

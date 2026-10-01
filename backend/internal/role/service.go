@@ -55,7 +55,7 @@ func (s *Service) List(ctx context.Context, actorID uint) ([]responses.Role, err
 		return nil, err
 	}
 	if !actor.Can(enums.RoleView) && !actor.Can(enums.RoleAssign) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 
 	roles, err := s.repo.List(ctx)
@@ -84,7 +84,7 @@ func (s *Service) Permissions(ctx context.Context, actorID uint) ([]responses.Pe
 		return nil, err
 	}
 	if !actor.Can(enums.RoleView) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	perms, err := s.repo.Permissions(ctx)
 	if err != nil {
@@ -210,7 +210,7 @@ func (s *Service) Delete(ctx context.Context, actorID, id uint, meta Meta) error
 		return errs.Internal(err)
 	}
 	if count > 0 {
-		return errs.Conflict("Bu role atanmış kullanıcılar var. Önce rollerini değiştirin.", nil)
+		return errs.Conflict("Bu role atanmış kullanıcılar var. Önce rollerini değiştir.", nil)
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return errs.Internal(err)
@@ -237,7 +237,7 @@ func (s *Service) ensureHoldersManageable(ctx context.Context, actor *models.Use
 			return err
 		}
 		if !actor.CanManage(holder) {
-			return errs.Forbidden("Bu rol sizden daha yetkili bir kullanıcıda; düzenleyemezsiniz.")
+			return errs.Forbidden("Bu rol senden daha yetkili bir kullanıcıda; düzenleyemezsin.")
 		}
 	}
 	return nil
@@ -249,7 +249,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint) (*models.User, er
 		return nil, err
 	}
 	if !actor.Can(enums.RoleManage) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	return actor, nil
 }
@@ -263,7 +263,7 @@ func (s *Service) load(ctx context.Context, actor *models.User, id uint) (*model
 		return nil, errs.NotFound("Rol bulunamadı.")
 	}
 	if enums.Role(role.Name) == enums.RoleInvisibleAdmin && !actor.IsInvisibleAdmin() {
-		return nil, errs.Forbidden("Bu rolü düzenleyemezsiniz.")
+		return nil, errs.Forbidden("Bu rolü düzenleyemezsin.")
 	}
 	return role, nil
 }
@@ -309,7 +309,7 @@ func ensureCanGrant(actor *models.User, current, next []models.Permission) error
 			continue
 		}
 		if !actor.CanGrant(enums.Permission(next[i].Key)) {
-			return errs.Forbidden("Kendinizde olmayan bir yetkiyi role veremezsiniz.")
+			return errs.Forbidden("Kendinde olmayan bir yetkiyi role veremezsin.")
 		}
 	}
 	return nil

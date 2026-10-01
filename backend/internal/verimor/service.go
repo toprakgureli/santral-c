@@ -351,7 +351,7 @@ func (s *Service) Credentials(ctx context.Context, actorID uint) (*SIPCredential
 		return nil, errs.NotFound("Kullanıcı bulunamadı.")
 	}
 	if u.SIPExtension == nil || *u.SIPExtension == "" || u.SIPSecret == nil || *u.SIPSecret == "" {
-		return nil, errs.NotFound("Hesabınız için SIP bilgisi tanımlı değil.")
+		return nil, errs.NotFound("Hesabın için SIP bilgisi tanımlı değil.")
 	}
 	password, err := crypt.Decrypt(s.cfg.SIPKey, *u.SIPSecret)
 	if err != nil {
@@ -434,10 +434,10 @@ func (s *Service) sipTarget(ctx context.Context, actorID, targetID uint, extensi
 	// Binding a line to oneself would hand over its password and its call
 	// history; someone else does it, except the owner account.
 	if target.ID == actor.ID && !actor.IsInvisibleAdmin() {
-		return nil, errs.Forbidden("Kendi dahilinizi değiştiremezsiniz; başka bir yöneticiden isteyin.")
+		return nil, errs.Forbidden("Kendi dahilini değiştiremezsin; başka bir yöneticiden iste.")
 	}
 	if !actor.CanManage(target) {
-		return nil, errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
+		return nil, errs.Forbidden("Bu kullanıcının sende olmayan yetkileri var, bu işlemi yapamazsın.")
 	}
 	owner, err := s.repo.ExtensionOwner(ctx, extension)
 	if err != nil {
@@ -617,7 +617,7 @@ func (s *Service) WebphoneURL(ctx context.Context, actorID uint) (*Webphone, err
 		return nil, err
 	}
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
-		return nil, errs.NotFound("Hesabınıza bir dahili numara atanmamış.")
+		return nil, errs.NotFound("Hesabına bir dahili numara atanmamış.")
 	}
 	token, err := s.client.WebphoneToken(ctx, *actor.SIPExtension)
 	if err != nil {
@@ -645,7 +645,7 @@ func (s *Service) ExportCalls(ctx context.Context, actorID uint, filter Filter) 
 		return nil, err
 	}
 	if !actor.Can(enums.CDRExport) {
-		return nil, errs.Forbidden("Çağrı kayıtlarını dışa aktarma yetkiniz yok.")
+		return nil, errs.Forbidden("Çağrı kayıtlarını dışa aktarma yetkin yok.")
 	}
 	out := sheet.NewWriter()
 	if err := out.Row("Zaman", "Yön", "Kimden", "Kime", "Durum", "Süre (sn)", "Kayıt", "UUID"); err != nil {
@@ -687,7 +687,7 @@ func (s *Service) Calls(ctx context.Context, actorID uint, filter Filter) (*Call
 		return nil, err
 	}
 	if !canViewCalls(actor) {
-		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
+		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkin yok.")
 	}
 	if filter.Page < 1 {
 		filter.Page = 1
@@ -768,13 +768,13 @@ func (s *Service) Originate(ctx context.Context, actorID uint, destination strin
 		return "", err
 	}
 	if !actor.Can(enums.CallOriginate) {
-		return "", errs.Forbidden("Çağrı başlatma yetkiniz yok.")
+		return "", errs.Forbidden("Çağrı başlatma yetkin yok.")
 	}
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
-		return "", errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
+		return "", errs.Invalid("Hesabında tanımlı bir dahili numara yok.", nil)
 	}
 	if !s.onShift(ctx, actorID) {
-		return "", errs.Forbidden("Çağrı başlatmak için önce mesai başlatın.")
+		return "", errs.Forbidden("Çağrı başlatmak için önce mesaini başlat.")
 	}
 	uuid, err := s.client.Originate(ctx, *actor.SIPExtension, destination)
 	if err != nil {
@@ -973,7 +973,7 @@ func (s *Service) StreamAllowed(ctx context.Context, actorID uint, ch chan []byt
 	peers := s.subs[ch]
 	s.hubMu.Unlock()
 	if peers && !actor.Can(enums.CallViewPeers) {
-		return errs.Forbidden("Görüşme bilgilerini görme yetkiniz kaldırıldı.")
+		return errs.Forbidden("Görüşme bilgilerini görme yetkin kaldırıldı.")
 	}
 	return nil
 }
@@ -1027,10 +1027,10 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 		return err
 	}
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
-		return errs.Invalid("Hesabınızda tanımlı bir dahili numara yok.", nil)
+		return errs.Invalid("Hesabında tanımlı bir dahili numara yok.", nil)
 	}
 	if !s.onShift(ctx, actorID) {
-		return errs.Forbidden("Durum değiştirmek için önce mesai başlatın.")
+		return errs.Forbidden("Durum değiştirmek için önce mesaini başlat.")
 	}
 	if state == "" {
 		state = "available"
@@ -1206,7 +1206,7 @@ func (s *Service) AuthorizeTransfer(ctx context.Context, actorID uint, callID, t
 		return err
 	}
 	if !actor.Can(enums.CallTransfer) {
-		return errs.Forbidden("Çağrı aktarma yetkiniz yok.")
+		return errs.Forbidden("Çağrı aktarma yetkin yok.")
 	}
 	if !transferTarget.MatchString(target) {
 		return errs.Invalid("Aktarılacak numara anlaşılamadı.", nil)
@@ -1218,7 +1218,7 @@ func (s *Service) AuthorizeTransfer(ctx context.Context, actorID uint, callID, t
 	// A number outside the phone system needs its own permission, and
 	// every such transfer is written to the audit log.
 	if !actor.Can(enums.CallTransferExternal) {
-		return errs.Forbidden("Santral dışındaki bir numaraya aktarma yetkiniz yok. Dahili ya da kuyruk numarası yazın.")
+		return errs.Forbidden("Santral dışındaki bir numaraya aktarma yetkin yok. Dahili ya da kuyruk numarası yaz.")
 	}
 	s.audit.Record(ctx, audit.Entry{
 		ActorID:    &actorID,
@@ -1265,7 +1265,7 @@ func (s *Service) authorizeAny(ctx context.Context, actorID uint, perms ...enums
 			return actor, nil
 		}
 	}
-	return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+	return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 }
 
 func canViewCalls(u *models.User) bool {
@@ -1302,7 +1302,7 @@ func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, 
 	}
 	if !actor.Can(enums.CallRecordAccess) {
 		s.auditRecording(ctx, actorID, callUUID, access, enums.AuditCallRecordingDenied)
-		return nil, errs.Forbidden("Çağrı kaydına erişim yetkiniz yok.")
+		return nil, errs.Forbidden("Çağrı kaydına erişim yetkin yok.")
 	}
 	if !actor.Can(enums.CDRViewAll) && !actor.Can(enums.CallViewAll) {
 		own := false
@@ -1339,7 +1339,7 @@ func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, 
 		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı okunamadı.", err)
 	}
 	if len(data) > maxRecording {
-		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı panelde açılamayacak kadar büyük; santral panelinden indirin.", nil)
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı panelde açılamayacak kadar büyük; santral panelinden indir.", nil)
 	}
 	f := &RecordingFile{Data: data, Type: res.Header.Get("Content-Type")}
 	if f.Type == "" {

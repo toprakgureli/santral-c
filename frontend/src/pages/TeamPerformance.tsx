@@ -240,7 +240,7 @@ export function TeamPerformance() {
         <div className="space-y-2">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 w-full rounded-2xl" />)}</div>
       ) : rows.length === 0 ? (
         <Card>
-          <EmptyState icon={<Users />} title="Görüntülenecek temsilci yok" description="Dahilisi olan aktif kullanıcı bulunamadı ya da rolünüzle eşleşen kimse yok." />
+          <EmptyState icon={<Users />} title="Görüntülenecek temsilci yok" description="Dahilisi olan aktif kullanıcı bulunamadı ya da rolünle eşleşen kimse yok." />
         </Card>
       ) : view === "list" ? (
         <section className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border/60">

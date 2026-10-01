@@ -29,7 +29,7 @@ import { clockTime } from "../../lib/time";
 
 const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-function Round({ onClick, tone = "muted", title, disabled, size = "md", children }: { onClick?: () => void; tone?: "muted" | "on" | "call" | "hang"; title?: string; disabled?: boolean; size?: "md" | "lg"; children: React.ReactNode }) {
+function Round({ onClick, tone = "muted", tip, disabled, size = "md", children }: { onClick?: () => void; tone?: "muted" | "on" | "call" | "hang"; tip: string; disabled?: boolean; size?: "md" | "lg"; children: React.ReactNode }) {
   const toneClass: Record<string, string> = {
     muted: "bg-muted/60 text-foreground ring-1 ring-border/40 hover:bg-accent",
     on: "bg-primary text-primary-foreground",
@@ -38,7 +38,7 @@ function Round({ onClick, tone = "muted", title, disabled, size = "md", children
   };
   const sizeClass = size === "lg" ? "size-16 [&_svg]:size-6" : "size-12 [&_svg]:size-5";
   return (
-    <button onClick={onClick} disabled={disabled} data-tip={title} className={cn("flex items-center justify-center rounded-full shadow-sm transition active:scale-95 disabled:opacity-40", sizeClass, toneClass[tone])}>
+    <button onClick={onClick} disabled={disabled} data-tip={tip} aria-label={tip} className={cn("flex items-center justify-center rounded-full shadow-sm transition active:scale-95 disabled:opacity-40", sizeClass, toneClass[tone])}>
       {children}
     </button>
   );
@@ -97,7 +97,7 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
     <Card title="Softphone" icon={Headset}>
       <WhatsAppTemplateDialog open={waOpen !== null} initialKind={waOpen ?? "unreached"} onClose={() => setWaOpen(null)} previewNumber={displayNumber((waOpen === "live" ? phone.peer : phone.lastPeer) ?? "")} />
       {!hasExtension ? (
-        <p className="text-sm text-muted-foreground">Hesabınıza bir dahili numara atanmamış. Yöneticinizle görüşün.</p>
+        <p className="text-sm text-muted-foreground">Hesabına bir dahili numara atanmamış. Yöneticinle görüş.</p>
       ) : phone.secondary ? (
         /* Another tab (maybe a forgotten one) holds the softphone; offer to pull it here. */
         <div className="flex flex-col items-center gap-3 py-10 text-center">
@@ -139,8 +139,8 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
           {/* Idle: number entry + dialpad (only for agents allowed to place calls) */}
           {idle && !canCall && (
             <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">Giden çağrı yetkiniz yok.</p>
-              <p className="mt-1 text-xs text-muted-foreground/70">Gelen çağrıları cevaplayabilirsiniz.</p>
+              <p className="text-sm text-muted-foreground">Giden çağrı yetkin yok.</p>
+              <p className="mt-1 text-xs text-muted-foreground/70">Gelen çağrıları cevaplayabilirsin.</p>
             </div>
           )}
           {idle && canCall && (
@@ -200,10 +200,10 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
               </div>
               <div className="mx-auto flex max-w-[15rem] items-center justify-between">
                 <span className="size-12" />
-                <Round tone="call" size="lg" data-tip="Ara" onClick={callNow} disabled={phone.status !== "registered" || !target}>
+                <Round tone="call" size="lg" tip="Ara" onClick={callNow} disabled={phone.status !== "registered" || !target}>
                   <Phone />
                 </Round>
-                <Round data-tip="Sil" onClick={() => setTarget((t) => t.slice(0, -1))} disabled={!target}>
+                <Round tip="Sil" onClick={() => setTarget((t) => t.slice(0, -1))} disabled={!target}>
                   <Delete />
                 </Round>
               </div>
@@ -265,18 +265,18 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
 
               {phone.status === "incoming" && (
                 <div className="flex items-center justify-center gap-12 pt-1">
-                  <Round tone="call" size="lg" data-tip="Cevapla" onClick={() => phone.answer().catch(() => undefined)}><Phone /></Round>
-                  <Round tone="hang" size="lg" data-tip="Reddet" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                  <Round tone="call" size="lg" tip="Cevapla" onClick={() => phone.answer().catch(() => undefined)}><Phone /></Round>
+                  <Round tone="hang" size="lg" tip="Reddet" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
                 </div>
               )}
 
               {active && (
                 <div className="flex flex-col items-center gap-3">
                   <div className="flex items-center justify-center gap-3">
-                    <Round tone={phone.muted ? "on" : "muted"} data-tip="Sustur" onClick={phone.toggleMute}>{phone.muted ? <MicOff /> : <Mic />}</Round>
-                    <Round tone={phone.held ? "on" : "muted"} data-tip="Beklet" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? <Play /> : <Pause />}</Round>
-                    <Round tone={showKeypad ? "on" : "muted"} data-tip="Tuşlar" onClick={() => setShowKeypad((v) => !v)}><Grid3x3 /></Round>
-                    <Round tone="hang" size="lg" data-tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                    <Round tone={phone.muted ? "on" : "muted"} tip="Sustur" onClick={phone.toggleMute}>{phone.muted ? <MicOff /> : <Mic />}</Round>
+                    <Round tone={phone.held ? "on" : "muted"} tip="Beklet" onClick={() => phone.toggleHold().catch(() => undefined)}>{phone.held ? <Play /> : <Pause />}</Round>
+                    <Round tone={showKeypad ? "on" : "muted"} tip="Tuşlar" onClick={() => setShowKeypad((v) => !v)}><Grid3x3 /></Round>
+                    <Round tone="hang" size="lg" tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
                   </div>
                   {showKeypad && (
                     <div className="grid w-full max-w-[15rem] grid-cols-3 gap-2">
@@ -294,7 +294,7 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
               )}
 
               {outgoing && (
-                <Round tone="hang" size="lg" data-tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
+                <Round tone="hang" size="lg" tip="Kapat" onClick={() => phone.hangup().catch(() => undefined)}><PhoneOff /></Round>
               )}
             </div>
           )}

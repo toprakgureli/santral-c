@@ -52,7 +52,7 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
       {notice && <p className="mb-3 rounded-xl bg-success/10 px-3 py-2 text-sm text-success">{notice}</p>}
       {channels.length === 0 ? (
-        <EmptyState icon={<Smartphone />} title="Henüz numara yok" description={manage ? "Meta'dan aldığınız numara kimliği ve erişim anahtarıyla ilk numarayı ekleyin." : "Numara eklemek için yetkiniz yok."} />
+        <EmptyState icon={<Smartphone />} title="Henüz numara yok" description={manage ? "Meta'dan aldığın numara kimliği ve erişim anahtarıyla ilk numarayı ekle." : "Numara eklemek için yetkin yok."} />
       ) : (
         <div className="space-y-2">
           {channels.map((c) => {
@@ -179,12 +179,12 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField label="Panelde görünecek ad" hint="Örn. Destek Hattı, Satış Hattı"><input className={inputCls} value={f.name} onChange={(e) => set("name", e.target.value)} /></FormField>
-        <FormField label="Numara (isteğe bağlı)" hint="Boş bırakırsanız Meta'dan okunur."><input className={inputCls} value={f.displayPhone} onChange={(e) => set("displayPhone", e.target.value)} placeholder="+90 850 ..." /></FormField>
+        <FormField label="Numara (isteğe bağlı)" hint="Boş bırakırsan Meta'dan okunur."><input className={inputCls} value={f.displayPhone} onChange={(e) => set("displayPhone", e.target.value)} placeholder="+90 850 ..." /></FormField>
         <FormField label="Numara kimliği (Phone number ID)"><input className={cn(inputCls, "font-mono")} value={f.phoneNumberId} onChange={(e) => set("phoneNumberId", e.target.value)} /></FormField>
         <FormField label="İşletme hesabı kimliği (WABA ID)"><input className={cn(inputCls, "font-mono")} value={f.wabaId} onChange={(e) => set("wabaId", e.target.value)} /></FormField>
         <FormField label="Uygulama kimliği (App ID)" hint="Görselli şablon oluşturmak için gerekir."><input className={cn(inputCls, "font-mono")} value={f.appId} onChange={(e) => set("appId", e.target.value)} /></FormField>
         <FormField label="Graph API sürümü" hint="Boş bırakılırsa güncel varsayılan kullanılır."><input className={cn(inputCls, "font-mono")} value={f.graphVersion} onChange={(e) => set("graphVersion", e.target.value)} placeholder="v23.0" /></FormField>
-        <FormField label="Kalıcı erişim anahtarı (System user token)" hint={channel?.hasToken ? "Kayıtlı. Değiştirmek için yenisini yapıştırın." : "Meta Business ayarlarında sistem kullanıcısı için oluşturulan kalıcı anahtar."}>
+        <FormField label="Kalıcı erişim anahtarı (System user token)" hint={channel?.hasToken ? "Kayıtlı. Değiştirmek için yenisini yapıştır." : "Meta Business ayarlarında sistem kullanıcısı için oluşturulan kalıcı anahtar."}>
           <input className={cn(inputCls, "font-mono")} type="password" autoComplete="off" value={f.accessToken} onChange={(e) => set("accessToken", e.target.value)} placeholder={channel?.hasToken ? "••••••••" : ""} />
         </FormField>
         <div className="space-y-2 sm:col-span-2">
@@ -192,11 +192,11 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
           <div className="grid gap-1.5 sm:grid-cols-2">
             <button type="button" onClick={() => setExisting(false)} className={cn("rounded-xl px-3 py-2.5 text-left ring-1 transition-colors", !existing ? "bg-primary/10 ring-primary/40" : "ring-border/60 hover:bg-accent/60")}>
               <span className="block text-sm font-medium">Panelin verdiği yeni adres</span>
-              <span className="block text-[0.7rem] text-muted-foreground">Kaydettikten sonra adresi Meta'ya siz girersiniz.</span>
+              <span className="block text-[0.7rem] text-muted-foreground">Kaydettikten sonra adresi Meta'ya sen girersin.</span>
             </button>
             <button type="button" onClick={() => setExisting(true)} className={cn("rounded-xl px-3 py-2.5 text-left ring-1 transition-colors", existing ? "bg-primary/10 ring-primary/40" : "ring-border/60 hover:bg-accent/60")}>
               <span className="block text-sm font-medium">Meta'da zaten kayıtlı bir webhook</span>
-              <span className="block text-[0.7rem] text-muted-foreground">Meta'daki ayarı değiştiremiyorsanız, var olan adresi kullanın.</span>
+              <span className="block text-[0.7rem] text-muted-foreground">Meta'daki ayarı değiştiremiyorsan, var olan adresi kullan.</span>
             </button>
           </div>
           {existing && (
@@ -211,14 +211,14 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: WAChannel | null;
                 <input type="checkbox" checked={f.acceptUnsigned} onChange={(e) => set("acceptUnsigned", e.target.checked)} className="mt-0.5 size-4 accent-primary" />
                 <span>
                   Uygulama gizli anahtarı elimde yok, imzasız bildirimleri kabul et
-                  <span className="mt-0.5 block text-[0.7rem] leading-relaxed text-warning">Anahtar olmadan bildirimin gerçekten Meta'dan geldiği kontrol edilemez; adresi bilen biri sahte mesaj gönderebilir. Anahtarı bulduğunuzda aşağıya girin, kontrol kendiliğinden açılır.</span>
+                  <span className="mt-0.5 block text-[0.7rem] leading-relaxed text-warning">Anahtar olmadan bildirimin gerçekten Meta'dan geldiği kontrol edilemez; adresi bilen biri sahte mesaj gönderebilir. Anahtarı bulduğunda aşağıya gir, kontrol kendiliğinden açılır.</span>
                 </span>
               </label>
               <p className="text-[0.7rem] leading-relaxed text-muted-foreground sm:col-span-2">Bu adrese gelen istekler sunucuda bu panele yönlendirilmeli. Kaydettikten sonra "Kurulum" penceresinde ne yapılacağı yazar.</p>
             </div>
           )}
         </div>
-        <FormField label="Uygulama gizli anahtarı (App secret)" hint={channel?.hasAppSecret ? "Kayıtlı. Değiştirmek için yenisini yapıştırın." : existing && f.acceptUnsigned ? "İsteğe bağlı. Girerseniz bildirimlerin imzası kontrol edilir." : "Meta'dan gelen bildirimlerin gerçekten Meta'dan geldiğini doğrulamak için."}>
+        <FormField label="Uygulama gizli anahtarı (App secret)" hint={channel?.hasAppSecret ? "Kayıtlı. Değiştirmek için yenisini yapıştır." : existing && f.acceptUnsigned ? "İsteğe bağlı. Girersen bildirimlerin imzası kontrol edilir." : "Meta'dan gelen bildirimlerin gerçekten Meta'dan geldiğini doğrulamak için."}>
           <span className="flex gap-2">
             <input className={cn(inputCls, "font-mono")} type="password" autoComplete="off" value={f.appSecret === "-" ? "" : f.appSecret} disabled={f.appSecret === "-"} onChange={(e) => set("appSecret", e.target.value)} placeholder={f.appSecret === "-" ? "Kaydedince silinecek" : channel?.hasAppSecret ? "••••••••" : ""} />
             {channel?.hasAppSecret && existing && f.acceptUnsigned && (
@@ -244,23 +244,23 @@ function SetupDialog({ channel, onClose }: { channel: WAChannel; onClose: () => 
   const origin = window.location.origin;
   if (channel.existingHookUrl) return <ExistingSetup channel={channel} onClose={onClose} />;
   return (
-    <Modal open onClose={onClose} title={`${channel.name} · kurulum`} description="Meta'nın mesajları bize bildirmesi için bu adımları bir kez yapmanız yeterli." size="lg" footer={<Button onClick={onClose}>Tamam</Button>}>
+    <Modal open onClose={onClose} title={`${channel.name} · kurulum`} description="Meta'nın mesajları bize bildirmesi için bu adımları bir kez yapman yeterli." size="lg" footer={<Button onClick={onClose}>Tamam</Button>}>
       <ol className="space-y-4 text-sm">
-        <Step n={1} title="Webhook adresini Meta'ya girin">
-          <p className="text-muted-foreground">Meta uygulama panelinde WhatsApp &gt; Yapılandırma &gt; Webhook bölümünde "Düzenle"ye basın ve aşağıdaki iki değeri yapıştırın.</p>
+        <Step n={1} title="Webhook adresini Meta'ya gir">
+          <p className="text-muted-foreground">Meta uygulama panelinde WhatsApp &gt; Yapılandırma &gt; Webhook bölümünde "Düzenle"ye bas ve aşağıdaki iki değeri yapıştır.</p>
           <div className="mt-2 space-y-2">
             <CopyField label="Geri çağırma adresi (Callback URL)" value={origin + (channel.hookPath ?? "")} />
             <CopyField label="Doğrulama anahtarı (Verify token)" value={channel.verifyToken ?? ""} secret />
           </div>
         </Step>
-        <Step n={2} title="Hangi bildirimlerin geleceğini seçin">
-          <p className="text-muted-foreground">Aynı sayfadaki listeden şunlara abone olun: <b>messages</b>, <b>message_template_status_update</b>, <b>message_template_quality_update</b>, <b>phone_number_quality_update</b>, <b>account_update</b>.</p>
+        <Step n={2} title="Hangi bildirimlerin geleceğini seç">
+          <p className="text-muted-foreground">Aynı sayfadaki listeden şunlara abone ol: <b>messages</b>, <b>message_template_status_update</b>, <b>message_template_quality_update</b>, <b>phone_number_quality_update</b>, <b>account_update</b>.</p>
         </Step>
-        <Step n={3} title="Mesajları almaya başlayın">
-          <p className="text-muted-foreground">Cihaz listesinde "Bağlantıyı test et"e basın. Meta henüz bu hesabın mesajlarını göndermiyorsa orada "Mesajları almaya başla" düğmesi çıkar.</p>
+        <Step n={3} title="Mesajları almaya başla">
+          <p className="text-muted-foreground">Cihaz listesinde "Bağlantıyı test et"e bas. Meta henüz bu hesabın mesajlarını göndermiyorsa orada "Mesajları almaya başla" düğmesi çıkar.</p>
         </Step>
-        <Step n={4} title="Kimin bakacağını seçin">
-          <p className="text-muted-foreground">Listede kişi simgesine basıp bu numarada çalışacak kişileri ekleyin. Ayarlar &gt; Cihaz ayarları'ndan karşılama mesajı, mesai saatleri ve dağıtımı ayarlayın.</p>
+        <Step n={4} title="Kimin bakacağını seç">
+          <p className="text-muted-foreground">Listede kişi simgesine basıp bu numarada çalışacak kişileri ekle. Ayarlar &gt; Cihaz ayarları'ndan karşılama mesajı, mesai saatleri ve dağıtımı ayarla.</p>
         </Step>
       </ol>
     </Modal>
@@ -278,7 +278,7 @@ function ExistingSetup({ channel, onClose }: { channel: WAChannel; onClose: () =
     // shown as typed
   }
   return (
-    <Modal open onClose={onClose} title={`${channel.name} · kurulum`} description="Bu numara Meta'da zaten kayıtlı olan webhook'u kullanıyor. Meta'da bir şey değiştirmenize gerek yok." size="lg" footer={<Button onClick={onClose}>Tamam</Button>}>
+    <Modal open onClose={onClose} title={`${channel.name} · kurulum`} description="Bu numara Meta'da zaten kayıtlı olan webhook'u kullanıyor. Meta'da bir şey değiştirmene gerek yok." size="lg" footer={<Button onClick={onClose}>Tamam</Button>}>
       <ol className="space-y-4 text-sm">
         <Step n={1} title="Meta'nın bildirdiği adres">
           <CopyField label="Meta'da kayıtlı geri çağırma adresi" value={channel.existingHookUrl ?? ""} />
@@ -287,12 +287,12 @@ function ExistingSetup({ channel, onClose }: { channel: WAChannel; onClose: () =
         <Step n={2} title="Sunucuda yönlendirme">
           <p className="text-muted-foreground"><b>{host || "Bu alan adı"}</b> için gelen istekler şu an eski sisteme gidiyorsa, bu yolu panelin sunucusuna yönlendirmek gerekir. Eski sistem kapatılıp aynı porttan panele aktarılır. Kurulum dosyası projede hazır: <code className="rounded bg-muted px-1 font-mono text-xs">deploy/nginx/whatsapp-existing-webhook.conf</code></p>
         </Step>
-        <Step n={3} title="Denetleyin">
-          <p className="text-muted-foreground">Müşteri olarak bu numaraya bir mesaj yazın. Cihaz listesinde "son bildirim" saati güncellenir ve mesaj gelen kutusuna düşer.</p>
-          {channel.acceptUnsigned && !channel.hasAppSecret && <p className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning">Uygulama gizli anahtarı girilmediği için bildirimlerin imzası kontrol edilmiyor. Anahtara ulaştığınızda cihazı düzenleyip girin.</p>}
+        <Step n={3} title="Denetle">
+          <p className="text-muted-foreground">Müşteri olarak bu numaraya bir mesaj yaz. Cihaz listesinde "son bildirim" saati güncellenir ve mesaj gelen kutusuna düşer.</p>
+          {channel.acceptUnsigned && !channel.hasAppSecret && <p className="mt-2 rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning">Uygulama gizli anahtarı girilmediği için bildirimlerin imzası kontrol edilmiyor. Anahtara ulaştığında cihazı düzenleyip gir.</p>}
         </Step>
-        <Step n={4} title="Kimin bakacağını seçin">
-          <p className="text-muted-foreground">Listede kişi simgesine basıp bu numarada çalışacak kişileri ekleyin.</p>
+        <Step n={4} title="Kimin bakacağını seç">
+          <p className="text-muted-foreground">Listede kişi simgesine basıp bu numarada çalışacak kişileri ekle.</p>
         </Step>
       </ol>
     </Modal>

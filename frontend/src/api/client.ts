@@ -208,7 +208,7 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
     if (renewal === "ended") {
       endSession();
     } else {
-      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar deneyin.");
+      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar dene.");
     }
   }
   if (res.status === 204) {
@@ -224,7 +224,7 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
     return JSON.parse(text) as T;
   } catch {
     // A proxy page instead of our answer.
-    throw new ApiError(502, "BAD_RESPONSE", "Sunucudan beklenmeyen bir yanıt geldi. Birazdan tekrar deneyin.");
+    throw new ApiError(502, "BAD_RESPONSE", "Sunucudan beklenmeyen bir yanıt geldi. Birazdan tekrar dene.");
   }
 }
 
@@ -240,7 +240,7 @@ export async function download(path: string, fallbackName: string, allowRetry = 
     if (renewal === "ended") {
       endSession();
     } else {
-      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar deneyin.");
+      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar dene.");
     }
   }
   if (!res.ok) {

@@ -211,7 +211,7 @@ func (s *Service) SetActive(ctx context.Context, actorID, targetID uint, active 
 		return err
 	}
 	if actorID == targetID {
-		return errs.Invalid("Kendi hesabınızın durumunu değiştiremezsiniz.", nil)
+		return errs.Invalid("Kendi hesabının durumunu değiştiremezsin.", nil)
 	}
 
 	target, err := s.visibleTarget(ctx, actor, targetID)
@@ -404,7 +404,7 @@ func (s *Service) SetWhatsAppTemplate(ctx context.Context, actorID uint, templat
 		return nil, errs.Internal(err)
 	}
 	if actor == nil {
-		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	fields := map[string]any{"whatsapp_template": strings.TrimSpace(template), "whatsapp_template_live": strings.TrimSpace(live)}
 	if err := s.repo.UpdateCore(ctx, actorID, fields); err != nil {
@@ -425,7 +425,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint, perm enums.Permis
 		return nil, errs.Internal(err)
 	}
 	if actor == nil {
-		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
+		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
 	}
 	return s.require(actor, perm)
 }
@@ -433,7 +433,7 @@ func (s *Service) authorize(ctx context.Context, actorID uint, perm enums.Permis
 // require verifies a loaded actor holds a permission.
 func (s *Service) require(actor *models.User, perm enums.Permission) (*models.User, error) {
 	if !actor.Can(perm) {
-		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
+		return nil, errs.Forbidden("Bu işlem için yetkin yok.")
 	}
 	return actor, nil
 }
@@ -444,7 +444,7 @@ func (s *Service) require(actor *models.User, perm enums.Permission) (*models.Us
 // demote those above them.
 func (s *Service) rolesFor(ctx context.Context, actor, target *models.User, ids []uint) ([]models.Role, error) {
 	if actor.ID == target.ID {
-		return nil, errs.Forbidden("Kendi rollerinizi değiştiremezsiniz.")
+		return nil, errs.Forbidden("Kendi rollerini değiştiremezsin.")
 	}
 	if err := ensureNotAbove(actor, target); err != nil {
 		return nil, err
@@ -475,11 +475,11 @@ func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []ui
 			continue
 		}
 		if enums.Role(roles[i].Name) == enums.RoleInvisibleAdmin {
-			return nil, errs.Forbidden("Bu rolü atayamazsınız.")
+			return nil, errs.Forbidden("Bu rolü atayamazsın.")
 		}
 		for _, p := range roles[i].Permissions {
 			if !actor.CanGrant(enums.Permission(p.Key)) {
-				return nil, errs.Forbidden(fmt.Sprintf("%q rolünde sizde olmayan yetkiler var, bu rolü atayamazsınız.", roles[i].DisplayName))
+				return nil, errs.Forbidden(fmt.Sprintf("%q rolünde sende olmayan yetkiler var, bu rolü atayamazsın.", roles[i].DisplayName))
 			}
 		}
 	}
@@ -490,7 +490,7 @@ func (s *Service) resolveRoles(ctx context.Context, actor *models.User, ids []ui
 // lacks. Invisible admins may change anyone.
 func ensureNotAbove(actor, target *models.User) error {
 	if !actor.CanManage(target) {
-		return errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
+		return errs.Forbidden("Bu kullanıcının sende olmayan yetkileri var, bu işlemi yapamazsın.")
 	}
 	return nil
 }

@@ -14,13 +14,13 @@ export type Handoff = {
 export function handoffMessage(h: Handoff): string {
   const host = window.location.host;
   return [
-    `Sayın ${h.name},`,
+    `Merhaba ${h.name},`,
     "",
-    `${host} üzerinden ${h.email} e-posta adresi ve ${h.password} geçici şifresiyle sisteme giriş yapabilirsiniz. İlk girişte sizden kendinize ait yeni bir şifre belirlemeniz istenecek.`,
+    `${host} üzerinden ${h.email} e-posta adresi ve ${h.password} geçici şifresiyle sisteme giriş yapabilirsin. İlk girişte senden kendine ait yeni bir şifre belirlemen istenecek.`,
     "",
-    "İki adımlı doğrulama (TOTP) için telefonunuza Google Authenticator veya Microsoft Authenticator uygulamasını indirip giriş sırasında çıkan QR kodu okutmanız yeterli.",
+    "İki adımlı doğrulama (TOTP) için telefonuna Google Authenticator veya Microsoft Authenticator uygulamasını indirip giriş sırasında çıkan QR kodu okutman yeterli.",
     "",
-    "Sorun yaşarsanız yöneticinizle iletişime geçin.",
+    "Sorun yaşarsan yöneticinle iletişime geç.",
   ].join("\n");
 }
 

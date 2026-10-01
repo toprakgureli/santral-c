@@ -46,7 +46,7 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
   const urlButton = (tpl?.components.find((c) => c.type === "BUTTONS")?.buttons ?? []).find((b) => b.type === "URL");
   const blanks = countVars(body);
 
-  if (channels.length === 0) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce bir WhatsApp numarası ekleyin.</p>;
+  if (channels.length === 0) return <p className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-border/60">Önce bir WhatsApp numarası ekle.</p>;
   if (!s) return <div className="h-64 animate-pulse rounded-2xl bg-muted/40" />;
 
   const channel = channels.find((c) => c.id === s.channelId);
@@ -82,9 +82,9 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
       )}
       <div className="grid gap-6 xl:grid-cols-[1fr_22rem]">
         <div className="space-y-5">
-          <SwitchRow title="Görüşmeden sonra anket gönder" sub="Kapattığınız anda sıradaki anketler de gitmez." on={s.enabled} onChange={(v) => up({ enabled: v })} />
+          <SwitchRow title="Görüşmeden sonra anket gönder" sub="Kapattığın anda sıradaki anketler de gitmez." on={s.enabled} onChange={(v) => up({ enabled: v })} />
           <p className="rounded-xl bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-            Anket, sadece rolünde <b className="text-foreground">"Bu kişinin telefon görüşmelerinden sonra müşteriye WhatsApp anketi gider"</b> yetkisi olan kişilerin görüşmelerinden sonra gider. Bir ekip ya da kişi için kapatmak isterseniz Roller sayfasından bu yetkiyi kaldırın.
+            Anket, sadece rolünde <b className="text-foreground">"Bu kişinin telefon görüşmelerinden sonra müşteriye WhatsApp anketi gider"</b> yetkisi olan kişilerin görüşmelerinden sonra gider. Bir ekip ya da kişi için kapatmak istersen Roller sayfasından bu yetkiyi kaldır.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -93,9 +93,9 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
                 {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </FormField>
-            <FormField label="Şablon" hint={templates.length === 0 ? "Bu numarada onaylı şablon yok. Şablonlar sekmesinden oluşturun." : "Hizmet kategorisinde, cevap düğmeli bir şablon önerilir."}>
+            <FormField label="Şablon" hint={templates.length === 0 ? "Bu numarada onaylı şablon yok. Şablonlar sekmesinden oluştur." : "Hizmet kategorisinde, cevap düğmeli bir şablon önerilir."}>
               <select className={inputCls} value={s.template ? `${s.template}|${s.templateLang}` : ""} onChange={(e) => { const [n, l] = e.target.value.split("|"); up({ template: n ?? "", templateLang: l ?? "" }); }}>
-                <option value="">Şablon seçin</option>
+                <option value="">Şablon seç</option>
                 {templates.map((t) => <option key={t.id} value={`${t.name}|${t.language}`}>{t.name} ({t.language})</option>)}
               </select>
             </FormField>
@@ -117,7 +117,7 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
 
           {s.mode === "buttons" && tpl && (
             quick.length === 0 ? (
-              <p className="rounded-xl bg-warning/10 px-3 py-2 text-sm text-warning">Bu şablonda cevap düğmesi yok. Hızlı cevap düğmeli bir şablon seçin ya da Tally formunu kullanın.</p>
+              <p className="rounded-xl bg-warning/10 px-3 py-2 text-sm text-warning">Bu şablonda cevap düğmesi yok. Hızlı cevap düğmeli bir şablon seç ya da Tally formunu kullan.</p>
             ) : (
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Her düğme kaç puan sayılsın</p>
@@ -137,11 +137,11 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
 
           {s.mode === "link" && (
             <div className="space-y-3">
-              <FormField label="Tally form linki" hint="Formda şu gizli alanları (hidden fields) açın: call, agent, token. Sistem bunları doldurur.">
+              <FormField label="Tally form linki" hint="Formda şu gizli alanları (hidden fields) aç: call, agent, token. Sistem bunları doldurur.">
                 <input className={inputCls} value={s.linkUrl} onChange={(e) => up({ linkUrl: e.target.value })} placeholder="https://tally.so/r/..." />
               </FormField>
               {channel?.surveyHookPath && <CopyField label="Tally > Integrations > Webhooks'a girilecek adres" value={window.location.origin + channel.surveyHookPath} />}
-              <p className="text-[0.7rem] text-muted-foreground">Formun imza anahtarı, seçtiğiniz numaranın Cihaz ayarları &gt; Memnuniyet anketi bölümündeki anahtarla aynı olmalı. Link şablona iki yoldan gider: şablonda değişkenli bir link düğmesi varsa oraya, yoksa aşağıdaki boşluklardan birine {"{link}"} yazın.</p>
+              <p className="text-[0.7rem] text-muted-foreground">Formun imza anahtarı, seçtiğin numaranın Cihaz ayarları &gt; Memnuniyet anketi bölümündeki anahtarla aynı olmalı. Link şablona iki yoldan gider: şablonda değişkenli bir link düğmesi varsa oraya, yoksa aşağıdaki boşluklardan birine {"{link}"} yaz.</p>
             </div>
           )}
 
@@ -155,7 +155,7 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
                 </label>
               ))}
               <p className="text-[0.7rem] text-muted-foreground">
-                Kullanabilecekleriniz: {VARS.map((v, i) => <span key={v.key}>{i > 0 && ", "}<code className="rounded bg-muted px-1 font-mono">{v.key}</code> {v.label}</span>)}.
+                Kullanabileceklerin: {VARS.map((v, i) => <span key={v.key}>{i > 0 && ", "}<code className="rounded bg-muted px-1 font-mono">{v.key}</code> {v.label}</span>)}.
               </p>
             </div>
           )}
@@ -175,10 +175,10 @@ export default function CallSurveyTab({ channels }: { channels: WAChannel[] }) {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
-            <FormField label="Cevaptan sonra teşekkür mesajı" hint="Boş bırakırsanız gönderilmez.">
+            <FormField label="Cevaptan sonra teşekkür mesajı" hint="Boş bırakırsan gönderilmez.">
               <textarea className={areaCls} rows={2} value={s.thankYou} onChange={(e) => up({ thankYou: e.target.value })} />
             </FormField>
-            <FormField label="Bu puan ve altında yöneticilere haber ver" hint="0 yazarsanız haber verilmez.">
+            <FormField label="Bu puan ve altında yöneticilere haber ver" hint="0 yazarsan haber verilmez.">
               <input type="number" min={0} max={5} className={inputCls} value={s.alertBelow} onChange={(e) => up({ alertBelow: Math.min(5, Math.max(0, Number(e.target.value) || 0)) })} />
             </FormField>
           </div>

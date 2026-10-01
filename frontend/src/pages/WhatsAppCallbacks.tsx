@@ -72,8 +72,8 @@ export function WhatsAppCallbacks() {
         </p>
       </div>
       <span className="flex items-center gap-1.5">
-        {r.conversationId > 0 && <Link to={`/whatsapp/${r.conversationId}`} data-tip="Sohbeti aç" className="flex size-9 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><MessageCircle className="size-4" /></Link>}
-        {canCall && <button type="button" data-tip="Ara" onClick={() => void phone.call("0" + r.phone.replace(/\D/g, "").replace(/^90/, "")).catch(() => undefined)} className="flex size-9 items-center justify-center rounded-xl bg-success/12 text-success hover:bg-success/20"><Phone className="size-4" /></button>}
+        {r.conversationId > 0 && <Link to={`/whatsapp/${r.conversationId}`} aria-label="Sohbeti aç" data-tip="Sohbeti aç" className="flex size-9 items-center justify-center rounded-xl bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground"><MessageCircle className="size-4" /></Link>}
+        {canCall && <button type="button" aria-label="Ara" data-tip="Ara" onClick={() => void phone.call("0" + r.phone.replace(/\D/g, "").replace(/^90/, "")).catch(() => undefined)} className="flex size-9 items-center justify-center rounded-xl bg-success/12 text-success hover:bg-success/20"><Phone className="size-4" /></button>}
         {r.status === "open" && <Button variant="secondary" className="h-9" onClick={() => void finish(r.id)}><Check /> Arandı</Button>}
       </span>
     </div>
@@ -82,7 +82,7 @@ export function WhatsAppCallbacks() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link to="/whatsapp" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
+        <Link to="/whatsapp" aria-label="Gelen kutusuna dön" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
         <div className="flex-1">
           <h1 className="text-lg font-semibold tracking-tight">Geri arama talepleri</h1>
           <p className="text-xs text-muted-foreground">{open.length ? `${open.length} müşteri aranmayı bekliyor` : "Bekleyen talep yok"}</p>

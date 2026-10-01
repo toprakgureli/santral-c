@@ -134,7 +134,7 @@ export default function Composer({
     const body = text.trim();
     if (busy || (!body && files.length === 0) || messageBlocked) return;
     if (suggested && mode === "message" && /\[[^\]]+\]/.test(body)) {
-      setSuggestError("Önerideki köşeli parantezli yerleri doldurmadan gönderemezsiniz.");
+      setSuggestError("Önerideki köşeli parantezli yerleri doldurmadan gönderemezsin.");
       return;
     }
     setBusy(true);
@@ -255,7 +255,7 @@ export default function Composer({
             )}
           </div>
           <p className="flex items-center gap-2 px-0.5 pt-1 text-[0.7rem] text-muted-foreground">
-            <span className="flex-1">{files.length} dosya · her biri ayrı mesaj olarak sırayla gider{text.trim() ? "; yazdığınız metin ilk dosyanın açıklaması olur" : ""}.</span>
+            <span className="flex-1">{files.length} dosya · her biri ayrı mesaj olarak sırayla gider{text.trim() ? "; yazdığın metin ilk dosyanın açıklaması olur" : ""}.</span>
             <button type="button" onClick={() => { setFiles([]); setFileError(null); }} className="font-medium hover:text-foreground">Hepsini kaldır</button>
           </p>
         </div>
@@ -284,10 +284,10 @@ export default function Composer({
         </div>
       ) : (
         <div className="flex items-end gap-1.5">
-          <button type="button" onClick={() => setEmoji((v) => !v)} data-tip="Emoji" className={cn("mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground", emoji && "bg-accent text-foreground")}><SmilePlus className="size-5" /></button>
+          <button type="button" onClick={() => setEmoji((v) => !v)} aria-label="Emoji" data-tip="Emoji" className={cn("mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground", emoji && "bg-accent text-foreground")}><SmilePlus className="size-5" /></button>
           {mode === "message" && (
             <>
-              <button type="button" onClick={() => picker.current?.click()} data-tip={`Dosya ekle ya da sohbete sürükleyip bırakın. En fazla ${MAX_FILES} dosya; görsel 5 MB, video 16 MB, belge 100 MB`} className="mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Paperclip className="size-5" /></button>
+              <button type="button" onClick={() => picker.current?.click()} aria-label={`Dosya ekle ya da sohbete sürükleyip bırak. En fazla ${MAX_FILES} dosya; görsel 5 MB, video 16 MB, belge 100 MB`} data-tip={`Dosya ekle ya da sohbete sürükleyip bırak. En fazla ${MAX_FILES} dosya; görsel 5 MB, video 16 MB, belge 100 MB`} className="mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><Paperclip className="size-5" /></button>
               <input ref={picker} type="file" multiple className="hidden" onChange={(e) => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ""; }} />
             </>
           )}
@@ -299,11 +299,11 @@ export default function Composer({
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKey}
               onPaste={onPaste}
-              placeholder={isNote ? "Ekibe not yazın, müşteri görmez" : "Mesaj yazın · hazır yanıt için / yazın"}
+              placeholder={isNote ? "Ekibe not yaz, müşteri görmez" : "Mesaj yaz · hazır yanıt için / yaz"}
               className="max-h-44 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2.5 text-[0.92rem] outline-none placeholder:text-muted-foreground/70"
             />
             {mode === "message" && onSuggest && (
-              <button type="button" onClick={() => void suggest()} disabled={thinking} data-tip={text.trim() ? "Yazdığımı düzelt" : "Cevap önerisi al"} className={cn("mb-1 flex size-8 shrink-0 items-center justify-center rounded-full text-violet-500 hover:bg-violet-500/10", thinking && "animate-pulse bg-violet-500/10")}><Sparkles className="size-4" /></button>
+              <button type="button" onClick={() => void suggest()} disabled={thinking} aria-label={text.trim() ? "Yazdığımı düzelt" : "Cevap önerisi al"} data-tip={text.trim() ? "Yazdığımı düzelt" : "Cevap önerisi al"} className={cn("mb-1 flex size-8 shrink-0 items-center justify-center rounded-full text-violet-500 hover:bg-violet-500/10", thinking && "animate-pulse bg-violet-500/10")}><Sparkles className="size-4" /></button>
             )}
           </div>
           <button
@@ -321,7 +321,7 @@ export default function Composer({
         <p className="mt-1.5 px-1 text-[0.7rem] text-destructive">{suggestError}</p>
       ) : suggested && mode === "message" ? (
         <p className="mt-1.5 flex items-center gap-2 px-1 text-[0.7rem] text-violet-600 dark:text-violet-400">
-          <Sparkles className="size-3" /> Yapay zekâ önerisi. Göndermeden önce okuyun, köşeli parantezleri doldurun.
+          <Sparkles className="size-3" /> Yapay zekâ önerisi. Göndermeden önce oku, köşeli parantezleri doldur.
           <button type="button" onClick={() => { setText(suggested.before); setSuggested(null); }} className="ml-auto flex items-center gap-1 font-medium hover:underline"><Undo2 className="size-3" /> Geri al</button>
         </p>
       ) : null}

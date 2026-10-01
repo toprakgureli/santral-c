@@ -159,7 +159,7 @@ func (s *Service) Note(ctx context.Context, actorID, conversationID uint, body s
 		return nil, err
 	}
 	if !v.can(enums.WANote) {
-		return nil, errs.Forbidden("İç not yazma yetkiniz yok.")
+		return nil, errs.Forbidden("İç not yazma yetkin yok.")
 	}
 	body = strings.TrimSpace(body)
 	if body == "" {

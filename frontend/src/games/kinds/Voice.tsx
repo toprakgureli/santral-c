@@ -85,6 +85,7 @@ export default function Voice({ h, selfId }: KindProps) {
             type="button"
             onClick={() => void capture()}
             disabled={left !== null}
+            aria-label="Sesini kaydet"
             className={cn(
               "relative flex size-28 items-center justify-center rounded-full border-4 text-white shadow-lg transition-transform",
               left !== null ? "border-red-300 bg-red-500 animate-pulse" : d.mine ? "border-success/40 bg-success hover:scale-105" : "border-violet-300 bg-violet-500 hover:scale-105",
