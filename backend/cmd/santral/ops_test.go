@@ -110,8 +110,10 @@ func TestRequestLimits(t *testing.T) {
 // servers in front decide by the path as written too.
 func TestPathsAreCaseSensitive(t *testing.T) {
 	srv, _ := testServer(t)
+	// The version route exists for signed-in people only, so written right it
+	// asks for a session (401); any other spelling is not a route at all.
 	for path, want := range map[string]int{
-		"/api/v1/version": fiber.StatusOK,
+		"/api/v1/version": fiber.StatusUnauthorized,
 		"/API/v1/version": fiber.StatusNotFound,
 		"/Api/V1/Version": fiber.StatusNotFound,
 	} {
@@ -140,11 +142,12 @@ func TestHookPortReachesOnlyHooks(t *testing.T) {
 			t.Errorf("GET %s on the hook port = %d, want 404", path, res.StatusCode)
 		}
 	}
-	// The same request without the header is the panel's own.
+	// The same request without the header is the panel's own: the route is
+	// there (it asks for a session) instead of being hidden.
 	res := call(t, srv.app, fiber.MethodGet, "/api/v1/version", "", nil)
 	_ = res.Body.Close()
-	if res.StatusCode != fiber.StatusOK {
-		t.Errorf("version on the panel = %d", res.StatusCode)
+	if res.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("version on the panel = %d, want 401", res.StatusCode)
 	}
 }
 
