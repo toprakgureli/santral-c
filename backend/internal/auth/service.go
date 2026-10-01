@@ -126,6 +126,12 @@ func sleepPastSecond() {
 	time.Sleep(now.Truncate(time.Second).Add(time.Second).Sub(now) + 10*time.Millisecond)
 }
 
+// busy answers a sign-in that found every password check taken for too
+// long; it is not counted as a wrong password.
+func busy() error {
+	return errs.TooMany("Şu an çok sayıda giriş yapılıyor. Birkaç saniye sonra tekrar dene.")
+}
+
 // Login validates credentials and returns a session or a challenge.
 func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMeta) (*LoginResult, error) {
 	defer levelLatency(time.Now())
@@ -142,12 +148,18 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 	}
 
 	if u == nil {
-		hash.Compare(timingGuardHash, req.Password)
+		if _, err := hash.Check(ctx, timingGuardHash, req.Password); err != nil {
+			return nil, busy()
+		}
 		s.security.Failure(ctx, attempt(email, nil, meta, security.ReasonBadCredentials))
 		return nil, errs.Unauthorized("E-posta veya şifre hatalı.")
 	}
 
-	if !hash.Compare(u.Password, req.Password) {
+	ok, err := hash.Check(ctx, u.Password, req.Password)
+	if err != nil {
+		return nil, busy()
+	}
+	if !ok {
 		s.security.Failure(ctx, attempt(email, &u.ID, meta, security.ReasonBadCredentials))
 		return nil, errs.Unauthorized("E-posta veya şifre hatalı.")
 	}

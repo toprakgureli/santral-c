@@ -546,6 +546,30 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 		t.Errorf("with an outside address banned, the office could not sign in: %d %s", a.status, a.body)
 	}
 
+	// Someone outside types wrong passwords for a colleague's account until
+	// it locks. The colleague still gets in from their usual browser; a
+	// browser that never signed in to that account waits for the lock.
+	victim := people[2]
+	// These addresses start clean even when the test ran a moment ago.
+	db.Exec("DELETE FROM ip_bans WHERE ip LIKE '192.0.2.%'")
+	db.Exec("DELETE FROM login_attempts WHERE ip LIKE '192.0.2.%'")
+	for k := range 12 {
+		b := newBrowser(t, srv.app, nil, victim)
+		b.ip = fmt.Sprintf("192.0.2.%d", 10+k)
+		if a := b.login("Guess-Pass-123"); a.status != fiber.StatusUnauthorized && a.status != fiber.StatusLocked {
+			t.Errorf("guess %d answered %d %s", k, a.status, a.body)
+		}
+	}
+	usual := newBrowser(t, srv.app, stats, victim)
+	usual.jar = browsers[2].cookies() // the browser they signed in with this morning
+	if a := usual.login(loadPassword); a.status != fiber.StatusOK {
+		t.Errorf("after someone else locked the account, its owner could not sign in from their own browser: %d %s", a.status, a.body)
+	}
+	stranger := newBrowser(t, srv.app, nil, victim)
+	if a := stranger.login(loadPassword); a.status != fiber.StatusLocked {
+		t.Errorf("a browser new to the locked account answered %d, want 423", a.status)
+	}
+
 	// Two tabs of one browser renew the same session at the same moment.
 	together(len(browsers), func(i int) {
 		b := browsers[i]

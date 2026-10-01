@@ -2,6 +2,7 @@
 package hash
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -55,6 +57,34 @@ func Password(plain string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(key),
 	)
 	return encoded, nil
+}
+
+// ErrBusy means every password-check slot stayed busy for the whole wait.
+var ErrBusy = errors.New("password checks are all busy")
+
+// slotWait is the longest a sign-in waits for a password-check slot. A
+// flood of sign-in attempts then turns into a short "busy, try again"
+// for the people behind it instead of requests that hang until they time
+// out.
+const slotWait = 5 * time.Second
+
+// Check is Compare for a sign-in: it waits for a slot at most slotWait,
+// or until ctx ends, and then gives up with ErrBusy.
+func Check(ctx context.Context, encoded, plain string) (bool, error) {
+	salt, key, t, m, p, err := decode(encoded)
+	if err != nil {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, slotWait)
+	defer cancel()
+	select {
+	case slots <- struct{}{}:
+	case <-ctx.Done():
+		return false, ErrBusy
+	}
+	defer func() { <-slots }()
+	computed := argonKey([]byte(plain), salt, t, m, p, uint32(len(key)))
+	return subtle.ConstantTimeCompare(key, computed) == 1, nil
 }
 
 // Compare reports whether plain matches the encoded argon2id hash in constant time.

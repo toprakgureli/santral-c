@@ -3,11 +3,13 @@ package middlewares
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 
+	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -29,6 +31,37 @@ func RateLimitBy(max int, window time.Duration, key func(c *fiber.Ctx) string) f
 			return errs.TooMany("Çok fazla istek gönderildi. Lütfen biraz bekle.")
 		},
 	})
+}
+
+// RateLimitOutside limits requests per address, leaving the trusted
+// addresses (the office) out. IPv6 addresses count per /64, the block one
+// connection usually holds, so a sender cannot step around the limit by
+// changing the last part of its address.
+func RateLimitOutside(max int, window time.Duration, trusted []*net.IPNet) fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        max,
+		Expiration: window,
+		Next:       func(c *fiber.Ctx) bool { return configs.Contains(trusted, c.IP()) },
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return "out:" + addressGroup(c.IP())
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return errs.TooMany("Çok fazla istek gönderildi. Lütfen biraz bekle.")
+		},
+	})
+}
+
+// addressGroup is an IPv4 address itself, or the /64 an IPv6 address
+// belongs to.
+func addressGroup(ip string) string {
+	parsed := net.ParseIP(ip)
+	switch {
+	case parsed == nil:
+		return ip
+	case parsed.To4() != nil:
+		return parsed.To4().String()
+	}
+	return parsed.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // PerDevice keys a limit by the browser's device cookie (see Device), or

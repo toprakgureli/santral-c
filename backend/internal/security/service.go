@@ -48,6 +48,10 @@ const accountFailureLimit = 10
 // deviceHold is how long a browser waits after too many wrong passwords.
 const deviceHold = 5 * time.Minute
 
+// knownFor is how long a browser stays known to an account after it last
+// signed in to it.
+const knownFor = 90 * 24 * time.Hour
+
 // Guard rejects a sign-in when the browser is held back, the address is
 // banned or the account is locked.
 func (s *Service) Guard(ctx context.Context, a Attempt) error {
@@ -74,6 +78,15 @@ func (s *Service) Guard(ctx context.Context, a Attempt) error {
 		return errs.Internal(err)
 	}
 	if remaining > 0 {
+		// Wrong passwords typed by someone else must not keep the owner
+		// out: a browser that has signed in to this account before still
+		// gets in. Unknown browsers wait until the lock ends.
+		if a.Device != "" {
+			known, err := s.lockout.Remaining(ctx, knownKey(a.Email, a.Device))
+			if err == nil && known > 0 {
+				return nil
+			}
+		}
 		return errs.Locked("Hesap geçici olarak kilitli. Lütfen daha sonra tekrar dene.")
 	}
 	return nil
@@ -82,17 +95,26 @@ func (s *Service) Guard(ctx context.Context, a Attempt) error {
 // Success records a successful attempt and clears failure state.
 func (s *Service) Success(ctx context.Context, a Attempt) {
 	s.record(ctx, a, true)
-	if err := s.repo.ResetFailures(ctx, a.Email); err != nil {
-		slog.WarnContext(ctx, "failure counters could not be reset", "error", err)
-	}
-	for _, k := range []string{key(a.Email), failKey(a.Email)} {
-		if err := s.lockout.Clear(ctx, k); err != nil {
-			slog.WarnContext(ctx, "lockout could not be cleared", "error", err)
+	// While the account is locked (someone else typed wrong passwords) the
+	// owner gets in from a known browser, but the lock and its count stay
+	// until they run out, so the guessing does not start over.
+	locked, err := s.lockout.Remaining(ctx, key(a.Email))
+	if err != nil || locked <= 0 {
+		if err := s.repo.ResetFailures(ctx, a.Email); err != nil {
+			slog.WarnContext(ctx, "failure counters could not be reset", "error", err)
+		}
+		for _, k := range []string{key(a.Email), failKey(a.Email)} {
+			if err := s.lockout.Clear(ctx, k); err != nil {
+				slog.WarnContext(ctx, "lockout could not be cleared", "error", err)
+			}
 		}
 	}
 	if a.Device != "" {
 		if err := s.lockout.Clear(ctx, deviceFailKey(a.Device)); err != nil {
 			slog.WarnContext(ctx, "device lockout could not be cleared", "error", err)
+		}
+		if err := s.lockout.Set(ctx, knownKey(a.Email, a.Device), knownFor); err != nil {
+			slog.WarnContext(ctx, "browser could not be remembered", "error", err)
 		}
 	}
 }
@@ -195,6 +217,11 @@ func failKey(email string) string {
 
 func deviceKey(device string) string {
 	return "device:" + device
+}
+
+// knownKey marks a browser that has signed in to an account.
+func knownKey(email, device string) string {
+	return "login-known:" + strings.ToLower(strings.TrimSpace(email)) + ":" + device
 }
 
 func deviceFailKey(device string) string {

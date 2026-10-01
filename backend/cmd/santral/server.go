@@ -142,7 +142,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	api.Get("/version", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"version": version, "buildTime": buildTime})
 	})
-	auth.NewRouter(authHandler, guard).Routes(api)
+	auth.NewRouter(authHandler, guard, configs.Nets(cfg.Security.TrustedIPs)).Routes(api)
 	user.NewRouter(userHandler, guard, need).Routes(api)
 	role.NewRouter(roleHandler, guard, need).Routes(api)
 	security.NewRouter(secHandler, guard, need).Routes(api)

@@ -1,8 +1,11 @@
 package hash
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestPasswordRoundTrip(t *testing.T) {
@@ -90,5 +93,40 @@ func TestHashingIsBounded(t *testing.T) {
 	}
 	if most < 2 {
 		t.Errorf("checks ran one by one (%d at most); the slots are not used", most)
+	}
+}
+
+// TestCheckGivesUpWhenBusy: with every slot taken, a sign-in gets ErrBusy
+// instead of waiting for ever.
+func TestCheckGivesUpWhenBusy(t *testing.T) {
+	encoded, err := Password("office password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range hashSlots {
+		slots <- struct{}{}
+	}
+	defer func() {
+		for range hashSlots {
+			<-slots
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := Check(ctx, encoded, "office password"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Check with every slot busy returned %v, want ErrBusy", err)
+	}
+}
+
+func TestCheck(t *testing.T) {
+	encoded, err := Password("office password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := Check(context.Background(), encoded, "office password"); !ok || err != nil {
+		t.Fatalf("Check rejected the right password: %v %v", ok, err)
+	}
+	if ok, err := Check(context.Background(), encoded, "wrong"); ok || err != nil {
+		t.Fatalf("Check accepted a wrong password: %v %v", ok, err)
 	}
 }
