@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, api, SESSION_ENDED } from "../api/client";
 import type { User } from "../api/types";
 import { clearUserStorage, setStorageUser } from "../lib/userStorage";
+import { forgetDrafts } from "../teams/drafts";
 
 interface AuthState {
   user: User | null;
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       clearUserStorage();
+      forgetDrafts();
       setUser(null);
       tellTabs();
     }

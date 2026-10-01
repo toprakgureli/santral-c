@@ -2,7 +2,7 @@
 // frame in the sidebar's style: the members list, search within the room,
 // and the shared pictures, videos and files.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, Play, Search, X } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMediaItem, TeamsMessage } from "@/api/types";
@@ -63,18 +63,28 @@ function SearchView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: n
       setItems(null);
       return;
     }
+    // An answer for an older query or another room is dropped.
+    let current = true;
     const t = window.setTimeout(() => {
       setBusy(true);
       api
         .teamsSearch(group.id, needle)
         .then((r) => {
+          if (!current) return;
           setItems(r);
           setError(null);
         })
-        .catch((e) => setError(e instanceof ApiError ? e.message : "Arama yapılamadı."))
-        .finally(() => setBusy(false));
+        .catch((e) => {
+          if (current) setError(e instanceof ApiError ? e.message : "Arama yapılamadı.");
+        })
+        .finally(() => {
+          if (current) setBusy(false);
+        });
     }, 300);
-    return () => window.clearTimeout(t);
+    return () => {
+      current = false;
+      window.clearTimeout(t);
+    };
   }, [q, group.id]);
 
   const words = useMemo(() => q.trim().split(/\s+/).filter(Boolean), [q]);
@@ -133,22 +143,33 @@ function MediaView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: nu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gallery, setGallery] = useState<number | null>(null);
+  // Which room and tab the list on screen belongs to; an answer for any
+  // other one is dropped.
+  const shown = useRef(`${group.id}:${tab}`);
+  shown.current = `${group.id}:${tab}`;
 
   const load = (before?: number) => {
+    const asked = `${group.id}:${tab}`;
     setBusy(true);
     api
       .teamsMedia(group.id, tab, before)
       .then((r) => {
+        if (shown.current !== asked) return;
         setItems((cur) => (before ? [...cur, ...r.items] : r.items));
         setMore(r.more);
         setError(null);
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Liste alınamadı."))
-      .finally(() => setBusy(false));
+      .catch((e) => {
+        if (shown.current === asked) setError(e instanceof ApiError ? e.message : "Liste alınamadı.");
+      })
+      .finally(() => {
+        if (shown.current === asked) setBusy(false);
+      });
   };
 
   useEffect(() => {
     setItems([]);
+    setMore(false);
     setGallery(null);
     load();
   }, [group.id, tab]); // eslint-disable-line react-hooks/exhaustive-deps

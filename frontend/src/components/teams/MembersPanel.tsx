@@ -34,11 +34,12 @@ export default function MembersPanel({ group, selfId, onChanged, onAdd, onInvite
     return { online: on, offline: off };
   }, [group.members, group.id, presenceOf]);
 
+  // The answer replaces the room on screen only if it is still this room.
   async function run(p: Promise<TeamsGroupDetail | void>) {
+    const room = group.id;
     try {
-      const g = await p;
-      if (g) onChanged(g);
-      else onChanged(await api.teamsGroup(group.id));
+      const g = (await p) || (await api.teamsGroup(room));
+      if (g.id === room) onChanged(g);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "İşlem tamamlanamadı.");
     }

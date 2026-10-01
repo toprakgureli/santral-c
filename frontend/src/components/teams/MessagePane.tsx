@@ -22,6 +22,8 @@ import { useTeams } from "@/teams/TeamsContext";
 import { dayKey, dayName } from "@/lib/time";
 import MessageRow, { type Seats } from "@/components/teams/MessageRow";
 import { MessageInfo, ReactionPeople } from "@/components/teams/MessageInfo";
+import { draftKey, readDraft, saveDraft } from "@/teams/drafts";
+import { applyReaction } from "@/teams/reactions";
 
 export default function MessagePane({ group, selfId, target, onOpenGame }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null; onOpenGame: (id: number) => void }) {
   const teams = useTeams();
@@ -31,7 +33,11 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
   const [moreNewer, setMoreNewer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reply, setReply] = useState<TeamsMessage | null>(null);
+  // The pane lives as long as its room is open; the line being answered is
+  // part of the room's draft and comes back with it.
+  const draft = draftKey(selfId, group.id);
+  const [reply, setReply] = useState<TeamsMessage | null>(() => readDraft(draft).reply);
+  useEffect(() => saveDraft(draft, { reply }), [draft, reply]);
   const [editing, setEditing] = useState<TeamsMessage | null>(null);
   const [picker, setPicker] = useState<number | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -56,7 +62,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
   };
   useEffect(() => {
     const next: Seats = {};
-    for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name };
+    for (const m of group.members) next[m.id] = { deliveredId: m.deliveredId, readId: m.readId, name: m.name, historyFrom: m.historyFrom ?? 0 };
     setSeats(next);
   }, [group.members]);
 
@@ -81,11 +87,8 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
     }
   }, [group.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The pane is mounted once per room, so loading is all there is to do.
   useEffect(() => {
-    setItems([]);
-    setReply(null);
-    setEditing(null);
-    setPicker(null);
     void load();
   }, [load]);
 
@@ -189,13 +192,11 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
         setItems((cur) => cur.map((x) => (x.id === e.id ? { ...x, deleted: true, body: "", canDelete: false, reactions: [] } : x)));
         setEditing((cur) => (cur?.id === e.id ? null : cur));
       } else if (e.type === "reaction" && e.id) {
-        api.teamsMessages(group.id).then((r) => setItems((cur) => {
-          const fresh = new Map(r.items.map((m) => [m.id, m]));
-          return cur.map((x) => fresh.get(x.id) ?? x);
-        })).catch(() => undefined);
+        // Applied to the lines on screen; nobody reloads anything.
+        setItems((cur) => applyReaction(cur, e, selfId, group.members));
       }
     });
-  }, [group.id, group.canManage, selfId, teams, moreNewer]);
+  }, [group.id, group.canManage, group.members, selfId, teams, moreNewer]);
 
   // Keep the view pinned to the newest line unless the reader scrolled up.
   useLayoutEffect(() => {

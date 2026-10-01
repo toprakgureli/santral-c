@@ -2,7 +2,9 @@
 // Typing @ opens a member list; picking one writes "@Ad Soyad" and tags
 // them, "@herkes" tags the whole room. Selected text can be styled from
 // the right-click menu or with shortcuts, and a live preview shows the
-// result. The same box edits a line when `editing` is set.
+// result. The same box edits a line when `editing` is set. What is typed
+// is the room's draft: it stays when the person opens another room and is
+// there again on return, until it is sent.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AtSign, CornerUpLeft, Paperclip, Pencil, SendHorizontal, SmilePlus, Type, Users, X } from "lucide-react";
@@ -17,6 +19,7 @@ import { VIDEO_MAX } from "@/lib/attachments";
 import type { UploadsApi } from "@/teams/useUploads";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { applyStyle, MARKUP_HINT, renderMarkup, STYLES, stripMarkup, type Style } from "@/lib/markup";
+import { clearDraft, draftKey, readDraft, saveDraft } from "@/teams/drafts";
 import { cn } from "@/lib/utils";
 
 export const EVERYONE = "herkes";
@@ -56,11 +59,12 @@ export default function Composer({
   uploads: UploadsApi;
 }) {
   const picker = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState("");
+  const key = draftKey(selfId, group.id);
+  const [text, setText] = useState(() => readDraft(key).text);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Names inserted through the picker, so a plain "@" in prose never tags.
-  const [tagged, setTagged] = useState<Record<number, string>>({});
+  const [tagged, setTagged] = useState<Record<number, string>>(() => readDraft(key).tagged);
   const [query, setQuery] = useState<{ start: number; text: string } | null>(null);
   const [cursor, setCursor] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -84,12 +88,33 @@ export default function Composer({
   const area = useRef<HTMLTextAreaElement>(null);
   const lastTyping = useRef(0);
 
+  // A draft brought back fits the box from the start.
   useEffect(() => {
-    setText("");
-    setTagged({});
+    if (area.current && area.current.value) grow(area.current);
+  }, []);
+
+  // While a line is being edited the box holds that line, not the draft.
+  // The draft is saved only outside editing and comes back afterwards.
+  const inEdit = useRef(false);
+  useEffect(() => {
+    if (editing || inEdit.current) return;
+    saveDraft(key, { text, tagged });
+  }, [key, text, tagged, editing]);
+  useEffect(() => {
+    if (editing) {
+      inEdit.current = true;
+      return;
+    }
+    if (!inEdit.current) return;
+    inEdit.current = false;
+    const d = readDraft(key);
+    setText(d.text);
+    setTagged(d.tagged);
     setQuery(null);
-    setError(null);
-  }, [group.id]);
+    requestAnimationFrame(() => {
+      if (area.current) grow(area.current);
+    });
+  }, [editing, key]);
 
   useEffect(() => {
     if (reply) area.current?.focus();
@@ -192,9 +217,14 @@ export default function Composer({
     return { body, mentionIds, mentionsAll, attachmentIds: editing ? [] : uploads.readyIds() };
   }
 
-  function reset() {
-    setText("");
-    setTagged({});
+  // After sending, the draft is gone; after an edit, the draft comes back
+  // on its own once editing ends.
+  function reset(edited: boolean) {
+    if (!edited) {
+      setText("");
+      setTagged({});
+      clearDraft(key);
+    }
     setQuery(null);
     requestAnimationFrame(() => {
       const el = area.current;
@@ -214,6 +244,7 @@ export default function Composer({
     }
     setBusy(true);
     setError(null);
+    const edited = !!editing;
     try {
       if (editing) {
         if (body === editing.body.trim()) {
@@ -224,7 +255,7 @@ export default function Composer({
       } else {
         await onSend(outgoing(body));
       }
-      reset();
+      reset(edited);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Gönderilemedi.");
     } finally {
@@ -275,7 +306,7 @@ export default function Composer({
       if (editing) {
         e.preventDefault();
         onCancelEdit();
-        reset();
+        reset(true);
         return;
       }
       if (reply) {
@@ -324,7 +355,7 @@ export default function Composer({
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-1.5 text-xs">
           <Pencil className="size-3.5 shrink-0 text-warning" />
           <span className="min-w-0 flex-1 truncate">Mesaj düzenleniyor <span className="text-muted-foreground">· Esc ile vazgeç, Enter ile kaydet</span></span>
-          <button type="button" onClick={() => { onCancelEdit(); reset(); }} aria-label="Düzenlemeyi iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
+          <button type="button" onClick={() => { onCancelEdit(); reset(true); }} aria-label="Düzenlemeyi iptal et" className="rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-3.5" /></button>
         </div>
       ) : reply ? (
         <div className="mb-2 flex items-center gap-2.5 rounded-lg border-l-2 border-primary bg-muted/40 py-1.5 pr-2 pl-3 text-xs">
