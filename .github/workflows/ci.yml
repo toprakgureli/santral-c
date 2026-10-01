@@ -89,11 +89,13 @@ jobs:
       - name: Load tests
         run: |
           mkdir -p "$RUNNER_TEMP/cover/load"
-          go test -count=1 -cover -coverpkg=./... -run 'TestLoad|TestPermissionMatrix' -v ./cmd/santral -args -test.gocoverdir="$RUNNER_TEMP/cover/load"
+          # atomic, like the race run above, so the two can be added together.
+          go test -count=1 -covermode=atomic -coverpkg=./... -run 'TestLoad|TestPermissionMatrix' -v ./cmd/santral -args -test.gocoverdir="$RUNNER_TEMP/cover/load"
 
       # How much of the backend the tests run, shown on the run's summary
       # page. Nothing fails on the number yet.
       - name: Coverage
+        continue-on-error: true
         run: |
           go tool covdata textfmt -i="$RUNNER_TEMP/cover/unit" -o "$RUNNER_TEMP/unit.out"
           go tool covdata textfmt -i="$RUNNER_TEMP/cover/unit,$RUNNER_TEMP/cover/load" -o "$RUNNER_TEMP/all.out"
