@@ -226,29 +226,63 @@ func (h *Handler) session(c *fiber.Ctx, result *LoginResult) error {
 	return c.JSON(responses.Login{User: result.User})
 }
 
+// RefreshPath is where the browser sends the refresh cookie: only to the
+// sign-in endpoints that renew or end the session, never with the rest of
+// the panel's requests.
+const RefreshPath = "/api/v1/auth"
+
 func (h *Handler) setSession(c *fiber.Ctx, result *LoginResult) {
-	h.cookie(c, h.cfg.CookieName, result.Token, result.ExpiresAt)
+	h.cookie(c, h.cfg.CookieName, "/", result.Token, result.ExpiresAt)
 	if result.RefreshToken != "" {
-		h.cookie(c, h.cfg.RefreshCookieName, result.RefreshToken, result.RefreshExpiresAt)
+		h.cookie(c, h.cfg.RefreshCookieName, RefreshPath, result.RefreshToken, result.RefreshExpiresAt)
+		if h.legacyRefresh(c) {
+			// The browser still keeps the refresh cookie that was sent with
+			// every request before it moved here; drop it. It goes after the
+			// new cookie: the two share a name and differ only in path.
+			c.Response().Header.Add(fiber.HeaderSetCookie, h.expired(h.cfg.RefreshCookieName, "/"))
+		}
 	}
+}
+
+// legacyRefresh reports whether the request carried the refresh cookie
+// twice: the current one and an older one kept for every path.
+func (h *Handler) legacyRefresh(c *fiber.Ctx) bool {
+	n := 0
+	for key := range c.Request().Header.Cookies() {
+		if string(key) == h.cfg.RefreshCookieName {
+			n++
+		}
+	}
+	return n > 1
 }
 
 func (h *Handler) clearSession(c *fiber.Ctx) {
 	past := time.Now().Add(-time.Hour)
-	h.cookie(c, h.cfg.CookieName, "", past)
-	h.cookie(c, h.cfg.RefreshCookieName, "", past)
+	h.cookie(c, h.cfg.CookieName, "/", "", past)
+	h.cookie(c, h.cfg.RefreshCookieName, RefreshPath, "", past)
+	c.Response().Header.Add(fiber.HeaderSetCookie, h.expired(h.cfg.RefreshCookieName, "/"))
 }
 
-func (h *Handler) cookie(c *fiber.Ctx, name, value string, expires time.Time) {
+func (h *Handler) cookie(c *fiber.Ctx, name, path, value string, expires time.Time) {
 	c.Cookie(&fiber.Cookie{
 		Name:     name,
 		Value:    value,
 		Expires:  expires,
-		Path:     "/",
+		Path:     path,
 		HTTPOnly: true,
 		Secure:   h.cfg.CookieSecure,
 		SameSite: "Lax",
 	})
+}
+
+// expired is a Set-Cookie value that removes the cookie name at path. It is
+// added as a raw header because a response sets each cookie name only once.
+func (h *Handler) expired(name, path string) string {
+	v := name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=-1; path=" + path + "; HttpOnly; SameSite=Lax"
+	if h.cfg.CookieSecure {
+		v += "; secure"
+	}
+	return v
 }
 
 func metaFrom(c *fiber.Ctx) RequestMeta {

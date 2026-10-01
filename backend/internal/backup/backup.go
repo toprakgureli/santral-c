@@ -2,8 +2,11 @@
 // hours. The service account it uses is only a Contributor there, so it can
 // add files and never delete them: a server taken over cannot wipe its own
 // backups. Before every upload the backup asks Drive what the account may
-// do in the folder and refuses to run if it could delete. Restoring is a
-// manual pg_restore of one of the files.
+// do in the folder and refuses to run if it could delete. After the upload
+// the file is locked read-only with a lock only a Shared Drive organizer can
+// lift, so it cannot be overwritten or lose its earlier revisions either; a
+// copy that cannot be locked counts as failed. Restoring is a manual
+// pg_restore of one of the files.
 package backup
 
 import (
@@ -187,7 +190,9 @@ func (s *Service) Save(ctx context.Context, actorID uint, in Input, ip string) (
 }
 
 // Check signs in as the service account and reports what it may do in the
-// folder. It writes nothing.
+// folder. When the folder looks right it also adds a small file there and
+// locks it, to see that backups can be locked; that file stays, as every
+// backup does.
 func (s *Service) Check(ctx context.Context, actorID uint) (*FolderCheck, error) {
 	if _, err := s.authorize(ctx, actorID); err != nil {
 		return nil, err
@@ -207,6 +212,14 @@ func (s *Service) Check(ctx context.Context, actorID uint) (*FolderCheck, error)
 	check, err := g.checkFolder(ctx, token, st.FolderID)
 	if err != nil {
 		return nil, errs.Invalid(err.Error(), nil)
+	}
+	if check.Problem() == "" {
+		ok := true
+		if err := g.tryLock(ctx, token, st.FolderID); err != nil {
+			ok = false
+			check.LockError = err.Error()
+		}
+		check.CanLock = &ok
 	}
 	return check, nil
 }
@@ -331,11 +344,23 @@ func (s *Service) copy(ctx context.Context) (string, int64, error) {
 	if token, err = g.token(ctx); err != nil {
 		return "", 0, err
 	}
-	_, size, err := g.upload(ctx, token, st.FolderID, name, path)
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("dump could not be opened: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		return "", 0, fmt.Errorf("dump could not be read: %w", err)
+	}
+	id, err := g.upload(ctx, token, st.FolderID, name, file, info.Size())
 	if err != nil {
 		return name, 0, err
 	}
-	return name, size, nil
+	if err := g.lock(ctx, token, id); err != nil {
+		return name, info.Size(), fmt.Errorf("yedek yüklendi ama kilitlenemedi, bu yüzden sonradan değiştirilebilir: %w. Ayarlardaki \"Bağlantıyı denetle\" ile kilitlemeyi dene", err)
+	}
+	return name, info.Size(), nil
 }
 
 func (s *Service) client(st *models.BackupSettings) (*google, error) {

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Camera, Clock, Pencil, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Camera, Clock, Lock, Pencil, Trash2, UserRound } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import type { Profile as ProfileData, ProfileRecord, ProfileStats } from "../api/types";
 import RangePicker, { useRange } from "../components/RangePicker";
@@ -73,7 +73,7 @@ export function Profile() {
         </button>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold tracking-tight">{id ? (profile?.name ?? "Profil") : "Profilim"}</h1>
-          <p className="text-sm text-muted-foreground">{id ? "Ekip arkadaşının profili ve çağrı karnesi" : "Tanıtımını, fotoğrafını ve karneni gör"}</p>
+          <p className="text-sm text-muted-foreground">{id ? "Ekip arkadaşının profili" : "Tanıtımını, fotoğrafını ve karneni gör"}</p>
         </div>
       </div>
 
@@ -216,7 +216,7 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
             <div className="min-w-0">
               <h2 className="text-xl font-semibold tracking-tight">{profile.name}</h2>
               {!editing && profile.headline && <p className="text-sm text-muted-foreground">{profile.headline}</p>}
-              {!editing && !profile.headline && <p className="text-sm text-muted-foreground">{profile.email}</p>}
+              {!editing && !profile.headline && profile.email && <p className="text-sm text-muted-foreground">{profile.email}</p>}
             </div>
             {profile.editable && !editing && (
               <Button variant="secondary" onClick={start} className="h-9">
@@ -291,7 +291,14 @@ function ProfileView({ profile, onSaved }: { profile: ProfileData; onSaved: (p: 
       </div>
       </div>
 
-      <RecordCard userId={profile.id} totals={stats} />
+      {profile.canSeeRecord && stats ? (
+        <RecordCard userId={profile.id} totals={stats} />
+      ) : (
+        <p className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/25 px-4 py-3 text-xs text-muted-foreground">
+          <Lock className="size-3.5 shrink-0" />
+          Çağrı karnesini sadece ekip performansını görme yetkisi olanlar görür.
+        </p>
+      )}
 
     </div>
   );

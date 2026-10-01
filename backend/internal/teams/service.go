@@ -380,10 +380,11 @@ func dmKey(a, b uint) string {
 
 // People lists the active users the actor may add, invite or message.
 func (s *Service) People(ctx context.Context, actorID uint) ([]Person, error) {
-	if _, err := s.actor(ctx, actorID); err != nil {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
-	out, err := s.repo.People(ctx)
+	out, err := s.repo.People(ctx, actor.IsInvisibleAdmin())
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -597,7 +598,8 @@ func (s *Service) Create(ctx context.Context, actorID uint, in CreateInput) (*Gr
 
 // OpenDM returns the direct-message room with another user, creating it.
 func (s *Service) OpenDM(ctx context.Context, actorID, otherID uint) (*GroupDetail, error) {
-	if _, err := s.actor(ctx, actorID); err != nil {
+	actor, err := s.actor(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
 	if otherID == actorID {
@@ -614,6 +616,11 @@ func (s *Service) OpenDM(ctx context.Context, actorID, otherID uint) (*GroupDeta
 	g, err := s.repo.GroupByDMKey(ctx, key)
 	if err != nil {
 		return nil, errs.Internal(err)
+	}
+	// The owner account is not in anyone's list; only it may start a
+	// conversation, so a guessed id does not reveal it.
+	if g == nil && other.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
+		return nil, errs.NotFound("Kullanıcı bulunamadı.")
 	}
 	if g == nil {
 		g = &models.ChatGroup{Kind: "dm", DMKey: &key, CreatedBy: &actorID, CreatedAt: time.Now(), UpdatedAt: time.Now()}

@@ -54,10 +54,14 @@ run_as_app git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 
 GIT_SHA=$(run_as_app git -C "$APP_DIR" rev-parse --short HEAD)
 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# A random tag shared by the backend and the panel of this deploy. The panel's
+# files are public, so they carry this tag instead of the commit; the panel
+# compares it with the backend's to see that it is up to date.
+BUILD_ID=$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')
 echo "==> Version $GIT_SHA ($BUILD_TIME), running $PREV_SHA"
 
 echo "==> Building backend"
-LDFLAGS="-X main.version=$GIT_SHA -X main.buildTime=$BUILD_TIME"
+LDFLAGS="-X main.version=$GIT_SHA -X main.buildTime=$BUILD_TIME -X main.buildID=$BUILD_ID"
 run_as_app bash -c "cd '$APP_DIR/backend' && '$GO' build -trimpath -ldflags '$LDFLAGS' -o '$APP_DIR/santral.new' ./cmd/santral"
 
 echo "==> Checking config.yml with the new version"
@@ -67,7 +71,7 @@ if ! run_as_app "$APP_DIR/santral.new" -check-config -config "$APP_DIR/config.ym
 fi
 
 echo "==> Building frontend"
-run_as_app bash -c "cd '$APP_DIR/frontend' && npm ci && VITE_BUILD_SHA='$GIT_SHA' VITE_BUILD_TIME='$BUILD_TIME' npm run build"
+run_as_app bash -c "cd '$APP_DIR/frontend' && npm ci && VITE_BUILD_ID='$BUILD_ID' npm run build"
 
 echo "==> Copying the database before the switch"
 sudo install -d -m 700 -o postgres -g postgres "$BACKUP_DIR"

@@ -36,7 +36,6 @@ const envRedis = "SANTRAL_TEST_REDIS"
 var public = map[string]string{
 	"GET /healthz":                        "uptime check",
 	"GET /metrics":                        "served to the server itself only",
-	"GET /api/v1/version":                 "build stamp",
 	"POST /api/v1/auth/login":             "signing in",
 	"POST /api/v1/auth/refresh":           "renewing a session from its cookie",
 	"POST /api/v1/auth/logout":            "ending a session from its cookie",

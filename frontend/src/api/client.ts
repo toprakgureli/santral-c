@@ -68,7 +68,8 @@ export interface BackupView {
 
 // BackupCheck is what the backup account may do in its folder.
 export interface BackupCheck {
-  folder: { name: string; sharedDrive: boolean; canAdd: boolean; canDelete: boolean };
+  // canLock is there once the check has tried locking a small test file.
+  folder: { name: string; sharedDrive: boolean; canAdd: boolean; canDelete: boolean; canLock?: boolean; lockError?: string };
   problem: string;
 }
 
@@ -300,7 +301,7 @@ export const api = {
   logoutEverywhere: () => request<void>("/auth/logout/everywhere", { method: "POST" }),
 
   // Build stamp of the running backend (public), to compare against the frontend.
-  version: () => request<{ version: string; buildTime: string }>("/version"),
+  version: () => request<{ version: string; buildTime: string; build?: string }>("/version"),
 
   // Users
   listUsers: (params: { query?: string; roleId?: number | string; active?: string; page?: number; perPage?: number } = {}) =>

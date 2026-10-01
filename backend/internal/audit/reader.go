@@ -54,10 +54,17 @@ func (r *Reader) List(ctx context.Context, actorID uint, f requests.AuditFilter)
 		f.PerPage = 50
 	}
 
+	// The owner account stays out of sight: neither what it did nor what was
+	// done to its account is listed, except to another invisible admin.
+	hide := !actor.IsInvisibleAdmin()
 	build := func() *gorm.DB {
 		q := r.db.WithContext(ctx).
 			Table("audit_log").
 			Joins("LEFT JOIN users ON users.id = audit_log.actor_id")
+		if hide {
+			q = q.Where("(audit_log.actor_id IS NULL OR audit_log.actor_id NOT IN (" + models.InvisibleAdminIDsSQL + "))").
+				Where("NOT (COALESCE(audit_log.target_type, '') = 'user' AND COALESCE(audit_log.target_id, '') IN (SELECT ia.user_id::text FROM (" + models.InvisibleAdminIDsSQL + ") ia))")
+		}
 		if a := strings.TrimSpace(f.Action); a != "" {
 			if strings.HasSuffix(a, ".") {
 				q = q.Where("audit_log.action LIKE ?", a+"%")

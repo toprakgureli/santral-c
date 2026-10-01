@@ -1,7 +1,10 @@
 // Package profile serves a person's page: who they are (photo, headline,
 // biography, roles, extension), their all-time totals, and a call-centre
-// record over any day range. Anyone signed in may look at anyone's profile;
-// only the owner edits their own text.
+// record over any day range. Every colleague may see the card; the figures
+// (totals, record, shift and break time) need the same permission as the
+// team performance page, and only the owner edits their own text. The
+// owner account (invisible admin) is shown to no one but another invisible
+// admin.
 package profile
 
 import (
@@ -17,6 +20,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 	"github.com/toprakgureli/santral-c/backend/pkg/validator"
@@ -59,11 +63,12 @@ type Record struct {
 	Days        []Day `json:"days"`
 }
 
-// Profile is the page payload.
+// Profile is the page payload. Email, Stats and the record are filled only
+// for a viewer who may see the person's figures (CanSeeRecord).
 type Profile struct {
 	ID            uint     `json:"id"`
 	Name          string   `json:"name"`
-	Email         string   `json:"email"`
+	Email         string   `json:"email,omitempty"`
 	Headline      string   `json:"headline"`
 	Bio           string   `json:"bio"`
 	HasAvatar     bool     `json:"hasAvatar"`
@@ -72,7 +77,8 @@ type Profile struct {
 	Extension     string   `json:"extension,omitempty"`
 	Active        bool     `json:"active"`
 	JoinedAt      string   `json:"joinedAt"`
-	Stats         Stats    `json:"stats"`
+	Stats         *Stats   `json:"stats,omitempty"`
+	CanSeeRecord  bool     `json:"canSeeRecord"`
 	Editable      bool     `json:"editable"`
 }
 
@@ -221,34 +227,79 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	return rec, nil
 }
 
+// IActorResolver loads the acting user for authorization.
+type IActorResolver interface {
+	GetByID(ctx context.Context, id uint) (*models.User, error)
+}
+
 // Service builds and edits profiles.
 type Service struct {
-	repo *Repository
+	repo  *Repository
+	users IActorResolver
 }
 
 // NewService builds a profile service.
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+func NewService(repo *Repository, users IActorResolver) *Service {
+	return &Service{repo: repo, users: users}
+}
+
+// target loads the person the actor asks about, as long as the actor may
+// know they exist, and says whether the actor may see their figures.
+func (s *Service) target(ctx context.Context, actorID, userID uint) (*models.User, bool, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, false, err
+	}
+	u, err := s.repo.User(ctx, userID)
+	if err != nil {
+		return nil, false, errs.Internal(err)
+	}
+	if u == nil || (u.ID != actor.ID && u.IsInvisibleAdmin() && !actor.IsInvisibleAdmin()) {
+		return nil, false, errs.NotFound("Kullanıcı bulunamadı.")
+	}
+	return u, maySeeFigures(actor, u), nil
+}
+
+// maySeeFigures applies the team performance page's rule to one person:
+// one's own figures, everyone's with performance.view_all, and those of
+// people sharing a role with performance.view_role.
+func maySeeFigures(actor, u *models.User) bool {
+	switch {
+	case actor.ID == u.ID, actor.Can(enums.PerformanceViewAll):
+		return true
+	case actor.Can(enums.PerformanceViewRole):
+		for _, mine := range actor.Roles {
+			for _, theirs := range u.Roles {
+				if mine.ID == theirs.ID {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // Get returns a user's profile as seen by the actor.
 func (s *Service) Get(ctx context.Context, actorID, userID uint) (*Profile, error) {
-	u, err := s.repo.User(ctx, userID)
+	u, figures, err := s.target(ctx, actorID, userID)
 	if err != nil {
-		return nil, errs.Internal(err)
+		return nil, err
 	}
-	if u == nil {
-		return nil, errs.NotFound("Kullanıcı bulunamadı.")
+	p := build(u, actorID == userID)
+	if !figures {
+		return p, nil
 	}
 	stats, err := s.repo.Stats(ctx, userID)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	return build(u, stats, actorID == userID), nil
+	p.Email, p.Stats, p.CanSeeRecord = u.Email, &stats, true
+	return p, nil
 }
 
-// RecordRange returns a user's record over an inclusive local day range.
-func (s *Service) RecordRange(ctx context.Context, userID uint, fromDay, toDay string) (*Record, error) {
+// RecordRange returns a user's record over an inclusive local day range,
+// for a viewer who may see the person's figures.
+func (s *Service) RecordRange(ctx context.Context, actorID, userID uint, fromDay, toDay string) (*Record, error) {
 	from, err := time.ParseInLocation("2006-01-02", fromDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
@@ -263,12 +314,12 @@ func (s *Service) RecordRange(ctx context.Context, userID uint, fromDay, toDay s
 	if toStart.Sub(from) > 366*24*time.Hour {
 		return nil, errs.Invalid("Aralık en fazla bir yıl olabilir.", nil)
 	}
-	u, err := s.repo.User(ctx, userID)
+	_, figures, err := s.target(ctx, actorID, userID)
 	if err != nil {
-		return nil, errs.Internal(err)
+		return nil, err
 	}
-	if u == nil {
-		return nil, errs.NotFound("Kullanıcı bulunamadı.")
+	if !figures {
+		return nil, errs.Forbidden("Bu kişinin çağrı karnesini görme yetkin yok.")
 	}
 	rec, err := s.repo.Record(ctx, userID, from, toStart.AddDate(0, 0, 1))
 	if err != nil {
@@ -286,7 +337,8 @@ func (s *Service) UpdateMine(ctx context.Context, actorID uint, req Update) (*Pr
 	return s.Get(ctx, actorID, actorID)
 }
 
-func build(u *models.User, stats Stats, editable bool) *Profile {
+// build is the card everyone may see; the figures are added by Get.
+func build(u *models.User, editable bool) *Profile {
 	roles := make([]string, 0, len(u.Roles))
 	for _, r := range u.Roles {
 		roles = append(roles, r.DisplayName)
@@ -294,14 +346,12 @@ func build(u *models.User, stats Stats, editable bool) *Profile {
 	p := &Profile{
 		ID:        u.ID,
 		Name:      u.Name,
-		Email:     u.Email,
 		Headline:  u.Headline,
 		Bio:       u.Bio,
 		HasAvatar: u.Avatar != "",
 		Roles:     roles,
 		Active:    u.Active,
 		JoinedAt:  u.CreatedAt.In(tz.Istanbul).Format("2006-01-02"),
-		Stats:     stats,
 		Editable:  editable,
 	}
 	if u.Avatar != "" {
@@ -380,7 +430,7 @@ func (h *Handler) Record(c *fiber.Ctx) error {
 		to = today.Format("2006-01-02")
 		from = today.AddDate(0, 0, -6).Format("2006-01-02")
 	}
-	res, err := h.service.RecordRange(c.UserContext(), target, from, to)
+	res, err := h.service.RecordRange(c.UserContext(), id, target, from, to)
 	if err != nil {
 		return err
 	}
@@ -420,8 +470,9 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 
 // Routes registers the profile routes onto g.
 func (r *Router) Routes(g fiber.Router) {
-	// Profiles are for every signed-in user: one's own to edit, others' to
-	// read (the service hides what the caller may not see).
+	// Every signed-in user reaches these routes: one's own profile to edit,
+	// a colleague's card to read. The service decides the rest: the owner
+	// account is not found, and the figures need a performance permission.
 	group := g.Group("/profile", r.guard)
 	group.Get("/me", r.handler.Mine)
 	group.Put("/me", r.handler.UpdateMine)

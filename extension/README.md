@@ -15,6 +15,10 @@ gösterir.
   düğmelerine kodla basamaz; düğmeler sadece gerçek tıklamayla çalışır.
   Panel sekmesinde pencere gizlidir; orada betik sadece panelin durumunu
   eklentiye, eklentinin komutlarını panele taşır.
+- **Görünürlük kontrolü** (`guard.js`): sayfa, pencerenin dış kutusunu
+  saydam yapıp ya da üstüne bir şey koyup seni farkında olmadan bir düğmeye
+  bastırmaya çalışabilir. Bu yüzden bir düğme ancak pencere yarım saniyedir
+  tam görünürse ve tıkladığın yerde gerçekten pencere varsa çalışır.
 - **Arka plan betiği** (`background.js`): sadece aracıdır. Panelin durumunu
   bütün sekmelerdeki pencerelere, pencerelerden gelen komutları panele
   taşır.
@@ -61,6 +65,8 @@ npm test
 
 Arka plan betiğini sahte bir tarayıcı ortamında çalıştırır ve sadece panel
 sekmesine inanıldığını, komutların sadece ona gittiğini kontrol eder.
+Görünürlük kontrolünü de sahte bir sayfada dener: saydam, gizli, küçültülmüş
+ya da üstü örtülmüş bir pencerenin düğmeleri çalışmamalı.
 
 ## Notlar
 

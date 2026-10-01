@@ -7,6 +7,9 @@
 // The page cannot reach the widget: its shadow root is closed, its buttons
 // act only on real clicks, and only the tab on the panel's address (set in
 // the popup) is treated as the panel. Other pages' messages are ignored.
+// The page can still restyle or cover the host element, so a press also
+// has to pass the guard (guard.js): the widget must be plainly visible and
+// really under the pointer.
 
 (() => {
   if (window.top !== window) return;
@@ -17,6 +20,8 @@
   host.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:2147483647;";
   document.documentElement.appendChild(host);
   const root = host.attachShadow({ mode: "closed" });
+  const guard = globalThis.santralcGuard ? globalThis.santralcGuard.createGuard(host, { window, document }) : null;
+  guard?.watch();
 
   const I = {
     call: '<path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.24 1.02l-2.2 2.2z"/>',
@@ -92,10 +97,11 @@
     });
   });
 
-  // on wires a handler that only real user input runs; a page cannot
-  // press the widget's buttons by script.
+  // on wires a handler that only real user input runs, and only while the
+  // widget is plainly visible under the pointer; a page cannot press the
+  // widget's buttons by script, nor trick a press on a hidden widget.
   function on(el, type, fn) {
-    el?.addEventListener(type, (e) => { if (e.isTrusted) fn(e); });
+    el?.addEventListener(type, (e) => { if (e.isTrusted && guard && guard.allows(e)) fn(e); });
   }
 
   // Hide the widget if the panel's heartbeat stops (panel closed).

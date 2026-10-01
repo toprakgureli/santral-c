@@ -82,6 +82,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	settingHandler := setting.NewHandler(settingSvc)
 	auditHandler := audit.NewHandler(audit.NewReader(db, actors))
 	authSvc := auth.NewService(cfg.Auth, cfg.Security, sessionRepo, userSvc, secSvc, deny, settingSvc, lockout.New(), revoker)
+	authSvc.SetAudit(auditSvc)
 	authHandler := auth.NewHandler(cfg.Auth, authSvc)
 	userHandler := user.NewHandler(userSvc)
 	roleSvc := role.NewService(role.NewRepository(db), actors, auditSvc, actors)
@@ -132,15 +133,31 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		AllowOrigins:     cfg.App.CORSOrigins,
 		AllowCredentials: cfg.App.CORSOrigins != "",
 	}))
+	// A request that changes something and carries the session cookies must
+	// come from the panel's own pages with a JSON body (or a file upload on
+	// the routes that take one).
+	app.Use(middlewares.SameOrigin(middlewares.SameOriginConfig{
+		Origins:       append(strings.Split(cfg.App.CORSOrigins, ","), cfg.App.PublicURL),
+		Cookies:       []string{cfg.Auth.CookieName, cfg.Auth.RefreshCookieName},
+		GuardedPrefix: "/api/v1/auth/",
+		Multipart: []string{
+			"/api/v1/escalations/categories/import",
+			"/api/v1/games/items/import",
+			"/api/v1/wa/files",
+			"/api/v1/wa/templates/media",
+			"/api/v1/wa/conversations/*/media",
+		},
+	}))
 	// The health check the uptime monitor and deploy.sh call, and the queue
 	// numbers for whoever runs the server.
 	ops.NewHandler(sqlDB, redis.Get(), ops.Build{Version: version, Time: buildTime}, metrics.Registry).Routes(app)
 
 	api := app.Group("/api/v1")
-	// Public build stamp so the panel can show whether the running backend is the
-	// latest deploy.
-	api.Get("/version", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"version": version, "buildTime": buildTime})
+	// The build stamp, for signed-in users only, so the panel can show
+	// whether it runs the latest deploy. From outside nobody learns which
+	// commit of the public code runs here.
+	api.Get("/version", guard, func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"version": version, "buildTime": buildTime, "build": buildID})
 	})
 	auth.NewRouter(authHandler, guard, configs.Nets(cfg.Security.TrustedIPs)).Routes(api)
 	user.NewRouter(userHandler, guard, need).Routes(api)
@@ -153,7 +170,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	calllog.NewRouter(callLogHandler, guard, need).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard, need).Routes(api)
-	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
+	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db), actors)), guard).Routes(api)
 	drive := teams.NewDrive(cfg.Drive, ring, db)
 	teamsSvc := teams.NewService(teams.NewRepository(db), actors, teams.NewHub(), drive, auditSvc)
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard, need).Routes(api)

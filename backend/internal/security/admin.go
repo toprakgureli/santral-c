@@ -8,6 +8,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
+	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -28,9 +29,11 @@ func NewAdmin(repo *Repository, users IActorResolver, auditor IAudit) *Admin {
 
 // Attempts returns a page of login attempts.
 func (a *Admin) Attempts(ctx context.Context, actorID uint, f requests.SecurityFilter) (*responses.LoginAttemptList, error) {
-	if err := a.authorize(ctx, actorID); err != nil {
+	actor, err := a.authorize(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
+	f.ExcludeInvisibleAdmin = !actor.IsInvisibleAdmin()
 	if f.Page < 1 {
 		f.Page = 1
 	}
@@ -47,7 +50,7 @@ func (a *Admin) Attempts(ctx context.Context, actorID uint, f requests.SecurityF
 
 // Bans lists the IP bans still in force.
 func (a *Admin) Bans(ctx context.Context, actorID uint) ([]responses.IPBanItem, error) {
-	if err := a.authorize(ctx, actorID); err != nil {
+	if _, err := a.authorize(ctx, actorID); err != nil {
 		return nil, err
 	}
 	items, err := a.repo.Bans(ctx, time.Now())
@@ -87,13 +90,13 @@ func (a *Admin) Unban(ctx context.Context, actorID, id uint, ip string) error {
 	return nil
 }
 
-func (a *Admin) authorize(ctx context.Context, actorID uint) error {
+func (a *Admin) authorize(ctx context.Context, actorID uint) (*models.User, error) {
 	actor, err := a.users.GetByID(ctx, actorID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !actor.Can(enums.SystemLogs) {
-		return errs.Forbidden("Güvenlik kayıtlarını görüntüleme yetkin yok.")
+		return nil, errs.Forbidden("Güvenlik kayıtlarını görüntüleme yetkin yok.")
 	}
-	return nil
+	return actor, nil
 }

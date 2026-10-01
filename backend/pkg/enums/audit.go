@@ -25,6 +25,9 @@ const (
 	AuditBackupStarted     string = "backup.started"
 	AuditDriveDisconnected string = "drive.disconnected"
 	AuditIPUnbanned        string = "security.ip_unbanned"
+	// AuditSessionReused: a replaced refresh token came back, so the
+	// session it belonged to was ended.
+	AuditSessionReused string = "security.session_reused"
 
 	AuditShiftStarted string = "shift.started"
 	AuditShiftEnded   string = "shift.ended"

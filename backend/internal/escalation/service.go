@@ -103,6 +103,11 @@ func (s *Service) List(ctx context.Context, actorID uint, q ListQuery) (*ListPag
 	case actor.Can(enums.EscalationListAll):
 		scope = "all"
 	case f.NumberKey != "" && actor.Can(enums.EscalationSearch):
+		// The search reaches everyone's records, so it takes a whole
+		// customer number; a few digits would list many customers.
+		if len(f.NumberKey) < minSearchDigits {
+			return &ListPage{Items: []Record{}, Page: f.Page, PerPage: f.PerPage, Scope: "all"}, nil
+		}
 		scope = "all"
 	case actor.Can(enums.EscalationListOwn):
 		scope = "own"
@@ -139,10 +144,11 @@ func (s *Service) List(ctx context.Context, actorID uint, q ListQuery) (*ListPag
 
 // Agents lists the agents behind the records, for the list_all filter.
 func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentRef, error) {
-	if _, err := s.authorize(ctx, actorID, enums.EscalationListAll); err != nil {
+	actor, err := s.authorize(ctx, actorID, enums.EscalationListAll)
+	if err != nil {
 		return nil, err
 	}
-	out, err := s.repo.Agents(ctx)
+	out, err := s.repo.Agents(ctx, actor.IsInvisibleAdmin())
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -441,7 +447,7 @@ func (s *Service) History(ctx context.Context, actorID uint, number string) ([]R
 		return nil, err
 	}
 	key := phone.Key(number)
-	if key == "" {
+	if len(key) < minSearchDigits {
 		return []Record{}, nil
 	}
 	rows, err := s.repo.EscalationsByNumberKey(ctx, key, historyLimit)
@@ -454,6 +460,10 @@ func (s *Service) History(ctx context.Context, actorID uint, number string) ([]R
 	}
 	return out, nil
 }
+
+// minSearchDigits is the shortest number a search for everyone's records
+// accepts: a landline without its area code still has seven digits.
+const minSearchDigits = 7
 
 func (s *Service) authorize(ctx context.Context, actorID uint, perm enums.Permission) (*models.User, error) {
 	actor, err := s.users.GetByID(ctx, actorID)

@@ -1,7 +1,8 @@
 // BackupCard sets up the database copies that go to a Google Shared Drive
 // every six hours. The service account is only a Contributor in that drive,
 // so it can add files and never delete them; the server checks this before
-// every copy and refuses when it could delete.
+// every copy and refuses when it could delete. Each copy is then locked
+// read-only, so it cannot be overwritten either.
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, CircleAlert, DatabaseBackup, KeyRound, ListChecks } from "lucide-react";
@@ -88,7 +89,8 @@ export default function BackupCard() {
             <p className="text-sm font-medium">Bütün veritabanı her {view?.everyHours ?? 6} saatte bir Google Ortak Drive'a kopyalanır</p>
             <p className="text-xs leading-relaxed text-muted-foreground">
               Yedekler, sunucunun yüklediği ama silemediği bir klasöre gider: servis hesabı Ortak Drive'da yalnızca "Katkıda bulunan" olur. Sunucu
-              ele geçirilse bile eski yedekler silinemez. Her yedekten önce bu yetki denetlenir; silme yetkisi görülürse yedek alınmaz.
+              ele geçirilse bile eski yedekler silinemez. Her yedekten önce bu yetki denetlenir; silme yetkisi görülürse yedek alınmaz. Yüklenen her
+              yedek ayrıca kilitlenir: üzerine yazılamaz, eski hali silinemez. Kilidi sadece Ortak Drive yöneticisi kaldırabilir.
               Geri yüklemek için bir dosyayı indirip <code className="font-mono">pg_restore</code> ile açmak yeterlidir.
             </p>
             <button type="button" onClick={() => setSteps((v) => !v)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
@@ -103,7 +105,10 @@ export default function BackupCard() {
             <li>IAM bölümünde bir servis hesabı oluştur ve JSON anahtarını indir.</li>
             <li>Google Workspace'te bir Ortak Drive aç; servis hesabının e-posta adresini bu Ortak Drive'a <b>"Katkıda bulunan"</b> rolüyle ekle (İçerik yöneticisi ya da Yönetici değil).</li>
             <li>Ortak Drive'da bir klasör aç ve adresini aşağıya yapıştır.</li>
-            <li>JSON anahtarının içeriğini aşağıya yapıştırıp kaydet, sonra "Bağlantıyı denetle" de. Her şey yeşilse yedeklemeyi aç.</li>
+            <li>
+              JSON anahtarının içeriğini aşağıya yapıştırıp kaydet, sonra "Bağlantıyı denetle" de. Denetim klasöre küçük bir deneme dosyası ekleyip
+              kilitler; bu dosya klasörde kalır. Her şey yeşilse yedeklemeyi aç.
+            </li>
           </ol>
         )}
 
@@ -153,10 +158,11 @@ export default function BackupCard() {
           <div className={`space-y-1 rounded-xl p-3 text-xs ${check.problem ? "bg-destructive/10 text-destructive" : "bg-success/10 text-success"}`}>
             <p className="flex items-center gap-1.5 font-medium">
               {check.problem ? <CircleAlert className="size-4" /> : <CheckCircle2 className="size-4" />}
-              {check.problem ? check.problem : `Hazır: "${check.folder.name}" klasörüne dosya eklenebilir, silinemez.`}
+              {check.problem ? check.problem : `Hazır: "${check.folder.name}" klasörüne dosya eklenebilir; eklenen dosya silinemez ve kilitlenir.`}
             </p>
             <p className="text-muted-foreground">
               Ortak Drive: {check.folder.sharedDrive ? "evet" : "hayır"} · Ekleyebilir: {check.folder.canAdd ? "evet" : "hayır"} · Silebilir: {check.folder.canDelete ? "evet" : "hayır"}
+              {check.folder.canLock !== undefined && <> · Kilitleyebilir: {check.folder.canLock ? "evet" : "hayır"}</>}
             </p>
           </div>
         )}

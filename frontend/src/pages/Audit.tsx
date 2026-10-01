@@ -43,6 +43,7 @@ const ACTION_LABELS: Record<string, string> = {
   "contact.phone_removed": "Kişiden numara silindi",
   "settings.updated": "Sistem ayarı değişti",
   "security.ip_unbanned": "IP banı kaldırıldı",
+  "security.session_reused": "Kopyalanmış oturum kapatıldı",
   "shift.started": "Mesai başlatıldı",
   "shift.ended": "Mesai bitirildi",
 };
@@ -66,6 +67,7 @@ const TARGET_LABELS: Record<string, string> = {
   contact: "Kişi",
   settings: "Ayar",
   ip_ban: "IP banı",
+  session: "Oturum",
   shift: "Mesai",
   call: "Çağrı",
   wa_channel: "WhatsApp numarası",

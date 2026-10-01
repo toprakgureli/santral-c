@@ -36,10 +36,15 @@ type Person struct {
 	Active bool `json:"-"`
 }
 
-// People lists active users as chat cards.
-func (r *Repository) People(ctx context.Context) ([]Person, error) {
+// People lists active users as chat cards. withOwner keeps the invisible
+// admins in the list; only another invisible admin sees them.
+func (r *Repository) People(ctx context.Context, withOwner bool) ([]Person, error) {
 	var users []models.User
-	if err := r.db.WithContext(ctx).Where("active = TRUE").Order("name").Find(&users).Error; err != nil {
+	q := r.db.WithContext(ctx).Where("active = TRUE")
+	if !withOwner {
+		q = q.Where("id NOT IN (" + models.InvisibleAdminIDsSQL + ")")
+	}
+	if err := q.Order("name").Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("people could not be listed: %w", err)
 	}
 	out := make([]Person, 0, len(users))

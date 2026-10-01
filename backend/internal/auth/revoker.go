@@ -29,12 +29,28 @@ func NewRevoker(sessions IRepository, list IUserDenylist, accessTTL time.Duratio
 	return &Revoker{sessions: sessions, list: list, accessTTL: accessTTL}
 }
 
+// EndSession ends one sign-in at once: its refresh session is revoked and
+// the access tokens handed out to the user up to at stop working. The
+// user's other devices get a new access token from their own sessions
+// without noticing.
+func (r *Revoker) EndSession(ctx context.Context, userID, sessionID uint, at time.Time) error {
+	if err := r.sessions.RevokeSession(ctx, sessionID, at); err != nil {
+		return err
+	}
+	return r.cutoff(ctx, userID, at)
+}
+
 // RevokeUserSessions revokes the user's refresh sessions and rejects their
 // access tokens issued up to at.
 func (r *Revoker) RevokeUserSessions(ctx context.Context, userID uint, at time.Time) error {
 	if err := r.sessions.RevokeUserSessions(ctx, userID, at); err != nil {
 		return err
 	}
+	return r.cutoff(ctx, userID, at)
+}
+
+// cutoff rejects the user's access tokens issued up to at.
+func (r *Revoker) cutoff(ctx context.Context, userID uint, at time.Time) error {
 	// Token times have whole seconds; a token issued in the same second as
 	// the revocation must not slip through, so the cutoff is rounded up.
 	cutoff := at.Truncate(time.Second).Add(time.Second)

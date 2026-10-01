@@ -108,6 +108,12 @@ func (r *Repository) Attempts(ctx context.Context, f requests.SecurityFilter) ([
 		if f.Success != nil {
 			q = q.Where("success = ?", *f.Success)
 		}
+		if f.ExcludeInvisibleAdmin {
+			// Matched by account and by the address typed, so a wrong
+			// password on the owner's email is hidden too.
+			q = q.Where("(user_id IS NULL OR user_id NOT IN (" + models.InvisibleAdminIDsSQL + "))").
+				Where("lower(email) NOT IN (SELECT lower(users.email) FROM users WHERE users.id IN (" + models.InvisibleAdminIDsSQL + "))")
+		}
 		return q
 	}
 	var total int64
