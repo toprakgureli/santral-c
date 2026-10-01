@@ -453,7 +453,8 @@ export const api = {
   endShift: () => request<ShiftStatus>("/shift/end", { method: "POST" }),
 
   getAgentStatus: () => request<AgentPresence>("/pbx/status"),
-  setAgentStatus: (state: AgentPresenceState) => request<void>("/pbx/status", { method: "POST", body: JSON.stringify({ state }) }),
+  setAgentStatus: (state: AgentPresenceState) =>
+    request<{ state: AgentPresenceState; pbxPending?: boolean } | undefined>("/pbx/status", { method: "POST", body: JSON.stringify({ state }) }),
 
   // Escalations
   escalationCategories: () => request<{ items: EscalationCategory[] }>("/escalations/categories").then((r) => r.items),

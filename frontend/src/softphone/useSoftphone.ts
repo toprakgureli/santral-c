@@ -12,32 +12,22 @@ async function loadSip(): Promise<Sip> {
 // sip returns the library once a phone has started; every call below
 // runs after that.
 const sip = (): Sip => {
-  if (!SIP) throw new Error("Softphone hazır değil.");
+  if (!SIP) throw new PhoneError("Softphone hazır değil.");
   return SIP;
 };
 import { api, ApiError } from "../api/client";
 import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue";
+import { PhoneError, phoneMessage } from "./errors";
+import { currentStorageUser } from "../lib/userStorage";
 import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
 import { tones } from "./tones";
 import { CallAudio, GAIN_MAX, GAIN_MIN, loadGain, saveGain, type WaveSide } from "./audioGraph";
 
-// mediaError turns a getUserMedia failure into a message the agent can act on.
-// Anything else keeps its own text.
+// mediaError turns a failure while opening a call into a message the agent
+// can act on; library and browser texts in English never reach the screen.
 function mediaError(e: unknown): string {
-  const name = e instanceof Error ? e.name : "";
-  switch (name) {
-    case "NotAllowedError":
-    case "SecurityError":
-      return "Mikrofon izni verilmedi. Adres çubuğundaki kilit simgesinden mikrofona izin verip sayfayı yenile.";
-    case "NotFoundError":
-    case "OverconstrainedError":
-      return "Mikrofon bulunamadı. Bir mikrofon bağlayıp sayfayı yenile.";
-    case "NotReadableError":
-    case "AbortError":
-      return "Mikrofon başka bir uygulama tarafından kullanılıyor.";
-  }
-  return e instanceof Error && e.message ? e.message : "Çağrı için ses aygıtı açılamadı.";
+  return phoneMessage(e, "Çağrı için ses aygıtı açılamadı. Birazdan tekrar dene.");
 }
 
 // checkMicrophone opens and immediately releases the microphone, so the
@@ -196,6 +186,13 @@ export function useSoftphone(enabled: boolean): Phone {
   const reregisterRef = useRef<(() => Promise<void>) | null>(null);
   const localEndRef = useRef(false);
   const domainRef = useRef("");
+  // statusRef follows status, so a call placed from outside a render (the
+  // browser extension, a shortcut) sees the phone as it is right now.
+  const statusRef = useRef<PhoneStatus>(status);
+  statusRef.current = status;
+  // ownerRef is who was signed in when the current call began: its log
+  // entries belong to that person even if the panel signs out meanwhile.
+  const ownerRef = useRef(0);
 
   // Call-log correlation: one id per call, its direction/peer, and when it was
   // answered, so we can record the call to our own store as it progresses.
@@ -223,13 +220,17 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
     if (!callIdRef.current) return;
-    sendCallLog({
-      callId: callIdRef.current,
-      phase,
-      direction: callDirRef.current,
-      peer: callPeerRef.current,
-      ...extra,
-    });
+    if (phase === "start") ownerRef.current = currentStorageUser();
+    void sendCallLog(
+      {
+        callId: callIdRef.current,
+        phase,
+        direction: callDirRef.current,
+        peer: callPeerRef.current,
+        ...extra,
+      },
+      ownerRef.current || currentStorageUser(),
+    );
   }, []);
 
   // Ends left unsent by an earlier page (a deploy mid-call, a closed tab).
@@ -244,14 +245,17 @@ export function useSoftphone(enabled: boolean): Phone {
       const s = sessionRef.current;
       if (!s || !callIdRef.current) return;
       const established = s.state === sip().SessionState.Established && establishedAtRef.current > 0;
-      beaconCallEnd({
-        callId: callIdRef.current,
-        phase: "end",
-        direction: callDirRef.current,
-        peer: callPeerRef.current,
-        disposition: established ? "answered" : "canceled",
-        durationSeconds: established ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0,
-      });
+      beaconCallEnd(
+        {
+          callId: callIdRef.current,
+          phase: "end",
+          direction: callDirRef.current,
+          peer: callPeerRef.current,
+          disposition: established ? "answered" : "canceled",
+          durationSeconds: established ? Math.round((Date.now() - establishedAtRef.current) / 1000) : 0,
+        },
+        ownerRef.current || currentStorageUser(),
+      );
     };
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
@@ -326,6 +330,9 @@ export function useSoftphone(enabled: boolean): Phone {
       setStatus("disabled");
       return;
     }
+    // Starting: the screen says "connecting" until the line is registered,
+    // never an empty card.
+    setStatus("connecting");
     let cancelled = false;
     let ua: UserAgent | null = null;
     let registerer: Registerer | null = null;
@@ -431,7 +438,7 @@ export function useSoftphone(enabled: boolean): Phone {
         domainRef.current = creds.domain;
 
         const uri = sip().UserAgent.makeURI(`sip:${creds.extension}@${creds.domain}`);
-        if (!uri) throw new Error("SIP adresi oluşturulamadı.");
+        if (!uri) throw new PhoneError("Dahili numaranın SIP adresi kurulamadı. Yöneticine haber ver.");
 
         ua = new (sip().UserAgent)({
           uri,
@@ -517,7 +524,7 @@ export function useSoftphone(enabled: boolean): Phone {
         if (!cancelled && micProblem) setError(micProblem);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Softphone başlatılamadı.");
+          setError(phoneMessage(e, "Telefon başlatılamadı. Sayfayı yenileyip tekrar dene."));
           setStatus("error");
         }
       }
@@ -542,10 +549,13 @@ export function useSoftphone(enabled: boolean): Phone {
   const call = useCallback(
     async (raw: string) => {
       const ua = uaRef.current;
-      if (!ua) throw new Error("Softphone hazır değil.");
+      // One call at a time, and only on a line the phone system accepted:
+      // the same rule for the panel, its shortcuts and the extension.
+      if (sessionRef.current) throw new PhoneError("Önce süren görüşmeyi bitir.");
+      if (!ua || statusRef.current !== "registered") throw new PhoneError("Telefon henüz hazır değil.");
       const target = normalizeDial(raw);
-      const uri = sip().UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
-      if (!uri) throw new Error("Geçersiz numara.");
+      const uri = target ? sip().UserAgent.makeURI(`sip:${target}@${domainRef.current}`) : undefined;
+      if (!uri) throw new PhoneError("Numara anlaşılamadı.");
 
       const inviter = new (sip().Inviter)(ua, uri, {
         earlyMedia: true,

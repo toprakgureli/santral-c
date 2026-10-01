@@ -46,8 +46,11 @@ type server struct {
 	app     *fiber.App
 	workers []func(ctx context.Context, g *safe.Group)
 	// callLog is kept so the tests can run one pass of the call checker
-	// instead of waiting for its timer.
+	// instead of waiting for its timer; phone and shifts likewise for the
+	// do-not-disturb queue, the call-record mirror and the evening sweep.
 	callLog *calllog.Service
+	phone   *verimor.Service
+	shifts  *shift.Service
 }
 
 // start runs the background work until ctx ends.
@@ -175,7 +178,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	backupSvc := backup.NewService(db, cfg.Database, ring, actors, auditSvc)
 	backup.NewRouter(backup.NewHandler(backupSvc), guard, need).Routes(api)
 
-	s := &server{app: app, callLog: callLogSvc}
+	s := &server{app: app, callLog: callLogSvc, shifts: shiftSvc}
 	s.workers = append(s.workers,
 		// Shifts left open past the evening cutoff are closed by the sweeper.
 		shiftSvc.StartSweeper,
@@ -195,6 +198,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		// Calls and presence changes need an open shift; a shift change in turn
 		// drives the agent's presence and do-not-disturb.
 		verimorSvc.SetShifts(shiftSvc)
+		s.phone = verimorSvc
 		verimorSvc.SetBreakLimit(settingSvc)
 		verimorSvc.SetContacts(contactRepo)
 		shiftSvc.SetPresence(verimorSvc)

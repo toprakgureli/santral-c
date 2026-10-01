@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -94,7 +95,7 @@ func (c *Client) WebphoneToken(ctx context.Context, extension string) (string, e
 		return "", err
 	}
 	if status != http.StatusOK {
-		return "", fmt.Errorf("webphone token rejected (%d): %s", status, strings.TrimSpace(string(raw)))
+		return "", c.refused("webphone token rejected", status, raw)
 	}
 
 	var parsed struct {
@@ -148,7 +149,7 @@ func (c *Client) WebphoneSIP(ctx context.Context, webphoneBase, extension string
 		return "", err
 	}
 	if status != http.StatusOK {
-		return "", fmt.Errorf("webphone page failed (%d)", status)
+		return "", &APIError{Op: "webphone page failed", Status: status}
 	}
 	m := sipPasswordRe.FindSubmatch(raw)
 	if m == nil || len(m[1]) == 0 {
@@ -179,7 +180,7 @@ func (c *Client) cdrs(ctx context.Context, client *http.Client, params url.Value
 		return nil, Pagination{}, err
 	}
 	if status != http.StatusOK {
-		return nil, Pagination{}, fmt.Errorf("cdr list failed (%d): %s", status, strings.TrimSpace(string(raw)))
+		return nil, Pagination{}, c.refused("cdr list failed", status, raw)
 	}
 	var list cdrList
 	if err := json.Unmarshal(raw, &list); err != nil {
@@ -216,7 +217,7 @@ func (c *Client) UserStatuses(ctx context.Context) ([]Extension, error) {
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("user statuses failed (%d): %s", status, strings.TrimSpace(string(raw)))
+		return nil, c.refused("user statuses failed", status, raw)
 	}
 	var out []Extension
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -238,7 +239,7 @@ func (c *Client) Queues(ctx context.Context) ([]Queue, error) {
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("queues failed (%d): %s", status, strings.TrimSpace(string(raw)))
+		return nil, c.refused("queues failed", status, raw)
 	}
 	var out []Queue
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -265,7 +266,7 @@ func (c *Client) SetDND(ctx context.Context, extension string, on bool) error {
 		return err
 	}
 	if status != http.StatusOK {
-		return fmt.Errorf("dnd change failed (%d): %s", status, strings.TrimSpace(string(raw)))
+		return c.refused("dnd change failed", status, raw)
 	}
 	return nil
 }
@@ -296,7 +297,7 @@ func (c *Client) RecordingURL(ctx context.Context, callUUID string) (string, err
 		return "", err
 	}
 	if status != http.StatusOK {
-		return "", fmt.Errorf("recording url failed (%d): %s", status, strings.TrimSpace(string(raw)))
+		return "", c.refused("recording url failed", status, raw)
 	}
 	u := strings.TrimSpace(strings.Trim(strings.TrimSpace(string(raw)), `"`))
 	if u == "" {
@@ -314,11 +315,11 @@ func (c *Client) OpenRecording(ctx context.Context, rawURL string) (*http.Respon
 	}
 	res, err := c.download.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("recording could not be fetched: %w", err)
+		return nil, fmt.Errorf("recording could not be fetched: %w", c.redact(err))
 	}
 	if res.StatusCode != http.StatusOK {
 		_ = res.Body.Close()
-		return nil, fmt.Errorf("recording download failed (%d)", res.StatusCode)
+		return nil, &APIError{Op: "recording download failed", Status: res.StatusCode}
 	}
 	return res, nil
 }
@@ -339,7 +340,7 @@ func (c *Client) Originate(ctx context.Context, extension, destination string) (
 		return "", err
 	}
 	if status != http.StatusOK {
-		return "", fmt.Errorf("originate rejected (%d): %s", status, strings.TrimSpace(string(raw)))
+		return "", c.refused("originate rejected", status, raw)
 	}
 	return strings.TrimSpace(string(raw)), nil
 }
@@ -353,12 +354,97 @@ func (c *Client) do(req *http.Request) ([]byte, int, error) {
 func (c *Client) doWith(client *http.Client, req *http.Request) ([]byte, int, error) {
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("bulutsantralim request failed: %w", err)
+		return nil, 0, fmt.Errorf("bulutsantralim request failed: %w", c.redact(err))
 	}
 	defer func() { _ = res.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
-		return nil, res.StatusCode, fmt.Errorf("bulutsantralim response could not be read: %w", err)
+		return nil, res.StatusCode, fmt.Errorf("bulutsantralim response could not be read: %w", c.redact(err))
 	}
 	return raw, res.StatusCode, nil
+}
+
+// APIError is an answer from the phone system other than 200. Its text
+// never carries the API key: the key is masked out of the body the system
+// sent back.
+type APIError struct {
+	Op     string
+	Status int
+	Body   string
+}
+
+func (e *APIError) Error() string {
+	if e.Body == "" {
+		return fmt.Sprintf("%s (%d)", e.Op, e.Status)
+	}
+	return fmt.Sprintf("%s (%d): %s", e.Op, e.Status, e.Body)
+}
+
+// refused builds the error for a non-200 answer. The body is cut short and
+// any copy of the key in it is masked (the system echoes a wrong key back).
+func (c *Client) refused(op string, status int, raw []byte) error {
+	body := strings.TrimSpace(string(raw))
+	if len(body) > 300 {
+		body = body[:300] + "..."
+	}
+	return &APIError{Op: op, Status: status, Body: c.mask(body)}
+}
+
+// secretMask stands in for a secret in errors and logs.
+const secretMask = "[gizli]"
+
+// mask replaces every copy of the API key in s.
+func (c *Client) mask(s string) string {
+	if c.apiKey == "" {
+		return s
+	}
+	s = strings.ReplaceAll(s, c.apiKey, secretMask)
+	// The key also travels URL-encoded in a query string.
+	if esc := url.QueryEscape(c.apiKey); esc != c.apiKey {
+		s = strings.ReplaceAll(s, esc, secretMask)
+	}
+	return s
+}
+
+// redactedError is a transport error with the secrets taken out of its
+// text. It still unwraps to the cause, so a timeout stays a timeout.
+type redactedError struct {
+	msg   string
+	cause error
+}
+
+func (e *redactedError) Error() string { return e.msg }
+func (e *redactedError) Unwrap() error { return e.cause }
+
+// redact strips the secrets out of a transport error. Go's HTTP client puts
+// the whole address in the text, and every address here carries one: the
+// API key in the query, a webphone token, or a signed recording link. Only
+// the scheme, host and path are kept.
+func (c *Client) redact(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		inner := ""
+		if ue.Err != nil {
+			inner = c.mask(ue.Err.Error())
+		}
+		return &redactedError{
+			msg:   fmt.Sprintf("%s %q: %s", ue.Op, safeURL(ue.URL), inner),
+			cause: ue.Err,
+		}
+	}
+	return &redactedError{msg: c.mask(err.Error()), cause: err}
+}
+
+// safeURL keeps the scheme, host and path of an address and drops the rest
+// (query, fragment, user info), where the secrets live.
+func safeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "(adres gizlendi)"
+	}
+	out := url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}
+	return out.String()
 }

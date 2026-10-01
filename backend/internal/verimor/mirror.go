@@ -25,6 +25,7 @@ import (
 // shared fairly with the panel.
 const (
 	headPageSize       = 100              // newest records fetched per poll
+	headCatchupPages   = 200              // deepest page a gap repair walks to (20,000 calls)
 	mirrorPageSize     = 100              // records per backfill request
 	mirrorRequestGap   = 15 * time.Second // pause between backfill requests
 	mirrorRetryGap     = time.Minute      // pause after a failed backfill request
@@ -101,6 +102,24 @@ func phoneQuery(s string) string {
 // or callee, in either direction.
 func extIsParty(c CDR, ext string) bool {
 	return parseParty(c.CallerIDNumber).Ext == ext || parseParty(c.DestinationNumber).Ext == ext
+}
+
+// headCatchup is a gap between the newest stored record and the newest
+// page of the phone system, being filled one page per poll.
+type headCatchup struct {
+	page  int       // next older page to fetch; 0 when there is no gap
+	known time.Time // the newest record stored when the gap was found
+}
+
+// reaches reports whether a page holds a record that started at or before
+// t, so it overlaps what the mirror already had.
+func reaches(cdrs []CDR, t time.Time) bool {
+	for _, c := range cdrs {
+		if start, err := time.Parse(stampLayout, strings.TrimSpace(c.StartStamp)); err == nil && !start.After(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // cdrRow maps a hosted record to its mirror row. ok is false when the start

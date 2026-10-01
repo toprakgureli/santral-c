@@ -152,8 +152,8 @@
     const st = state.status;
     const active = st === "in-call" || st === "held";
     const outgoing = st === "calling" || st === "ringing";
-    const stLabel = st === "registered" || st === "idle" ? "Hazır" : st === "unconfigured" ? "Panel kapalı" : st === "disabled" ? "Mesai dışı" : "";
-    const on = st !== "unconfigured" && st !== "error" && st !== "disabled";
+    const stLabel = st === "registered" ? "Hazır" : st === "connecting" ? "Bağlanıyor" : st === "error" ? "Hazır değil" : st === "unconfigured" ? "Panel kapalı" : st === "disabled" ? "Mesai dışı" : "";
+    const on = st === "registered" || active || outgoing || st === "incoming";
 
     const head = `<div class="head" id="drag"><span class="dot ${on ? "on" : ""}"></span><span class="title">SantralC</span><span class="st">${stLabel}</span></div>`;
     let body;
@@ -179,6 +179,17 @@
     } else if (st === "disabled") {
       body = `<div class="peer" style="cursor:default;margin:0;padding:0">Mesai başlatılmadı</div>
         <div class="sub">Mesai başlamadan çağrı gelmez ve arama yapılamaz. Panelden mesaiyi başlat.</div>`;
+    } else if (st === "connecting") {
+      // The panel's line is starting or reconnecting: nothing can dial yet.
+      body = `<div class="peer" style="cursor:default;margin:0;padding:0">Bağlanıyor...</div>
+        <div class="sub">Telefon santrale bağlanıyor. Hazır olunca buradan arayabilirsin.</div>`;
+    } else if (st !== "registered") {
+      body = `<div class="peer" style="cursor:default;margin:0;padding:0">Telefon hazır değil</div>
+        <div class="sub">Paneldeki softphone kartında ne olduğu yazıyor.</div>`;
+    } else if (state.canCall === false) {
+      // The same rule as the panel: without the right to call, only incoming calls.
+      body = `<div class="peer" style="cursor:default;margin:0;padding:0">Hazır</div>
+        <div class="sub">Giden çağrı yetkin yok. Gelen çağrıları cevaplayabilirsin.</div>`;
     } else {
       body = `<div class="pill">
         <select class="sel" id="prefix"><option value="+90">+90</option><option value="">Dahili</option></select>

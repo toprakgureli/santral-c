@@ -6,6 +6,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSoftphone, type Phone } from "./useSoftphone";
+import { setStorageUser } from "../lib/userStorage";
 
 // ---------------------------------------------------------------- stand-ins
 
@@ -219,15 +220,20 @@ vi.mock("./audioGraph", () => ({
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function mountPhone() {
+function mountPhone(enabled = true) {
   const ref: { current: Phone } = { current: undefined as unknown as Phone };
-  function Probe() {
-    ref.current = useSoftphone(true);
+  function Probe({ on }: { on: boolean }) {
+    ref.current = useSoftphone(on);
     return null;
   }
   const root = createRoot(document.createElement("div"));
-  act(() => root.render(<Probe />));
-  return { phone: ref, unmount: () => act(() => root.unmount()) };
+  act(() => root.render(<Probe on={enabled} />));
+  return {
+    phone: ref,
+    unmount: () => act(() => root.unmount()),
+    // enable switches the phone on later, the way a shift start does.
+    enable: () => act(() => root.render(<Probe on />)),
+  };
 }
 
 // settle lets pending promises and state updates run.
@@ -528,5 +534,100 @@ describe("softphone", () => {
     const ends = logMock.sendCallLog.mock.calls.filter((c) => c[0].phase === "end").map((c) => c[0].disposition);
     expect(ends.filter((d) => d === "answered")).toHaveLength(40);
     expect(ends.filter((d) => d === "no_answer")).toHaveLength(20);
+  });
+
+  it("says it is connecting from the moment it is switched on", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    apiMock.sipCredentials.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    mounted = mountPhone(false);
+    expect(mounted.phone.current.status).toBe("disabled");
+    mounted.enable();
+    // The credentials have not arrived yet: the card must not sit empty.
+    expect(mounted.phone.current.status).toBe("connecting");
+    await act(async () => answer({ extension: "2001", password: "x", domain: "pbx.local", webSocketUrl: "wss://pbx.local/ws" }));
+    await settle();
+    expect(mounted.phone.current.status).toBe("registered");
+  });
+
+  it("refuses a second call while one is ringing or live", async () => {
+    const phone = await readyPhone();
+    await act(() => phone.current.call("05551234567"));
+    const out = sipMock.state.inviters[0];
+    act(() => out.ring());
+    await expect(phone.current.call("05559999999")).rejects.toThrow("Önce süren görüşmeyi bitir.");
+    act(() => out.pickUp());
+    await expect(phone.current.call("05559999999")).rejects.toThrow("Önce süren görüşmeyi bitir.");
+    expect(sipMock.state.inviters).toHaveLength(1);
+    expect(phone.current.peer).toBe("05551234567");
+    expect(phone.current.status).toBe("in-call");
+  });
+
+  it("does not dial before the phone system accepts the line", async () => {
+    vi.useFakeTimers();
+    try {
+      sipMock.state.nextAnswers = [503];
+      mounted = mountPhone();
+      await settle();
+      expect(mounted.phone.current.status).toBe("connecting");
+      await expect(mounted.phone.current.call("05551234567")).rejects.toThrow("Telefon henüz hazır değil.");
+      expect(sipMock.state.inviters).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never shows the library's English errors", async () => {
+    apiMock.sipCredentials.mockRejectedValueOnce(new TypeError("Failed to fetch dynamically imported module: /assets/sip-abc.js"));
+    mounted = mountPhone();
+    await settle();
+    expect(mounted.phone.current.status).toBe("error");
+    expect(mounted.phone.current.error).toBe("Panelin yeni sürümü yüklendi. Sayfayı yenileyip tekrar dene.");
+    mounted.unmount();
+
+    apiMock.sipCredentials.mockRejectedValueOnce(new Error("WebSocket closed wss://pbx.local/ws (code: 1006)"));
+    mounted = mountPhone();
+    await settle();
+    expect(mounted.phone.current.error).toMatch(/^Santrale bağlanılamadı/);
+    mounted.unmount();
+
+    apiMock.sipCredentials.mockRejectedValueOnce(new Error("Something odd happened in the stack"));
+    mounted = mountPhone();
+    await settle();
+    expect(mounted.phone.current.error).toBe("Telefon başlatılamadı. Sayfayı yenileyip tekrar dene.");
+  });
+
+  it("says a failed call in plain Turkish", async () => {
+    const phone = await readyPhone();
+    const invite = sipMock.Inviter.prototype.invite;
+    sipMock.Inviter.prototype.invite = async () => {
+      throw new Error("Transport error.");
+    };
+    try {
+      await act(async () => {
+        await expect(phone.current.call("05551234567")).rejects.toThrow();
+      });
+    } finally {
+      sipMock.Inviter.prototype.invite = invite;
+    }
+    await settle();
+    expect(phone.current.error).toMatch(/^Santrale bağlanılamadı/);
+    expect(phone.current.status).toBe("registered");
+  });
+
+  it("files a call's log under the person who made it, even after a sign-out", async () => {
+    setStorageUser(7);
+    try {
+      const phone = await readyPhone();
+      await act(() => phone.current.call("05551234567"));
+      const out = sipMock.state.inviters[0];
+      act(() => out.pickUp());
+      // The panel signs out while the call is up; the end still belongs to 7.
+      setStorageUser(0);
+      await act(() => phone.current.hangup());
+      const owners = logMock.sendCallLog.mock.calls.map((c) => c[1]);
+      expect(owners).toEqual([7, 7, 7]);
+    } finally {
+      setStorageUser(0);
+    }
   });
 });

@@ -221,10 +221,11 @@ func (h *Handler) SetStatus(c *fiber.Ctx) error {
 			state = "available"
 		}
 	}
-	if err := h.service.SetStatus(c.UserContext(), id, state); err != nil {
+	res, err := h.service.SetStatus(c.UserContext(), id, state)
+	if err != nil {
 		return err
 	}
-	return c.SendStatus(fiber.StatusNoContent)
+	return c.JSON(res)
 }
 
 // Status returns the actor's current presence state.

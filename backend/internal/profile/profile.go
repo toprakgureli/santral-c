@@ -122,7 +122,7 @@ func (r *Repository) Stats(ctx context.Context, id uint) (Stats, error) {
 		Talk int64
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
-		Select("count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS real, "+
+		Select("count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk", realCallSeconds).
 		Where("user_id = ?", id).Scan(&calls).Error; err != nil {
 		return s, fmt.Errorf("call totals could not be computed: %w", err)
@@ -150,13 +150,13 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select(
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS real, "+
-				"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
-				"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS real, "+
+				"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS inbound_real, "+
+				"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS outbound_real, "+
 				"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress') AND NOT ("+calllog.NotMineSQL+")) AS unanswered, "+
-				"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds < ?) AS short, "+
+				"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds < ?) AS short, "+
 				"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk, "+
-				"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg, "+
+				"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?), 0)::bigint AS avg, "+
 				"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest",
 			realCallSeconds, realCallSeconds, realCallSeconds, realCallSeconds, realCallSeconds).
 		Where("user_id = ? AND started_at >= ? AND started_at < ?", id, from, to).
@@ -193,7 +193,7 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("to_char(started_at AT TIME ZONE 'Europe/Istanbul', 'YYYY-MM-DD') AS day, count(*) AS real").
-		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND duration_seconds >= ?", id, from, to, realCallSeconds).
+		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, realCallSeconds).
 		Group("day").Order("day").Scan(&days).Error; err != nil {
 		return rec, fmt.Errorf("daily figures could not be computed: %w", err)
 	}
@@ -211,7 +211,7 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("EXTRACT(HOUR FROM started_at AT TIME ZONE 'Europe/Istanbul')::int AS hour, count(*) AS n").
-		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND duration_seconds >= ?", id, from, to, realCallSeconds).
+		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, realCallSeconds).
 		Group("hour").Order("n DESC, hour").Limit(1).Scan(&hour).Error; err != nil {
 		return rec, fmt.Errorf("busiest hour could not be computed: %w", err)
 	}

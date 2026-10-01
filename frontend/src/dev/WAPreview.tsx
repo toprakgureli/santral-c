@@ -229,7 +229,7 @@ function installMock() {
 
 function phoneValue(): SoftphoneValue {
   const noop = async () => undefined;
-  return { status: "registered", lastEnded: null, callId: null, lastPeer: null, lastUnreached: null, extension: "1001", error: null, muted: false, held: false, peer: null, endReason: null, callStartedAt: null, answeredAt: null, audioRef: { current: null }, remoteGain: 1, setRemoteGain: () => undefined, wave: () => null, spectrum: () => null, call: noop, answer: noop, hangup: noop, toggleMute: () => undefined, toggleHold: noop, transfer: noop, sendDtmf: () => undefined, secondary: false, takeOver: () => undefined } as unknown as SoftphoneValue;
+  return { status: "registered", lastEnded: null, callId: null, lastPeer: null, lastUnreached: null, extension: "1001", error: null, muted: false, held: false, peer: null, endReason: null, callStartedAt: null, answeredAt: null, audioRef: { current: null }, remoteGain: 1, setRemoteGain: () => undefined, wave: () => null, spectrum: () => null, call: noop, answer: noop, hangup: noop, toggleMute: () => undefined, toggleHold: noop, transfer: noop, sendDtmf: () => undefined, secondary: false, takeOver: noop, liveHere: false, liveElsewhere: false, endCalls: noop } as unknown as SoftphoneValue;
 }
 
 const PAGES = [

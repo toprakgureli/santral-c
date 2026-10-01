@@ -81,3 +81,12 @@ test("the panel address comes from the popup setting", async () => {
   await new Promise((r) => setTimeout(r, 20));
   assert.deepEqual(w.sent.map((s) => s.id), [3]);
 });
+
+test("the panel's right to call reaches the widgets", async () => {
+  const w = load();
+  await w.send({ to: "sw", type: "state", state: { status: "registered", canCall: false } }, w.tabs[0]);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(w.sent.find((s) => s.msg.type === "state").msg.state.canCall, false);
+  const res = await w.send({ to: "sw", type: "getState" }, w.tabs[2]);
+  assert.equal(res.state.canCall, false);
+});

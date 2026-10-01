@@ -4,7 +4,7 @@ import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
 import RequirePermission from "./components/layout/RequirePermission";
 import { menuPermission, PAGE_PERMISSIONS, WA_BASE } from "./lib/menu";
-import { Spinner } from "./components/ui";
+import { Button, Spinner } from "./components/ui";
 import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 
@@ -31,12 +31,27 @@ const WhatsAppRatings = lazy(() => import("./pages/WhatsAppRatings").then((m) =>
 const WhatsAppCallbacks = lazy(() => import("./pages/WhatsAppCallbacks").then((m) => ({ default: m.WhatsAppCallbacks })));
 
 export function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, waiting, retryNow } = useAuth();
 
   if (loading) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
-        <Spinner />
+      <div className="flex min-h-svh items-center justify-center px-4">
+        {waiting ? (
+          // The server cannot be reached yet (a deploy, a network blip): keep
+          // trying calmly instead of showing the sign-in page.
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center" role="status" aria-live="polite">
+            <Spinner />
+            <p className="text-sm font-medium">Bağlantı bekleniyor</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Sunucuya şu an ulaşılamıyor. Birkaç saniye içinde kendiliğinden yeniden deniyoruz; oturumun açık kalır.
+            </p>
+            <Button variant="secondary" onClick={retryNow} className="mt-1">
+              Şimdi dene
+            </Button>
+          </div>
+        ) : (
+          <Spinner />
+        )}
       </div>
     );
   }

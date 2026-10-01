@@ -22,7 +22,7 @@ import { whatsappNumber, type WhatsAppKind } from "../../lib/whatsapp";
 import { useWhatsAppWrite } from "../../whatsapp/useWhatsAppWrite";
 import { displayNumber, normalizeDial } from "../../softphone/dial";
 import { tones } from "../../softphone/tones";
-import { Button, Card } from "../ui";
+import { Button, Card, ConfirmDialog, Spinner } from "../ui";
 import { cn } from "../../lib/utils";
 import { formatDuration } from "../../pages/callFormat";
 import { clockTime } from "../../lib/time";
@@ -66,6 +66,22 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
 
   const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
+  // The line is still being set up (or has just been switched on): the card
+  // says so instead of offering a keypad that cannot dial yet.
+  const starting = phone.status === "connecting" || (phone.status === "disabled" && shift.active);
+  const ready = phone.status === "registered";
+  // Taking the line over from another tab cuts a call live there; ask first.
+  const [confirmTake, setConfirmTake] = useState(false);
+  const [taking, setTaking] = useState(false);
+  async function takeOver() {
+    setTaking(true);
+    try {
+      await phone.takeOver();
+    } finally {
+      setTaking(false);
+      setConfirmTake(false);
+    }
+  }
   const outgoing = phone.status === "calling" || phone.status === "ringing";
   const active = phone.status === "in-call" || phone.status === "held";
   // Answer time lives in the global softphone, so the duration survives menu
@@ -78,7 +94,7 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
   }, []);
 
   function callNow() {
-    if (!canCall) return;
+    if (!canCall || !ready) return;
     const n = normalizeDial(target);
     if (n) phone.call(n).catch(() => undefined);
   }
@@ -110,7 +126,25 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
               Çağrılar o sekmede yönetiliyor. Açık kalmış eski bir sekme olabilir, buradan devam edersen softphone bu sekmeye geçer, diğer sekme devre dışı kalır.
             </p>
           </div>
-          <Button onClick={phone.takeOver} className="mt-1">Bu tarayıcıdan devam et</Button>
+          {phone.liveElsewhere && (
+            <p className="flex items-center gap-2 rounded-xl bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning ring-1 ring-warning/30">
+              <span className="size-2 animate-pulse rounded-full bg-warning" />
+              Diğer sekmede şu an bir görüşme sürüyor.
+            </p>
+          )}
+          <Button onClick={() => (phone.liveElsewhere ? setConfirmTake(true) : void takeOver())} disabled={taking} className="mt-1">
+            Bu tarayıcıdan devam et
+          </Button>
+          <ConfirmDialog
+            open={confirmTake}
+            title="Görüşme sürüyor"
+            description="Diğer sekmede bir görüşme sürüyor. Devam edersen görüşme kapanacak."
+            confirmLabel="Devam et"
+            tone="warning"
+            busy={taking}
+            onConfirm={() => void takeOver()}
+            onCancel={() => setConfirmTake(false)}
+          />
         </div>
       ) : !shift.active && (idle || phone.status === "disabled") ? (
         /* Off shift the softphone is not registered at all: nothing rings, nothing dials. */
@@ -136,14 +170,39 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
         <div className="space-y-4">
           {phone.error && <p className="text-sm text-destructive">{phone.error}</p>}
 
+          {/* The line is starting or reconnecting: nothing can ring or dial yet. */}
+          {starting && (
+            <div className="flex flex-col items-center gap-3 py-10 text-center" role="status" aria-live="polite">
+              <Spinner />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Bağlanıyor...</p>
+                <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
+                  Telefon santrale bağlanıyor. Hazır olunca çağrılar buraya düşer ve arama yapabilirsin.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* The line could not be set up; the reason is shown above. */}
+          {phone.status === "error" && (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <span className="flex size-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+                <PhoneOff className="size-5" />
+              </span>
+              <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
+                Telefon şu an arama yapamıyor. Sorun giderilince kendiliğinden hazır olur.
+              </p>
+            </div>
+          )}
+
           {/* Idle: number entry + dialpad (only for agents allowed to place calls) */}
-          {idle && !canCall && (
+          {ready && !canCall && (
             <div className="py-8 text-center">
               <p className="text-sm text-muted-foreground">Giden çağrı yetkin yok.</p>
               <p className="mt-1 text-xs text-muted-foreground/70">Gelen çağrıları cevaplayabilirsin.</p>
             </div>
           )}
-          {idle && canCall && (
+          {ready && canCall && (
             <>
               <div className="space-y-1">
                 <input
@@ -211,7 +270,7 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
           )}
 
           {/* Ringing / incoming / in-call: a centred call face */}
-          {!idle && (
+          {!idle && !starting && (
             <div className="flex flex-col items-center gap-5 py-2">
               <div className="text-center">
                 <button
