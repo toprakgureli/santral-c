@@ -45,8 +45,8 @@ jobs:
       SANTRAL_TEST_DSN: host=localhost user=santral password=santral dbname=santral_test sslmode=disable
       SANTRAL_TEST_REDIS: localhost:6379
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -71,7 +71,9 @@ jobs:
       - name: pg_dump for the backup test
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-16
+          # The distribution's client, whatever its version: a newer pg_dump
+          # copies an older server too, so a runner image change keeps working.
+          sudo apt-get install -y -qq postgresql-client
           pg_dump --version
 
       - name: Test
@@ -95,8 +97,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -111,8 +113,8 @@ jobs:
       run:
         working-directory: extension
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -124,7 +126,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # deploy.sh against a stand-in server: a good release, a failed one
       # that rolls back, a config the new version refuses, local changes.
       - run: bash deploy/test/deploy_test.sh
