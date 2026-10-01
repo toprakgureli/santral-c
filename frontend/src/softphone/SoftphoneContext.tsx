@@ -2,11 +2,24 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useAuth } from "@/auth/AuthContext";
 import { useShift } from "@/shift/ShiftContext";
 import { useSoftphone, type Phone } from "./useSoftphone";
+import { settleCallLogs } from "./callLogQueue";
+import { LIVE_STATES, useTabPhone } from "./tabPhone";
 
 export type { EndedCall } from "./useSoftphone";
 import { usePanelBridge } from "./extensionBridge";
 
-export type SoftphoneValue = Phone & { secondary: boolean; takeOver: () => void };
+export type SoftphoneValue = Phone & {
+  secondary: boolean;
+  // takeOver moves the line to this tab. A call live in another tab is
+  // hung up there first (and its end sent), so ask before calling it.
+  takeOver: () => Promise<void>;
+  // liveHere / liveElsewhere: a call is live in this tab / in another one.
+  liveHere: boolean;
+  liveElsewhere: boolean;
+  // endCalls hangs up a live call in any tab and waits until its end has
+  // reached the server, so signing out never loses it.
+  endCalls: () => Promise<void>;
+};
 
 const Ctx = createContext<SoftphoneValue | null>(null);
 
@@ -71,16 +84,45 @@ function useLeader(): { leader: boolean; takeOver: () => void } {
 // anywhere (panel or mini widget): the PBX sees the extension as unregistered,
 // on top of the do-not-disturb the server sets when a shift ends.
 export function SoftphoneProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const shift = useShift();
-  const { leader, takeOver } = useLeader();
+  const { leader, takeOver: steal } = useLeader();
   const hasExtension = !!user?.sipExtension;
   const enabled = leader && hasExtension && shift.active;
 
   const phone = useSoftphone(enabled);
-  usePanelBridge(phone, enabled);
+  // The tab holding the line speaks for the phone, also off shift (the
+  // widget then says the shift has not started).
+  usePanelBridge(phone, leader && hasExtension, can("call.originate") && shift.active);
 
-  const value: SoftphoneValue = { ...phone, secondary: hasExtension && !leader, takeOver };
+  // Hanging up here waits for the call's end to reach the server.
+  const hangup = phone.hangup;
+  const statusRef = useRef(phone.status);
+  statusRef.current = phone.status;
+  const endLocal = useCallback(async () => {
+    await hangup();
+    // The end is logged when the line reports the call over: wait for that
+    // (at most two seconds), then for the send itself.
+    for (let waited = 0; LIVE_STATES.has(statusRef.current) && waited < 2000; waited += 50) {
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    await settleCallLogs();
+  }, [hangup]);
+  const { liveElsewhere, endElsewhere } = useTabPhone(phone.status, endLocal);
+  const liveHere = LIVE_STATES.has(phone.status);
+
+  const endCalls = useCallback(async () => {
+    if (liveHere) await endLocal();
+    if (liveElsewhere) await endElsewhere();
+    await settleCallLogs();
+  }, [liveHere, liveElsewhere, endLocal, endElsewhere]);
+
+  const takeOver = useCallback(async () => {
+    await endElsewhere();
+    steal();
+  }, [endElsewhere, steal]);
+
+  const value: SoftphoneValue = { ...phone, secondary: hasExtension && !leader, takeOver, liveHere, liveElsewhere, endCalls };
 
   return (
     <Ctx.Provider value={value}>

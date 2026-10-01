@@ -10,11 +10,16 @@ function postPanel(type: string, extra?: Record<string, unknown>) {
 // (via the content-script bridge in this tab). The panel owns the SIP session
 // and microphone; it publishes state to the per-tab widgets and runs the
 // commands they send back, so the mini widget mirrors and controls this panel.
-export function usePanelBridge(phone: Phone, active: boolean) {
+// canCall is the agent's right to place calls (call.originate, on shift):
+// the extension offers the dial pad, and a call it asks for is placed, only
+// when the panel would allow the same call.
+export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) {
   const phoneRef = useRef(phone);
   const activeRef = useRef(active);
+  const canCallRef = useRef(canCall);
   phoneRef.current = phone;
   activeRef.current = active;
+  canCallRef.current = canCall;
 
   // Announce that this tab is the panel (so the extension hides its own widget
   // here and routes commands to this page), and heartbeat while the panel stays
@@ -38,9 +43,10 @@ export function usePanelBridge(phone: Phone, active: boolean) {
         endReason: phone.endReason,
         callStartedAt: phone.callStartedAt,
         answeredAt: phone.answeredAt,
+        canCall,
       },
     });
-  }, [active, phone.status, phone.peer, phone.muted, phone.held, phone.extension, phone.endReason, phone.callStartedAt, phone.answeredAt]);
+  }, [active, canCall, phone.status, phone.peer, phone.muted, phone.held, phone.extension, phone.endReason, phone.callStartedAt, phone.answeredAt]);
 
   // Run commands coming from the widgets on the live session.
   useEffect(() => {
@@ -52,6 +58,9 @@ export function usePanelBridge(phone: Phone, active: boolean) {
       const arg = String(d.arg ?? "");
       switch (d.cmd) {
         case "call": {
+          // The same rule as the panel's own dialer: the right to call, a
+          // ready line and no call already on it.
+          if (!canCallRef.current || p.status !== "registered") break;
           // Widgets send whatever was typed ("+90 0530...", "90530...");
           // coerce it to the form the PBX dials, like the panel's own dialer.
           const n = normalizeDial(arg);

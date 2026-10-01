@@ -13,6 +13,8 @@ interface PresenceState {
   // When `data` was read, so live timers can tick between polls.
   fetchedAt: number;
   hasExtension: boolean;
+  // pbxPending: the phone system has not confirmed the latest change yet.
+  pbxPending: boolean;
   refresh: () => void;
   change: (state: AgentPresenceState) => Promise<void>;
 }
@@ -20,6 +22,8 @@ interface PresenceState {
 const Ctx = createContext<PresenceState | undefined>(undefined);
 
 const POLL_MS = 20000;
+// While the phone system has not confirmed a change, look again sooner.
+const PENDING_POLL_MS = 3000;
 
 export function PresenceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -48,6 +52,13 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [hasExtension, refresh, shift.active]);
 
+  const pbxPending = !!data?.pbxPending;
+  useEffect(() => {
+    if (!pbxPending) return;
+    const timer = window.setInterval(refresh, PENDING_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [pbxPending, refresh]);
+
   // Optimistic: the UI flips at once, the server read that follows settles
   // the exact "since" and the totals.
   const change = useCallback(
@@ -56,7 +67,8 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       setData((d) => (d ? { ...d, state, since: now } : { state, since: now, totals: {} }));
       setFetchedAt(Date.now());
       try {
-        await api.setAgentStatus(state);
+        const res = await api.setAgentStatus(state);
+        if (res?.pbxPending) setData((d) => (d ? { ...d, pbxPending: true } : d));
       } finally {
         refresh();
       }
@@ -64,7 +76,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
-  const value = useMemo(() => ({ data, fetchedAt, hasExtension, refresh, change }), [data, fetchedAt, hasExtension, refresh, change]);
+  const value = useMemo(() => ({ data, fetchedAt, hasExtension, pbxPending, refresh, change }), [data, fetchedAt, hasExtension, pbxPending, refresh, change]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

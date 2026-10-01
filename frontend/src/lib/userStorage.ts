@@ -14,9 +14,20 @@ export function setStorageUser(id: number) {
   current = id;
 }
 
+// currentStorageUser is who the helpers think is signed in (0 for nobody).
+export function currentStorageUser(): number {
+  return current;
+}
+
 // userKey scopes a storage key to the signed-in user.
 export function userKey(base: string): string {
-  return `${base}:u${current}`;
+  return keyFor(base, current);
+}
+
+// keyFor scopes a storage key to a given user, for data that belongs to
+// whoever it was recorded for rather than to whoever is signed in now.
+export function keyFor(base: string, id: number): string {
+  return `${base}:u${id}`;
 }
 
 // clearUserStorage removes every person-bound key, for everyone, from both

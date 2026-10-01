@@ -10,9 +10,6 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { ConfirmDialog } from "@/components/ui";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 
-// Phone states in which signing out would cut a live call.
-const LIVE_CALL = new Set(["calling", "ringing", "incoming", "in-call", "held"]);
-
 type TopbarProps = {
   title: string;
   onMenuClick: () => void;
@@ -23,10 +20,21 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const phone = useSoftphoneContext();
 
+  // Signing out cuts a call live in any of the panel's tabs. The call is
+  // hung up properly and its end reaches the server before the session goes,
+  // so the call log never loses it.
+  const live = phone.liveHere || phone.liveElsewhere;
   const leave = async () => {
+    setLeaving(true);
+    try {
+      await phone.endCalls();
+    } catch {
+      // the stale sweeper closes a call whose end could not be sent
+    }
     setConfirmLeave(false);
     await logout();
     navigate("/login");
@@ -106,7 +114,7 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  if (LIVE_CALL.has(phone.status)) setConfirmLeave(true);
+                  if (live) setConfirmLeave(true);
                   else void leave();
                 }}
                 className={cn(
@@ -124,9 +132,14 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
       <ConfirmDialog
         open={confirmLeave}
         title="Görüşme sürüyor"
-        description="Çıkış yaparsan devam eden görüşme kapanır. Yine de çıkmak istiyor musun?"
+        description={
+          phone.liveHere
+            ? "Çıkış yaparsan devam eden görüşme kapanır. Yine de çıkmak istiyor musun?"
+            : "Diğer sekmede bir görüşme sürüyor. Devam edersen görüşme kapanacak."
+        }
         confirmLabel="Çıkış yap"
         tone="warning"
+        busy={leaving}
         onConfirm={() => void leave()}
         onCancel={() => setConfirmLeave(false)}
       />

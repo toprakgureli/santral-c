@@ -121,6 +121,9 @@ export interface AgentPresence {
   online?: number;
   pauses?: PresencePause[];
   breakLimit?: number;
+  // pbxPending is true while the phone system has not yet confirmed the
+  // do-not-disturb that goes with the state; the server keeps sending it.
+  pbxPending?: boolean;
 }
 
 export interface TodayCalls {

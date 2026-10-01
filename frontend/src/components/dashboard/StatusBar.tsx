@@ -182,6 +182,17 @@ export function StatusBar({ totals, showTotals, extension, hasExtension, stats }
               ))}
           </Select>
         )}
+        {hasExtension && shift.active && presence.pbxPending && (
+          /* The change is saved; the phone system has not confirmed it yet. */
+          <span
+            role="status"
+            data-tip="Durumun kaydedildi. Santral onaylayınca çağrılar buna göre gelir."
+            className="flex items-center gap-1.5 rounded-lg bg-warning/10 px-2 py-1 text-xs font-medium text-warning"
+          >
+            <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+            Santrale iletiliyor...
+          </span>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-5 text-sm">
         {stats && (

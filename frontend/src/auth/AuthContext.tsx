@@ -1,11 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, api, SESSION_ENDED } from "../api/client";
 import type { User } from "../api/types";
 import { clearUserStorage, setStorageUser } from "../lib/userStorage";
+import { flushPendingCallLogs, settleCallLogs } from "../softphone/callLogQueue";
 
 interface AuthState {
   user: User | null;
   loading: boolean;
+  // waiting is true while the panel starts but cannot reach the server (a
+  // deploy, a network blip); it keeps trying and the screen says so.
+  waiting: boolean;
+  // retryNow skips the pause before the next try while waiting.
+  retryNow: () => void;
   setUser: (u: User | null) => void;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -35,22 +41,45 @@ function tellTabs() {
 // up and an ended session is noticed even while nothing else is requested.
 const RECHECK_MS = 60_000;
 
+// sessionOver reports whether a failure really means nobody is signed in:
+// the server refused the session (401) or would not renew it. A network
+// error or a 5xx (a deploy, an overloaded proxy) says nothing about the
+// session.
+export function sessionOver(e: unknown): boolean {
+  return e instanceof ApiError && (e.status === 401 || e.status === 403);
+}
+
+// Pauses between tries while the server cannot be reached at start-up.
+export const START_RETRY_MS = [1000, 2000, 4000, 8000, 15000];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [waiting, setWaiting] = useState(false);
+  const wakeRef = useRef<() => void>(() => undefined);
   // Storage keys follow whoever is signed in; set before children read them.
   setStorageUser(user?.id ?? 0);
 
+  // refresh re-reads the signed-in user once. Only an answer that means the
+  // session is over signs out; anything else keeps the current user.
   const refresh = useCallback(async () => {
     try {
       const me = await api.me();
       setUser(me);
-    } catch {
-      setUser(null);
+    } catch (e) {
+      if (sessionOver(e)) setUser(null);
     }
   }, []);
 
   const logout = useCallback(async () => {
+    try {
+      // Call ends that could not be sent earlier get one more try while the
+      // session still works; sign-out wipes what is left.
+      flushPendingCallLogs();
+      await settleCallLogs(3000);
+    } catch {
+      // nothing more to do; the server closes a lost call by itself
+    }
     try {
       await api.logout();
     } finally {
@@ -60,9 +89,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Start-up: find out who is signed in. A server that cannot answer yet
+  // (a deploy, a network blip) is asked again with growing pauses while the
+  // screen says the panel is waiting; nobody is sent to the sign-in page
+  // for it. Only a refused session shows the sign-in page.
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, [refresh]);
+    let cancelled = false;
+    (async () => {
+      for (let attempt = 0; !cancelled; attempt++) {
+        try {
+          const me = await api.me();
+          if (cancelled) return;
+          setUser(me);
+          break;
+        } catch (e) {
+          if (cancelled) return;
+          if (sessionOver(e)) {
+            setUser(null);
+            break;
+          }
+          setWaiting(true);
+          await new Promise<void>((resolve) => {
+            const timer = window.setTimeout(resolve, START_RETRY_MS[Math.min(attempt, START_RETRY_MS.length - 1)]);
+            wakeRef.current = () => {
+              window.clearTimeout(timer);
+              resolve();
+            };
+          });
+        }
+      }
+      if (!cancelled) {
+        setWaiting(false);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      wakeRef.current();
+    };
+  }, []);
+
+  const retryNow = useCallback(() => wakeRef.current(), []);
 
   // The API client reports a session the server rejected and could not renew;
   // dropping the user unmounts the panel, which unregisters the softphone and
@@ -98,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setUser((prev) => (prev && JSON.stringify(prev) === JSON.stringify(me) ? prev : me));
       } catch (e) {
-        if (!cancelled && e instanceof ApiError && e.status === 401) setUser(null);
+        if (!cancelled && sessionOver(e)) setUser(null);
       }
     };
     const timer = window.setInterval(() => void recheck(), RECHECK_MS);
@@ -114,8 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const can = useCallback((permission: string) => !!user && user.permissions.includes(permission), [user]);
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, setUser, refresh, logout, can }),
-    [user, loading, refresh, logout, can],
+    () => ({ user, loading, waiting, retryNow, setUser, refresh, logout, can }),
+    [user, loading, waiting, retryNow, refresh, logout, can],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -123,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 // AuthMockProvider signs in a fixed user, for the development preview.
 export function AuthMockProvider({ user, children }: { user: User; children: ReactNode }) {
   const value = useMemo<AuthState>(
-    () => ({ user, loading: false, setUser: () => undefined, refresh: async () => undefined, logout: async () => undefined, can: (p) => user.permissions.includes("*") || user.permissions.includes(p) }),
+    () => ({ user, loading: false, waiting: false, retryNow: () => undefined, setUser: () => undefined, refresh: async () => undefined, logout: async () => undefined, can: (p) => user.permissions.includes("*") || user.permissions.includes(p) }),
     [user],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

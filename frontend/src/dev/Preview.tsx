@@ -57,7 +57,10 @@ function phoneValue(over: Partial<SoftphoneValue>): SoftphoneValue {
     transfer: noop,
     sendDtmf: () => undefined,
     secondary: false,
-    takeOver: () => undefined,
+    takeOver: noop,
+    liveHere: false,
+    liveElsewhere: false,
+    endCalls: noop,
     ...over,
   };
 }

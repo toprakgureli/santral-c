@@ -47,6 +47,9 @@ function cleanState(s) {
     endReason: str(s.endReason, 60),
     callStartedAt: num(s.callStartedAt),
     answeredAt: num(s.answeredAt),
+    // The panel says whether this agent may place calls; the widget offers
+    // the dial pad only then.
+    canCall: s.canCall !== false,
   };
 }
 
