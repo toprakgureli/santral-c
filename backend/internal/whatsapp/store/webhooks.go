@@ -28,10 +28,12 @@ func (r *Repository) WebhookEventDone(ctx context.Context, id uint) error {
 }
 
 // WebhookEventFailed records a failed try of a notice: its new status, how
-// many tries it had, why the last one failed and when to try again.
+// many tries it had, why the last one failed and when to try again. A
+// notice given up on also gets the time it failed, which the alerts count.
 func (r *Repository) WebhookEventFailed(ctx context.Context, id uint, status string, attempts int, lastError string, nextTry time.Time) error {
-	return r.db.WithContext(ctx).Exec("UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ? WHERE id = ?",
-		status, attempts, lastError, nextTry, id).Error
+	return r.db.WithContext(ctx).Exec(`UPDATE wa_webhook_events SET status = ?, attempts = ?, last_error = ?, next_try_at = ?,
+		failed_at = CASE WHEN ? = 'failed' THEN now() ELSE failed_at END WHERE id = ?`,
+		status, attempts, lastError, nextTry, status, id).Error
 }
 
 // UnfinishedWebhookEvents reads up to 200 notices that are not handled

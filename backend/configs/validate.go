@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 )
 
 // Problem is one thing wrong with the configuration.
@@ -51,6 +53,10 @@ func ApplyDefaults(c *Config) {
 	setDur(&c.Security.AttemptWindow, 15*time.Minute)
 	setInt(&c.Security.DeviceFailureLimit, 5)
 	setInt(&c.Database.MaxConns, 40)
+	setDur(&c.Database.StatementTimeout, 30*time.Second)
+	if strings.TrimSpace(c.Database.DataPath) == "" {
+		c.Database.DataPath = "/var/lib/postgresql"
+	}
 	if c.App.Port == "" {
 		c.App.Port = "8090"
 	}
@@ -81,8 +87,21 @@ func Check(c Config) []Problem {
 		add("database.maxConns", fmt.Sprintf("%d, PostgreSQL'in bağlantı sınırına (varsayılan 100) çok yakın; yedek ve deploy sırasında bağlantı bulamayan istekler hata verir. 40 civarı yeterli", c.Database.MaxConns), false)
 	}
 
+	switch {
+	case strings.TrimSpace(string(c.App.Development)) == "":
+		add("app.development", "boş; canlı (live) sayıldı. Test için test, canlı için live yaz", false)
+	case !c.App.Development.Known():
+		add("app.development", fmt.Sprintf("%q bilinmiyor; canlı (live) sayıldı. Test için test, canlı için live yaz", string(c.App.Development)), false)
+	}
 	secret("auth.secret", c.Auth.Secret, 32)
 	secret("security.dataKey", c.Security.DataKey, 32)
+	// The same keyring the server builds at start: a previous key that is
+	// too short stops the start, so the check must stop on it too.
+	if strings.TrimSpace(c.Security.DataKey) != "" && !example(c.Security.DataKey) && len(c.Security.DataKey) >= 32 {
+		if _, err := crypt.NewKeyring(c.Security.DataKey, strings.Split(c.Security.PreviousDataKeys, ",")...); err != nil {
+			add("security.previousDataKeys", "eski anahtarlardan biri kullanılamıyor: "+err.Error(), true)
+		}
+	}
 	// These keys already sealed stored data; a short one cannot be
 	// replaced without losing it, so only an empty or example value stops.
 	secret("security.mfaKey", c.Security.MFAKey, 1)
@@ -104,7 +123,7 @@ func Check(c Config) []Problem {
 	if c.Redis.Host == "" || c.Redis.Port == "" {
 		add("redis", "host ve port girilmeli", true)
 	}
-	if c.App.Development == Live {
+	if c.App.Development.IsLive() {
 		if !c.Auth.CookieSecure {
 			add("auth.cookieSecure", "canlıda true olmalı (site HTTPS)", true)
 		}

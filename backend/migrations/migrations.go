@@ -2,6 +2,7 @@
 package migrations
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -12,8 +13,12 @@ import (
 //go:embed *.sql
 var fsys embed.FS
 
-// Run applies all pending migrations.
+// Run repairs indexes a stopped concurrent build left unusable, then
+// applies all pending migrations.
 func Run(db *sql.DB) error {
+	if err := RepairIndexes(context.Background(), db); err != nil {
+		return err
+	}
 	goose.SetBaseFS(fsys)
 	if err := goose.SetDialect("postgres"); err != nil {
 		return fmt.Errorf("migration dialect could not be set: %w", err)

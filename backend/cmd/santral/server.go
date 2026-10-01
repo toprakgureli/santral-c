@@ -106,7 +106,12 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		ErrorHandler: middlewares.ErrorHandler,
 		// WhatsApp documents may be up to 100 MB.
 		BodyLimit: 110 << 20,
+		// /API/v1/users is not /api/v1/users: the web servers in front
+		// decide what to pass on by the path as written, so the backend
+		// must not answer a spelling they did not mean to let through.
+		CaseSensitive: true,
 	}
+	serverTimeouts.apply(&fiberCfg)
 	// Behind nginx/Cloudflare, trust the configured proxies and read the real
 	// client IP from X-Forwarded-For so audit trails and lockouts are accurate.
 	if tp := strings.TrimSpace(cfg.App.TrustedProxies); tp != "" {
@@ -121,6 +126,10 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		fiberCfg.ProxyHeader = fiber.HeaderXForwardedFor
 	}
 	app := fiber.New(fiberCfg)
+	serverTimeouts.install(app)
+	// The port for a webhook already registered in Meta reaches nothing but
+	// those webhooks.
+	app.Use(hookPortOnly)
 	app.Use(requestid.New())
 	app.Use(middlewares.RequestContext())
 	// Numbers for Prometheus and a trace for every request.
@@ -135,6 +144,9 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	// The health check the uptime monitor and deploy.sh call, and the queue
 	// numbers for whoever runs the server.
 	ops.NewHandler(sqlDB, redis.Get(), ops.Build{Version: version, Time: buildTime}, metrics.Registry).Routes(app)
+	// The system warnings for people holding system.health.
+	monitor := ops.NewMonitor(sqlDB, redis.Get(), cfg.Database.DataPath)
+	metrics.Registry.MustRegister(monitor)
 
 	api := app.Group("/api/v1")
 	// Public build stamp so the panel can show whether the running backend is the
@@ -174,6 +186,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	// Database backups to a Shared Drive, set up in the panel.
 	backupSvc := backup.NewService(db, cfg.Database, ring, actors, auditSvc)
 	backup.NewRouter(backup.NewHandler(backupSvc), guard, need).Routes(api)
+	monitor.Routes(api, guard, need)
 
 	s := &server{app: app, callLog: callLogSvc}
 	s.workers = append(s.workers,
@@ -187,6 +200,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		waSvc.Start,
 		// A copy of the database every six hours.
 		backupSvc.Start,
+		// The system warnings are checked once a minute.
+		monitor.Start,
 	)
 
 	if cfg.Bulutsantralim.Enabled {
@@ -205,4 +220,23 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard, need).Routes(api)
 	}
 	return s, nil
+}
+
+// hookEntryHeader is set by the web server that serves a webhook already
+// registered in Meta (deploy/nginx/whatsapp-existing-webhook.conf). On
+// that port only those webhooks answer; the panel's API, the health check
+// and the metrics are not there, whatever the spelling of the path.
+const hookEntryHeader = "X-Santral-Entry"
+
+func hookPortOnly(c *fiber.Ctx) error {
+	if c.Get(hookEntryHeader) != "existing-hook" {
+		return c.Next()
+	}
+	p := strings.ToLower(c.Path())
+	for _, closed := range []string{"/api", "/healthz", "/metrics"} {
+		if p == closed || strings.HasPrefix(p, closed+"/") {
+			return fiber.ErrNotFound
+		}
+	}
+	return c.Next()
 }

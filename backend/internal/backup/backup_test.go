@@ -38,6 +38,10 @@ type fakeDrive struct {
 	mu         sync.Mutex
 	uploaded   map[string][]byte
 	deleteSeen bool
+	// hang keeps an upload open without ever answering, like a stuck
+	// connection; started is told when one begins.
+	hang    bool
+	started chan struct{}
 }
 
 func (f *fakeDrive) handler() http.Handler {
@@ -78,6 +82,16 @@ func (f *fakeDrive) handler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/session/", func(w http.ResponseWriter, r *http.Request) {
+		if f.hang {
+			// The body is read first: only then does the server notice
+			// the client going away.
+			_, _ = io.ReadAll(r.Body)
+			if f.started != nil {
+				f.started <- struct{}{}
+			}
+			<-r.Context().Done()
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.uploaded[strings.TrimPrefix(r.URL.Path, "/session/")] = body

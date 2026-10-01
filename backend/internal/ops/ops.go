@@ -6,6 +6,7 @@ package ops
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -34,10 +35,56 @@ type Handler struct {
 	metrics fiber.Handler
 }
 
-// NewHandler builds the handler; registry holds the server's numbers.
+// NewHandler builds the handler; registry holds the server's numbers. It
+// adds santral_dependency_up to it, from the same checks /healthz runs.
 func NewHandler(db *sql.DB, redis *goredis.Client, build Build, registry *prometheus.Registry) *Handler {
-	return &Handler{db: db, redis: redis, build: build,
+	h := &Handler{db: db, redis: redis, build: build,
 		metrics: adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))}
+	registry.MustRegister(&dependencyCollector{h: h})
+	return h
+}
+
+// deps pings the database and Redis, each with its own time limit, so a
+// hung database does not make Redis look down too.
+func (h *Handler) deps(ctx context.Context) (dbErr, redisErr error) {
+	dctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	dbErr = h.db.PingContext(dctx)
+	cancel()
+	if h.redis == nil {
+		return dbErr, errors.New("redis is not connected")
+	}
+	rctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	return dbErr, h.redis.Ping(rctx).Err()
+}
+
+// dependencyDesc is 1 while the server reaches a dependency and 0 when it
+// does not. A gauge read from the database is missing while the database
+// is down; this one is not, so the alert on it fires.
+var dependencyDesc = prometheus.NewDesc("santral_dependency_up",
+	"1 when the server reaches the dependency (postgres, redis), 0 when it does not.", []string{"dep"}, nil)
+
+type dependencyCollector struct {
+	h *Handler
+}
+
+// Describe sends the gauge's description.
+func (d *dependencyCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- dependencyDesc
+}
+
+// Collect checks both dependencies at scrape time.
+func (d *dependencyCollector) Collect(ch chan<- prometheus.Metric) {
+	dbErr, redisErr := d.h.deps(context.Background())
+	ch <- prometheus.MustNewConstMetric(dependencyDesc, prometheus.GaugeValue, up(dbErr), "postgres")
+	ch <- prometheus.MustNewConstMetric(dependencyDesc, prometheus.GaugeValue, up(redisErr), "redis")
+}
+
+func up(err error) float64 {
+	if err != nil {
+		return 0
+	}
+	return 1
 }
 
 // Routes mounts /healthz and /metrics on the app root.
@@ -49,19 +96,19 @@ func (h *Handler) Routes(app fiber.Router) {
 // Health answers 200 when the server can reach its database and Redis, and
 // 503 naming what is down otherwise.
 func (h *Handler) Health(c *fiber.Ctx) error {
-	ctx, cancel := context.WithTimeout(c.UserContext(), checkTimeout)
-	defer cancel()
+	ctx := c.UserContext()
 	checks := fiber.Map{"database": "ok", "redis": "ok"}
 	status := fiber.StatusOK
-	if err := h.db.PingContext(ctx); err != nil {
+	dbErr, redisErr := h.deps(ctx)
+	if dbErr != nil {
 		checks["database"] = "down"
 		status = fiber.StatusServiceUnavailable
-		slog.ErrorContext(ctx, "health check: database is down", "error", err)
+		slog.ErrorContext(ctx, "health check: database is down", "error", dbErr)
 	}
-	if err := h.redis.Ping(ctx).Err(); err != nil {
+	if redisErr != nil {
 		checks["redis"] = "down"
 		status = fiber.StatusServiceUnavailable
-		slog.ErrorContext(ctx, "health check: redis is down", "error", err)
+		slog.ErrorContext(ctx, "health check: redis is down", "error", redisErr)
 	}
 	word := "ok"
 	if status != fiber.StatusOK {
