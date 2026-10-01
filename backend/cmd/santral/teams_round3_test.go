@@ -467,5 +467,5 @@ func TestLoadTeamsHistoryBusyRoom(t *testing.T) {
 			t.Errorf("%s: reads %d lines of the long history, want 100", b.user.Email, n)
 		}
 	}
-	stats.report(t, "teams history", elapsed)
+	stats.report(t, "teams history", elapsed, budget{p95: 2 * time.Second, max: 20 * time.Second})
 }

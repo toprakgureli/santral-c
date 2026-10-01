@@ -72,7 +72,7 @@ export interface GameView {
   minPlayers: number;
   maxPlayers: number;
   joinLate: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- each game kind keeps its own shape here and its view reads it
   data: any;
   createdAt: string;
 }

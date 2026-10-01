@@ -15,8 +15,8 @@ export default function Poll({ h, selfId }: KindProps) {
   const d = g.data ?? {};
   const [q, setQ] = useState("");
   const last = d.results?.[d.results.length - 1];
-  const candidates = (d.candidates ?? []) as Candidate[];
-  const seated = new Set(g.players.filter((p) => !p.left).map((p) => p.id));
+  const candidates = useMemo(() => (d.candidates ?? []) as Candidate[], [d.candidates]);
+  const seated = useMemo(() => new Set(g.players.filter((p) => !p.left).map((p) => p.id)), [g.players]);
   const nameOf = (id: number) => candidates.find((c) => c.id === id)?.name ?? g.players.find((p) => p.id === id)?.name ?? "";
 
   const { inRoom, others } = useMemo(() => {

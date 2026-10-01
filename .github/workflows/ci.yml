@@ -76,14 +76,45 @@ jobs:
           sudo apt-get install -y -qq postgresql-client
           pg_dump --version
 
+      # Coverage is counted over every package, whichever test reaches it,
+      # and kept in raw form so the two runs below can be added together.
       - name: Test
-        run: go test -race -short -count=1 ./...
+        run: |
+          mkdir -p "$RUNNER_TEMP/cover/unit"
+          go test -race -short -count=1 -cover -coverpkg=./... ./... -args -test.gocoverdir="$RUNNER_TEMP/cover/unit"
 
       # The office's busy minute on a database with half a year of history,
       # all from one address. Without the race detector, which would make it
       # minutes long.
       - name: Load tests
-        run: go test -count=1 -run 'TestLoad|TestPermissionMatrix' -v ./cmd/santral
+        run: |
+          mkdir -p "$RUNNER_TEMP/cover/load"
+          go test -count=1 -cover -coverpkg=./... -run 'TestLoad|TestPermissionMatrix' -v ./cmd/santral -args -test.gocoverdir="$RUNNER_TEMP/cover/load"
+
+      # How much of the backend the tests run, shown on the run's summary
+      # page. Nothing fails on the number yet.
+      - name: Coverage
+        run: |
+          go tool covdata textfmt -i="$RUNNER_TEMP/cover/unit" -o "$RUNNER_TEMP/unit.out"
+          go tool covdata textfmt -i="$RUNNER_TEMP/cover/unit,$RUNNER_TEMP/cover/load" -o "$RUNNER_TEMP/all.out"
+          own="$(go tool cover -func="$RUNNER_TEMP/unit.out" | tail -1 | awk '{print $NF}')"
+          all="$(go tool cover -func="$RUNNER_TEMP/all.out" | tail -1 | awk '{print $NF}')"
+          {
+            echo "### Backend coverage"
+            echo
+            echo "| Tests | Statements run |"
+            echo "| --- | --- |"
+            echo "| Unit and route tests | $own |"
+            echo "| With the load tests | $all |"
+            echo
+            echo "<details><summary>By package (unit, route and load tests)</summary>"
+            echo
+            echo '```'
+            go tool covdata percent -i="$RUNNER_TEMP/cover/unit,$RUNNER_TEMP/cover/load"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "coverage: unit and route tests $own, with load tests $all"
 
       - name: Known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -104,6 +135,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # ESLint (hook rules included) and the type check.
+      - run: npm run lint
       - run: npm test
       - run: npm run build
 

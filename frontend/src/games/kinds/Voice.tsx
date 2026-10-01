@@ -74,7 +74,7 @@ export default function Voice({ h, selfId }: KindProps) {
   }, []);
   useEffect(() => {
     if (d.phase === "guess") play();
-  }, [d.round, d.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d.round, d.phase]); // eslint-disable-line react-hooks/exhaustive-deps -- the clip plays once per round; play is new on every render
 
   if (d.phase === "record") {
     return (

@@ -32,7 +32,7 @@ export function MoreMenu({ onClose, children }: { onClose: () => void; children:
       window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", esc);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
   return <div ref={box} className="animate-in fade-in zoom-in-95 absolute right-0 top-full z-30 mt-1 w-60 origin-top-right rounded-2xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl duration-100">{children}</div>;
 }
 

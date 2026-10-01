@@ -63,10 +63,11 @@ export function WhatsApp() {
     waApi.channels().then(setChannels).catch(() => setChannels([]));
   }, []);
 
+  const { setOpenId } = wa;
   useEffect(() => {
-    wa.setOpenId(openId);
-    return () => wa.setOpenId(null);
-  }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setOpenId(openId);
+    return () => setOpenId(null);
+  }, [openId, setOpenId]);
 
   // Is there room for the card beside the chat? Measured, not guessed.
   useEffect(() => {

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0 && tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
@@ -20,15 +20,20 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "jsdom": "^25.0.1",
     "tailwindcss": "^4.0.0",
     "tw-animate-css": "^1.2.0",
     "typescript": "^5.5.4",
+    "typescript-eslint": "^8.71.0",
     "vite": "^5.4.8",
     "vitest": "^3.2.7"
   }

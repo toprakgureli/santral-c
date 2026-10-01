@@ -43,7 +43,7 @@ export default function EmojiPicker({ onPick, onClose, className }: { onPick: (e
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   const all = useMemo(() => GROUPS.flatMap((g) => g.items.split(" ")), []);
   const shown = q.trim() ? all : (GROUPS.find((g) => g.key === tab)?.items.split(" ") ?? []);

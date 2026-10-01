@@ -111,7 +111,7 @@ export function WindowedList<T>({
     for (let i = end; i < items.length; i++) after += heights.current.get(String(keyOf(items[i]))) ?? estimate;
     return { start, end, before, after };
     // measured: a row's height changed, so the sums move.
-  }, [whole, items, keyOf, estimate, overscan, view, measured]);
+  }, [whole, items, keyOf, estimate, overscan, view, measured]); // eslint-disable-line react-hooks/exhaustive-deps -- heights live in a ref; measured is what tells the sums to redo
 
   return (
     <div ref={box}>

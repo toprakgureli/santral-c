@@ -22,6 +22,25 @@ import (
 // it is also how often the session is re-checked.
 const Heartbeat = 20 * time.Second
 
+// beat is the heartbeat in use: Heartbeat unless a test set a shorter one.
+var beat atomic.Int64
+
+// SetHeartbeat changes how often idle streams send a comment line and check
+// the session again, and returns a function that puts the old value back.
+// Tests use it to see a revoked session end a stream without waiting
+// twenty seconds; streams opened afterwards use the new value.
+func SetHeartbeat(d time.Duration) (restore func()) {
+	old := beat.Swap(int64(d))
+	return func() { beat.Store(old) }
+}
+
+func heartbeat() time.Duration {
+	if d := time.Duration(beat.Load()); d > 0 {
+		return d
+	}
+	return Heartbeat
+}
+
 // streams counts the event streams open right now, for the metrics page.
 var streams atomic.Int64
 
@@ -87,8 +106,8 @@ func run(w *bufio.Writer, s Stream, session *middlewares.Session) {
 	if s.First != nil && writeEvent(w, s.First) != nil {
 		return
 	}
-	beat := time.NewTicker(Heartbeat)
-	defer beat.Stop()
+	ticker := time.NewTicker(heartbeat())
+	defer ticker.Stop()
 	for {
 		select {
 		case <-closing:
@@ -97,7 +116,7 @@ func run(w *bufio.Writer, s Stream, session *middlewares.Session) {
 			if !ok || writeEvent(w, msg) != nil {
 				return
 			}
-		case <-beat.C:
+		case <-ticker.C:
 			if !alive(session, s.Allowed) {
 				return
 			}

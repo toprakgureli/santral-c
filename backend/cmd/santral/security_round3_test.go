@@ -28,39 +28,6 @@ import (
 // secRun tells this file's rows apart from other runs'.
 var secRun = strconv.FormatInt(time.Now().UnixNano(), 36)
 
-// systemRole loads a seeded role.
-func systemRole(t *testing.T, db *gorm.DB, name enums.Role) models.Role {
-	t.Helper()
-	var r models.Role
-	if err := db.Where("name = ?", string(name)).First(&r).Error; err != nil {
-		t.Fatalf("role %s: %v", name, err)
-	}
-	return r
-}
-
-// customRole makes a role holding exactly perms.
-func customRole(t *testing.T, db *gorm.DB, perms ...enums.Permission) models.Role {
-	t.Helper()
-	keys := make([]string, len(perms))
-	for i, p := range perms {
-		keys[i] = string(p)
-	}
-	var rows []models.Permission
-	if err := db.Where("key IN ?", keys).Find(&rows).Error; err != nil || len(rows) != len(keys) {
-		t.Fatalf("permissions %v: %d found, %v", keys, len(rows), err)
-	}
-	r := models.Role{Name: "r3-" + secRun + "-" + strconv.Itoa(int(loadRun.Add(1))), DisplayName: "Round three", Permissions: rows}
-	if err := db.Create(&r).Error; err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		db.Exec("DELETE FROM user_roles WHERE role_id = ?", r.ID)
-		db.Exec("DELETE FROM role_permissions WHERE role_id = ?", r.ID)
-		db.Exec("DELETE FROM roles WHERE id = ?", r.ID)
-	})
-	return r
-}
-
 // person creates an active user holding roles who signs in with
 // loadPassword; withExt gives them an extension.
 func person(t *testing.T, db *gorm.DB, name string, withExt bool, roles ...models.Role) models.User {
@@ -94,7 +61,7 @@ func person(t *testing.T, db *gorm.DB, name string, withExt bool, roles ...model
 }
 
 // signedIn signs u in and returns their browser.
-func signedIn(t *testing.T, srv *server, u models.User) *browser {
+func signInAs(t *testing.T, srv *server, u models.User) *browser {
 	t.Helper()
 	b := newBrowser(t, srv.app, nil, u)
 	b.mustSignIn()
@@ -184,7 +151,7 @@ func TestHiddenOwnerStaysOutOfLists(t *testing.T) {
 		db.Exec("DELETE FROM login_attempts WHERE email = ?", owner.Email)
 	})
 
-	vb, xb := signedIn(t, srv, viewer), signedIn(t, srv, other)
+	vb, xb := signInAs(t, srv, viewer), signInAs(t, srv, other)
 	type look struct {
 		name string
 		path string
@@ -245,7 +212,7 @@ func TestProfileFiguresNeedPerformancePermission(t *testing.T) {
 		who     models.User
 		figures bool
 	}{{teammate, true}, {boss, true}, {otherTeam, false}, {plain, false}} {
-		b := signedIn(t, srv, c.who)
+		b := signInAs(t, srv, c.who)
 		a := b.do(fiber.MethodGet, "/api/v1/profile/"+id, nil)
 		if a.status != fiber.StatusOK {
 			t.Fatalf("%s: card answered %d %s", c.who.Name, a.status, a.body)
@@ -279,7 +246,7 @@ func TestProfileFiguresNeedPerformancePermission(t *testing.T) {
 func TestChangesComeFromThePanel(t *testing.T) {
 	srv, db := testServer(t, func(c *configs.Config) { c.App.PublicURL = "https://cm.example.com" })
 	u := person(t, db, "Panelden", false, systemRole(t, db, enums.RoleSalesTeam))
-	b := signedIn(t, srv, u)
+	b := signInAs(t, srv, u)
 	jar := b.cookies()
 	body := `{"headline":"Satış","bio":""}`
 	for _, c := range []struct {
@@ -377,7 +344,7 @@ func TestRefreshCookieStaysOnTheAuthPath(t *testing.T) {
 func TestReusedRefreshTokenEndsTheSession(t *testing.T) {
 	srv, db := testServer(t)
 	u := person(t, db, "Çalınan", false, systemRole(t, db, enums.RoleSalesTeam))
-	victim := signedIn(t, srv, u)
+	victim := signInAs(t, srv, u)
 	thief := newBrowser(t, srv.app, nil, u)
 	thief.jar = victim.cookies()
 	old := victim.cookies()["sc_refresh"].Value
@@ -436,7 +403,7 @@ func TestReusedRefreshTokenEndsTheSession(t *testing.T) {
 func TestReusedTokenFromBeforeTheListIsCaught(t *testing.T) {
 	srv, db := testServer(t)
 	u := person(t, db, "Eski kayıt", false, systemRole(t, db, enums.RoleSalesTeam))
-	b := signedIn(t, srv, u)
+	b := signInAs(t, srv, u)
 	old := b.cookies()
 	if a := b.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); a.status != fiber.StatusOK {
 		t.Fatalf("renewing answered %d", a.status)
@@ -459,7 +426,7 @@ func TestReusedTokenFromBeforeTheListIsCaught(t *testing.T) {
 func TestLogoutWithAJustReplacedToken(t *testing.T) {
 	srv, db := testServer(t)
 	u := person(t, db, "Çıkış", false, systemRole(t, db, enums.RoleSalesTeam))
-	tabA := signedIn(t, srv, u)
+	tabA := signInAs(t, srv, u)
 	tabB := newBrowser(t, srv.app, nil, u)
 	tabB.jar = tabA.cookies()
 	if a := tabA.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); a.status != fiber.StatusOK {
@@ -488,7 +455,7 @@ func TestEscalationSearchNeedsAWholeNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Exec("DELETE FROM call_escalations WHERE id IN ?", []uint{rows[0].ID, rows[1].ID}) })
-	b := signedIn(t, srv, searcher)
+	b := signInAs(t, srv, searcher)
 	if a := b.do(fiber.MethodGet, "/api/v1/escalations/list?number=123", nil); totalOf(t, a) != 0 {
 		t.Errorf("a three-digit search listed others' records: %s", a.body)
 	}

@@ -97,7 +97,7 @@ export function StatusBar({ totals, showTotals, extension, hasExtension, stats }
   const paused = shift.active && hasExtension && agentState !== "available" && agentState !== "off";
   useEffect(() => {
     if (paused && phone.status === "calling") changeState("available");
-  }, [paused, phone.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paused, phone.status]); // eslint-disable-line react-hooks/exhaustive-deps -- changeState is new on every render; this must fire once when a call starts during a pause
 
   // While in a call the live call status wins; otherwise the presence badge
   // reflects the agent's chosen state (so "Molada" no longer shows green).

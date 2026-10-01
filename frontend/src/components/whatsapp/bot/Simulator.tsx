@@ -29,7 +29,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
   // the device list may arrive after the panel opens
   useEffect(() => {
     if (!channels.some((c) => c.id === channelId)) setChannelId(channels[0]?.id ?? 0);
-  }, [channels]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channels, channelId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -64,7 +64,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
   useEffect(() => {
     restart();
     return () => onAt(undefined);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- the test starts once when the simulator opens
 
   // A new day, time or device is a new test.
   const first = useRef(true);
@@ -74,7 +74,7 @@ export default function Simulator({ graph, botId, channels, onAt, onClose }: { g
       return;
     }
     restart();
-  }, [at?.clock, at?.day, channelId, hoursOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [at?.clock, at?.day, channelId, hoursOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- restart is new on every render; only these settings start a new test
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });

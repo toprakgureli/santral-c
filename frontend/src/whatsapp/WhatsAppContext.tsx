@@ -257,15 +257,16 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
           break;
       }
     },
-    [apply, alert, me, notifyBrowser, sync], // eslint-disable-line react-hooks/exhaustive-deps
+    [apply, alert, me, notifyBrowser, sync],
   );
 
   // Events: on the chat's stream when the person uses the chat, otherwise
   // on the module's own.
+  const { enabled: teamsEnabled, subscribe: teamsSubscribe } = teams;
   useEffect(() => {
     if (!enabled) return;
-    if (teams.enabled) {
-      return teams.subscribe((e) => handle(e as unknown as WAEvent));
+    if (teamsEnabled) {
+      return teamsSubscribe((e) => handle(e as unknown as WAEvent));
     }
     return openLiveStream("/api/v1/wa/stream", {
       onOpen: () => {},
@@ -277,7 +278,7 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
         }
       },
     });
-  }, [enabled, teams.enabled, teams.subscribe, handle]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, teamsEnabled, teamsSubscribe, handle]);
 
   // Typing labels fade out on their own.
   useEffect(() => {

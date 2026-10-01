@@ -52,13 +52,13 @@ export default function NewChatDialog({ open, number: initialNumber, name: initi
       live = false;
       window.clearTimeout(t);
     };
-  }, [open, digits]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, digits]); // eslint-disable-line react-hooks/exhaustive-deps -- spaces or dashes typed into the number must not search again
 
   // A known customer's name fills itself in, for the template's blanks.
   useEffect(() => {
     const known = existing.find((c) => c.contact.name || c.contact.profileName);
     if (known && !name.trim()) setName(known.contact.name || known.contact.profileName || "");
-  }, [existing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [existing]); // eslint-disable-line react-hooks/exhaustive-deps -- fills the name once per lookup; clearing the box must not refill it
 
   const openChat = (c: WAConversation) => {
     onClose();

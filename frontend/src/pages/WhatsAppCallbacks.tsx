@@ -38,11 +38,11 @@ export function WhatsAppCallbacks() {
       .catch((e) => id === latest.current && setError(e instanceof ApiError ? e.message : "Yüklenemedi."))
       .finally(() => id === latest.current && setLoading(false));
   };
-  useEffect(load, [all]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [all]);
   // A new request arrives on the live stream; refresh the list with it.
   useEffect(() => {
     if (wa.callbackTick > 0) load();
-  }, [wa.callbackTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wa.callbackTick]); // eslint-disable-line react-hooks/exhaustive-deps -- reload only on a new tick; load is new on every render and always sees the current filter
 
   const open = useMemo(() => rows.filter((r) => r.status === "open"), [rows]);
   const done = useMemo(() => rows.filter((r) => r.status !== "open"), [rows]);

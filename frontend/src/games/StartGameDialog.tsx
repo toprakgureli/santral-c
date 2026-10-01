@@ -1,6 +1,6 @@
 // StartGameDialog: pick a game, set its two knobs, open the lobby.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/api/client";
 import { Button, Modal } from "@/components/ui";
 import { gamesApi } from "@/games/api";
@@ -10,10 +10,10 @@ import { cn } from "@/lib/utils";
 export default function StartGameDialog({ groupId, config, open, onClose, onCreated, onOpen }: { groupId: number; config: GamesConfig; open: boolean; onClose: () => void; onCreated: (g: GameView) => void; onOpen: (id: number) => void }) {
   const [kind, setKind] = useState<GameMeta | null>(null);
   const [openGames, setOpenGames] = useState<GameView[]>([]);
-  const loadOpen = () => gamesApi.open(groupId).then(setOpenGames).catch(() => setOpenGames([]));
+  const loadOpen = useCallback(() => gamesApi.open(groupId).then(setOpenGames).catch(() => setOpenGames([])), [groupId]);
   useEffect(() => {
     if (open) void loadOpen();
-  }, [open, groupId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, loadOpen]);
   const closeGame = async (g: GameView) => {
     try {
       await gamesApi.cancel(g.id);

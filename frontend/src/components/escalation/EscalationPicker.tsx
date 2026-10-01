@@ -24,13 +24,13 @@ export function EscalationPicker({
 }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLocaleLowerCase("tr");
-  const hit = (s: string) => s.toLocaleLowerCase("tr").includes(q);
 
   // Categories that match themselves or hold a matching reason; the reason
   // list inside each is narrowed to the matches when a category itself does
   // not match.
   const visible = useMemo(() => {
     if (!q) return categories.map((c) => ({ ...c, matchSelf: false }));
+    const hit = (s: string) => s.toLocaleLowerCase("tr").includes(q);
     return categories
       .map((c) => {
         const matchSelf = hit(c.name);
@@ -38,14 +38,14 @@ export function EscalationPicker({
         return { ...c, reasons, matchSelf };
       })
       .filter((c) => c.matchSelf || c.reasons.length > 0);
-  }, [categories, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [categories, q]);
 
   // Keep a valid selection while filtering: jump to the first visible
   // category when the current one disappears.
   useEffect(() => {
     if (visible.length === 0) return;
     if (!visible.some((c) => c.id === catId)) onChange(visible[0].id, null);
-  }, [visible, catId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, catId]); // eslint-disable-line react-hooks/exhaustive-deps -- onChange is new on every parent render; rerun only when the list or the selection changes
 
   const current = visible.find((c) => c.id === catId) ?? null;
   const selectedCat = categories.find((c) => c.id === catId);

@@ -21,7 +21,7 @@ export default function Draw({ h, selfId }: KindProps) {
   // Repaint from the server's stroke list whenever the turn changes.
   useEffect(() => {
     pad.current?.reset((d.strokes ?? []) as Stroke[]);
-  }, [d.turn, d.phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d.turn, d.phase]); // eslint-disable-line react-hooks/exhaustive-deps -- new strokes while drawing must not wipe the pad
 
   useEffect(() => {
     return h.onStroke((p) => {

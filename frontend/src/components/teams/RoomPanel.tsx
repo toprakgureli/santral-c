@@ -2,7 +2,7 @@
 // frame in the sidebar's style: the members list, search within the room,
 // and the shared pictures, videos and files.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, Play, Search, X } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import type { TeamsGroupDetail, TeamsMediaItem, TeamsMessage } from "@/api/types";
@@ -148,31 +148,34 @@ function MediaView({ group, onJump }: { group: TeamsGroupDetail; onJump: (id: nu
   const shown = useRef(`${group.id}:${tab}`);
   shown.current = `${group.id}:${tab}`;
 
-  const load = (before?: number) => {
-    const asked = `${group.id}:${tab}`;
-    setBusy(true);
-    api
-      .teamsMedia(group.id, tab, before)
-      .then((r) => {
-        if (shown.current !== asked) return;
-        setItems((cur) => (before ? [...cur, ...r.items] : r.items));
-        setMore(r.more);
-        setError(null);
-      })
-      .catch((e) => {
-        if (shown.current === asked) setError(e instanceof ApiError ? e.message : "Liste alınamadı.");
-      })
-      .finally(() => {
-        if (shown.current === asked) setBusy(false);
-      });
-  };
+  const load = useCallback(
+    (before?: number) => {
+      const asked = `${group.id}:${tab}`;
+      setBusy(true);
+      api
+        .teamsMedia(group.id, tab, before)
+        .then((r) => {
+          if (shown.current !== asked) return;
+          setItems((cur) => (before ? [...cur, ...r.items] : r.items));
+          setMore(r.more);
+          setError(null);
+        })
+        .catch((e) => {
+          if (shown.current === asked) setError(e instanceof ApiError ? e.message : "Liste alınamadı.");
+        })
+        .finally(() => {
+          if (shown.current === asked) setBusy(false);
+        });
+    },
+    [group.id, tab],
+  );
 
   useEffect(() => {
     setItems([]);
     setMore(false);
     setGallery(null);
     load();
-  }, [group.id, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [load]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

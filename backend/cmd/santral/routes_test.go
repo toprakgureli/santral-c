@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +30,28 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
 )
 
-// envRedis names the Redis the route tests use, as host:port.
+// envRedis names the Redis the route tests use, as host:port, or
+// host:port/db to use another database than 15.
 const envRedis = "SANTRAL_TEST_REDIS"
+
+// testRedis reads envRedis; ok is false when it is not set.
+func testRedis() (cfg configs.Redis, ok bool, err error) {
+	raw := os.Getenv(envRedis)
+	if raw == "" {
+		return cfg, false, nil
+	}
+	addr, db, found := strings.Cut(raw, "/")
+	cfg.DB = 15
+	if found {
+		if cfg.DB, err = strconv.Atoi(db); err != nil {
+			return cfg, true, fmt.Errorf("%s: database %q: %w", envRedis, db, err)
+		}
+	}
+	if cfg.Host, cfg.Port, err = net.SplitHostPort(addr); err != nil {
+		return cfg, true, fmt.Errorf("%s: %w", envRedis, err)
+	}
+	return cfg, true, nil
+}
 
 // public lists every route that answers without a signed-in user, with the
 // reason it may. A new route is guarded unless it is added here on purpose.
@@ -52,6 +74,21 @@ func TestMain(m *testing.M) {
 	// Refused requests are logged as warnings; the tests expect many.
 	slog.SetDefault(slog.New(slog.DiscardHandler))
 	log.SetOutput(io.Discard)
+	// Locks, revoked tokens and counters an earlier run left in the test
+	// Redis would otherwise carry over into this one.
+	if cfg, ok, err := testRedis(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	} else if ok {
+		if err := redis.Connect(cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := redis.Get().FlushDB(context.Background()).Err(); err != nil {
+			fmt.Fprintln(os.Stderr, "test redis could not be emptied:", err)
+			os.Exit(1)
+		}
+	}
 	os.Exit(m.Run())
 }
 
@@ -67,15 +104,14 @@ func testServer(t *testing.T, opts ...func(*configs.Config)) (*server, *gorm.DB)
 		t.Fatal(err)
 	}
 	postgresql.Pool(sqlDB, 40)
-	addr := os.Getenv(envRedis)
-	if addr == "" {
+	rcfg, ok, err := testRedis()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
 		t.Skipf("%s is not set; skipping a test that needs Redis", envRedis)
 	}
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		t.Fatalf("%s: %v", envRedis, err)
-	}
-	if err := redis.Connect(configs.Redis{Host: host, Port: port, DB: 15}); err != nil {
+	if err := redis.Connect(rcfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +141,9 @@ func testServer(t *testing.T, opts ...func(*configs.Config)) (*server, *gorm.DB)
 	for _, o := range opts {
 		o(&cfg)
 	}
+	old := configs.Cnf
 	configs.Cnf = cfg
+	t.Cleanup(func() { configs.Cnf = old })
 	if err := setup.Seed(db); err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +295,11 @@ var adminOnly = []struct{ method, path, body string }{
 
 // TestPermissionsAreEnforced signs in without any role and expects every
 // admin request to be refused, then signs in as the top role and expects
-// the same requests to get past the permission check.
+// the same requests to get past the permission check without failing.
 func TestPermissionsAreEnforced(t *testing.T) {
-	srv, db := testServer(t)
+	// The phone system answers, so a request let through can succeed.
+	pbx := newFakePBX(t)
+	srv, db := testServer(t, pbx.use)
 
 	nobody := signIn(t, srv, db)
 	for _, r := range adminOnly {
@@ -274,7 +314,7 @@ func TestPermissionsAreEnforced(t *testing.T) {
 	for _, r := range adminOnly {
 		res := call(t, srv.app, r.method, r.path, r.body, admin)
 		_ = res.Body.Close()
-		if res.StatusCode == fiber.StatusForbidden || res.StatusCode == fiber.StatusUnauthorized {
+		if res.StatusCode == fiber.StatusForbidden || res.StatusCode == fiber.StatusUnauthorized || res.StatusCode >= 500 {
 			t.Errorf("admin: %s %s answered %d", r.method, r.path, res.StatusCode)
 		}
 	}

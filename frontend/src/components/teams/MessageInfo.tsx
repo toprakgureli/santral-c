@@ -97,7 +97,7 @@ export function ReactionPeople({ x, y, emoji, people, selfId, onPerson, onClose 
       window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
   const left = Math.min(x, window.innerWidth - 240);
   const top = Math.min(y, window.innerHeight - 40 - people.length * 40);
   return (

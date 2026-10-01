@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -95,4 +96,63 @@ func migrate(db *sql.DB) error {
 	}
 	defer func() { _, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrateLock) }()
 	return migrations.Run(db)
+}
+
+// Scratch creates an empty database next to the test database for one test
+// and drops it when the test ends. It returns the new database's address in
+// the same form as SANTRAL_TEST_DSN, and its name. The test is skipped when
+// no test database is set up.
+func Scratch(t testing.TB, prefix string) (dsn, name string) {
+	t.Helper()
+	base := os.Getenv(EnvDSN)
+	if base == "" {
+		t.Skipf("%s is not set; skipping a test that needs PostgreSQL", EnvDSN)
+	}
+	conn, err := gorm.Open(postgres.Open(base), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatalf("scratch database: %v", err)
+	}
+	admin, err := conn.DB()
+	if err != nil {
+		t.Fatalf("scratch database: %v", err)
+	}
+	t.Cleanup(func() { _ = admin.Close() })
+	name = fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+	ctx := context.Background()
+	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+name); err != nil {
+		t.Fatalf("scratch database %s could not be created: %v", name, err)
+	}
+	t.Cleanup(func() {
+		if _, err := admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+			t.Errorf("scratch database %s could not be dropped: %v", name, err)
+		}
+	})
+	return WithName(base, name), name
+}
+
+// WithName returns a key=value database address pointing at another
+// database on the same server.
+func WithName(dsn, name string) string {
+	parts := strings.Fields(dsn)
+	found := false
+	for i, kv := range parts {
+		if k, _, _ := strings.Cut(kv, "="); k == "dbname" {
+			parts[i] = "dbname=" + name
+			found = true
+		}
+	}
+	if !found {
+		parts = append(parts, "dbname="+name)
+	}
+	return strings.Join(parts, " ")
+}
+
+// Field returns one key of a key=value database address, or "".
+func Field(dsn, key string) string {
+	for _, kv := range strings.Fields(dsn) {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
 }

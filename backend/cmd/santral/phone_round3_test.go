@@ -166,7 +166,7 @@ func TestLoadPhoneDNDThrottle(t *testing.T) {
 		}
 	}
 	t.Logf("do-not-disturb: %d accepted, %d refused and retried", accepted.Load(), refused.Load())
-	stats.report(t, "shift start under a throttled phone system", time.Since(began))
+	stats.report(t, "shift start under a throttled phone system", time.Since(began), budget{p95: 2 * time.Second, max: 10 * time.Second})
 
 	// 19:20: the shifts started "yesterday" are past their cutoff.
 	stopDND()

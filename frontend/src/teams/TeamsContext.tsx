@@ -396,7 +396,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         listeners.current.forEach((fn) => fn(e));
       },
     });
-  }, [enabled, refresh, notify, notifyReaction]);
+  }, [enabled, refresh, notify, notifyReaction, selfId, sendState]);
 
   const subscribe = useCallback((fn: (e: TeamsEvent) => void) => {
     listeners.current.add(fn);

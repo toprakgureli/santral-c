@@ -31,7 +31,7 @@ export default function Lightbox({ items, index, onIndex, onClose }: { items: Te
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [index, items.length, onClose, onIndex]);
+  }, [index, items.length, onClose, onIndex, isTop]);
 
   if (!item) return null;
   const url = attachmentUrl(item.id);

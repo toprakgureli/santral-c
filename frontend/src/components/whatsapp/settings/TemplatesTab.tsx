@@ -62,7 +62,7 @@ export default function TemplatesTab({ channels }: { channels: WAChannel[] }) {
     setLoading(true);
     waApi.templates(channelId).then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
   };
-  useEffect(load, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [channelId]);
 
   const sync = async () => {
     setSyncing(true);

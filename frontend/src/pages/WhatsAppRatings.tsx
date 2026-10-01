@@ -244,7 +244,7 @@ function RatingDetail({ r, onClose }: { r: WARating; onClose: () => void }) {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
-  }, [onClose]);
+  }, [onClose, isTop]);
   const Src = r.source === "call" ? PhoneCall : MessageCircle;
   const answers = r.answers.filter((a) => !(r.answers.length === 1 && a.question === SINGLE));
   return (

@@ -23,7 +23,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("keydown", onEsc);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   return (
     <div

@@ -26,7 +26,7 @@ export default function ThemeMenu({ align = "right" }: { align?: "left" | "right
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, isTop]);
 
   return (
     <div className="relative" ref={ref}>

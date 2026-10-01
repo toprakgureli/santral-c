@@ -100,7 +100,7 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
     setMedia("");
     setHeaderFile(null);
     setByLink(false);
-  }, [pick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pick]); // eslint-disable-line react-hooks/exhaustive-deps -- the form is reset only when another template is picked, never under the agent typing
 
   const shown = (list ?? []).filter((t) => !q || t.name.includes(q.toLowerCase()) || (t.components.find((c) => c.type === "BODY")?.text ?? "").toLocaleLowerCase("tr").includes(q.toLocaleLowerCase("tr")));
   const mediaHeader = parts.header && parts.header.format && parts.header.format !== "TEXT";

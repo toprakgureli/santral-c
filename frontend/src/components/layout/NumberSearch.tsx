@@ -78,7 +78,7 @@ export default function NumberSearch() {
       live = false;
       window.clearTimeout(t);
     };
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, wa.enabled, callsAllowed]);
 
   useEffect(() => {
     if (!open) return;
