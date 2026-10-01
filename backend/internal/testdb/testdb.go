@@ -10,10 +10,12 @@ package testdb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -72,8 +74,24 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("test database connection: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrateLock); err != nil {
-		return fmt.Errorf("migration lock: %w", err)
+	// Wait for the lock by asking again and again rather than with a
+	// blocking call: a waiting statement holds a snapshot, and the
+	// migrations that build indexes concurrently wait for every snapshot to
+	// end, so a blocked waiter and the lock holder would wait on each other
+	// for ever.
+	deadline := time.Now().Add(10 * time.Minute)
+	for {
+		var got bool
+		if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrateLock).Scan(&got); err != nil {
+			return fmt.Errorf("migration lock: %w", err)
+		}
+		if got {
+			break
+		}
+		if time.Now().After(deadline) {
+			return errors.New("migration lock: another test binary held it for ten minutes")
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	defer func() { _, _ = conn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrateLock) }()
 	return migrations.Run(db)

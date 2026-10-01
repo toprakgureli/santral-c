@@ -432,11 +432,21 @@ func (p *fakePBX) use(c *configs.Config) {
 
 // ---------------------------------------------------------------- the tests
 
+// loadTest skips a load test in a -short run (the race detector run in CI
+// uses one; it would make these minutes long).
+func loadTest(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("load test; runs without -short")
+	}
+}
+
 // TestLoadOfficeSignsIn: forty people sign in at the same minute from one
 // address and work through 2,400 requests; some mistype their password,
 // two tabs renew one session at once, everybody signs out. Nobody may be
 // refused for load and a signed-out session must stop working.
 func TestLoadOfficeSignsIn(t *testing.T) {
+	loadTest(t)
 	srv, db := testServer(t, officeSecurity)
 	bigHistory(t, db)
 	people := seedPeople(t, db, 40, enums.RoleSalesTeam, false)
@@ -590,6 +600,7 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 // phone system from the agent's own extension, land in the agent's call
 // history, and be confirmed against the phone system's records.
 func TestLoadCalls(t *testing.T) {
+	loadTest(t)
 	pbx := newFakePBX(t)
 	srv, db := testServer(t, officeSecurity, pbx.use)
 	bigHistory(t, db)
@@ -812,6 +823,7 @@ func restrictTransfers(t *testing.T, db *gorm.DB, userID uint) {
 // other directly. Every line must be stored once, in the order each person
 // sent it, and nobody may be slowed down by a limit.
 func TestLoadTeamsBursts(t *testing.T) {
+	loadTest(t)
 	srv, db := testServer(t, officeSecurity)
 	busy := bigHistory(t, db)
 	owner := seedPeople(t, db, 1, enums.RoleManager, false)[0]
