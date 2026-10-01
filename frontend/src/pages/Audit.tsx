@@ -25,6 +25,8 @@ const ACTION_LABELS: Record<string, string> = {
   "call.transferred_out": "Çağrı santral dışına aktarıldı",
   "drive.connected": "Dosya depolama hesabı bağlandı",
   "drive.disconnected": "Dosya depolama hesabı ayrıldı",
+  "backup.settings_updated": "Yedekleme ayarları değişti",
+  "backup.started": "Elle yedek başlatıldı",
   "whatsapp.channel_deactivated": "WhatsApp numarası kapatıldı",
   "whatsapp.channel_deleted": "WhatsApp numarası silindi",
   "whatsapp.channel_purged": "WhatsApp numarası geçmişiyle silindi",

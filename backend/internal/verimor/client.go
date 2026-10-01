@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 )
 
 // Client talks to the Bulutsantralim REST API.
@@ -32,9 +34,9 @@ func NewClient(apiKey, base string) *Client {
 	return &Client{
 		apiKey:   apiKey,
 		base:     strings.TrimRight(base, "/"),
-		http:     &http.Client{Timeout: 15 * time.Second},
-		slow:     &http.Client{Timeout: 45 * time.Second},
-		download: &http.Client{Timeout: 60 * time.Second},
+		http:     &http.Client{Timeout: 15 * time.Second, Transport: telemetry.Transport(nil)},
+		slow:     &http.Client{Timeout: 45 * time.Second, Transport: telemetry.Transport(nil)},
+		download: &http.Client{Timeout: 60 * time.Second, Transport: telemetry.Transport(nil)},
 	}
 }
 

@@ -132,6 +132,14 @@ type Drive struct {
 	FolderName   string `mapstructure:"folderName"`  // default "SantralC"
 }
 
+// Telemetry says where traces go; metrics are always on /metrics.
+type Telemetry struct {
+	// OTLPEndpoint is the trace collector, for example Jaeger at
+	// http://127.0.0.1:4318. Empty turns tracing off.
+	OTLPEndpoint string  `mapstructure:"otlpEndpoint"`
+	SampleRatio  float64 `mapstructure:"sampleRatio"`
+}
+
 // Config is the aggregate configuration.
 type Config struct {
 	App            App            `mapstructure:"app"`
@@ -142,6 +150,7 @@ type Config struct {
 	Redis          Redis          `mapstructure:"redis"`
 	Bulutsantralim Bulutsantralim `mapstructure:"bulutsantralim"`
 	Drive          Drive          `mapstructure:"drive"`
+	Telemetry      Telemetry      `mapstructure:"telemetry"`
 }
 
 // Cnf is the loaded configuration.

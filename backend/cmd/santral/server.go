@@ -13,6 +13,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
+	"github.com/toprakgureli/santral-c/backend/internal/backup"
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -26,7 +27,9 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/internal/shift"
+	"github.com/toprakgureli/santral-c/backend/internal/sse"
 	"github.com/toprakgureli/santral-c/backend/internal/teams"
+	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 	"github.com/toprakgureli/santral-c/backend/internal/user"
 	"github.com/toprakgureli/santral-c/backend/internal/verimor"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp"
@@ -117,6 +120,10 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	app := fiber.New(fiberCfg)
 	app.Use(requestid.New())
 	app.Use(middlewares.RequestContext())
+	// Numbers for Prometheus and a trace for every request.
+	metrics := telemetry.NewMetrics(sqlDB, sse.Open)
+	app.Use(metrics.Middleware(middlewares.StatusOf))
+	app.Use(telemetry.TraceMiddleware(middlewares.StatusOf))
 	app.Use(middlewares.Recover())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.App.CORSOrigins,
@@ -124,7 +131,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	}))
 	// The health check the uptime monitor and deploy.sh call, and the queue
 	// numbers for whoever runs the server.
-	ops.NewHandler(sqlDB, redis.Get(), ops.Build{Version: version, Time: buildTime}).Routes(app)
+	ops.NewHandler(sqlDB, redis.Get(), ops.Build{Version: version, Time: buildTime}, metrics.Registry).Routes(app)
 
 	api := app.Group("/api/v1")
 	// Public build stamp so the panel can show whether the running backend is the
@@ -161,6 +168,10 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		waSvc.OnCallEnded(ctx, log)
 	}
 
+	// Database backups to a Shared Drive, set up in the panel.
+	backupSvc := backup.NewService(db, cfg.Database, ring, actors, auditSvc)
+	backup.NewRouter(backup.NewHandler(backupSvc), guard, need).Routes(api)
+
 	s := &server{app: app}
 	s.workers = append(s.workers,
 		// Shifts left open past the evening cutoff are closed by the sweeper.
@@ -171,6 +182,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		gamesSvc.StartClock,
 		// WhatsApp: webhook processing, the send queue and the timed work.
 		waSvc.Start,
+		// A copy of the database every six hours.
+		backupSvc.Start,
 	)
 
 	if cfg.Bulutsantralim.Enabled {

@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/backup"
 	"github.com/toprakgureli/santral-c/backend/internal/setup"
 	"github.com/toprakgureli/santral-c/backend/internal/sse"
 	"github.com/toprakgureli/santral-c/backend/internal/teams"
+	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp"
 	"github.com/toprakgureli/santral-c/backend/migrations"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
@@ -104,8 +106,25 @@ func run() error {
 		return err
 	}
 	if err := setup.RewrapSecrets(context.Background(), db, ring,
-		setup.SecretPurposes{WhatsApp: whatsapp.SealPurpose, Drive: teams.DriveSealPurpose},
+		setup.SecretPurposes{WhatsApp: whatsapp.SealPurpose, Drive: teams.DriveSealPurpose, Backup: backup.SealPurpose},
 		setup.LegacyKeys{WhatsApp: "wa:" + configs.Cnf.Auth.Secret, Drive: configs.Cnf.Auth.Secret}); err != nil {
+		return err
+	}
+
+	// Traces go to the collector when one is set; queries become spans.
+	stopTracing, err := telemetry.SetupTracing(context.Background(), telemetry.TraceConfig{
+		Endpoint: configs.Cnf.Telemetry.OTLPEndpoint, SampleRatio: configs.Cnf.Telemetry.SampleRatio, Version: version})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := stopTracing(ctx); err != nil {
+			slog.Warn("traces could not be flushed", "error", err)
+		}
+	}()
+	if err := telemetry.TraceDatabase(db); err != nil {
 		return err
 	}
 

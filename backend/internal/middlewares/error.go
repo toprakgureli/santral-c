@@ -34,6 +34,11 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	})
 }
 
+// StatusOf is the status the error handler answers err with.
+func StatusOf(err error) int {
+	return resolve(err).Status
+}
+
 // logPath is the request path for a log line. A route whose path carries a
 // secret (a webhook key, a survey token) is logged as its pattern.
 func logPath(c *fiber.Ctx) string {

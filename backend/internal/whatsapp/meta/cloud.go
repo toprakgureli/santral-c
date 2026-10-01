@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 )
 
 const graphBase = "https://graph.facebook.com"
@@ -63,7 +65,7 @@ func (c *Client) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return &http.Client{Timeout: 30 * time.Second, Transport: telemetry.Transport(nil)}
 }
 
 func (c *Client) do(ctx context.Context, method, endpoint string, body io.Reader, contentType string, out any) error {
@@ -223,7 +225,7 @@ func (c *Client) Download(ctx context.Context, id string, limit int64) ([]byte, 
 		return nil, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	cl := &http.Client{Timeout: 5 * time.Minute}
+	cl := &http.Client{Timeout: 5 * time.Minute, Transport: telemetry.Transport(nil)}
 	resp, err := cl.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("medya indirilemedi: %w", err)

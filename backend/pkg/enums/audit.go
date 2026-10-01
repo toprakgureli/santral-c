@@ -21,6 +21,8 @@ const (
 
 	AuditSettingsUpdated   string = "settings.updated"
 	AuditDriveConnected    string = "drive.connected"
+	AuditBackupSettings    string = "backup.settings_updated"
+	AuditBackupStarted     string = "backup.started"
 	AuditDriveDisconnected string = "drive.disconnected"
 	AuditIPUnbanned        string = "security.ip_unbanned"
 

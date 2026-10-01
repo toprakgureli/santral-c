@@ -122,7 +122,9 @@ const (
 	WASurveyMyCalls   Permission = "whatsapp.call_survey_agent"
 	WAWriteBusiness   Permission = "whatsapp.write_business"
 
-	SystemSettings  Permission = "system.settings"
+	SystemSettings Permission = "system.settings"
+	// SystemBackup sets up and starts the database backups.
+	SystemBackup    Permission = "system.backup"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
 )
@@ -209,6 +211,7 @@ var permissions = []PermissionInfo{
 	{WASurveyMyCalls, "Bu kişinin telefon görüşmelerinden sonra müşteriye WhatsApp anketi gider"},
 	{WAWriteBusiness, "\"WhatsApp'tan yaz\" şirket numarasından şablonla gider; yetki yoksa kişinin kendi WhatsApp'ı açılır"},
 	{SystemSettings, "Sistem ayarlarını değiştirir"},
+	{SystemBackup, "Veritabanı yedeklemesini ayarlar ve başlatır"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
 }

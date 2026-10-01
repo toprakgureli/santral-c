@@ -1,10 +1,11 @@
 # systemd unit for the santral-c backend.
 # Install: copy to /etc/systemd/system/santral.service, then
 #   systemctl daemon-reload && systemctl enable --now santral
+# deploy.sh installs a changed copy of this file by itself.
 [Unit]
 Description=santral-c call manager backend
-After=network.target postgresql.service redis-server.service
-Wants=postgresql.service redis-server.service
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
 
 [Service]
 Type=simple
@@ -14,13 +15,41 @@ WorkingDirectory=/opt/santral-c
 # config.yml lives next to the binary in the working directory.
 Environment=SANTRAL_CONFIG=/opt/santral-c/config.yml
 ExecStart=/opt/santral-c/santral -config /opt/santral-c/config.yml
-Restart=on-failure
+Restart=always
 RestartSec=3
-# Hardening
+# Shutdown closes the live streams, lets requests finish and waits for the
+# background work (up to about 45 seconds).
+TimeoutStopSec=60
+
+# Hardening. The backend reads its binary and config.yml and writes nothing
+# on disk but a private /tmp (backups are dumped there before upload), so the
+# whole file system is read-only to it: code running inside the service can
+# change neither its own binary nor the deploy script.
 NoNewPrivileges=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+LimitNOFILE=65536
+# Under memory pressure the backend goes before PostgreSQL does.
+MemoryMax=2G
+OOMScoreAdjust=300
 
 [Install]
 WantedBy=multi-user.target

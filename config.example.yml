@@ -87,3 +87,8 @@ drive:
   clientSecret: ""
   redirectUrl: "https://cm.example.com/api/v1/teams/drive/callback"
   folderName: "SantralC"
+
+# Traces to a local Jaeger; leave empty to switch tracing off.
+telemetry:
+  otlpEndpoint: ""
+  sampleRatio: 1

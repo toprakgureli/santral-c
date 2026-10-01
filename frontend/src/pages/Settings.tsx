@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings } from "../api/types";
 import { formatSize } from "../lib/attachments";
+import BackupCard from "../components/settings/BackupCard";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
@@ -30,6 +31,7 @@ export function Settings() {
   // The storage account carries every chat and WhatsApp file: a system setting.
   const canDrive = can(user, "system.settings");
   const canGames = can(user, "games.manage");
+  const canBackup = can(user, "system.backup");
 
   const [attempts, setAttempts] = useState<Paged<LoginAttempt> | null>(null);
   const [bans, setBans] = useState<IPBan[]>([]);
@@ -80,6 +82,7 @@ export function Settings() {
       {canManage && <MfaPolicyCard />}
       {canBreakLimit && <BreakLimitCard />}
       {canDrive && <DriveCard />}
+      {canBackup && <BackupCard />}
       {canGames && (
         <Card title="Mini Oyunlar" icon={Gamepad2} actions={<Badge tone="blue">Teams</Badge>}>
           <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
@@ -185,7 +188,7 @@ export function Settings() {
         </>
       )}
 
-      {!canManage && !canSeeLogs && !canBreakLimit && !canGames && (
+      {!canManage && !canSeeLogs && !canBreakLimit && !canGames && !canBackup && (
         <Card title="Sistem Ayarları" icon={SlidersHorizontal}>
           <EmptyState title="Bu sayfa için yetkin yok" />
         </Card>

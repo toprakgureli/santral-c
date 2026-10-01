@@ -7,6 +7,8 @@ package logctx
 import (
 	"context"
 	"log/slog"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type key int
@@ -56,6 +58,10 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		}
 		if uid, ok := ctx.Value(userKey).(uint); ok {
 			r.AddAttrs(slog.Uint64("user_id", uint64(uid)))
+		}
+		// With tracing on, a log line leads to its request's trace.
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			r.AddAttrs(slog.String("trace_id", sc.TraceID().String()))
 		}
 	}
 	return h.next.Handle(ctx, r)

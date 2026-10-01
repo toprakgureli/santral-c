@@ -24,6 +24,7 @@ type LegacyKeys struct {
 type SecretPurposes struct {
 	WhatsApp string
 	Drive    string
+	Backup   string
 }
 
 // secretColumn is one place a secret is stored, sealed for purpose.
@@ -55,6 +56,10 @@ func RewrapSecrets(ctx context.Context, db *gorm.DB, ring *crypt.Keyring, purpos
 		{purpose: wa, legacy: legacy.WhatsApp, table: "wa_integrations", column: "headers_enc", key: "id"},
 		{purpose: wa, legacy: legacy.WhatsApp, table: "wa_global_settings", column: "value", key: "key", where: "key = 'ai'", jsonPath: []string{"keyEnc"}},
 		{purpose: drive, legacy: legacy.Drive, table: "system_settings", column: "value", key: "key", where: "key = 'drive_token'"},
+	}
+	if purposes.Backup != "" {
+		// Sealed by the keyring from the start; there is no older key.
+		columns = append(columns, secretColumn{purpose: purposes.Backup, table: "backup_settings", column: "credentials_enc", key: "id"})
 	}
 	for _, c := range columns {
 		if err := rewrapColumn(ctx, db, ring, c); err != nil {

@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # The backend's numbers; /metrics answers only on the server itself.
+  - job_name: santral
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:8090"]

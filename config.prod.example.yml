@@ -89,3 +89,10 @@ drive:
   clientSecret: ""
   redirectUrl: "https://cm.example.com/api/v1/teams/drive/callback"
   folderName: "SantralC"
+
+# Monitoring. Metrics are always on /metrics (read by Prometheus on the
+# server itself); traces go to Jaeger when otlpEndpoint is set. See
+# deploy/observability and DEPLOY.md.
+telemetry:
+  otlpEndpoint: "http://127.0.0.1:4318"
+  sampleRatio: 0.2          # share of requests traced (0 to 1)

@@ -6,15 +6,14 @@ package ops
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	goredis "github.com/redis/go-redis/v9"
-
-	"github.com/toprakgureli/santral-c/backend/internal/sse"
 )
 
 // checkTimeout bounds each dependency check, so a hung database makes the
@@ -29,14 +28,16 @@ type Build struct {
 
 // Handler serves the health check and the metrics.
 type Handler struct {
-	db    *sql.DB
-	redis *goredis.Client
-	build Build
+	db      *sql.DB
+	redis   *goredis.Client
+	build   Build
+	metrics fiber.Handler
 }
 
-// NewHandler builds the handler.
-func NewHandler(db *sql.DB, redis *goredis.Client, build Build) *Handler {
-	return &Handler{db: db, redis: redis, build: build}
+// NewHandler builds the handler; registry holds the server's numbers.
+func NewHandler(db *sql.DB, redis *goredis.Client, build Build, registry *prometheus.Registry) *Handler {
+	return &Handler{db: db, redis: redis, build: build,
+		metrics: adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))}
 }
 
 // Routes mounts /healthz and /metrics on the app root.
@@ -81,43 +82,12 @@ func local(c *fiber.Ctx) bool {
 	return c.Context().RemoteIP().IsLoopback() && c.Get(fiber.HeaderXForwardedFor) == ""
 }
 
-// metric is one number on the metrics page.
-type metric struct {
-	name, help string
-	query      string
-}
-
-var queueMetrics = []metric{
-	{"santral_whatsapp_outbox_queued", "Outgoing WhatsApp messages waiting to be sent.", "SELECT count(*) FROM wa_messages WHERE status = 'queued'"},
-	{"santral_whatsapp_outbox_sending", "Outgoing WhatsApp messages being sent right now.", "SELECT count(*) FROM wa_messages WHERE status = 'sending'"},
-	{"santral_whatsapp_webhook_events_pending", "Meta notices waiting to be processed.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'pending'"},
-	{"santral_whatsapp_webhook_events_failed", "Meta notices that could not be processed.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'failed'"},
-	{"santral_whatsapp_inbound_jobs", "Customer messages whose follow-up work is not done yet.", "SELECT count(*) FROM wa_inbound_jobs"},
-	{"santral_call_surveys_queued", "Call surveys waiting to be sent.", "SELECT count(*) FROM wa_call_surveys WHERE status = 'queued'"},
-}
-
-// Metrics writes the numbers in the Prometheus text format. It answers only
-// on the server itself (the reverse proxy never forwards it), since the
-// numbers are nobody else's business.
+// Metrics serves the numbers in the Prometheus format. It answers only on
+// the server itself (the reverse proxy never forwards it), since the
+// numbers are nobody else's business; Prometheus scrapes it from there.
 func (h *Handler) Metrics(c *fiber.Ctx) error {
 	if !local(c) {
 		return fiber.ErrNotFound
 	}
-	ctx, cancel := context.WithTimeout(c.UserContext(), checkTimeout)
-	defer cancel()
-	var b strings.Builder
-	write := func(name, help string, value int64) {
-		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s %d\n", name, help, name, name, value)
-	}
-	for _, m := range queueMetrics {
-		var n int64
-		if err := h.db.QueryRowContext(ctx, m.query).Scan(&n); err != nil {
-			slog.WarnContext(ctx, "metric could not be read", "metric", m.name, "error", err)
-			continue
-		}
-		write(m.name, m.help, n)
-	}
-	write("santral_sse_streams", "Live event streams open to the panel.", sse.Open())
-	c.Set(fiber.HeaderContentType, "text/plain; version=0.0.4; charset=utf-8")
-	return c.SendString(b.String())
+	return h.metrics(c)
 }

@@ -33,6 +33,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 )
@@ -77,7 +78,7 @@ func NewDrive(cfg configs.Drive, ring *crypt.Keyring, db *gorm.DB) *Drive {
 	}
 	bulk := http.DefaultTransport.(*http.Transport).Clone()
 	bulk.ResponseHeaderTimeout = 2 * time.Minute
-	return &Drive{cfg: cfg, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}, bulk: &http.Client{Transport: bulk}}
+	return &Drive{cfg: cfg, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second, Transport: telemetry.Transport(nil)}, bulk: &http.Client{Transport: telemetry.Transport(bulk)}}
 }
 
 // DriveSealPurpose is the keyring label of the stored Drive refresh token.

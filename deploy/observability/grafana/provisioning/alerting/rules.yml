@@ -1,0 +1,256 @@
+# Alerts on the santral-c numbers. Grafana sends them to its contact
+# points; add one (e-mail, a chat webhook, ...) under Alerting > Contact
+# points, then point the default notification policy at it.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: santral-c
+    folder: santral-c
+    interval: 1m
+    rules:
+      - uid: santral-down
+        title: Sunucu kapalı
+        condition: C
+        for: 2m
+        noDataState: Alerting
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus backend'e ulaşamıyor. systemctl status santral ve journalctl -u santral ile bakın."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(up{job="santral"})'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+      - uid: backup-stale
+        title: Yedek gecikti
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Son başarılı veritabanı yedeği 7 saatten eski. Sistem Ayarları > Veritabanı Yedeği'ndeki son kayıtlara bakın."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'santral_backup_enabled * (time() - santral_backup_last_success_timestamp_seconds)'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [25200]
+      - uid: backup-failed
+        title: Son yedek başarısız
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "En son alınan yedek başarısız oldu; sebebi Sistem Ayarları > Veritabanı Yedeği'nde yazıyor."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(santral_backup_last_failed)'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+      - uid: webhook-failed
+        title: İşlenemeyen WhatsApp bildirimi
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Meta'dan gelen bazı bildirimler işlenemedi; müşteri mesajı kaçmış olabilir. Log'lara bakın."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'santral_whatsapp_webhook_events_failed'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+      - uid: outbox-stuck
+        title: WhatsApp gönderimi takıldı
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kuyruktaki en eski mesaj 10 dakikadır bekliyor. Meta'ya erişim ya da numaranın anahtarı sorunlu olabilir."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'santral_whatsapp_outbox_oldest_seconds'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [600]
+      - uid: inbound-backlog
+        title: Mesaj sonrası işler birikiyor
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chatbot, dağıtım ve kurallar müşteri mesajlarının gerisinde kaldı."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'santral_whatsapp_inbound_jobs'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [200]
+      - uid: errors-5xx
+        title: Sunucu hataları arttı
+        condition: C
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Son 10 dakikada isteklerin %5'inden fazlası sunucu hatasıyla bitti."
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: '(sum(rate(santral_http_requests_total{status=~"5.."}[5m])) or vector(0)) / clamp_min(sum(rate(santral_http_requests_total[5m])), 1e-9)'
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]

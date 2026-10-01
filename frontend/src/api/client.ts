@@ -54,6 +54,24 @@ export class ApiError extends Error {
 // the refresh token expired). AuthContext listens and returns to sign-in.
 export const SESSION_ENDED = "santral:session-ended";
 
+// BackupView is the database backup settings and the last copies.
+export interface BackupView {
+  enabled: boolean;
+  folderId: string;
+  account: string;
+  hasKey: boolean;
+  everyHours: number;
+  running: boolean;
+  pgDumpExists: boolean;
+  runs: { id: number; startedAt: string; finishedAt?: string; ok: boolean; file: string; size: number; error?: string; manual: boolean }[];
+}
+
+// BackupCheck is what the backup account may do in its folder.
+export interface BackupCheck {
+  folder: { name: string; sharedDrive: boolean; canAdd: boolean; canDelete: boolean };
+  problem: string;
+}
+
 // SipSyncJob is the background pull of every extension's SIP password.
 export interface SipSyncJob {
   running: boolean;
@@ -355,6 +373,13 @@ export const api = {
   syncUserSip: (id: number, extension: string) =>
     request<void>(`/users/${id}/sip/sync`, { method: "POST", body: JSON.stringify({ extension }) }),
   syncAllSip: () => request<SipSyncJob>("/pbx/sip/sync-all", { method: "POST" }),
+
+  // Database backups
+  backupSettings: () => request<BackupView>("/backup/"),
+  saveBackup: (body: { enabled: boolean; folderId: string; credentials: string }) =>
+    request<BackupView>("/backup/", { method: "PUT", body: JSON.stringify(body) }),
+  checkBackup: () => request<BackupCheck>("/backup/check", { method: "POST" }),
+  runBackup: () => request<BackupView>("/backup/run", { method: "POST" }),
   syncAllSipStatus: () => request<SipSyncJob>("/pbx/sip/sync-all"),
 
   // Roles & permissions
