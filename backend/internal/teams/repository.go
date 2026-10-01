@@ -324,7 +324,17 @@ func (h History) lines() int {
 // startOf works out, inside the seating transaction, where a newcomer's
 // view of a room begins and which line is its newest. They start with
 // everything up to that line read, whatever they may scroll back to.
-func startOf(tx *gorm.DB, groupID uint, h History) (from, top uint, err error) {
+// floor is the earliest line the person seating them can read (0: all);
+// the newcomer never starts before it.
+func startOf(tx *gorm.DB, groupID uint, h History, floor uint) (from, top uint, err error) {
+	from, top, err = historyStart(tx, groupID, h)
+	if err == nil && floor > from {
+		from = floor
+	}
+	return from, top, err
+}
+
+func historyStart(tx *gorm.DB, groupID uint, h History) (from, top uint, err error) {
 	if err := tx.Raw("SELECT COALESCE(max(id), 0) FROM chat_messages WHERE group_id = ?", groupID).Scan(&top).Error; err != nil {
 		return 0, 0, fmt.Errorf("newest line could not be read: %w", err)
 	}
@@ -351,13 +361,15 @@ func startOf(tx *gorm.DB, groupID uint, h History) (from, top uint, err error) {
 }
 
 // AddMembers seats users in one room, skipping ones already seated. The
-// choice decides how far back each newcomer may read.
-func (r *Repository) AddMembers(ctx context.Context, groupID uint, seats []models.ChatMember, h History) error {
+// choice decides how far back each newcomer may read, never before floor
+// (the adder's own start). Their pending invites to the room are closed:
+// they are in.
+func (r *Repository) AddMembers(ctx context.Context, groupID uint, seats []models.ChatMember, h History, floor uint) error {
 	if len(seats) == 0 {
 		return nil
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		from, top, err := startOf(tx, groupID, h)
+		from, top, err := startOf(tx, groupID, h, floor)
 		if err != nil {
 			return err
 		}
@@ -374,8 +386,25 @@ func (r *Repository) AddMembers(ctx context.Context, groupID uint, seats []model
 		).Error; err != nil {
 			return fmt.Errorf("members could not be added: %w", err)
 		}
-		return nil
+		ids := make([]uint, len(seats))
+		for i, st := range seats {
+			ids[i] = st.UserID
+		}
+		return closeInvites(tx, groupID, ids)
 	})
+}
+
+// closeInvites ends the pending invites of these people to a room, so an
+// old invite (perhaps with a wider history choice) cannot seat them later.
+func closeInvites(tx *gorm.DB, groupID uint, userIDs []uint) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	if err := tx.Exec("UPDATE chat_invites SET status = 'declined', decided_at = now() WHERE group_id = ? AND user_id IN ? AND status = 'pending'",
+		groupID, userIDs).Error; err != nil {
+		return fmt.Errorf("pending invites could not be closed: %w", err)
+	}
+	return nil
 }
 
 // seatCols is how many columns seatArgs fills per seat.
@@ -409,11 +438,15 @@ func seatArgs(seats []models.ChatMember) []any {
 }
 
 // RemoveMember unseats a user.
+// Their pending invites to the room go too, so leaving and accepting an
+// older invite cannot widen what they may read.
 func (r *Repository) RemoveMember(ctx context.Context, groupID, userID uint) error {
-	if err := r.db.WithContext(ctx).Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&models.ChatMember{}).Error; err != nil {
-		return fmt.Errorf("member could not be removed: %w", err)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&models.ChatMember{}).Error; err != nil {
+			return fmt.Errorf("member could not be removed: %w", err)
+		}
+		return closeInvites(tx, groupID, []uint{userID})
+	})
 }
 
 // UpdateMember writes seat columns.
@@ -424,13 +457,16 @@ func (r *Repository) UpdateMember(ctx context.Context, groupID, userID uint, fie
 	return nil
 }
 
-// CreateInvites opens pending invites with the history choice, skipping
-// duplicates.
-func (r *Repository) CreateInvites(ctx context.Context, groupID, by uint, userIDs []uint, h History) error {
+// CreateInvites opens pending invites with the history choice and the
+// sender's own start (floor). A new invite to someone already invited
+// replaces the waiting one, so the latest choice is the one that counts.
+func (r *Repository) CreateInvites(ctx context.Context, groupID, by uint, userIDs []uint, h History, floor uint) error {
 	for _, uid := range userIDs {
 		if err := r.db.WithContext(ctx).Exec(
-			"INSERT INTO chat_invites (group_id, user_id, invited_by, status, history, created_at) VALUES (?, ?, ?, 'pending', ?, now()) ON CONFLICT DO NOTHING",
-			groupID, uid, by, string(h),
+			"INSERT INTO chat_invites (group_id, user_id, invited_by, status, history, history_floor, created_at) VALUES (?, ?, ?, 'pending', ?, ?, now()) "+
+				"ON CONFLICT (group_id, user_id) WHERE status = 'pending' DO UPDATE SET "+
+				"invited_by = EXCLUDED.invited_by, history = EXCLUDED.history, history_floor = EXCLUDED.history_floor, created_at = EXCLUDED.created_at",
+			groupID, uid, by, string(h), floor,
 		).Error; err != nil {
 			return fmt.Errorf("invite could not be created: %w", err)
 		}
@@ -488,7 +524,7 @@ func (r *Repository) DecideInvite(ctx context.Context, inv *models.ChatInvite, a
 			if !ok {
 				h = HistoryNone
 			}
-			from, top, err := startOf(tx, inv.GroupID, h)
+			from, top, err := startOf(tx, inv.GroupID, h, inv.HistoryFloor)
 			if err != nil {
 				return err
 			}

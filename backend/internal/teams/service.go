@@ -902,7 +902,7 @@ func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs
 		}
 		seats = append(seats, models.ChatMember{GroupID: groupID, UserID: id, Role: roleMember, CanPost: true, InvitedBy: &actorID})
 	}
-	if err := s.repo.AddMembers(ctx, groupID, seats, h); err != nil {
+	if err := s.repo.AddMembers(ctx, groupID, seats, h, floorOf(m)); err != nil {
 		return nil, errs.Internal(err)
 	}
 	people, _ := s.repo.PeopleByID(ctx, userIDs)
@@ -917,6 +917,16 @@ func (s *Service) AddMembers(ctx context.Context, actorID, groupID uint, userIDs
 	}
 	s.notifyGroup(ctx, groupID, Event{Type: "group", GroupID: groupID})
 	return s.Detail(ctx, actorID, groupID)
+}
+
+// floorOf is the earliest line a seat may read, the limit for what its
+// holder can hand to others; without a seat (a chat admin looking in) it
+// is the whole history.
+func floorOf(m *models.ChatMember) uint {
+	if m == nil {
+		return 0
+	}
+	return m.HistoryFrom
 }
 
 // Invite opens pending invites (group admin, or the global invite
@@ -940,10 +950,32 @@ func (s *Service) Invite(ctx context.Context, actorID, groupID uint, userIDs []u
 	if !(isAdmin(m) || actor.Can(enums.TeamsAdmin) || actor.Can(enums.TeamsMemberInvite)) {
 		return nil, errs.Forbidden("Davet gönderme yetkin yok.")
 	}
-	if err := s.repo.CreateInvites(ctx, groupID, actorID, userIDs, h); err != nil {
+	// Inviting oneself (to come back with a wider history) or someone
+	// already in the room is not an invite.
+	seated, err := s.repo.MemberIDs(ctx, groupID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	s.hub.Send(userIDs, Event{Type: "invite"})
+	in := make(map[uint]bool, len(seated))
+	for _, id := range seated {
+		in[id] = true
+	}
+	invitees := make([]uint, 0, len(userIDs))
+	for _, id := range userIDs {
+		if id == actorID {
+			return nil, errs.Invalid("Kendini davet edemezsin.", nil)
+		}
+		if id != 0 && !in[id] {
+			invitees = append(invitees, id)
+		}
+	}
+	if len(invitees) == 0 {
+		return nil, errs.Invalid("Seçtiğin kişiler zaten grupta.", nil)
+	}
+	if err := s.repo.CreateInvites(ctx, groupID, actorID, invitees, h, floorOf(m)); err != nil {
+		return nil, errs.Internal(err)
+	}
+	s.hub.Send(invitees, Event{Type: "invite"})
 	return s.Detail(ctx, actorID, groupID)
 }
 

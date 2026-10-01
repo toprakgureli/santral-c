@@ -51,9 +51,12 @@ type ChatInvite struct {
 	Status    string `gorm:"column:status;size:10;not null;default:pending"`
 	// History is how much earlier conversation the invitee will see once
 	// they accept: none, 50, 100 or all.
-	History   string     `gorm:"column:history;size:4;not null;default:none"`
-	CreatedAt time.Time  `gorm:"column:created_at"`
-	DecidedAt *time.Time `gorm:"column:decided_at"`
+	History string `gorm:"column:history;size:4;not null;default:none"`
+	// HistoryFloor is the earliest line the sender could read; the
+	// newcomer never sees anything before it.
+	HistoryFloor uint       `gorm:"column:history_floor;not null;default:0"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	DecidedAt    *time.Time `gorm:"column:decided_at"`
 }
 
 // TableName pins the table name.

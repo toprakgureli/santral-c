@@ -469,3 +469,97 @@ func TestLoadTeamsHistoryBusyRoom(t *testing.T) {
 	}
 	stats.report(t, "teams history", elapsed, budget{p95: 2 * time.Second, max: 20 * time.Second})
 }
+
+// TestTeamsHistoryCannotBeWidened: nobody gets more of a room's past than
+// the person who let them in could read, and no old invite opens it later.
+func TestTeamsHistoryCannotBeWidened(t *testing.T) {
+	srv, db := testServer(t, officeSecurity)
+	owner := seedPeople(t, db, 1, enums.RoleManager, false)[0]
+	people := seedPeople(t, db, 4, enums.RoleSalesTeam, false)
+	limited, friend, comeback, twice := people[0], people[1], people[2], people[3]
+	ob := newBrowser(t, srv.app, nil, owner)
+	ob.mustSignIn()
+	a := ob.do(fiber.MethodPost, "/api/v1/teams/groups", map[string]any{"name": "Sınır testi", "postPolicy": "everyone"})
+	if a.status >= 300 {
+		t.Fatalf("group create answered %d %s", a.status, a.body)
+	}
+	var group struct {
+		ID uint `json:"id"`
+	}
+	a.json(t, &group)
+	gid := group.ID
+	for i := 1; i <= 30; i++ {
+		send(t, ob, gid, map[string]any{"body": fmt.Sprintf("eski %02d", i)})
+	}
+	members := fmt.Sprintf("/api/v1/teams/groups/%d/members", gid)
+	invites := fmt.Sprintf("/api/v1/teams/groups/%d/invites", gid)
+	if a := ob.do(fiber.MethodPost, members, map[string]any{"userIds": []uint{limited.ID}, "history": "none"}); a.status >= 300 {
+		t.Fatalf("adding answered %d %s", a.status, a.body)
+	}
+	browsers := map[uint]*browser{}
+	for _, p := range people {
+		b := newBrowser(t, srv.app, nil, p)
+		b.mustSignIn()
+		browsers[p.ID] = b
+	}
+	lb := browsers[limited.ID]
+	accept := func(p models.User) answer {
+		t.Helper()
+		_, open := overview(t, browsers[p.ID])
+		for _, inv := range open {
+			if inv.GroupID == gid {
+				return browsers[p.ID].do(fiber.MethodPost, fmt.Sprintf("/api/v1/teams/invites/%d/accept", inv.ID), nil)
+			}
+		}
+		return answer{status: fiber.StatusNotFound}
+	}
+
+	// Inviting oneself back with the whole history is refused, and so is
+	// inviting someone already in the room.
+	if a := lb.do(fiber.MethodPost, invites, map[string]any{"userIds": []uint{limited.ID}, "history": "all"}); a.status != fiber.StatusBadRequest {
+		t.Errorf("inviting oneself answered %d, want 400", a.status)
+	}
+	if a := lb.do(fiber.MethodPost, invites, map[string]any{"userIds": []uint{owner.ID}, "history": "all"}); a.status != fiber.StatusBadRequest {
+		t.Errorf("inviting a member answered %d, want 400", a.status)
+	}
+
+	// Someone who sees nothing earlier invites a friend with "all": the
+	// friend sees nothing earlier either.
+	if a := lb.do(fiber.MethodPost, invites, map[string]any{"userIds": []uint{friend.ID}, "history": "all"}); a.status >= 300 {
+		t.Fatalf("invite answered %d %s", a.status, a.body)
+	}
+	if a := accept(friend); a.status >= 300 {
+		t.Fatalf("accept answered %d %s", a.status, a.body)
+	}
+	if n := olds(allLines(t, browsers[friend.ID], gid)); n != 0 {
+		t.Errorf("a friend invited by someone without the history reads %d old lines, want 0", n)
+	}
+
+	// An invite with the whole history waits; the person is then added
+	// with nothing earlier, leaves, and tries the old invite: it is gone.
+	if a := ob.do(fiber.MethodPost, invites, map[string]any{"userIds": []uint{comeback.ID}, "history": "all"}); a.status >= 300 {
+		t.Fatalf("invite answered %d %s", a.status, a.body)
+	}
+	if a := ob.do(fiber.MethodPost, members, map[string]any{"userIds": []uint{comeback.ID}, "history": "none"}); a.status >= 300 {
+		t.Fatalf("adding answered %d %s", a.status, a.body)
+	}
+	if a := browsers[comeback.ID].do(fiber.MethodDelete, fmt.Sprintf("%s/%d", members, comeback.ID), nil); a.status >= 300 {
+		t.Fatalf("leaving answered %d %s", a.status, a.body)
+	}
+	if a := accept(comeback); a.status < 300 {
+		t.Error("an invite from before joining still seated someone who left")
+	}
+
+	// A second invite replaces the first: the latest choice counts.
+	for _, h := range []string{"all", "none"} {
+		if a := ob.do(fiber.MethodPost, invites, map[string]any{"userIds": []uint{twice.ID}, "history": h}); a.status >= 300 {
+			t.Fatalf("invite %s answered %d %s", h, a.status, a.body)
+		}
+	}
+	if a := accept(twice); a.status >= 300 {
+		t.Fatalf("accept answered %d %s", a.status, a.body)
+	}
+	if n := olds(allLines(t, browsers[twice.ID], gid)); n != 0 {
+		t.Errorf("after a second invite with nothing earlier, %d old lines are visible, want 0", n)
+	}
+}
