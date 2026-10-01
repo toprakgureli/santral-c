@@ -90,6 +90,10 @@ export interface UnreachedCall {
 // counts as reached, whoever hung up.
 const ANNOUNCEMENT_SECONDS = 8;
 
+// REGISTER_REFUSED is shown while the phone system refuses the line's
+// password; it goes away by itself once a registration is accepted.
+const REGISTER_REFUSED = "Santral dahili numaranın şifresini kabul etmedi. Yöneticine haber ver; Kullanıcılar sayfasından SIP bilgileri yeniden eşitlenebilir.";
+
 export interface Phone {
   status: PhoneStatus;
   // The last answered call that ended (null until one does). Unanswered,
@@ -332,44 +336,75 @@ export function useSoftphone(enabled: boolean): Phone {
     let retry = 0;
     let retryTimer = 0;
     let recovering = false;
+    // accepted is true while the phone system has accepted the latest
+    // registration; the screen says "ready" only then.
+    let accepted = false;
     const idle = () => !sessionRef.current;
-    const recover = async () => {
+    // later tries again after a growing pause (2, 4, 8 ... up to 32 s).
+    const later = () => {
+      if (cancelled) return;
+      retry = Math.min(retry + 1, 5);
+      window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => void recover(true), 1000 * 2 ** retry);
+    };
+    // register asks the phone system to take the line and acts on its
+    // answer: a yes makes the phone ready, a no is tried again later, and
+    // a refused password is said on screen instead of a silent "connecting".
+    const register = async () => {
+      if (!registerer) return;
+      await registerer.register({
+        requestDelegate: {
+          onAccept: () => {
+            if (cancelled) return;
+            accepted = true;
+            retry = 0;
+            setError((e) => (e === REGISTER_REFUSED ? null : e));
+            if (idle()) setStatus("registered");
+          },
+          onReject: (response) => {
+            if (cancelled) return;
+            accepted = false;
+            const code = response.message.statusCode;
+            if (code === 401 || code === 403 || code === 407) {
+              setError(REGISTER_REFUSED);
+              if (idle()) setStatus("error");
+            } else if (idle()) {
+              setStatus("connecting");
+            }
+            later();
+          },
+        },
+      });
+    };
+    const recover = async (force = false) => {
       if (cancelled || recovering || !ua) return;
       // A registration belongs to the connection it was made on: after a
       // reconnect the phone system must hear a fresh one even though the
       // library still reports the old one as registered. With the line up
-      // and registered there is nothing to repair.
+      // and accepted there is nothing to repair.
       const wasDown = !ua.isConnected();
-      if (!wasDown && registerer?.state === sip().RegistererState.Registered) return;
+      if (!force && !wasDown && accepted && registerer?.state === sip().RegistererState.Registered) return;
       recovering = true;
-      if (idle()) setStatus("connecting");
+      if (idle()) setStatus((s) => (s === "error" ? s : "connecting"));
       try {
         if (wasDown) await ua.reconnect();
         if (cancelled) return;
-        if (registerer) {
-          await registerer.register({
-            requestDelegate: {
-              // The state may not change (it never left "registered"), so the
-              // accepted answer itself puts the phone back to ready.
-              onAccept: () => {
-                if (!cancelled && idle()) setStatus("registered");
-              },
-            },
-          });
-        }
-        retry = 0;
+        await register();
       } catch {
-        if (cancelled) return;
-        retry = Math.min(retry + 1, 5);
-        window.clearTimeout(retryTimer);
-        retryTimer = window.setTimeout(() => void recover(), 1000 * 2 ** retry);
+        later();
       } finally {
         recovering = false;
       }
     };
+    // A line can die without telling anyone (a laptop waking from sleep, a
+    // router restart); a look every half minute brings it back.
+    const watchdog = window.setInterval(() => {
+      if (!ua || !uaRef.current) return;
+      if (!ua.isConnected() || !accepted || registerer?.state !== sip().RegistererState.Registered) void recover();
+    }, 30000);
     const onOnline = () => void recover();
     const onVisible = () => {
-      if (document.visibilityState === "visible" && ua && (!ua.isConnected() || registerer?.state !== sip().RegistererState.Registered)) void recover();
+      if (document.visibilityState === "visible" && ua && (!ua.isConnected() || !accepted || registerer?.state !== sip().RegistererState.Registered)) void recover();
     };
     reregisterRef.current = async () => {
       if (!registerer) return;
@@ -378,7 +413,8 @@ export function useSoftphone(enabled: boolean): Phone {
       } catch {
         // already gone
       }
-      await registerer.register();
+      accepted = false;
+      await register();
     };
 
     // Browsers block audio until a user gesture; unlock on the first one so the
@@ -454,23 +490,26 @@ export function useSoftphone(enabled: boolean): Phone {
         registerer = new (sip().Registerer)(ua);
         registerer.stateChange.addListener((state) => {
           if (cancelled) return;
-          if (state === sip().RegistererState.Registered) {
-            retry = 0;
-            if (idle()) setStatus("registered");
-          } else if (state === sip().RegistererState.Unregistered && uaRef.current) {
+          // The library renews the registration by itself; when a renewal
+          // fails the line is lost and taken back here.
+          if (state === sip().RegistererState.Unregistered && uaRef.current) {
+            accepted = false;
             void recover();
           }
         });
         window.addEventListener("online", onOnline);
         document.addEventListener("visibilitychange", onVisible);
-        await registerer.register();
+        uaRef.current = ua;
+        try {
+          await register();
+        } catch {
+          later();
+        }
         if (cancelled) {
           registerer.unregister().catch(() => undefined);
           ua.stop().catch(() => undefined);
           return;
         }
-        uaRef.current = ua;
-        setStatus("registered");
         // Ask for the microphone now, so the permission prompt is answered
         // before the first call rings instead of during it. A refusal is shown
         // as a warning; the phone stays registered so calls still come in.
@@ -487,6 +526,7 @@ export function useSoftphone(enabled: boolean): Phone {
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
+      window.clearInterval(watchdog);
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
       tones.stop();

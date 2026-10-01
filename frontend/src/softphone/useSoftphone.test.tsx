@@ -132,11 +132,24 @@ const sipMock = vi.hoisted(() => {
     registrations = 0;
     constructor() {
       state.registerer = this;
+      this.answers = [...state.nextAnswers];
     }
+    // answers lists how the phone system answers the next registrations
+    // (a status code; 200 is a yes). Empty means yes.
+    answers: number[] = [];
     // Like the real library: the state event fires only on a change, and
-    // the request's own delegate hears the phone system's yes.
-    async register(opts?: { requestDelegate?: { onAccept?: () => void } }) {
+    // the request's own delegate hears the phone system's answer.
+    async register(opts?: { requestDelegate?: { onAccept?: () => void; onReject?: (r: { message: { statusCode: number } }) => void } }) {
       this.registrations++;
+      const code = this.answers.shift() ?? 200;
+      if (code !== 200) {
+        if (this.state === RegistererState.Registered) {
+          this.state = RegistererState.Unregistered;
+          this.stateChange.emit(this.state);
+        }
+        opts?.requestDelegate?.onReject?.({ message: { statusCode: code } });
+        return;
+      }
       if (this.state !== RegistererState.Registered) {
         this.state = RegistererState.Registered;
         this.stateChange.emit(this.state);
@@ -152,6 +165,9 @@ const sipMock = vi.hoisted(() => {
     ua: null as UserAgent | null,
     registerer: null as Registerer | null,
     inviters: [] as Inviter[],
+    // nextAnswers is how the phone system answers the first registrations
+    // of the next phone that starts.
+    nextAnswers: [] as number[],
   };
   return { SessionState, RegistererState, Session, Inviter, Invitation, UserAgent, Registerer, state };
 });
@@ -228,6 +244,7 @@ beforeEach(() => {
   sipMock.state.ua = null;
   sipMock.state.registerer = null;
   sipMock.state.inviters = [];
+  sipMock.state.nextAnswers = [];
   apiMock.sipCredentials.mockResolvedValue({ extension: "2001", password: "x", domain: "pbx.local", webSocketUrl: "wss://pbx.local/ws" });
   apiMock.authorizeTransfer.mockResolvedValue(undefined);
   Object.defineProperty(navigator, "mediaDevices", {
@@ -394,6 +411,77 @@ describe("softphone", () => {
     // A fresh registration on the new connection, then ready again.
     expect(sipMock.state.registerer?.registrations).toBe(2);
     expect(phone.current.status).toBe("registered");
+  });
+
+  it("is not ready until the phone system accepts, and keeps trying", async () => {
+    vi.useFakeTimers();
+    try {
+      // The phone system is down for the first two tries.
+      sipMock.state.nextAnswers = [503, 503];
+      mounted = mountPhone();
+      await settle();
+      expect(mounted.phone.current.status).toBe("connecting");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_100);
+      });
+      expect(mounted.phone.current.status).toBe("connecting");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_100);
+      });
+      expect(sipMock.state.registerer?.registrations).toBe(3);
+      expect(mounted.phone.current.status).toBe("registered");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says so when the line's password is refused, and recovers once it is fixed", async () => {
+    vi.useFakeTimers();
+    try {
+      sipMock.state.nextAnswers = [403];
+      mounted = mountPhone();
+      await settle();
+      expect(mounted.phone.current.status).toBe("error");
+      expect(mounted.phone.current.error).toMatch(/şifresini kabul etmedi/);
+      // The administrator fixes the password; the next try is accepted.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_100);
+      });
+      expect(mounted.phone.current.status).toBe("registered");
+      expect(mounted.phone.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("takes the line back when renewing it is refused twice in a row", async () => {
+    vi.useFakeTimers();
+    try {
+      mounted = mountPhone();
+      await settle();
+      expect(mounted.phone.current.status).toBe("registered");
+      const reg = sipMock.state.registerer!;
+      // The phone system goes into maintenance: the library's own renewal is
+      // refused (the line drops), and so are the next two tries.
+      reg.answers = [503, 503];
+      act(() => {
+        reg.state = sipMock.RegistererState.Unregistered;
+        reg.stateChange.emit(reg.state);
+      });
+      await settle();
+      expect(mounted.phone.current.status).toBe("connecting");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_100);
+      });
+      expect(mounted.phone.current.status).toBe("connecting");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_100);
+      });
+      expect(reg.registrations).toBe(4);
+      expect(mounted.phone.current.status).toBe("registered");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stays ready when the network blinks without dropping the line", async () => {

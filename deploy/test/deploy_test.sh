@@ -54,7 +54,9 @@ dir="${@: -1}"; mkdir -p "$dir"
 EOF
 cat > bin/rsync <<'EOF'
 #!/usr/bin/env bash
-src="${@: -2:1}"; dst="${@: -1}"; mkdir -p "$dst"; rm -rf "$dst"/*; cp -r "$src". "$dst"
+src="${@: -2:1}"; dst="${@: -1}"; mkdir -p "$dst"
+for a in "$@"; do [ "$a" = "--delete" ] && rm -rf "$dst"/*; done
+cp -r "$src". "$dst"
 EOF
 cat > bin/npm <<'EOF'
 #!/usr/bin/env bash
@@ -91,7 +93,9 @@ git clone -q -b main origin.git app 2>/dev/null
 export APP_DIR="$T/w/app" WEB_ROOT="$T/w/www" BACKUP_DIR="$T/w/backups" UNIT="$T/w/santral.service" GO="$T/w/bin/fakego" HEALTH_WAIT=4
 printf '#!/usr/bin/env bash\n# GOOD (old)\n' > app/santral; chmod +x app/santral
 cp seed/deploy/santral.service "$UNIT"
-mkdir -p www && echo old > www/index.html
+mkdir -p www/assets && echo old > www/index.html && echo "old page" > www/assets/Calls-old.js
+# A file the previous version stopped using long ago.
+echo "ancient" > www/assets/Teams-ancient.js && touch -d "10 days ago" www/assets/Teams-ancient.js
 
 release() { (cd seed && echo "$1" > RELEASE && echo "$1 $RANDOM" >> deploy/santral.service.note && git add -A && git -c user.name=t -c user.email=t@t commit -qm "$1" && git push -q origin HEAD:main 2>/dev/null); }
 run() { bash app/deploy/deploy.sh > "$W/out" 2>&1; echo $?; }
@@ -105,6 +109,8 @@ check "good release exits 0" '[ "$code" = 0 ]'
 check "new binary installed" 'grep -q "# GOOD$" app/santral'
 check "previous binary kept" 'grep -q "GOOD (old)" app/santral.prev'
 check "panel published" 'grep -q "<html>" www/index.html'
+check "previous page files kept for open panels" '[ -f www/assets/Calls-old.js ]'
+check "page files unused for a week removed" '[ ! -f www/assets/Teams-ancient.js ]'
 check "database copied first" 'ls backups/pre-deploy-*.dump >/dev/null 2>&1'
 
 # 2. a release that does not come up: the previous binary goes back in

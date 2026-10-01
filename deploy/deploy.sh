@@ -128,7 +128,12 @@ fi
 
 echo "==> Publishing frontend to $WEB_ROOT"
 sudo mkdir -p "$WEB_ROOT"
-sudo rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_ROOT/"
+# The previous version's page files stay for a week: panels open since
+# before this deploy load their pages from them until they reload. Files
+# of the current version get a fresh time on every deploy, so only those
+# no version has used for seven days are removed.
+sudo rsync -a "$APP_DIR/frontend/dist/" "$WEB_ROOT/"
+sudo find "$WEB_ROOT/assets" -type f -mtime +7 -delete 2>/dev/null || true
 
 if ! run_as_app git -C "$APP_DIR" diff --quiet "$PREV_SHA" "$GIT_SHA" -- deploy/nginx; then
   echo "!!! deploy/nginx changed in this update. Install the site file again and test it:" >&2
