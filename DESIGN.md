@@ -179,7 +179,10 @@ refused exactly when the role lacks what the route needs.
 
 ## Identity and access
 
-- Passwords are hashed with argon2id. First sign-in forces a new password,
+- Passwords are hashed with argon2id; each check takes 64 MB for a moment,
+  so at most four run at once and the rest wait their turn (a whole office
+  signing in at nine, or a flood of sign-in attempts, cannot exhaust the
+  server's memory). First sign-in forces a new password,
   and TOTP when the setting requires it.
 - The access token is a JWT signed with `auth.secret` that lives
   `auth.accessTTL` (15 minutes). The sign-in session behind it is an opaque

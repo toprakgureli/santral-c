@@ -22,13 +22,32 @@ const (
 	argonSaltLen int    = 16
 )
 
+// hashSlots is how many passwords are hashed or checked at the same time.
+// Each takes 64 MB for a moment, so a whole office signing in at nine (or
+// someone flooding the sign-in page) would otherwise need gigabytes at
+// once and could push the server past its memory limit. The rest wait
+// their turn, a few dozen milliseconds each.
+const hashSlots = 4
+
+var slots = make(chan struct{}, hashSlots)
+
+// argonKey is argon2id; tests replace it to watch how many run at once.
+var argonKey = argon2.IDKey
+
+// derive runs argon2id inside one of the slots.
+func derive(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	slots <- struct{}{}
+	defer func() { <-slots }()
+	return argonKey(password, salt, time, memory, threads, keyLen)
+}
+
 // Password hashes a plaintext password with argon2id and returns a PHC string.
 func Password(plain string) (string, error) {
 	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := argon2.IDKey([]byte(plain), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	key := derive([]byte(plain), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	encoded := fmt.Sprintf(
 		"$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemory, argonTime, argonThreads,
@@ -44,7 +63,7 @@ func Compare(encoded, plain string) bool {
 	if err != nil {
 		return false
 	}
-	computed := argon2.IDKey([]byte(plain), salt, t, m, p, uint32(len(key)))
+	computed := derive([]byte(plain), salt, t, m, p, uint32(len(key)))
 	return subtle.ConstantTimeCompare(key, computed) == 1
 }
 
