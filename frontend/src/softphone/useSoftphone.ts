@@ -335,12 +335,28 @@ export function useSoftphone(enabled: boolean): Phone {
     const idle = () => !sessionRef.current;
     const recover = async () => {
       if (cancelled || recovering || !ua) return;
+      // A registration belongs to the connection it was made on: after a
+      // reconnect the phone system must hear a fresh one even though the
+      // library still reports the old one as registered. With the line up
+      // and registered there is nothing to repair.
+      const wasDown = !ua.isConnected();
+      if (!wasDown && registerer?.state === sip().RegistererState.Registered) return;
       recovering = true;
       if (idle()) setStatus("connecting");
       try {
-        if (!ua.isConnected()) await ua.reconnect();
+        if (wasDown) await ua.reconnect();
         if (cancelled) return;
-        if (registerer && registerer.state !== sip().RegistererState.Registered) await registerer.register();
+        if (registerer) {
+          await registerer.register({
+            requestDelegate: {
+              // The state may not change (it never left "registered"), so the
+              // accepted answer itself puts the phone back to ready.
+              onAccept: () => {
+                if (!cancelled && idle()) setStatus("registered");
+              },
+            },
+          });
+        }
         retry = 0;
       } catch {
         if (cancelled) return;
