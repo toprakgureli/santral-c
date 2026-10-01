@@ -291,7 +291,9 @@ sealed before it is stored:
 ## WhatsApp
 
 - **Receiving.** Meta posts to the webhook; the signature is checked with
-  the number's app secret, the body is capped at 1 MB and rate limited. The
+  the number's app secret, the body is capped at 1 MB and limited to 3,000
+  notices a minute per sending address (50 a second in nginx), enough for a
+  busy hour arriving from a single Meta address. The
   call is written to `wa_webhook_events` and answered at once. The webhook
   worker processes stored events oldest first, 50 at a time; a failed event
   is retried with a growing pause (up to 8 tries), then marked failed and
@@ -406,6 +408,10 @@ on `/metrics`.
   data still counts "today" correctly.
 - Deleting a contact is a soft delete that frees its phone numbers, so they
   can be given to another contact. Users are deactivated, not deleted.
+- The server opens at most `database.maxConns` connections (default 40); a
+  burst beyond that waits a moment for a free one instead of failing, and
+  PostgreSQL's own limit (100) keeps room for backups, deploys and admin
+  sessions.
 - Redis holds what must be shared and short-lived: the one-time token
   denylist, revocation cutoffs, browser holds, login lockouts and TOTP reuse
   marks.
@@ -487,7 +493,13 @@ panel address set in its popup as the panel.
   through a stand-in PBX, logging every call phase, taking a break and
   handing calls over (an outside transfer is refused without
   `call.transfer_external`); 20 people sending 20 chat lines each at the
-  same time plus direct messages; and the permission matrix above.
+  same time plus direct messages, while sitting in a room with 200,000
+  unread lines; 150 WhatsApp customers writing in within one minute on a
+  device with 5,000 old conversations, greeted by the chatbot, handed over,
+  picked from the pool by ten agents, answered, noted and closed while a
+  stand-in Meta reports every message delivered and read from a single
+  address; a hundred people renewing from two tabs at once; and the
+  permission matrix above. `-short` leaves the load tests out.
 - The panel's tests (`npm test`, vitest) run the softphone against a
   stand-in SIP library: registering, calling, mute, hold, transfer, a
   dropped connection and 60 calls in a row. The extension's test
@@ -495,7 +507,13 @@ panel address set in its popup as the panel.
   `deploy/test/deploy_test.sh` runs `deploy.sh` against a stand-in server.
 - `.github/workflows/ci.yml` runs on every push and pull request: gofmt, go
   vet, golangci-lint, the Go tests with the race detector against PostgreSQL
-  and Redis, govulncheck, and the panel and extension builds.
+  and Redis (`-short`), the load tests in a step of their own, govulncheck,
+  the panel's and the extension's tests and builds, and the deploy script
+  test.
+- Test binaries of different packages share one test database; the first
+  brings the schema up to date while the others wait by asking for the lock
+  again and again, never with a blocking call (a blocked waiter would hold
+  up the indexes built concurrently, and the two would wait on each other).
 
 ## Conventions
 

@@ -167,6 +167,7 @@ sunucu çalışabilir.
 | `security.trustedIPs` | Ofisin dış IP adresi ya da aralığı, örneğin `203.0.113.10` veya `203.0.113.0/28` (kendi adresinle değiştir). Buradaki adresler yanlış şifre yüzünden hiç engellenmez. |
 | `owner.*` | İlk yönetici hesabı. |
 | `database.*`, `redis.*` | PostgreSQL ve Redis bağlantın. |
+| `database.maxConns` | Sunucunun veritabanına aynı anda açacağı en fazla bağlantı (varsayılan 40). Fazla istekler hata vermez, kısa bir süre sırada bekler. PostgreSQL'in 100 bağlantı sınırının epey altında tut. |
 | `app.publicUrl`, `app.corsOrigins` | Panelin dışarıdan adresi (`https://cm.example.com`). |
 | `app.trustedProxies` | nginx / Cloudflare adresleri; kayıtlara gerçek IP düşsün diye. |
 | `auth.cookieSecure` | HTTPS arkasında `true`. |
@@ -240,11 +241,19 @@ yeniden kullanılır:
   `call.transfer_external` yetkisi olmayanın dış numaraya aktarması
   reddedilir;
 - 20 kişi aynı anda yirmişer sohbet mesajı atar, birebir mesajlar da gider;
+  bu kişiler aynı zamanda 200.000 eski okunmamış mesajı olan bir odadadır;
+- 5.000 eski sohbeti olan bir WhatsApp numarasına aynı dakikada 150 müşteri
+  yazar: chatbot her birine menü gönderip temsilciye aktarır, on temsilci
+  havuzdan sohbet alır, cevap yazar, iç not bırakır ve sohbeti kapatır.
+  Sahte bir Meta her mesaj için "iletildi" ve "okundu" bildirir, hepsi tek
+  bir Meta adresinden gelir;
+- yüz kişi oturumunu aynı anda iki sekmeden yeniler;
 - her sistem rolü ve rolsüz bir kullanıcı, yetki isteyen her isteğe karşı
   denenir.
 
-Hiçbir istek yoğunluk yüzünden reddedilmemeli. Yük testlerini atlamak için
-aynı komutta `./...`'dan sonra `-skip 'TestLoad|TestPermissionMatrix'` ekle.
+Hiçbir istek yoğunluk yüzünden reddedilmemeli. `-short` yük testlerini
+atlar. CI yarış durumu kontrolünü `-short` ile çalıştırır, yük testlerini
+ayrı bir adımda koşar.
 
 ```bash
 (cd frontend && npm ci && npm test && npm run build)
@@ -262,10 +271,11 @@ kaydolma, arama, sustur, beklet, aktar, kopan bağlantı ve art arda 60
 bash deploy/test/deploy_test.sh   # Linux'ta: deploy.sh'ı sahte bir sunucuya karşı dener
 ```
 
-GitHub her push ve pull request'te şunları çalıştırır: gofmt, go vet,
-golangci-lint, PostgreSQL ve Redis'e karşı yarış durumu kontrolüyle Go
-testleri (yük testleri dahil), bilinen açık taraması (govulncheck), panel ve
-eklenti derlemesi (`.github/workflows/ci.yml`).
+GitHub her push ve pull request'te şunları çalıştırır
+(`.github/workflows/ci.yml`): gofmt, go vet, golangci-lint, PostgreSQL ve
+Redis'e karşı yarış durumu kontrolüyle Go testleri (`-short`), yük testleri
+(ayrı adımda), bilinen açık taraması (govulncheck), panelin testleri ve
+derlemesi, eklentinin testleri ve derlemesi, deploy betiğinin testi.
 
 ## Canlı ortam
 

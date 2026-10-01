@@ -164,6 +164,7 @@ example.
 | `security.trustedIPs` | The office's public address or range, for example `203.0.113.10` or `203.0.113.0/28` (replace with yours). Addresses here are never banned for wrong passwords. |
 | `owner.*` | The first admin account. |
 | `database.*`, `redis.*` | Your PostgreSQL and Redis. |
+| `database.maxConns` | Most database connections the server opens at once (default 40). Extra requests wait a moment instead of failing; keep it well under PostgreSQL's limit of 100. |
 | `app.publicUrl`, `app.corsOrigins` | The panel's public address (`https://cm.example.com`). |
 | `app.trustedProxies` | nginx / Cloudflare addresses, so real client IPs are logged. |
 | `auth.cookieSecure` | `true` behind HTTPS. |
@@ -233,11 +234,19 @@ year of history (filled once, then reused):
 - 20 agents open their shift, place calls through a stand-in phone system,
   log every call phase, take a break and hand calls over, including an
   outside transfer refused without `call.transfer_external`;
-- 20 people send 20 chat lines each at the same time, plus direct messages;
+- 20 people send 20 chat lines each at the same time, plus direct messages,
+  while sitting in a room with 200,000 old unread lines;
+- 150 WhatsApp customers write in within the same minute on a device with
+  5,000 old conversations: the chatbot greets each with a menu and hands
+  them over, ten agents pick them from the pool, answer, leave an internal
+  note and close them, and a stand-in Meta reports every message delivered
+  and read, all from a single Meta address;
+- a hundred people renew their session from two tabs at the same moment;
 - every system role, and no role, against every gated request.
 
-Nothing may be refused for load. To leave them out, run the same command
-with `-skip 'TestLoad|TestPermissionMatrix'` after `./...`.
+Nothing may be refused for load. `-short` leaves the load tests out (CI uses
+it for the race-detector run and runs the load tests in a step of their
+own).
 
 ```bash
 (cd frontend && npm ci && npm test && npm run build)
@@ -255,10 +264,11 @@ calls in a row. `npm run build` checks the types first.
 bash deploy/test/deploy_test.sh   # on Linux: deploy.sh against a stand-in server
 ```
 
-GitHub runs gofmt, go vet, golangci-lint, the Go tests with the race
-detector against PostgreSQL and Redis (load tests included), govulncheck,
-and the panel and extension builds on every push and pull request
-(`.github/workflows/ci.yml`).
+GitHub runs, on every push and pull request (`.github/workflows/ci.yml`):
+gofmt, go vet, golangci-lint, the Go tests with the race detector against
+PostgreSQL and Redis (`-short`), the load tests without it, govulncheck, the
+panel's tests and build, the extension's tests and build, and the deploy
+script test.
 
 ## Production
 
