@@ -70,7 +70,7 @@ export default function ProfilePopover({ anchor, selfId, onClose }: { anchor: Po
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   const p = presenceOf({ id: anchor.userId }, anchor.room);
   const self = anchor.userId === selfId;

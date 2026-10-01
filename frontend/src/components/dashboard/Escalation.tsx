@@ -27,7 +27,7 @@ export function Escalation({ categories, activePeer, connected, callId, canSearc
       setCustomer(next);
       setPendingPeer(null);
     }
-  }, [activePeer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePeer]); // eslint-disable-line react-hooks/exhaustive-deps -- reacts only to a new call number; the agent typing must not trigger it
 
   function switchToPending() {
     if (!pendingPeer) return;

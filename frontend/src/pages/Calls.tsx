@@ -146,7 +146,7 @@ export function Calls() {
     if (extMode || number === applied.number) return;
     const t = window.setTimeout(applyNumber, 350);
     return () => window.clearTimeout(t);
-  }, [number, extMode, applied.number]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [number, extMode, applied.number]); // eslint-disable-line react-hooks/exhaustive-deps -- applyNumber is new on every render; the wait restarts only when the number changes
 
   return (
     <>
@@ -305,7 +305,7 @@ function RecordingBar({ uuid, label, onClose }: { uuid: string; label: string; o
           <div className="text-xs text-muted-foreground">Çağrı kaydı</div>
           <div className="truncate text-sm font-medium tabular-nums">{label}</div>
         </div>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        {/* Call recordings have no caption track. */}
         <audio key={uuid} controls autoPlay src={src} className="h-10 flex-1" />
         <a href={`${src}?download=1`} target="_blank" rel="noopener" aria-label="İndir" data-tip="İndir" className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground">
           <Download className="size-5" />

@@ -85,14 +85,15 @@ export function Teams() {
   const [board, setBoard] = useState(false);
 
   // Tell the context which room is open so its messages do not notify.
+  const { setOpenGroupId, notifications, askNotifications } = teams;
   useEffect(() => {
-    teams.setOpenGroupId(groupId);
-    return () => teams.setOpenGroupId(null);
-  }, [groupId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setOpenGroupId(groupId);
+    return () => setOpenGroupId(null);
+  }, [groupId, setOpenGroupId]);
 
   useEffect(() => {
-    if (teams.notifications === "default") void teams.askNotifications();
-  }, [teams.notifications]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (notifications === "default") void askNotifications();
+  }, [notifications, askNotifications]);
 
   // The room shown follows the address; an answer for a room left in the
   // meantime is dropped, and a message to jump to belongs to the old room.

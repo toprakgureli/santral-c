@@ -68,7 +68,7 @@ export function useDialogFocus(open: boolean, box: RefObject<HTMLElement | null>
       document.removeEventListener("keydown", onKey);
       if (before && document.contains(before)) before.focus();
     };
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, box, isTop, start]);
 }
 
 // useDirty reports whether value differs from what it was when the form

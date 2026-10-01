@@ -39,7 +39,7 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !inviting && isTop() && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, inviting]);
+  }, [onClose, inviting, isTop]);
 
   const sorted = g ? [...g.players].sort((a, b) => b.score - a.score) : [];
   const seated = g ? g.players.filter((p) => !p.left) : [];

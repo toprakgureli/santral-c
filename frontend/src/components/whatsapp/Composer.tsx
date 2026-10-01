@@ -2,7 +2,7 @@
 // internal note, a file, a ready answer with "/", an emoji, or a template
 // when the 24-hour window is closed.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CornerUpLeft, FileText, Lock, MessageSquareText, Paperclip, SendHorizontal, SmilePlus, Sparkles, Undo2, X, Zap } from "lucide-react";
 import EmojiPicker from "@/components/teams/EmojiPicker";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ export default function Composer({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
-  const addFiles = (list: File[]) => {
+  const addFiles = useCallback((list: File[]) => {
     if (list.length === 0) return;
     const bad = list.map(fileProblem).find(Boolean) ?? null;
     const good = list.filter((f) => !fileProblem(f));
@@ -73,10 +73,11 @@ export default function Composer({
       else setFileError(bad);
       return next.slice(0, MAX_FILES);
     });
-  };
+  }, []);
+  // A new drop arrives as a new object, so this runs once per drop.
   useEffect(() => {
     if (dropped && dropped.files.length) addFiles(dropped.files);
-  }, [dropped?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dropped, addFiles]);
   const previews = useMemo(() => files.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : "")), [files]);
   useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
   const [emoji, setEmoji] = useState(false);
@@ -116,7 +117,7 @@ export default function Composer({
   useEffect(() => setCursor(0), [slash]);
 
   const fillVars = (body: string) => body.replace(/\{(\w+)\}/g, (all, k) => vars[k] ?? all);
-  const useReply = (r: WAQuickReply) => {
+  const applyReply = (r: WAQuickReply) => {
     setText(fillVars(r.body));
     window.setTimeout(() => area.current?.focus(), 0);
   };
@@ -174,7 +175,7 @@ export default function Composer({
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        useReply(matches[cursor]);
+        applyReply(matches[cursor]);
         return;
       }
     }
@@ -265,7 +266,7 @@ export default function Composer({
         <div className="absolute bottom-full left-3 z-20 mb-1 w-[min(24rem,calc(100%-1.5rem))] overflow-hidden rounded-2xl border border-border bg-popover p-1 shadow-lg">
           <p className="px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">Hazır yanıtlar</p>
           {matches.map((r, i) => (
-            <button key={r.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => useReply(r)} className={cn("flex w-full items-start gap-2.5 rounded-xl px-2 py-1.5 text-left", i === cursor ? "bg-accent" : "")}>
+            <button key={r.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => applyReply(r)} className={cn("flex w-full items-start gap-2.5 rounded-xl px-2 py-1.5 text-left", i === cursor ? "bg-accent" : "")}>
               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-wa-accent/15 text-wa-accent"><Zap className="size-3.5" /></span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium">/{r.shortcut} <span className="font-normal text-muted-foreground">{r.title !== r.shortcut ? r.title : ""}</span></span>

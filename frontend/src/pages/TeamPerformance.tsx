@@ -410,7 +410,7 @@ function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>

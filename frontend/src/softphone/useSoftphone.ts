@@ -683,9 +683,9 @@ export function useSoftphone(enabled: boolean): Phone {
     if (!s || s.state !== sip().SessionState.Established) return;
     const next = !held;
     // The SIP.js Web SDH implements hold via its `hold` option on a re-INVITE.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the SIP library types do not list the hold option
     const inviteOptions: any = { sessionDescriptionHandlerOptions: { hold: next } };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the SIP library types do not list this field
     (s as any).sessionDescriptionHandlerOptionsReInvite = { hold: next };
     try {
       await s.invite(inviteOptions);

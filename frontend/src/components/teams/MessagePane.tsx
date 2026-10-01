@@ -79,7 +79,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
     } finally {
       setLoading(false);
     }
-  }, [group.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [group.id]); // eslint-disable-line react-hooks/exhaustive-deps -- the unread count is read once when the room opens; a new message must not reload the list
 
   useEffect(() => {
     setItems([]);
@@ -157,7 +157,7 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Mesaja gidilemedi."))
       .finally(() => setLoading(false));
-  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [target, group.id]);
 
   // Live events for this room.
   useEffect(() => {

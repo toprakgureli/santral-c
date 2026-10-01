@@ -41,7 +41,7 @@ export function MessageMenu({ m, x, y, onReply, onReact, onInfo, onClose }: { m:
       window.removeEventListener("resize", onClose);
       window.removeEventListener("wheel", onClose);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
   const run = (fn: () => void) => {
     onClose();
     fn();
@@ -97,7 +97,7 @@ export function MessageInfo({ m: given, onClose }: { m: WAMessage; onClose: () =
     const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   const out = m.direction === "out";
   const seen = (reads ?? []).filter((r) => r.messageId >= m.id).sort((a, b) => Date.parse(a.readAt) - Date.parse(b.readAt));

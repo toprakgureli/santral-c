@@ -323,7 +323,7 @@ function ConversationMenu({ c, x, y, onClose }: { c: WAConversation; x: number; 
       window.removeEventListener("keydown", esc);
       window.removeEventListener("resize", onClose);
     };
-  }, [onClose]);
+  }, [onClose, isTop]);
 
   const run = (fn: () => Promise<unknown> | void) => {
     onClose();

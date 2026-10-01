@@ -154,8 +154,10 @@ export function useUploads(groupId: number): UploadsApi {
 
   // Leaving the room forgets the tray; half-done uploads are cancelled.
   useEffect(() => {
+    // The map is changed in place, never replaced, so this sees every upload.
+    const running = aborters.current;
     return () => {
-      for (const ctl of Object.values(aborters.current)) ctl.abort();
+      for (const ctl of Object.values(running)) ctl.abort();
       for (const i of live.current) {
         URL.revokeObjectURL(i.previewUrl);
         if (i.attachmentId && i.status !== "hazır") void api.teamsCancelUpload(i.attachmentId).catch(() => undefined);
