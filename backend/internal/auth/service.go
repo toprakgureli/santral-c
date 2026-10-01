@@ -38,6 +38,8 @@ func mustHash(plain string) string {
 type RequestMeta struct {
 	IP        string
 	UserAgent string
+	// Device is the browser's id from its device cookie.
+	Device string
 }
 
 // LoginResult is the outcome of an authentication step.
@@ -84,7 +86,7 @@ func (s *Service) ChangeOwnPassword(ctx context.Context, userID uint, current, n
 	if !u.Active {
 		return nil, errs.Forbidden("Hesabınız pasif durumda.")
 	}
-	if err := s.security.Guard(ctx, u.Email, meta.IP); err != nil {
+	if err := s.security.Guard(ctx, attempt(u.Email, &u.ID, meta, "")); err != nil {
 		return nil, err
 	}
 	if !hash.Compare(u.Password, current) {
@@ -130,7 +132,7 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
-	if err := s.security.Guard(ctx, email, meta.IP); err != nil {
+	if err := s.security.Guard(ctx, attempt(email, nil, meta, "")); err != nil {
 		return nil, err
 	}
 
@@ -185,7 +187,7 @@ func (s *Service) Login(ctx context.Context, req requests.Login, meta RequestMet
 }
 
 func attempt(email string, userID *uint, meta RequestMeta, reason string) security.Attempt {
-	return security.Attempt{Email: email, UserID: userID, IP: meta.IP, UserAgent: meta.UserAgent, Reason: reason}
+	return security.Attempt{Email: email, UserID: userID, IP: meta.IP, UserAgent: meta.UserAgent, Device: meta.Device, Reason: reason}
 }
 
 func levelLatency(start time.Time) {
@@ -227,9 +229,22 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 	if refreshToken == "" {
 		return nil, errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yapın.")
 	}
-	session, err := s.repo.SessionByHash(ctx, hash.SHA256(refreshToken))
+	tokenHash := hash.SHA256(refreshToken)
+	session, err := s.repo.SessionByHash(ctx, tokenHash)
 	if err != nil {
 		return nil, errs.Internal(err)
+	}
+	// A token another tab replaced a moment ago still renews: the tabs
+	// share one cookie, and the newer token is already in it.
+	recent := false
+	if session == nil {
+		prev, err := s.repo.SessionByPreviousHash(ctx, tokenHash)
+		if err != nil {
+			return nil, errs.Internal(err)
+		}
+		if prev != nil && prev.RotatedAt != nil && time.Since(*prev.RotatedAt) <= refreshGrace {
+			session, recent = prev, true
+		}
 	}
 	if session == nil || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
 		return nil, errs.Unauthorized("Oturumunuz geçersiz veya süresi dolmuş.")
@@ -241,7 +256,27 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 	if !u.Active {
 		return nil, errs.Forbidden("Hesabınız pasif durumda.")
 	}
+	if recent {
+		return s.accessOnly(u, session)
+	}
 	return s.issue(ctx, u, meta, session)
+}
+
+// refreshGrace is how long a replaced refresh token still renews.
+const refreshGrace = time.Minute
+
+// maxSession is the longest a sign-in lasts: everyone signs in again at
+// least once a week, whatever the configuration says.
+const maxSession = 7 * 24 * time.Hour
+
+// accessOnly renews the access token of a session whose refresh token was
+// just replaced by another request; the refresh cookie is left as it is.
+func (s *Service) accessOnly(u *models.User, session *models.Session) (*LoginResult, error) {
+	access, err := jwt.Generate(s.cfg, u.ID)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	return &LoginResult{User: responses.NewUser(u), Token: access.Value, ExpiresAt: access.ExpiresAt, RefreshExpiresAt: session.ExpiresAt}, nil
 }
 
 // Logout revokes the refresh session and denylists the access token.
@@ -292,13 +327,23 @@ func (s *Service) issue(ctx context.Context, u *models.User, meta RequestMeta, e
 	}
 
 	now := time.Now()
-	refreshExpiresAt := now.Add(s.cfg.RefreshTTL)
+	lifetime := s.cfg.RefreshTTL
+	if lifetime <= 0 || lifetime > maxSession {
+		lifetime = maxSession
+	}
+	refreshExpiresAt := now.Add(lifetime)
 	tokenHash := hash.SHA256(refresh)
 
 	if existing != nil {
-		if err := s.repo.RotateSession(ctx, existing.ID, tokenHash, refreshExpiresAt, now); err != nil {
+		ok, err := s.repo.RotateSession(ctx, existing.ID, existing.TokenHash, tokenHash, now)
+		if err != nil {
 			return nil, errs.Internal(err)
 		}
+		if !ok {
+			// Another request renewed this session at the same moment.
+			return s.accessOnly(u, existing)
+		}
+		refreshExpiresAt = existing.ExpiresAt
 	} else {
 		session := &models.Session{UserID: u.ID, TokenHash: tokenHash, IP: meta.IP, UserAgent: meta.UserAgent, ExpiresAt: refreshExpiresAt}
 		if err := s.repo.CreateSession(ctx, session); err != nil {
@@ -529,7 +574,7 @@ const (
 // locks apply as for the password, a step allows maxCodeTries wrong codes
 // before its token is revoked, and a code that was already used is refused.
 func (s *Service) checkCode(ctx context.Context, u *models.User, claims *jwt.Claims, secret, code string, meta RequestMeta) error {
-	if err := s.security.Guard(ctx, u.Email, meta.IP); err != nil {
+	if err := s.security.Guard(ctx, attempt(u.Email, &u.ID, meta, "")); err != nil {
 		return err
 	}
 	if !totp.Validate(secret, code) {

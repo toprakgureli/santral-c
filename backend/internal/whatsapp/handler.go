@@ -180,6 +180,10 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 		First:  []byte(`{"type":"hello"}`),
 		Events: ch,
 		Close:  stop,
+		Allowed: func(ctx context.Context) error {
+			_, err := h.s.viewerOf(ctx, uid)
+			return err
+		},
 	})
 }
 

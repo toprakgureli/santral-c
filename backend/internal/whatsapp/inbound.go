@@ -113,6 +113,24 @@ type inboundResult struct {
 	rateScore  int
 	// the customer asked to leave marketing messages with this message
 	optedOut bool
+	// the device is turned off: the message is kept as history only
+	inactive bool
+}
+
+// optOutAsked reports whether a customer message asks to leave marketing
+// messages: a typed keyword, or a tapped button or list choice whose text or
+// payload is one.
+func optOutAsked(m *hookMessage, kind, body string, words []string) bool {
+	switch kind {
+	case "text", "interactive":
+		return matchesWord(strings.TrimSpace(body), words)
+	case "button":
+		if matchesWord(strings.TrimSpace(body), words) {
+			return true
+		}
+		return m.Button != nil && matchesWord(strings.TrimSpace(m.Button.Payload), words)
+	}
+	return false
 }
 
 // ratingAnswer reads a score picked from the satisfaction survey list
@@ -187,11 +205,17 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		res.msg = msg
 		// "DUR": leaving marketing messages is stored together with the
 		// message, so it can never be lost to a later step failing.
-		if kind == "text" && matchesWord(strings.TrimSpace(body), device.Parse(ch.Settings).OptOutKeywords) {
+		if optOutAsked(m, kind, body, device.Parse(ch.Settings).OptOutKeywords) {
 			if err := tx.Exec("UPDATE wa_contacts SET opted_out = true WHERE id = ?", contact.ID).Error; err != nil {
 				return err
 			}
 			res.optedOut = true
+		}
+		if !ch.Active {
+			// A turned-off device keeps what customers still send, but
+			// nothing is opened, handed out or answered automatically.
+			res.conv, res.inactive = conv, true
+			return tx.Exec("UPDATE wa_conversations SET last_inbound_at = ?, last_message_id = ?, last_message_at = ? WHERE id = ?", *at, msg.ID, time.Now(), conv.ID).Error
 		}
 		if id, idx, ok := callSurveyAnswer(m); ok {
 			// An answer to the survey after a phone call: kept in the
@@ -246,7 +270,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 	if err != nil {
 		return err
 	}
-	if res.msg == nil {
+	if res.msg == nil || res.inactive {
 		return nil
 	}
 	if res.surveyID > 0 {

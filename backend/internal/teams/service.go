@@ -1782,6 +1782,13 @@ func (s *Service) notifyGroup(ctx context.Context, groupID uint, ev Event) {
 	s.hub.Send(ids, ev)
 }
 
+// StreamAllowed reports whether the actor may still receive the chat's
+// live events.
+func (s *Service) StreamAllowed(ctx context.Context, actorID uint) error {
+	_, err := s.actor(ctx, actorID)
+	return err
+}
+
 // Subscribe opens the actor's live stream.
 func (s *Service) Subscribe(ctx context.Context, actorID uint) (chan []byte, error) {
 	if _, err := s.actor(ctx, actorID); err != nil {

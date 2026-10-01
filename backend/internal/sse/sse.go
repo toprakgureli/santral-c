@@ -8,6 +8,7 @@ package sse
 import (
 	"bufio"
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +25,19 @@ const Heartbeat = 20 * time.Second
 // streams counts the event streams open right now, for the metrics page.
 var streams atomic.Int64
 
+// closing ends every open stream when the server stops, so shutdown does
+// not wait for browsers that would keep them open forever.
+var (
+	closing     = make(chan struct{})
+	closingOnce sync.Once
+)
+
+// CloseAll ends every open stream and refuses new ones; the panel
+// reconnects to the next server.
+func CloseAll() {
+	closingOnce.Do(func() { close(closing) })
+}
+
 // Open returns how many event streams are open right now.
 func Open() int64 { return streams.Load() }
 
@@ -35,11 +49,23 @@ type Stream struct {
 	Events <-chan []byte
 	// Close runs once when the stream ends, whatever the reason.
 	Close func()
+	// Allowed is asked again with every heartbeat; an error ends the
+	// stream, so someone who lost the permission stops receiving. Nil
+	// checks only the session.
+	Allowed func(ctx context.Context) error
 }
 
 // Serve sets the event-stream headers and streams s to the client after the
 // handler returns. It must be the last thing a handler does.
 func Serve(c *fiber.Ctx, s Stream) error {
+	select {
+	case <-closing:
+		if s.Close != nil {
+			s.Close()
+		}
+		return fiber.ErrServiceUnavailable
+	default:
+	}
 	session := middlewares.SessionFrom(c)
 	c.Set(fiber.HeaderContentType, "text/event-stream")
 	c.Set(fiber.HeaderCacheControl, "no-cache")
@@ -65,12 +91,14 @@ func run(w *bufio.Writer, s Stream, session *middlewares.Session) {
 	defer beat.Stop()
 	for {
 		select {
+		case <-closing:
+			return
 		case msg, ok := <-s.Events:
 			if !ok || writeEvent(w, msg) != nil {
 				return
 			}
 		case <-beat.C:
-			if !alive(session) {
+			if !alive(session, s.Allowed) {
 				return
 			}
 			if _, err := w.WriteString(": ping\n\n"); err != nil {
@@ -85,13 +113,13 @@ func run(w *bufio.Writer, s Stream, session *middlewares.Session) {
 
 // alive reports whether the stream may go on. A stream opened on a route the
 // auth middleware does not guard has no session and is never cut here.
-func alive(session *middlewares.Session) bool {
-	if session == nil {
-		return true
-	}
+func alive(session *middlewares.Session, allowed func(ctx context.Context) error) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return session.Check(ctx) == nil
+	if session != nil && session.Check(ctx) != nil {
+		return false
+	}
+	return allowed == nil || allowed(ctx) == nil
 }
 
 func writeEvent(w *bufio.Writer, data []byte) error {

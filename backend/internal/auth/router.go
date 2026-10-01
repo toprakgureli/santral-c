@@ -21,12 +21,14 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 
 // Routes registers the auth routes onto g.
 func (r *Router) Routes(g fiber.Router) {
-	group := g.Group("/auth")
+	// Every browser gets a device id here, so wrong passwords and request
+	// limits are counted per browser, not per office address.
+	group := g.Group("/auth", middlewares.Device(r.handler.cfg.CookieSecure))
 
-	credentials := func() fiber.Handler { return middlewares.RateLimit(20, time.Minute) }
+	credentials := func() fiber.Handler { return middlewares.RateLimitBy(20, time.Minute, middlewares.PerDevice) }
 
 	group.Post("/login", credentials(), r.handler.Login)
-	group.Post("/refresh", middlewares.RateLimit(60, time.Minute), r.handler.Refresh)
+	group.Post("/refresh", middlewares.RateLimitBy(30, time.Minute, middlewares.PerCookie(r.handler.cfg.RefreshCookieName)), r.handler.Refresh)
 	group.Post("/logout", r.handler.Logout)
 	group.Get("/me", r.guard, r.handler.Me)
 	group.Post("/mfa/verify", credentials(), r.handler.MFAVerify)

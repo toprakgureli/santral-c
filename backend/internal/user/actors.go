@@ -37,6 +37,9 @@ type Actors struct {
 
 	mu     sync.Mutex
 	cached map[uint]cachedActor
+	// gen counts forgets. A load that started before a forget does not
+	// store its row, so a change can never be undone by a read that raced it.
+	gen uint64
 }
 
 type cachedActor struct {
@@ -55,6 +58,7 @@ func NewActors(db *gorm.DB) *Actors {
 func (a *Actors) GetByID(ctx context.Context, id uint) (*models.User, error) {
 	a.mu.Lock()
 	hit, ok := a.cached[id]
+	gen := a.gen
 	a.mu.Unlock()
 	if ok && time.Since(hit.loadedAt) < a.ttl {
 		u := hit.user
@@ -69,7 +73,9 @@ func (a *Actors) GetByID(ctx context.Context, id uint) (*models.User, error) {
 		return nil, errs.Internal(fmt.Errorf("user %d could not be loaded: %w", id, err))
 	}
 	a.mu.Lock()
-	a.cached[id] = cachedActor{user: u, loadedAt: time.Now()}
+	if a.gen == gen {
+		a.cached[id] = cachedActor{user: u, loadedAt: time.Now()}
+	}
 	a.mu.Unlock()
 	return &u, nil
 }
@@ -91,6 +97,7 @@ func (a *Actors) Active(ctx context.Context, id uint) (bool, error) {
 func (a *Actors) Forget(id uint) {
 	a.mu.Lock()
 	delete(a.cached, id)
+	a.gen++
 	a.mu.Unlock()
 }
 
@@ -98,5 +105,6 @@ func (a *Actors) Forget(id uint) {
 func (a *Actors) ForgetAll() {
 	a.mu.Lock()
 	a.cached = make(map[uint]cachedActor)
+	a.gen++
 	a.mu.Unlock()
 }

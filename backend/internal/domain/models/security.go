@@ -4,17 +4,21 @@ import "time"
 
 // Session is a refresh-token session; only the token hash is stored.
 type Session struct {
-	ID         uint      `gorm:"primarykey"`
-	UserID     uint      `gorm:"not null;index"`
-	User       *User     `gorm:"foreignKey:UserID"`
-	TokenHash  string    `gorm:"size:64;not null;uniqueIndex"`
-	IP         string    `gorm:"size:45"`
-	UserAgent  string    `gorm:"size:255"`
-	ExpiresAt  time.Time `gorm:"not null;index"`
-	RevokedAt  *time.Time
-	LastUsedAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID        uint   `gorm:"primarykey"`
+	UserID    uint   `gorm:"not null;index"`
+	User      *User  `gorm:"foreignKey:UserID"`
+	TokenHash string `gorm:"size:64;not null;uniqueIndex"`
+	// PreviousHash is the token this one replaced, still accepted for a
+	// short while after RotatedAt.
+	PreviousHash *string `gorm:"size:64"`
+	RotatedAt    *time.Time
+	IP           string    `gorm:"size:45"`
+	UserAgent    string    `gorm:"size:255"`
+	ExpiresAt    time.Time `gorm:"not null;index"`
+	RevokedAt    *time.Time
+	LastUsedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // LoginAttempt records one authentication attempt.
@@ -24,6 +28,7 @@ type LoginAttempt struct {
 	UserID    *uint     `gorm:"index"`
 	IP        string    `gorm:"size:45;not null;index"`
 	UserAgent string    `gorm:"size:255"`
+	Device    string    `gorm:"size:64;not null;default:''"`
 	Success   bool      `gorm:"not null;index"`
 	Reason    string    `gorm:"size:60"`
 	CreatedAt time.Time `gorm:"index"`

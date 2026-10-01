@@ -330,12 +330,13 @@ func (s *Service) UpdateUser(ctx context.Context, actorID, targetID uint, req re
 	if err := s.repo.UpdateCore(ctx, target.ID, fields); err != nil {
 		return nil, errs.Internal(err)
 	}
-	s.actors.Forget(target.ID)
 	if rolesChanged {
 		if err := s.repo.ReplaceRoles(ctx, target, roles); err != nil {
 			return nil, errs.Internal(err)
 		}
 	}
+	// After every write, so a request in between cannot cache the old row.
+	s.actors.Forget(target.ID)
 
 	s.audit.Record(ctx, audit.Entry{
 		ActorID:    &actorID,

@@ -3,8 +3,9 @@ package verimor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
@@ -61,6 +63,9 @@ type Service struct {
 	// hub fans real-time agent-list updates out to SSE subscribers.
 	hubMu sync.Mutex
 	subs  map[chan []byte]struct{}
+
+	// recordings keeps recently played recordings for seeking.
+	recordings *recordingCache
 }
 
 // snapshot is the last-good view the poller keeps warm.
@@ -75,7 +80,7 @@ func NewService(client *Client, users IActorResolver, repo *Repository, auditor 
 	if cfg.WebphoneBase == "" {
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, repo: repo, audit: auditor, cfg: cfg}
+	return &Service{client: client, users: users, repo: repo, audit: auditor, cfg: cfg, recordings: newRecordingCache()}
 }
 
 // SetShifts wires the shift reader that gates outbound calls and presence.
@@ -171,7 +176,7 @@ func (s *Service) extensionOf(ctx context.Context, userID uint) string {
 // from the snapshot and the mirror instead of hitting the API on every load.
 func (s *Service) Start(ctx context.Context, g *safe.Group) {
 	g.Loop(ctx, "verimor poller", s.poll)
-	g.Loop(ctx, "verimor call mirror", s.runMirror)
+	g.Loop(ctx, "verimor call mirror", s.mirrorLoop)
 }
 
 func (s *Service) poll(ctx context.Context) {
@@ -862,6 +867,13 @@ func (s *Service) StreamStart(ctx context.Context, actorID uint) ([]byte, chan [
 	return s.extensionsJSON(ctx), s.subscribe(), nil
 }
 
+// StreamAllowed reports whether the actor may still receive the live agent
+// list.
+func (s *Service) StreamAllowed(ctx context.Context, actorID uint) error {
+	_, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer)
+	return err
+}
+
 // StreamStop releases an SSE subscriber channel.
 func (s *Service) StreamStop(ch chan []byte) {
 	s.unsubscribe(ch)
@@ -1134,26 +1146,35 @@ func canViewCalls(u *models.User) bool {
 		u.Can(enums.CDRViewOwn) || u.Can(enums.CallViewOwn)
 }
 
-// RecordingAccess says who opens a recording and how, for the audit log.
+// RecordingAccess describes one request for a recording, for the audit log.
 type RecordingAccess struct {
-	IP string
-	// First is false for the follow-up requests a player makes while
-	// seeking, so one listen is logged once.
-	First    bool
+	IP       string
 	Download bool
 }
 
-// Recording mints a one-time URL for a call's recording and returns the live
-// download response so the handler can stream it. It needs the recording
-// permission; someone who cannot see every call may only open a call their
-// own extension took part in. Every listen or download is audited. The
-// caller must close the response body.
-func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, access RecordingAccess) (*http.Response, error) {
+// RecordingFile is a call recording, held whole so the player can seek.
+type RecordingFile struct {
+	Data []byte
+	Type string
+}
+
+// recordingAuditGap is how long one person's repeated requests for the same
+// recording (the player seeking, a replay) count as one listen.
+const recordingAuditGap = 10 * time.Minute
+
+// Recording returns a call's recording. It needs the recording permission;
+// someone who cannot see every call may only open a call their own
+// extension took part in. Every listen, download and refusal is audited;
+// requests for the same recording by the same person within a few minutes
+// count as one listen. A recording fetched lately is served from memory, so
+// seeking does not ask the phone system again.
+func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, access RecordingAccess) (*RecordingFile, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
 	if !actor.Can(enums.CallRecordAccess) {
+		s.auditRecording(ctx, actorID, callUUID, access, enums.AuditCallRecordingDenied)
 		return nil, errs.Forbidden("Çağrı kaydına erişim yetkiniz yok.")
 	}
 	if !actor.Can(enums.CDRViewAll) && !actor.Can(enums.CallViewAll) {
@@ -1164,18 +1185,18 @@ func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, 
 			}
 		}
 		if !own {
+			s.auditRecording(ctx, actorID, callUUID, access, enums.AuditCallRecordingDenied)
 			return nil, errs.Forbidden("Bu kaydı yalnızca görüşmeyi yapan temsilci dinleyebilir.")
 		}
 	}
-	if access.First {
-		s.audit.Record(ctx, audit.Entry{
-			ActorID:    &actorID,
-			Action:     enums.AuditCallRecordingOpened,
-			TargetType: "call",
-			TargetID:   callUUID,
-			IP:         access.IP,
-			Detail:     map[string]any{"download": access.Download},
-		})
+	// One entry per person and recording within the gap; if Redis cannot
+	// tell, the request is written anyway.
+	first, err := lockout.Once(ctx, fmt.Sprintf("recording-audit:%d:%s", actorID, callUUID), recordingAuditGap)
+	if err != nil || first || access.Download {
+		s.auditRecording(ctx, actorID, callUUID, access, enums.AuditCallRecordingOpened)
+	}
+	if f := s.recordings.get(callUUID); f != nil {
+		return f, nil
 	}
 	mintedURL, err := s.client.RecordingURL(ctx, callUUID)
 	if err != nil {
@@ -1185,7 +1206,31 @@ func (s *Service) Recording(ctx context.Context, actorID uint, callUUID string, 
 	if err != nil {
 		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı indirilemedi.", err)
 	}
-	return res, nil
+	defer func() { _ = res.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(res.Body, maxRecording+1))
+	if err != nil {
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı okunamadı.", err)
+	}
+	if len(data) > maxRecording {
+		return nil, errs.New(errs.CodeConflict, 502, "Çağrı kaydı panelde açılamayacak kadar büyük; santral panelinden indirin.", nil)
+	}
+	f := &RecordingFile{Data: data, Type: res.Header.Get("Content-Type")}
+	if f.Type == "" {
+		f.Type = "audio/mpeg"
+	}
+	s.recordings.put(callUUID, f)
+	return f, nil
+}
+
+func (s *Service) auditRecording(ctx context.Context, actorID uint, callUUID string, access RecordingAccess, action string) {
+	s.audit.Record(ctx, audit.Entry{
+		ActorID:    &actorID,
+		Action:     action,
+		TargetType: "call",
+		TargetID:   callUUID,
+		IP:         access.IP,
+		Detail:     map[string]any{"download": access.Download},
+	})
 }
 
 func apiDirection(v string) string {

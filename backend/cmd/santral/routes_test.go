@@ -43,7 +43,6 @@ var public = map[string]string{
 	"POST /api/v1/auth/mfa/enroll":        "second step of signing in",
 	"POST /api/v1/auth/mfa/enroll/verify": "second step of signing in",
 	"POST /api/v1/auth/password/change":   "forced password change while signing in",
-	"GET /api/v1/teams/drive/callback":    "Google sends the account link back here",
 	"GET /api/v1/wa/hook/:key":            "Meta checks the webhook",
 	"POST /api/v1/wa/hook/:key":           "Meta delivers messages",
 	"POST /api/v1/wa/survey/:key":         "customer answers a survey",
@@ -152,12 +151,16 @@ func TestEveryRouteNeedsSignIn(t *testing.T) {
 			continue
 		}
 		seen[key] = true
-		if _, ok := public[key]; ok {
-			continue
-		}
 		res := call(t, srv.app, r.Method, concrete(r.Path), "", nil)
 		_ = res.Body.Close()
-		if res.StatusCode != fiber.StatusUnauthorized {
+		guarded := res.StatusCode == fiber.StatusUnauthorized && res.Header.Get(fiber.HeaderWWWAuthenticate) != ""
+		if _, ok := public[key]; ok {
+			if guarded {
+				t.Errorf("%s is listed as public but asks for a session; remove it from the list", key)
+			}
+			continue
+		}
+		if !guarded {
 			t.Errorf("%s answered %d without a session; guard it or list it as public", key, res.StatusCode)
 		}
 	}

@@ -2,6 +2,7 @@ package teams
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"image"
@@ -836,9 +837,10 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 		return err
 	}
 	return sse.Serve(c, sse.Stream{
-		First:  []byte(`{"type":"hello"}`),
-		Events: ch,
-		Close:  func() { h.service.Unsubscribe(id, ch) },
+		First:   []byte(`{"type":"hello"}`),
+		Events:  ch,
+		Close:   func() { h.service.Unsubscribe(id, ch) },
+		Allowed: func(ctx context.Context) error { return h.service.StreamAllowed(ctx, id) },
 	})
 }
 

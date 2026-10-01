@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<string, string> = {
   "user.sip_updated": "Dahili (SIP) değiştirildi",
   "pbx.sip_synced_all": "Tüm SIP şifreleri Verimor'dan çekildi",
   "call.recording_opened": "Çağrı kaydına erişildi",
+  "call.recording_denied": "Çağrı kaydına erişim reddedildi",
   "whatsapp.channel_deactivated": "WhatsApp numarası kapatıldı",
   "whatsapp.channel_deleted": "WhatsApp numarası silindi",
   "whatsapp.channel_purged": "WhatsApp numarası geçmişiyle silindi",

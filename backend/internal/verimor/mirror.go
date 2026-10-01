@@ -28,6 +28,7 @@ const (
 	mirrorRequestGap   = 15 * time.Second // pause between backfill requests
 	mirrorRetryGap     = time.Minute      // pause after a failed backfill request
 	mirrorRetries      = 3                // attempts per backfill page
+	mirrorRetryLater   = 15 * time.Minute // pause before a stopped backfill tries again
 	mirrorRepairAfter  = 30 * time.Minute // a gap longer than this is re-fetched on start
 	defaultHistoryDays = 90
 	mirrorCursorKey    = "cdr_mirror_cursor"
@@ -280,14 +281,30 @@ func dayParams(day string) (url.Values, error) {
 	return p, nil
 }
 
+// mirrorLoop runs the backfill once. A run that stopped on an error is tried
+// again after a long pause; a finished one is not repeated, because the
+// regular poll keeps the mirror current from then on.
+func (s *Service) mirrorLoop(ctx context.Context) {
+	for {
+		if s.runMirror(ctx) {
+			<-ctx.Done()
+			return
+		}
+		if !sleepCtx(ctx, mirrorRetryLater) {
+			return
+		}
+	}
+}
+
 // runMirror is the background backfill. It first repairs any gap left by
 // downtime (re-fetching the days since the newest mirrored record), then
 // walks older days down to the configured history, one slow request at a
 // time. Progress is stored, so a restart resumes instead of starting over.
-func (s *Service) runMirror(ctx context.Context) {
+// It reports whether the backfill is complete.
+func (s *Service) runMirror(ctx context.Context) bool {
 	// Let the regular poll's startup burst pass first.
 	if !sleepCtx(ctx, 20*time.Second) {
-		return
+		return false
 	}
 	today := time.Now().In(istanbul)
 	todayDay := today.Format("2006-01-02")
@@ -303,7 +320,7 @@ func (s *Service) runMirror(ctx context.Context) {
 				break
 			}
 			if !s.mirrorDay(ctx, day) {
-				return
+				return false
 			}
 		}
 	}
@@ -316,7 +333,7 @@ func (s *Service) runMirror(ctx context.Context) {
 	cursor, err := s.repo.MirrorCursor(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "cdr mirror could not read its cursor", "error", err)
-		return
+		return false
 	}
 	next := todayDay
 	if cursor != "" {
@@ -329,16 +346,17 @@ func (s *Service) runMirror(ctx context.Context) {
 	}
 	for day := next; day >= floor; {
 		if !s.mirrorDay(ctx, day) {
-			return
+			return false
 		}
 		if err := s.repo.SetMirrorCursor(ctx, day); err != nil {
 			slog.WarnContext(ctx, "cdr mirror cursor could not be saved", "day", day, "error", err)
-			return
+			return false
 		}
 		t, _ := time.ParseInLocation("2006-01-02", day, istanbul)
 		day = t.AddDate(0, 0, -1).Format("2006-01-02")
 	}
 	slog.InfoContext(ctx, "cdr mirror backfill complete", "oldestDay", floor)
+	return true
 }
 
 // mirrorDay fetches every page of one local day into the mirror. It returns

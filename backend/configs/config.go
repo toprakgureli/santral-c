@@ -68,6 +68,10 @@ type Security struct {
 	// PreviousDataKeys (comma separated) still open values made before the
 	// data key was replaced; they are sealed again with DataKey at start.
 	PreviousDataKeys string `mapstructure:"previousDataKeys"`
+	// DeviceFailureLimit is how many wrong passwords one browser may enter
+	// before it is held back for a while. Office staff share one address,
+	// so wrong tries are counted per browser and per account, not per IP.
+	DeviceFailureLimit int `mapstructure:"deviceFailureLimit"`
 }
 
 // Owner holds the bootstrap invisible-admin credentials.
@@ -152,5 +156,9 @@ func Load(path string) error {
 	if err := v.ReadInConfig(); err != nil {
 		return err
 	}
-	return v.Unmarshal(&Cnf)
+	if err := v.Unmarshal(&Cnf); err != nil {
+		return err
+	}
+	ApplyDefaults(&Cnf)
+	return nil
 }

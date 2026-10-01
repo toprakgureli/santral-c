@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -51,7 +52,12 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 func (h *Handler) Refresh(c *fiber.Ctx) error {
 	result, err := h.service.Refresh(c.UserContext(), c.Cookies(h.cfg.RefreshCookieName), metaFrom(c))
 	if err != nil {
-		h.clearSession(c)
+		// Only a session that is really over loses its cookies; a hiccup
+		// on our side keeps them, so the next try can still succeed.
+		var e *errs.Error
+		if errors.As(err, &e) && (e.Status == fiber.StatusUnauthorized || e.Status == fiber.StatusForbidden) {
+			h.clearSession(c)
+		}
 		return err
 	}
 	return h.session(c, result)
@@ -222,7 +228,9 @@ func (h *Handler) session(c *fiber.Ctx, result *LoginResult) error {
 
 func (h *Handler) setSession(c *fiber.Ctx, result *LoginResult) {
 	h.cookie(c, h.cfg.CookieName, result.Token, result.ExpiresAt)
-	h.cookie(c, h.cfg.RefreshCookieName, result.RefreshToken, result.RefreshExpiresAt)
+	if result.RefreshToken != "" {
+		h.cookie(c, h.cfg.RefreshCookieName, result.RefreshToken, result.RefreshExpiresAt)
+	}
 }
 
 func (h *Handler) clearSession(c *fiber.Ctx) {
@@ -248,5 +256,5 @@ func metaFrom(c *fiber.Ctx) RequestMeta {
 	if len(agent) > 255 {
 		agent = agent[:255]
 	}
-	return RequestMeta{IP: c.IP(), UserAgent: agent}
+	return RequestMeta{IP: c.IP(), UserAgent: agent, Device: middlewares.DeviceFrom(c)}
 }

@@ -38,15 +38,21 @@ var errSessionEnded = errs.Unauthorized("Oturumunuz sonlandırılmış. Lütfen 
 // (event streams) keep checking it, because the session can be revoked
 // after the request was accepted.
 type Session struct {
-	UserID   uint
-	tokenID  string
-	issuedAt time.Time
-	list     IDenylist
+	UserID    uint
+	tokenID   string
+	issuedAt  time.Time
+	expiresAt time.Time
+	list      IDenylist
+	accounts  IAccounts
 }
 
 // Check returns nil while the session is still valid, and an error once its
-// token was revoked or the user's sessions were ended.
+// token expired or was revoked, the user's sessions were ended or the
+// account was turned off.
 func (s *Session) Check(ctx context.Context) error {
+	if !s.expiresAt.IsZero() && time.Now().After(s.expiresAt) {
+		return errSessionEnded
+	}
 	revoked, err := s.list.Has(ctx, s.tokenID)
 	if err != nil {
 		return errs.Internal(err)
@@ -60,6 +66,15 @@ func (s *Session) Check(ctx context.Context) error {
 	}
 	if !cutoff.IsZero() && s.issuedAt.Before(cutoff) {
 		return errSessionEnded
+	}
+	if s.accounts != nil {
+		active, err := s.accounts.Active(ctx, s.UserID)
+		if err != nil {
+			return err
+		}
+		if !active {
+			return errSessionEnded
+		}
 	}
 	return nil
 }
@@ -77,6 +92,9 @@ func SessionFrom(c *fiber.Ctx) *Session {
 // failed.
 func Auth(cfg configs.Auth, list IDenylist, accounts IAccounts) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// A refusal from here says how to authenticate, as 401 answers
+		// should; the panel's own sign-in steps answer 401 without it.
+		c.Set(fiber.HeaderWWWAuthenticate, `Cookie realm="santral"`)
 		token := c.Cookies(cfg.CookieName)
 		if token == "" {
 			header := c.Get(fiber.HeaderAuthorization)
@@ -96,21 +114,18 @@ func Auth(cfg configs.Auth, list IDenylist, accounts IAccounts) fiber.Handler {
 			return errs.Unauthorized("Bu token API erişimi için geçerli değil.")
 		}
 
-		session := &Session{UserID: claims.UserID, tokenID: claims.ID, list: list}
+		session := &Session{UserID: claims.UserID, tokenID: claims.ID, list: list, accounts: accounts}
 		if claims.IssuedAt != nil {
 			session.issuedAt = claims.IssuedAt.Time
+		}
+		if claims.ExpiresAt != nil {
+			session.expiresAt = claims.ExpiresAt.Time
 		}
 		if err := session.Check(c.UserContext()); err != nil {
 			return err
 		}
-		active, err := accounts.Active(c.UserContext(), claims.UserID)
-		if err != nil {
-			return err
-		}
-		if !active {
-			return errSessionEnded
-		}
 
+		c.Response().Header.Del(fiber.HeaderWWWAuthenticate)
 		c.Locals(UserIDKey, claims.UserID)
 		c.Locals(SessionKey, session)
 		c.SetUserContext(logctx.WithUser(c.UserContext(), claims.UserID))

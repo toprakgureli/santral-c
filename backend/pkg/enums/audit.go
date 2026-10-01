@@ -12,6 +12,7 @@ const (
 	AuditSIPSyncedAll      string = "pbx.sip_synced_all"
 
 	AuditCallRecordingOpened string = "call.recording_opened"
+	AuditCallRecordingDenied string = "call.recording_denied"
 
 	AuditRoleCreated string = "role.created"
 	AuditRoleUpdated string = "role.updated"

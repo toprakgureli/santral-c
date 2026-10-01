@@ -319,10 +319,14 @@ func (s *Service) queueObject(ctx context.Context, ch *models.WAChannel, convers
 func (s *Service) outboxWorker(ctx context.Context) {
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
-	var recovered time.Time
+	// Only this loop sends, and only one server runs, so a message still
+	// 'sending' when it starts was cut off before: it is flagged at once
+	// instead of holding its conversation back for minutes.
+	s.flagStaleSends(ctx, 0)
+	recovered := time.Now()
 	for {
 		if time.Since(recovered) >= time.Minute {
-			s.flagStaleSends(ctx)
+			s.flagStaleSends(ctx, staleSend)
 			recovered = time.Now()
 		}
 		for s.sendBatch(ctx) {
@@ -363,19 +367,43 @@ func (s *Service) sendBatch(ctx context.Context) bool {
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	for i := range list {
 		msg := &list[i]
-		// A panic while sending one message fails that message; the queue
-		// keeps moving.
+		if ctx.Err() != nil {
+			// Stopping: what was taken but not started goes back to the
+			// queue untouched, so the next start sends it.
+			s.requeue(list[i:])
+			return false
+		}
+		// A send that started is finished even while the server stops, so
+		// its outcome is known and it is never sent twice.
+		sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sendTimeout)
 		err := safe.Call(func() error {
-			s.sendOne(ctx, msg)
+			s.sendOne(sendCtx, msg)
 			return nil
 		})
+		cancel()
 		if err != nil {
 			slog.ErrorContext(ctx, "whatsapp send panicked", "message", msg.ID, "error", err)
 			s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?, attempts = attempts + 1 WHERE id = ? AND status = 'sending'",
 				"Gönderilirken beklenmeyen bir hata oldu.", msg.ID)
 		}
 	}
-	return len(list) == 20
+	// Anything taken means the next message of the same conversation may
+	// now be due, so the caller asks again at once.
+	return len(list) > 0
+}
+
+// sendTimeout bounds one send, Meta included.
+const sendTimeout = 45 * time.Second
+
+// requeue puts messages taken for sending back into the queue.
+func (s *Service) requeue(list []models.WAMessage) {
+	ids := make([]uint, 0, len(list))
+	for i := range list {
+		ids = append(ids, list[i].ID)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'queued', sending_at = NULL WHERE id IN ? AND status = 'sending'", ids).Error)
 }
 
 // finishSend writes the outcome of a send. It only touches a message that
@@ -394,12 +422,12 @@ func (s *Service) finishSend(ctx context.Context, id uint, query string, args ..
 // flagStaleSends marks messages cut off in the middle of a send as failed.
 // Whether Meta got them is unknown, so they are not sent again by
 // themselves; the agent sees the note and decides.
-func (s *Service) flagStaleSends(ctx context.Context) {
+func (s *Service) flagStaleSends(ctx context.Context, age time.Duration) {
 	var stale []models.WAMessage
 	err := s.db.WithContext(ctx).Raw(`UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?
 		WHERE status = 'sending' AND sending_at < ? RETURNING *`,
 		"Gönderilip gönderilmediği anlaşılamadı. Müşteriye ulaşıp ulaşmadığını kontrol edin, gerekirse tekrar gönderin.",
-		time.Now().Add(-staleSend)).Scan(&stale).Error
+		time.Now().Add(-age)).Scan(&stale).Error
 	if err != nil {
 		slog.ErrorContext(ctx, "whatsapp stale sends could not be checked", "error", err)
 		return

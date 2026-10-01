@@ -16,6 +16,8 @@ type Repository struct {
 	db *gorm.DB
 }
 
+var _ IRepository = (*Repository)(nil)
+
 // NewRepository builds a session repository.
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
@@ -42,19 +44,30 @@ func (r *Repository) SessionByHash(ctx context.Context, tokenHash string) (*mode
 	return &s, nil
 }
 
-// RotateSession replaces a session's token hash and expiry.
-func (r *Repository) RotateSession(ctx context.Context, id uint, tokenHash string, expiresAt, at time.Time) error {
-	if err := r.db.WithContext(ctx).
-		Model(&models.Session{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"token_hash":   tokenHash,
-			"expires_at":   expiresAt,
-			"last_used_at": at,
-		}).Error; err != nil {
-		return fmt.Errorf("session could not be rotated: %w", err)
+// SessionByPreviousHash loads the session a token was replaced in, or nil.
+func (r *Repository) SessionByPreviousHash(ctx context.Context, tokenHash string) (*models.Session, error) {
+	var s models.Session
+	err := r.db.WithContext(ctx).Where("previous_hash = ?", tokenHash).First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
 	}
-	return nil
+	if err != nil {
+		return nil, fmt.Errorf("session could not be fetched: %w", err)
+	}
+	return &s, nil
+}
+
+// RotateSession replaces a session's token, keeping the old one as the
+// previous token. It reports false when the session no longer holds
+// oldHash, because another request rotated or revoked it first. The expiry
+// does not move: a session ends a fixed time after signing in.
+func (r *Repository) RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error) {
+	res := r.db.WithContext(ctx).Exec(`UPDATE sessions SET previous_hash = token_hash, token_hash = ?, rotated_at = ?, last_used_at = ?, updated_at = ?
+		WHERE id = ? AND token_hash = ? AND revoked_at IS NULL`, newHash, at, at, at, id, oldHash)
+	if res.Error != nil {
+		return false, fmt.Errorf("session could not be rotated: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
 }
 
 // RevokeSession marks one session revoked.

@@ -371,6 +371,17 @@ func (s *Service) sweepBots(ctx context.Context) {
 		if err != nil || ticket == nil {
 			continue
 		}
+		// A ticket a person already has is never closed by the chatbot's
+		// clock; only the leftover session goes.
+		res := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open' WHERE id = ? AND status = 'bot'", ticket.ID)
+		if res.Error != nil {
+			warnDB(ctx, res.Error)
+			continue
+		}
+		if res.RowsAffected == 0 {
+			s.endBot(ctx, conv.ID, "handoff")
+			continue
+		}
 		s.endBot(ctx, conv.ID, "timeout")
 		s.event(ctx, nil, conv, ticket.ID, 0, "Müşteri chatbot'ta cevap vermeyi bıraktı, sohbet kapatıldı. Tekrar yazarsa yeniden açılır.")
 		_ = s.resolve(ctx, conv, ticket, 0)

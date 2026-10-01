@@ -201,6 +201,9 @@ func (s *Service) endBotSessions(ctx context.Context, botID uint, note string) e
 		if err != nil || ticket == nil {
 			continue
 		}
+		// The session goes first, so the chatbot timeout never finds it
+		// later and closes a ticket a person is now working on.
+		s.endBot(ctx, conv.ID, "handoff")
 		if ch, err := s.repo.Channel(ctx, conv.ChannelID); err == nil {
 			s.botToHuman(ctx, ch, conv, ticket, 0, note)
 		}

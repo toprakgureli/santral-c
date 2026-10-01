@@ -1,8 +1,8 @@
 package verimor
 
 import (
+	"context"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 
@@ -153,9 +153,9 @@ func (h *Handler) ExportCalls(c *fiber.Ctx) error {
 		return err
 	}
 	name := "cagrilar"
-	if from := c.Query("from"); from != "" {
+	if from := safeName(c.Query("from")); from != "" {
 		name += "-" + from
-		if to := c.Query("to"); to != "" && to != from {
+		if to := safeName(c.Query("to")); to != "" && to != from {
 			name += "_" + to
 		}
 	}
@@ -255,41 +255,37 @@ func (h *Handler) Recording(c *fiber.Ctx) error {
 	if uuid == "" {
 		return errs.Invalid("Çağrı kimliği zorunlu.", nil)
 	}
-	rng := c.Get("Range")
-	res, err := h.service.Recording(c.UserContext(), id, uuid, RecordingAccess{
+	f, err := h.service.Recording(c.UserContext(), id, uuid, RecordingAccess{
 		IP:       c.IP(),
-		First:    rng == "" || strings.HasPrefix(rng, "bytes=0-"),
 		Download: c.Query("download") != "",
 	})
 	if err != nil {
 		return err
 	}
-	defer func() { _ = res.Body.Close() }()
-
-	// Buffer the whole recording (they are small) and send it with a
-	// Content-Length so the browser's audio element can seek freely.
-	const maxRecording = 64 << 20
-	data, err := io.ReadAll(io.LimitReader(res.Body, maxRecording))
-	if err != nil {
-		return errs.New(errs.CodeConflict, 502, "Çağrı kaydı okunamadı.", err)
-	}
-	contentType := res.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "audio/mpeg"
-	}
-	c.Set("Content-Type", contentType)
+	c.Set("Content-Type", f.Type)
 	c.Set("Accept-Ranges", "bytes")
 	c.Set("Cache-Control", "private, max-age=3600")
 	if c.Query("download") != "" {
-		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, uuid))
+		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, safeName(uuid)))
 	}
 	// Honour a Range request so the audio element can seek (it expects 206).
-	if start, end, ok := parseRange(c.Get("Range"), len(data)); ok {
+	if start, end, ok := parseRange(c.Get("Range"), len(f.Data)); ok {
 		c.Status(fiber.StatusPartialContent)
-		c.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
-		return c.Send(data[start : end+1])
+		c.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(f.Data)))
+		return c.Send(f.Data[start : end+1])
 	}
-	return c.Send(data)
+	return c.Send(f.Data)
+}
+
+// safeName keeps only characters that are safe in a download file name.
+func safeName(v string) string {
+	out := make([]rune, 0, len(v))
+	for _, r := range v {
+		if r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '-' || r == '_' {
+			out = append(out, r)
+		}
+	}
+	return string(out)
 }
 
 // parseRange handles a single "bytes=start-end" range against a body of `size`.
@@ -353,9 +349,10 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 		return err
 	}
 	return sse.Serve(c, sse.Stream{
-		First:  initial,
-		Events: ch,
-		Close:  func() { h.service.StreamStop(ch) },
+		First:   initial,
+		Events:  ch,
+		Close:   func() { h.service.StreamStop(ch) },
+		Allowed: func(ctx context.Context) error { return h.service.StreamAllowed(ctx, id) },
 	})
 }
 

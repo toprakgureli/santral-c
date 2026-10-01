@@ -10,14 +10,14 @@ app:
 auth:
   secret: "change-me-to-a-long-random-secret"
   accessTTL: 15m
-  refreshTTL: 720h
+  refreshTTL: 168h          # everyone signs in again once a week
   issuer: santral-c
   cookieName: santral_access
   refreshCookieName: santral_refresh
   cookieSecure: false
 
 security:
-  ipFailureLimit: 10
+  ipFailureLimit: 100
   ipBanDuration: 15m
   accountLockDuration: 15m
   distinctIPLimit: 5
@@ -28,6 +28,7 @@ security:
   # without moving the old one to previousDataKeys. openssl rand -hex 32
   dataKey: "change-me-to-a-64-character-random-data-key"
   previousDataKeys: ""
+  deviceFailureLimit: 5
   trustedIPs: ""
   # When true, every non-exempt user must set up TOTP MFA at first login.
   # Only seeded on a fresh database (an admin's later change is preserved).

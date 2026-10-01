@@ -15,7 +15,9 @@ type Attempt struct {
 	UserID    *uint
 	IP        string
 	UserAgent string
-	Reason    string
+	// Device is the browser's id from its device cookie.
+	Device string
+	Reason string
 }
 
 // IRepository is the security data store.
@@ -44,4 +46,5 @@ type ILockout interface {
 	Remaining(ctx context.Context, key string) (time.Duration, error)
 	Set(ctx context.Context, key string, ttl time.Duration) error
 	Clear(ctx context.Context, key string) error
+	Hit(ctx context.Context, key string, ttl time.Duration) (int64, error)
 }

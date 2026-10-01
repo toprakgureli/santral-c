@@ -24,14 +24,15 @@ type IUserService interface {
 type IRepository interface {
 	CreateSession(ctx context.Context, s *models.Session) error
 	SessionByHash(ctx context.Context, tokenHash string) (*models.Session, error)
-	RotateSession(ctx context.Context, id uint, tokenHash string, expiresAt, at time.Time) error
+	SessionByPreviousHash(ctx context.Context, tokenHash string) (*models.Session, error)
+	RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error)
 	RevokeSession(ctx context.Context, id uint, at time.Time) error
 	RevokeUserSessions(ctx context.Context, userID uint, at time.Time) error
 }
 
 // ISecurityService gates and records authentication attempts.
 type ISecurityService interface {
-	Guard(ctx context.Context, email, ip string) error
+	Guard(ctx context.Context, a security.Attempt) error
 	Success(ctx context.Context, a security.Attempt)
 	Failure(ctx context.Context, a security.Attempt)
 }

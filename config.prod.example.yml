@@ -16,14 +16,17 @@ app:
 auth:
   secret: "change-me-to-a-long-random-secret"   # openssl rand -hex 32
   accessTTL: 15m
-  refreshTTL: 720h
+  refreshTTL: 168h          # everyone signs in again once a week
   issuer: santral-c
   cookieName: santral_access
   refreshCookieName: santral_refresh
   cookieSecure: true        # required: the site is served over HTTPS
 
 security:
-  ipFailureLimit: 10
+  # Wrong passwords are counted per browser (deviceFailureLimit) and per
+  # account first. An address is banned only after many failures, and never
+  # when it is in trustedIPs: put the office's public address there.
+  ipFailureLimit: 100
   ipBanDuration: 15m
   accountLockDuration: 15m
   distinctIPLimit: 5
@@ -35,7 +38,8 @@ security:
   # secrets are sealed again with the new key at start.
   dataKey: "change-me-to-a-64-character-random-data-key"
   previousDataKeys: ""
-  trustedIPs: ""
+  deviceFailureLimit: 5
+  trustedIPs: ""            # office address or range, e.g. "203.0.113.7" or "203.0.113.0/28"
   requireMFA: true          # force TOTP MFA enrollment at first login
 
 owner:
