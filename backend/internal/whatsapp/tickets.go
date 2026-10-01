@@ -10,6 +10,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/gofiber/fiber/v2"
+
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/device"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
@@ -133,12 +135,31 @@ func (s *Service) titleOf(ctx context.Context, u *models.User) string {
 	return "müşteri temsilciniz"
 }
 
+// takenMeanwhile explains a refusal to someone who picked a conversation
+// from the pool a moment after a colleague did: it left their pool, which
+// is not the same as never having been theirs to see.
+func (s *Service) takenMeanwhile(ctx context.Context, actorID, conversationID uint, err error) error {
+	var e *errs.Error
+	if !errors.As(err, &e) || e.Status != fiber.StatusForbidden {
+		return err
+	}
+	v, verr := s.viewerOf(ctx, actorID)
+	if verr != nil || !v.can(enums.WAPool) {
+		return err
+	}
+	_, ticket, terr := s.repo.Conversation(ctx, conversationID)
+	if terr != nil || ticket == nil || !v.seesChannel(ticket.ChannelID) || ticket.OwnerID == nil || *ticket.OwnerID == actorID {
+		return err
+	}
+	return errs.Conflict("Bu sohbeti az önce başka bir temsilci aldı.", nil)
+}
+
 // Greet is "Karşıla": the person takes the chat if nobody owns it, joins
 // the owner otherwise, and the greeting goes out when it is switched on.
 func (s *Service) Greet(ctx context.Context, actorID, conversationID uint) error {
 	v, conv, ticket, err := s.reachable(ctx, actorID, conversationID)
 	if err != nil {
-		return err
+		return s.takenMeanwhile(ctx, actorID, conversationID, err)
 	}
 	if !v.can(enums.WAReply) {
 		return errs.Forbidden("Müşteriye yazma yetkin yok.")

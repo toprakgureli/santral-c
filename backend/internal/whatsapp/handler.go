@@ -369,10 +369,13 @@ type Router struct {
 func NewRouter(h *Handler, guard fiber.Handler) *Router { return &Router{h: h, guard: guard} }
 
 // Limits for the endpoints Meta and Tally call without a panel session. A
-// notice is a few kilobytes; the rate leaves room for Meta's bursts.
+// notice is a few kilobytes and is only checked against its signature and
+// stored, so the rate is set for a busy hour arriving from a single Meta
+// address: every message sent brings up to three delivery reports, and a
+// refused notice comes back from Meta only minutes later.
 const (
 	hookMaxBody      = 1 << 20
-	hookRatePerMin   = 600
+	hookRatePerMin   = 3000
 	surveyRatePerMin = 60
 )
 

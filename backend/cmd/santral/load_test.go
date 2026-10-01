@@ -1028,6 +1028,13 @@ var gates = []gate{
 	{fiber.MethodGet, "/api/v1/teams/drive/status", nil, [][]enums.Permission{anyOf(enums.SystemSettings)}},
 	{fiber.MethodPut, "/api/v1/games/settings", map[string]any{}, [][]enums.Permission{anyOf(enums.GamesManage)}},
 	{fiber.MethodPost, "/api/v1/games/items", map[string]any{}, [][]enums.Permission{anyOf(enums.GamesManage)}},
+	// WhatsApp checks in its service: the module first, then the page.
+	{fiber.MethodGet, "/api/v1/wa/ai", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAAIManage)}},
+	{fiber.MethodGet, "/api/v1/wa/call-survey", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WACallSurvey)}},
+	{fiber.MethodGet, "/api/v1/wa/rules", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAAutomation)}},
+	{fiber.MethodGet, "/api/v1/wa/callbacks", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WACallbacks)}},
+	{fiber.MethodGet, "/api/v1/wa/ratings", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings)}},
+	{fiber.MethodGet, "/api/v1/wa/reports?from=2026-01-01&to=2026-01-31", nil, [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAReports)}},
 }
 
 // TestPermissionMatrix signs in once with every system role and once with
