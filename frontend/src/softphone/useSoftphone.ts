@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Inviter, Invitation, Registerer, RegistererState, SessionState, UserAgent, type Session } from "sip.js";
+import type { Invitation, Registerer, Session, UserAgent } from "sip.js";
+
+// The SIP library is loaded the first time a phone starts, so people
+// without a phone line never download it.
+type Sip = typeof import("sip.js");
+let SIP: Sip | null = null;
+async function loadSip(): Promise<Sip> {
+  SIP ??= await import("sip.js");
+  return SIP;
+}
+// sip returns the library once a phone has started; every call below
+// runs after that.
+const sip = (): Sip => {
+  if (!SIP) throw new Error("Softphone hazır değil.");
+  return SIP;
+};
 import { api, ApiError } from "../api/client";
 import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue";
 import type { SipCredentials } from "../api/types";
@@ -224,7 +239,7 @@ export function useSoftphone(enabled: boolean): Phone {
     const onHide = () => {
       const s = sessionRef.current;
       if (!s || !callIdRef.current) return;
-      const established = s.state === SessionState.Established && establishedAtRef.current > 0;
+      const established = s.state === sip().SessionState.Established && establishedAtRef.current > 0;
       beaconCallEnd({
         callId: callIdRef.current,
         phase: "end",
@@ -242,7 +257,7 @@ export function useSoftphone(enabled: boolean): Phone {
     (session: Session) => {
       let wasEstablished = false;
       session.stateChange.addListener((state) => {
-        if (state === SessionState.Established) {
+        if (state === sip().SessionState.Established) {
           wasEstablished = true;
           establishedAtRef.current = Date.now();
           setAnsweredAt(Date.now());
@@ -252,7 +267,7 @@ export function useSoftphone(enabled: boolean): Phone {
           setStatus("in-call");
           attachRemoteMedia(session);
           logCall("answer");
-        } else if (state === SessionState.Terminated) {
+        } else if (state === sip().SessionState.Terminated) {
           tones.stop();
           audioGraph.current.detach();
           // Only beep when an actual conversation ended, so a rejected or
@@ -325,7 +340,7 @@ export function useSoftphone(enabled: boolean): Phone {
       try {
         if (!ua.isConnected()) await ua.reconnect();
         if (cancelled) return;
-        if (registerer && registerer.state !== RegistererState.Registered) await registerer.register();
+        if (registerer && registerer.state !== sip().RegistererState.Registered) await registerer.register();
         retry = 0;
       } catch {
         if (cancelled) return;
@@ -338,7 +353,7 @@ export function useSoftphone(enabled: boolean): Phone {
     };
     const onOnline = () => void recover();
     const onVisible = () => {
-      if (document.visibilityState === "visible" && ua && (!ua.isConnected() || registerer?.state !== RegistererState.Registered)) void recover();
+      if (document.visibilityState === "visible" && ua && (!ua.isConnected() || registerer?.state !== sip().RegistererState.Registered)) void recover();
     };
     reregisterRef.current = async () => {
       if (!registerer) return;
@@ -358,15 +373,15 @@ export function useSoftphone(enabled: boolean): Phone {
 
     (async () => {
       try {
-        const creds = await api.sipCredentials();
+        const [creds] = await Promise.all([api.sipCredentials(), loadSip()]);
         if (cancelled) return;
         setExtension(creds.extension);
         domainRef.current = creds.domain;
 
-        const uri = UserAgent.makeURI(`sip:${creds.extension}@${creds.domain}`);
+        const uri = sip().UserAgent.makeURI(`sip:${creds.extension}@${creds.domain}`);
         if (!uri) throw new Error("SIP adresi oluşturulamadı.");
 
-        ua = new UserAgent({
+        ua = new (sip().UserAgent)({
           uri,
           transportOptions: { server: creds.webSocketUrl },
           authorizationUsername: creds.extension,
@@ -420,13 +435,13 @@ export function useSoftphone(enabled: boolean): Phone {
           ua.stop().catch(() => undefined);
           return;
         }
-        registerer = new Registerer(ua);
+        registerer = new (sip().Registerer)(ua);
         registerer.stateChange.addListener((state) => {
           if (cancelled) return;
-          if (state === RegistererState.Registered) {
+          if (state === sip().RegistererState.Registered) {
             retry = 0;
             if (idle()) setStatus("registered");
-          } else if (state === RegistererState.Unregistered && uaRef.current) {
+          } else if (state === sip().RegistererState.Unregistered && uaRef.current) {
             void recover();
           }
         });
@@ -473,10 +488,10 @@ export function useSoftphone(enabled: boolean): Phone {
       const ua = uaRef.current;
       if (!ua) throw new Error("Softphone hazır değil.");
       const target = normalizeDial(raw);
-      const uri = UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
+      const uri = sip().UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
       if (!uri) throw new Error("Geçersiz numara.");
 
-      const inviter = new Inviter(ua, uri, {
+      const inviter = new (sip().Inviter)(ua, uri, {
         earlyMedia: true,
         sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
       });
@@ -550,7 +565,7 @@ export function useSoftphone(enabled: boolean): Phone {
   // ringing for a retry after the permission is granted.
   const answer = useCallback(async () => {
     const s = sessionRef.current;
-    if (!(s instanceof Invitation)) return;
+    if (!(s instanceof sip().Invitation)) return;
     tones.stop();
     setError(null);
     try {
@@ -573,7 +588,7 @@ export function useSoftphone(enabled: boolean): Phone {
         return;
       }
       setError(mediaError(e));
-      if (s.state === SessionState.Initial) tones.incoming();
+      if (s.state === sip().SessionState.Initial) tones.incoming();
     }
   }, []);
 
@@ -583,11 +598,11 @@ export function useSoftphone(enabled: boolean): Phone {
     localEndRef.current = true;
     tones.stop();
     try {
-      if (s instanceof Inviter && (s.state === SessionState.Initial || s.state === SessionState.Establishing)) {
+      if (s instanceof sip().Inviter && (s.state === sip().SessionState.Initial || s.state === sip().SessionState.Establishing)) {
         await s.cancel();
-      } else if (s instanceof Invitation && s.state === SessionState.Initial) {
+      } else if (s instanceof sip().Invitation && s.state === sip().SessionState.Initial) {
         await s.reject();
-      } else if (s.state === SessionState.Established) {
+      } else if (s.state === sip().SessionState.Established) {
         await s.bye();
       }
     } catch {
@@ -609,7 +624,7 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const toggleHold = useCallback(async () => {
     const s = sessionRef.current;
-    if (!s || s.state !== SessionState.Established) return;
+    if (!s || s.state !== sip().SessionState.Established) return;
     const next = !held;
     // The SIP.js Web SDH implements hold via its `hold` option on a re-INVITE.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -627,9 +642,9 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const transfer = useCallback(async (raw: string) => {
     const s = sessionRef.current;
-    if (!s || s.state !== SessionState.Established) return;
+    if (!s || s.state !== sip().SessionState.Established) return;
     const target = normalizeDial(raw);
-    const uri = UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
+    const uri = sip().UserAgent.makeURI(`sip:${target}@${domainRef.current}`);
     if (!uri) return;
     // The panel decides who may hand a call over, also when the browser
     // extension asks; the PBX only carries it out.

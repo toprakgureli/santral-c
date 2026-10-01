@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, Suspense } from "react";
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
@@ -83,7 +83,9 @@ export default function AppShell() {
           {/* Keyed by path so the entrance animation replays on each navigation. */}
           <div key={pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
             <ErrorBoundary>
-              <Outlet />
+              <Suspense fallback={<PageLoading />}>
+                <Outlet />
+              </Suspense>
             </ErrorBoundary>
           </div>
         </main>
@@ -95,5 +97,14 @@ export default function AppShell() {
     </PresenceProvider>
     </SoftphoneProvider>
     </ShiftProvider>
+  );
+}
+
+// PageLoading fills the page area while a page's code is fetched.
+function PageLoading() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Sayfa yükleniyor">
+      <span className="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
+    </div>
   );
 }

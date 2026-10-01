@@ -7,31 +7,21 @@
 // grid of previews with a lightbox.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CornerUpLeft, ImagePlus, Pencil, SmilePlus, Trash2 } from "lucide-react";
-import AttachmentGrid, { mediaOf } from "@/components/teams/AttachmentGrid";
+import { ImagePlus } from "lucide-react";
 import Lightbox from "@/components/teams/Lightbox";
 import ProfilePopover, { type PopoverAnchor } from "@/components/teams/ProfilePopover";
 import { useUploads } from "@/teams/useUploads";
 import type { TeamsAttachment, TeamsPerson } from "@/api/types";
-import Composer, { EVERYONE, type Outgoing } from "@/components/teams/Composer";
+import Composer, { type Outgoing } from "@/components/teams/Composer";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
-import { ConfirmDialog, Modal } from "@/components/ui";
+import { ConfirmDialog } from "@/components/ui";
 import { api, ApiError } from "@/api/client";
-import type { TeamsEvent, TeamsGroupDetail, TeamsMessage, TeamsReceipt } from "@/api/types";
-import UserAvatar from "@/components/ui/UserAvatar";
-import { statusOf, Ticks } from "@/components/teams/Presence";
-import { renderMarkup, stripMarkup } from "@/lib/markup";
-import GameCard from "@/games/GameCard";
+import type { TeamsEvent, TeamsGroupDetail, TeamsMessage } from "@/api/types";
 import { previewLabel } from "@/lib/attachments";
-import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
-import { clockTime, dayKey, dayName, isToday, numericDateTime, shortDateTime } from "@/lib/time";
-import { useTopmost } from "@/components/ui/windowStack";
-
-const QUICK = ["👍", "❤️", "😂", "😮", "🔥", "✅"];
-const ALL = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅", "👏", "🎉", "👀", "💯"];
-
-type Seats = Record<number, { deliveredId: number; readId: number; name: string }>;
+import { dayKey, dayName } from "@/lib/time";
+import MessageRow, { type Seats } from "@/components/teams/MessageRow";
+import { MessageInfo, ReactionPeople } from "@/components/teams/MessageInfo";
 
 export default function MessagePane({ group, selfId, target, onOpenGame }: { group: TeamsGroupDetail; selfId: number; target?: { id: number; nonce: number } | null; onOpenGame: (id: number) => void }) {
   const teams = useTeams();
@@ -365,129 +355,38 @@ export default function MessagePane({ group, selfId, target, onOpenGame }: { gro
             <p className="text-xs text-muted-foreground">{group.canPost ? "İlk mesajı sen yaz." : "Bu grupta yazma yetkin yok."}</p>
           </div>
         )}
-        {rows.map(({ m, head, day }) => {
-          const mentionsMe = (m.mentions?.includes(selfId) || m.mentionsAll) && !m.mine;
-          const labels = [...(m.mentions ?? []).map((id) => seats[id]?.name).filter((n): n is string => !!n).map((n) => `@${n}`), ...(m.mentionsAll ? [`@${EVERYONE}`] : [])];
-          return (
-            <div key={m.id} data-mid={m.id}>
-              {day && (
-                <div className="my-4 flex items-center justify-center">
-                  <span className="rounded-full border border-border/60 bg-card/90 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground shadow-sm backdrop-blur">{day}</span>
-                </div>
-              )}
-              {firstUnread === m.id && (
-                <div className="my-3 flex items-center gap-3">
-                  <span className="h-px flex-1 bg-destructive/50" />
-                  <span className="rounded-full border border-destructive/40 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-destructive">Yeni mesajlar</span>
-                  <span className="h-px flex-1 bg-destructive/50" />
-                </div>
-              )}
-              {m.kind === "system" ? (
-                <p className="my-2 text-center"><span className="rounded-full bg-muted/70 px-3 py-1 text-xs text-muted-foreground">{m.body}</span></p>
-              ) : (
-                <div
-                  onContextMenu={(e) => lineMenu(e, m)}
-                  className={cn(
-                    "group relative flex gap-3 rounded-2xl px-2.5 py-1 transition-colors duration-700",
-                    head ? "mt-2.5" : "mt-0",
-                    flash === m.id ? "bg-primary/15" : "hover:bg-card/80",
-                    editing?.id === m.id && "bg-warning/10",
-                    mentionsMe && "bg-violet-500/[0.07] before:absolute before:top-1 before:bottom-1 before:left-0 before:w-[3px] before:rounded-full before:bg-violet-500 hover:bg-violet-500/10",
-                  )}
-                >
-                  <div className={cn("w-9 shrink-0", m.replyTo && "mt-6")}>
-                    {head && m.sender && (
-                      <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className="rounded-full transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none" data-tip="Profili aç">
-                        <UserAvatar userId={m.sender.id} name={m.sender.name} hasAvatar={m.sender.hasAvatar} version={m.sender.avatarVersion} className="size-9 shadow-sm ring-2 ring-card" fallbackClassName="bg-primary/10 text-xs text-primary" />
-                      </button>
-                    )}
-                    {!head && <span className="hidden pt-1 text-[0.65rem] tabular-nums text-muted-foreground group-hover:block">{clockTime(m.createdAt)}</span>}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {m.replyTo && (
-                      <button
-                        type="button"
-                        onClick={() => jump(m.replyTo!.id)}
-                        data-tip="Yanıtlanan mesaja git"
-                        className="group/reply relative mb-1 flex h-5 w-fit max-w-[75%] items-center gap-1.5 text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        <span className="pointer-events-none absolute top-1/2 -left-[30px] h-[14px] w-[24px] rounded-tl-lg border-t-2 border-l-2 border-border" />
-                        <UserAvatar name={m.replyTo.sender} hasAvatar={false} className="size-4" fallbackClassName="bg-primary/10 text-[0.5rem] text-primary" />
-                        <span className="shrink-0 font-medium text-foreground/80">{m.replyTo.sender}</span>
-                        <span className={cn("truncate", m.replyTo.deleted && "italic")}>{m.replyTo.deleted ? "Bu mesaj silindi." : stripMarkup(m.replyTo.body) || "Ek"}</span>
-                      </button>
-                    )}
-                    {head && m.sender && (
-                      <div className="flex items-center gap-2">
-                        <button type="button" onClick={(e) => openProfile(e, m.sender!.id)} className={cn("text-sm font-semibold leading-tight hover:underline", m.mine && "text-primary")}>{m.sender.name}</button>
-                        <span className="text-[0.7rem] text-muted-foreground">{clockTime(m.createdAt)}</span>
-                        {m.mine && !m.deleted && (() => {
-                          const st = statusOf(m.id, selfId, seats);
-                          return <Ticks status={st.status} readBy={st.readBy} size="size-3.5" className="-ml-0.5" />;
-                        })()}
-                      </div>
-                    )}
-                    {m.deleted ? (
-                      <p className="text-sm italic text-muted-foreground">Bu mesaj silindi.</p>
-                    ) : m.kind === "game" && m.gameId ? (
-                      <GameCard gameId={m.gameId} onOpen={() => onOpenGame(m.gameId!)} />
-                    ) : (
-                      <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                        {m.attachments?.length > 0 && (
-                          <AttachmentGrid attachments={m.attachments} className={m.body ? "mt-1 mb-1.5" : "mt-1"} onOpen={(i) => setGallery({ items: mediaOf(m.attachments), index: i })} />
-                        )}
-                        {m.body && renderMarkup(m.body, { mentions: labels })}
-                        {m.editedAt && <span className="ml-1.5 text-[0.65rem] text-muted-foreground" data-tip={`Düzenlendi: ${numericDateTime(m.editedAt)}`}>(düzenlendi)</span>}
-                      </div>
-                    )}
-                    {m.reactions.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {m.reactions.map((r) => (
-                          <button
-                            key={r.emoji}
-                            type="button"
-                            onClick={() => void react(m, r.emoji)}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setWho({ x: e.clientX, y: e.clientY, emoji: r.emoji, people: r.people ?? [] });
-                            }}
-                            data-tip={`${r.names.join(", ")}
-Sağ tık: kimler verdi`}
-                            className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors", r.mine ? "border-primary/50 bg-primary/10" : "border-border/70 bg-muted/40 hover:bg-accent")}
-                          >
-                            <span>{r.emoji}</span>
-                            <span className="tabular-nums">{r.count}</span>
-                          </button>
-                        ))}
-                        <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} data-tip="Başka tepki" className="inline-flex items-center rounded-full border border-dashed border-border/70 px-1.5 text-muted-foreground hover:bg-accent"><SmilePlus className="size-3.5" /></button>
-                      </div>
-                    )}
-                  </div>
-                  {!m.deleted && (
-                    <div className={cn("absolute -top-4 right-3 items-center gap-0.5 rounded-full border border-border/70 bg-card px-1 py-0.5 shadow-md group-hover:flex", picker === m.id ? "flex" : "hidden")}>
-                      {QUICK.map((e) => (
-                        <button key={e} type="button" onClick={() => void react(m, e)} data-tip="Tepki ver" className={cn("rounded-md px-1 py-0.5 text-base leading-none hover:bg-accent", m.reactions.some((r) => r.emoji === e && r.mine) && "bg-primary/15")}>{e}</button>
-                      ))}
-                      <button type="button" onClick={() => setPicker(picker === m.id ? null : m.id)} data-tip="Daha fazla tepki" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><SmilePlus className="size-4" /></button>
-                      <span className="mx-0.5 h-4 w-px bg-border" />
-                      {group.canPost && <button type="button" onClick={() => { setEditing(null); setReply(m); }} data-tip="Yanıtla" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><CornerUpLeft className="size-4" /></button>}
-                      {m.mine && group.canPost && <button type="button" onClick={() => { setReply(null); setEditing(m); }} data-tip="Düzenle" className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><Pencil className="size-4" /></button>}
-                      {m.canDelete && <button type="button" onClick={() => setConfirmDelete(m)} data-tip="Sil" className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-4" /></button>}
-                    </div>
-                  )}
-                  {picker === m.id && (
-                    <div className="absolute top-5 right-3 z-10 grid grid-cols-6 gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-lg">
-                      {ALL.map((e) => (
-                        <button key={e} type="button" onClick={() => void react(m, e)} className="rounded-lg px-1.5 py-1 text-lg hover:bg-accent">{e}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {rows.map(({ m, head, day }) => (
+          <MessageRow
+            key={m.id}
+            m={m}
+            head={head}
+            day={day}
+            unread={firstUnread === m.id}
+            selfId={selfId}
+            seats={seats}
+            flash={flash === m.id}
+            editing={editing?.id === m.id}
+            picking={picker === m.id}
+            canPost={group.canPost}
+            onMenu={lineMenu}
+            onProfile={openProfile}
+            onJump={jump}
+            onReact={(msg, e) => void react(msg, e)}
+            onPicker={() => setPicker(picker === m.id ? null : m.id)}
+            onReply={(msg) => {
+              setEditing(null);
+              setReply(msg);
+            }}
+            onEdit={(msg) => {
+              setReply(null);
+              setEditing(msg);
+            }}
+            onDelete={setConfirmDelete}
+            onWho={setWho}
+            onGallery={(items, index) => setGallery({ items, index })}
+            onOpenGame={onOpenGame}
+          />
+        ))}
       </div>
 
       {moreNewer && (
@@ -542,120 +441,6 @@ Sağ tık: kimler verdi`}
     </div>
   );
 }
-
-// MessageInfo: when the line was sent, received and read. A direct message
-// reads as a short timeline; a group lists every seat with both times.
-function MessageInfo({ message, group, onClose }: { message: TeamsMessage; group: TeamsGroupDetail; onClose: () => void }) {
-  const [rows, setRows] = useState<TeamsReceipt[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    api
-      .teamsReceipts(group.id, message.id)
-      .then(setRows)
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Bilgi alınamadı."));
-  }, [group.id, message.id]);
-
-  const stamp = (iso?: string) => {
-    if (!iso) return null;
-    return isToday(iso) ? clockTime(iso) : shortDateTime(iso);
-  };
-  const sent = numericDateTime(message.createdAt);
-  const peer = group.kind === "dm" ? rows?.[0] : undefined;
-  const sorted = (rows ?? []).slice().sort((a, b) => (b.readAt ? 2 : b.deliveredAt ? 1 : 0) - (a.readAt ? 2 : a.deliveredAt ? 1 : 0) || a.name.localeCompare(b.name, "tr"));
-
-  const Step = ({ status, title, when, hint }: { status: "sent" | "delivered" | "read"; title: string; when?: string | null; hint: string }) => (
-    <li className="flex items-center gap-3">
-      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", when ? "bg-success/15" : "bg-muted")}>
-        <Ticks status={status} size="size-4" className={cn(!when && "opacity-50")} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{title}</span>
-        <span className={cn("block text-xs", when ? "text-muted-foreground" : "text-muted-foreground/60 italic")}>{when ?? hint}</span>
-      </span>
-    </li>
-  );
-
-  return (
-    <Modal open onClose={onClose} title="Mesaj bilgisi" description={`${message.sender?.name ?? ""} · ${sent}${message.editedAt ? " · düzenlendi" : ""}`} size="md">
-      <div className="space-y-4">
-        <div className="rounded-xl bg-muted/40 px-3 py-2 text-sm whitespace-pre-wrap break-words">{message.body ? renderMarkup(message.body) : <span className="text-muted-foreground">{previewLabel("", message.attachments)}</span>}</div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-        {rows === null && !error && <p className="text-xs text-muted-foreground">Yükleniyor...</p>}
-        {rows && group.kind === "dm" && (
-          <ul className="space-y-3">
-            <Step status="sent" title="Gönderildi" when={stamp(message.createdAt)} hint="" />
-            <Step status="delivered" title="Teslim edildi" when={stamp(peer?.deliveredAt)} hint="Henüz teslim edilmedi" />
-            <Step status="read" title="Okundu" when={stamp(peer?.readAt)} hint="Henüz okunmadı" />
-          </ul>
-        )}
-        {rows && group.kind !== "dm" && (
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-              <span>Kişi</span>
-              <span className="w-16 text-right">Teslim</span>
-              <span className="w-16 text-right">Okundu</span>
-            </div>
-            {sorted.length === 0 && <p className="px-3 py-3 text-sm text-muted-foreground">Odada başka kimse yok.</p>}
-            {sorted.map((r) => (
-              <div key={r.id} className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-b border-border/40 px-3 py-1.5 text-sm last:border-b-0">
-                <span className="flex min-w-0 items-center gap-2">
-                  <UserAvatar userId={r.id} name={r.name} hasAvatar={r.hasAvatar} version={r.avatarVersion} className="size-6" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />
-                  <span className="truncate">{r.name}</span>
-                  <Ticks status={r.readAt ? "read" : r.deliveredAt ? "delivered" : "sent"} size="size-3.5" />
-                </span>
-                <span className={cn("w-16 text-right text-xs tabular-nums", r.deliveredAt ? "text-muted-foreground" : "text-muted-foreground/40")}>{stamp(r.deliveredAt) ?? "—"}</span>
-                <span className={cn("w-16 text-right text-xs tabular-nums", r.readAt ? "text-success" : "text-muted-foreground/40")}>{stamp(r.readAt) ?? "—"}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
-// ReactionPeople: who gave one emoji, opened by right-clicking the chip.
-function ReactionPeople({ x, y, emoji, people, selfId, onPerson, onClose }: { x: number; y: number; emoji: string; people: TeamsPerson[]; selfId: number; onPerson: (p: TeamsPerson, x: number, y: number) => void; onClose: () => void }) {
-  const isTop = useTopmost(true);
-  useEffect(() => {
-    const close = () => onClose();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
-    const t = window.setTimeout(() => {
-      window.addEventListener("mousedown", close);
-      window.addEventListener("keydown", onKey);
-    }, 0);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  const left = Math.min(x, window.innerWidth - 240);
-  const top = Math.min(y, window.innerHeight - 40 - people.length * 40);
-  return (
-    <div className="animate-in fade-in zoom-in-95 fixed z-[60] w-56 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-lg duration-100" style={{ left, top }} onMouseDown={(e) => e.stopPropagation()}>
-      <p className="flex items-center gap-1.5 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
-        <span className="text-base leading-none">{emoji}</span> {people.length} kişi
-      </p>
-      {people.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            onPerson(p, r.right, r.top);
-          }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent"
-        >
-          <UserAvatar userId={p.id} name={p.name} hasAvatar={p.hasAvatar} version={p.avatarVersion} className="size-7" fallbackClassName="bg-primary/10 text-[0.6rem] text-primary" />
-          <span className="min-w-0 flex-1 truncate">{p.name}{p.id === selfId && <span className="text-muted-foreground"> (sen)</span>}</span>
-        </button>
-      ))}
-      {people.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">Kimse yok</p>}
-    </div>
-  );
-}
-
 // withoutKnown drops the lines already in the list, so a page that overlaps
 // what is shown never repeats a message.
 function withoutKnown(page: TeamsMessage[], cur: TeamsMessage[]): TeamsMessage[] {

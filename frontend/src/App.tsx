@@ -1,29 +1,34 @@
+import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
 import RequirePermission from "./components/layout/RequirePermission";
 import { menuPermission, PAGE_PERMISSIONS, WA_BASE } from "./lib/menu";
 import { Spinner } from "./components/ui";
-import { Audit } from "./pages/Audit";
-import { Calls } from "./pages/Calls";
 import { Dashboard } from "./pages/Dashboard";
-import { EscalationSearch } from "./pages/EscalationSearch";
-import { Escalations } from "./pages/Escalations";
 import { Login } from "./pages/Login";
-import { Profile } from "./pages/Profile";
-import { Teams } from "./pages/Teams";
-import { GamesAdmin } from "./pages/GamesAdmin";
-import { Roles } from "./pages/Roles";
-import { Settings } from "./pages/Settings";
-import { TeamPerformance } from "./pages/TeamPerformance";
-import { Users } from "./pages/Users";
-import { WhatsApp } from "./pages/WhatsApp";
-import { Preferences } from "./pages/Preferences";
-import { WhatsAppSettings } from "./pages/WhatsAppSettings";
-import { WhatsAppBot } from "./pages/WhatsAppBot";
-import { WhatsAppReports } from "./pages/WhatsAppReports";
-import { WhatsAppRatings } from "./pages/WhatsAppRatings";
-import { WhatsAppCallbacks } from "./pages/WhatsAppCallbacks";
+
+// Pages load when they are first opened, so the panel starts with what the
+// home page needs; the softphone's SIP library loads only for those with a
+// phone line.
+const Audit = lazy(() => import("./pages/Audit").then((m) => ({ default: m.Audit })));
+const Calls = lazy(() => import("./pages/Calls").then((m) => ({ default: m.Calls })));
+const EscalationSearch = lazy(() => import("./pages/EscalationSearch").then((m) => ({ default: m.EscalationSearch })));
+const Escalations = lazy(() => import("./pages/Escalations").then((m) => ({ default: m.Escalations })));
+const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+const Teams = lazy(() => import("./pages/Teams").then((m) => ({ default: m.Teams })));
+const GamesAdmin = lazy(() => import("./pages/GamesAdmin").then((m) => ({ default: m.GamesAdmin })));
+const Roles = lazy(() => import("./pages/Roles").then((m) => ({ default: m.Roles })));
+const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
+const TeamPerformance = lazy(() => import("./pages/TeamPerformance").then((m) => ({ default: m.TeamPerformance })));
+const Users = lazy(() => import("./pages/Users").then((m) => ({ default: m.Users })));
+const WhatsApp = lazy(() => import("./pages/WhatsApp").then((m) => ({ default: m.WhatsApp })));
+const Preferences = lazy(() => import("./pages/Preferences").then((m) => ({ default: m.Preferences })));
+const WhatsAppSettings = lazy(() => import("./pages/WhatsAppSettings").then((m) => ({ default: m.WhatsAppSettings })));
+const WhatsAppBot = lazy(() => import("./pages/WhatsAppBot").then((m) => ({ default: m.WhatsAppBot })));
+const WhatsAppReports = lazy(() => import("./pages/WhatsAppReports").then((m) => ({ default: m.WhatsAppReports })));
+const WhatsAppRatings = lazy(() => import("./pages/WhatsAppRatings").then((m) => ({ default: m.WhatsAppRatings })));
+const WhatsAppCallbacks = lazy(() => import("./pages/WhatsAppCallbacks").then((m) => ({ default: m.WhatsAppCallbacks })));
 
 export function App() {
   const { user, loading } = useAuth();
