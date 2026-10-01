@@ -41,6 +41,8 @@ export default function Composer({
   onSuggest,
   dropped,
   disabledReason,
+  draft,
+  onDraft,
 }: {
   canReply: boolean;
   canNote: boolean;
@@ -58,9 +60,18 @@ export default function Composer({
   // files dropped on the chat; n changes with every drop
   dropped?: { files: File[]; n: number };
   disabledReason?: string;
+  // what was being written here before the agent left the chat, and where
+  // the box tells what it holds now, so it can be given back
+  draft?: { text: string; mode: "message" | "note" };
+  onDraft?: (text: string, mode: "message" | "note") => void;
 }) {
-  const [mode, setMode] = useState<"message" | "note">(canReply ? "message" : "note");
-  const [text, setText] = useState("");
+  const [mode, setMode] = useState<"message" | "note">(() => (draft?.mode === "note" && canNote) || !canReply ? "note" : "message");
+  // A draft comes back only in the mode it was written in: a note is never
+  // offered as a message to the customer.
+  const [text, setText] = useState(() => (draft && (draft.mode === "note" ? canNote : canReply) ? draft.text : ""));
+  const draftRef = useRef(onDraft);
+  draftRef.current = onDraft;
+  useEffect(() => draftRef.current?.(text, mode), [text, mode]);
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const addFiles = (list: File[]) => {

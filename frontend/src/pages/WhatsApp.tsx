@@ -122,7 +122,13 @@ export function WhatsApp() {
       setFetched(null);
       return;
     }
-    waApi.conversation(openId).then(setFetched).catch(() => setFetched(null));
+    // The page stays while the agent moves between chats: an answer for a
+    // chat no longer open is dropped.
+    let live = true;
+    waApi.conversation(openId).then((c) => live && setFetched(c)).catch(() => live && setFetched(null));
+    return () => {
+      live = false;
+    };
   }, [openId, inList]);
   const conv = inList ?? (fetched?.id === openId ? fetched : undefined);
   const channel = useMemo(() => channels.find((c) => c.id === conv?.channelId), [channels, conv?.channelId]);
@@ -182,7 +188,7 @@ export function WhatsApp() {
           <ChatPane key={conv.id} conv={conv} channel={channel} panel={panel} onPanel={togglePanel} onBack={() => navigate("/whatsapp")} />
           {panel && (
             <div className={cn("flex", !wide && "absolute inset-y-0 right-0 z-30 w-[min(22rem,100%)] shadow-2xl")}>
-              <TicketPanel conv={conv} canEditContact={can(user, "whatsapp.contact_manage")} canEditTicket={can(user, "whatsapp.reply")} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} onClose={togglePanel} />
+              <TicketPanel key={conv.id} conv={conv} canEditContact={can(user, "whatsapp.contact_manage")} canEditTicket={can(user, "whatsapp.reply")} onOpen={(cid) => navigate(`/whatsapp/${cid}`)} onClose={togglePanel} />
             </div>
           )}
         </>

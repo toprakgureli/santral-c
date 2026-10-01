@@ -45,7 +45,8 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { hm, isMine, mergeMessage, newClientId, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
+import { getDraft, saveDraft } from "@/whatsapp/drafts";
+import { hm, isMine, mergeMessage, newClientId, newestSeen, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
 import { dayName, numericDateTime, sameDay } from "@/lib/time";
 import { IconBtn, TextBtn, MoreMenu, MenuItem } from "@/components/whatsapp/ChatButtons";
 
@@ -59,7 +60,17 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [messages, setMessages] = useState<WAMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [older, setOlder] = useState(true);
-  const [replyTo, setReplyTo] = useState<WAMessage | null>(null);
+  // What the agent was writing here before they left the chat comes back.
+  const [kept] = useState(() => getDraft(conv.id));
+  const [replyTo, setReplyTo] = useState<WAMessage | null>(() => kept?.replyTo ?? null);
+  const written = useRef<{ text: string; mode: "message" | "note" }>({ text: kept?.text ?? "", mode: kept?.mode ?? "message" });
+  const replyRef = useRef(replyTo);
+  replyRef.current = replyTo;
+  const onDraft = useCallback((text: string, mode: "message" | "note") => {
+    written.current = { text, mode };
+    saveDraft(conv.id, { text, mode, replyTo: replyRef.current });
+  }, [conv.id]);
+  useEffect(() => saveDraft(conv.id, { ...written.current, replyTo }), [conv.id, replyTo]);
   const [templates, setTemplates] = useState(false);
   const [assign, setAssign] = useState(false);
   const [confirmResolve, setConfirmResolve] = useState(false);
@@ -75,6 +86,14 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [flash, setFlash] = useState<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const list = useRef<HTMLDivElement>(null);
+  // Answers that come after the agent left this chat change nothing here.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const stick = useRef(true);
   const keepFrom = useRef<number | null>(null);
 
@@ -101,7 +120,6 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     let live = true;
     setLoading(true);
     setMessages([]);
-    setReplyTo(null);
     setError(null);
     setOlder(true);
     setSearching(false);
@@ -291,19 +309,31 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
     setMessages((cur) => upsert(cur, saved));
   };
 
-  // A resolved conversation closes; the list stays where it was.
+  // A resolved conversation closes; the list stays where it was. The server
+  // is told the newest message on screen: if the customer wrote after it,
+  // the chat stays open and the new message is brought in.
   const resolveNow = async () => {
+    const from = conv.id;
+    const seen = newestSeen(messages);
     setBusy("resolve");
     setError(null);
     try {
-      await waApi.resolve(conv.id);
+      await waApi.resolve(from, seen || undefined);
+      if (!alive.current) return;
       setConfirmResolve(false);
       onBack?.();
     } catch (e) {
+      if (!alive.current) return;
       setError(e instanceof ApiError ? e.message : "Çözülemedi.");
       setConfirmResolve(false);
+      if (e instanceof ApiError && e.status === 409 && seen) {
+        stick.current = true;
+        void waApi.messages(from, { after: seen }).then((page) => {
+          if (alive.current) setMessages((cur) => page.reduce(upsert, cur));
+        }).catch(() => undefined);
+      }
     } finally {
-      setBusy(null);
+      if (alive.current) setBusy(null);
     }
   };
 
@@ -322,6 +352,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const jump = async (id: number) => {
     if (!messages.some((m) => m.id === id)) {
       const page = await waApi.messages(conv.id, { around: id });
+      if (!alive.current) return;
       stick.current = false;
       setMessages(page);
       setOlder(true);
@@ -505,6 +536,8 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
             throw new Error(e instanceof ApiError ? e.message : "Öneri alınamadı.");
           }
         } : undefined}
+        draft={kept}
+        onDraft={onDraft}
         disabledReason={!canReply && !canNote ? "Bu sohbete yazma yetkin yok." : conv.contact.blocked && !canNote ? "Müşteri engellenmiş." : undefined}
       />
 
