@@ -59,3 +59,18 @@ func Validate(secret, code string) bool {
 	}
 	return valid
 }
+
+// Code returns the code an authenticator app shows for secret at the given
+// moment, with the same settings Validate checks against.
+func Code(secret string, at time.Time) (string, error) {
+	code, err := totp.GenerateCodeCustom(secret, at, totp.ValidateOpts{
+		Period:    30,
+		Skew:      1,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	})
+	if err != nil {
+		return "", fmt.Errorf("totp code could not be computed: %w", err)
+	}
+	return code, nil
+}

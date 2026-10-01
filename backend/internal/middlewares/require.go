@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -25,6 +26,26 @@ func NewRequirer(actors IActorLoader) Requirer {
 	}
 }
 
+// RequireSeen is what one permission check of a request found: the
+// permissions the route asks for (any one of them opens it) and whether the
+// user held one.
+type RequireSeen struct {
+	Perms   []enums.Permission
+	Allowed bool
+}
+
+// requireWatch is told about every permission check while it is set.
+var requireWatch atomic.Pointer[func(c *fiber.Ctx, seen RequireSeen)]
+
+// WatchRequire has fn told about every permission check Require makes,
+// until the returned function is called. The route tests use it to read
+// which permissions each route asks for straight from the running server.
+// It changes nothing about the answers.
+func WatchRequire(fn func(c *fiber.Ctx, seen RequireSeen)) (stop func()) {
+	requireWatch.Store(&fn)
+	return func() { requireWatch.Store(nil) }
+}
+
 // Require lets a request through only when the signed-in user holds at
 // least one of perms. It shows next to each route what the route needs; the
 // service behind it checks again with its finer rules. It must come after
@@ -39,10 +60,18 @@ func Require(actors IActorLoader, perms ...enums.Permission) fiber.Handler {
 		if err != nil {
 			return err
 		}
+		allowed := false
 		for _, p := range perms {
 			if actor.Can(p) {
-				return c.Next()
+				allowed = true
+				break
 			}
+		}
+		if watch := requireWatch.Load(); watch != nil {
+			(*watch)(c, RequireSeen{Perms: perms, Allowed: allowed})
+		}
+		if allowed {
+			return c.Next()
 		}
 		return errs.Forbidden("Bu işlem için yetkin yok.")
 	}
