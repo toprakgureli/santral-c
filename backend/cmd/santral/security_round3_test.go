@@ -106,6 +106,26 @@ func idsIn(t *testing.T, a answer, field string) map[uint]bool {
 	return out
 }
 
+// aboutUser reports whether an audit page holds an entry made by the user
+// or aimed at their account.
+func aboutUser(t *testing.T, a answer, id uint) bool {
+	t.Helper()
+	var page struct {
+		Items []struct {
+			ActorID    *uint  `json:"actorId"`
+			TargetType string `json:"targetType"`
+			TargetID   string `json:"targetId"`
+		} `json:"items"`
+	}
+	a.json(t, &page)
+	for _, it := range page.Items {
+		if (it.ActorID != nil && *it.ActorID == id) || (it.TargetType == "user" && it.TargetID == strconv.FormatUint(uint64(id), 10)) {
+			return true
+		}
+	}
+	return false
+}
+
 func totalOf(t *testing.T, a answer) int64 {
 	t.Helper()
 	var page struct {
@@ -159,7 +179,9 @@ func TestHiddenOwnerStaysOutOfLists(t *testing.T) {
 	}
 	looks := []look{
 		{"audit search by email", "/api/v1/audit?query=" + owner.Email, func(_ *browser, a answer) bool { return totalOf(t, a) > 0 }},
-		{"audit search by target", "/api/v1/audit?query=" + ownerID, func(_ *browser, a answer) bool { return totalOf(t, a) > 0 }},
+		// The id is a short number other tests' entries may contain too, so
+		// only an entry by or about the owner counts as seeing them.
+		{"audit search by target", "/api/v1/audit?query=" + ownerID, func(_ *browser, a answer) bool { return aboutUser(t, a, owner.ID) }},
 		{"sign-in records", "/api/v1/security/attempts?email=" + owner.Email, func(_ *browser, a answer) bool { return totalOf(t, a) > 0 }},
 		{"chat people", "/api/v1/teams/people", func(_ *browser, a answer) bool { return idsIn(t, a, "id")[owner.ID] }},
 		{"team performance", "/api/v1/performance/today", func(_ *browser, a answer) bool { return idsIn(t, a, "userId")[owner.ID] }},

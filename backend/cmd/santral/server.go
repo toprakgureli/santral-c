@@ -114,6 +114,11 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		// decide what to pass on by the path as written, so the backend
 		// must not answer a spelling they did not mean to let through.
 		CaseSensitive: true,
+		// Values read from a request (its address, headers, parameters,
+		// body) are copies, not views into a buffer the server reuses for
+		// the next request; work that outlives the request (a background
+		// job, an audit entry) can keep them safely.
+		Immutable: true,
 	}
 	serverTimeouts.apply(&fiberCfg)
 	// Behind nginx/Cloudflare, trust the configured proxies and read the real
