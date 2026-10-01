@@ -365,6 +365,9 @@ func (r *Repository) UsersByExtension(ctx context.Context) (map[string][]ExtUser
 		Table("users").
 		Select("sip_extension AS extension, id, name, avatar").
 		Where("active = TRUE AND sip_extension IS NOT NULL AND sip_extension <> ''").
+		// The list is shared by every viewer, so the owner account is
+		// always left out of it.
+		Where("id NOT IN (" + models.InvisibleAdminIDsSQL + ")").
 		Order("name").
 		Scan(&rows).Error
 	if err != nil {

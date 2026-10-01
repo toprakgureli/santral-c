@@ -11,7 +11,6 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
-	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 )
 
 // Repository is the user data store.
@@ -218,11 +217,7 @@ func (r *Repository) List(ctx context.Context, f requests.UserFilter) ([]models.
 			Where("role_id = ?", *f.RoleID))
 	}
 	if f.ExcludeInvisibleAdmin {
-		q = q.Where("id NOT IN (?)", r.db.
-			Table("user_roles").
-			Select("user_roles.user_id").
-			Joins("JOIN roles ON roles.id = user_roles.role_id").
-			Where("roles.name = ?", string(enums.RoleInvisibleAdmin)))
+		q = q.Where("id NOT IN (" + models.InvisibleAdminIDsSQL + ")")
 	}
 
 	var total int64

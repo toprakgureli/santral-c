@@ -60,7 +60,7 @@ cp -r "$src". "$dst"
 EOF
 cat > bin/npm <<'EOF'
 #!/usr/bin/env bash
-mkdir -p dist && echo "<html>$VITE_BUILD_SHA</html>" > dist/index.html
+mkdir -p dist && echo "<html>$VITE_BUILD_ID $(git rev-parse --short HEAD)</html>" > dist/index.html
 EOF
 cat > bin/fakego <<'EOF'
 #!/usr/bin/env bash

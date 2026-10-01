@@ -23,10 +23,18 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// CreateSession inserts a new session.
+// spentKept is how long a replaced refresh token is remembered: longer
+// than any session lasts, after which the token is worthless anyway.
+const spentKept = 8 * 24 * time.Hour
+
+// CreateSession inserts a new session. It also forgets replaced tokens of
+// sessions long over, so their list stays small.
 func (r *Repository) CreateSession(ctx context.Context, s *models.Session) error {
 	if err := r.db.WithContext(ctx).Omit("User").Create(s).Error; err != nil {
 		return fmt.Errorf("session could not be created: %w", err)
+	}
+	if err := r.db.WithContext(ctx).Exec("DELETE FROM session_spent_tokens WHERE spent_at < ?", time.Now().Add(-spentKept)).Error; err != nil {
+		return fmt.Errorf("old replaced tokens could not be removed: %w", err)
 	}
 	return nil
 }
@@ -44,26 +52,56 @@ func (r *Repository) SessionByHash(ctx context.Context, tokenHash string) (*mode
 	return &s, nil
 }
 
-// SessionByPreviousHash loads the session a token was replaced in, or nil.
-func (r *Repository) SessionByPreviousHash(ctx context.Context, tokenHash string) (*models.Session, error) {
+// SessionBySpentHash loads the session a token was replaced in and when it
+// was replaced, or nil when the token was never replaced. Tokens replaced
+// before every replacement was remembered are found as the previous token.
+func (r *Repository) SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, error) {
+	var spent struct {
+		SessionID uint
+		SpentAt   time.Time
+	}
+	if err := r.db.WithContext(ctx).Raw("SELECT session_id, spent_at FROM session_spent_tokens WHERE token_hash = ?", tokenHash).
+		Scan(&spent).Error; err != nil {
+		return nil, time.Time{}, fmt.Errorf("replaced token could not be looked up: %w", err)
+	}
 	var s models.Session
-	err := r.db.WithContext(ctx).Where("previous_hash = ?", tokenHash).First(&s).Error
+	q := r.db.WithContext(ctx)
+	if spent.SessionID != 0 {
+		q = q.Where("id = ?", spent.SessionID)
+	} else {
+		q = q.Where("previous_hash = ?", tokenHash)
+	}
+	err := q.First(&s).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
+		return nil, time.Time{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("session could not be fetched: %w", err)
+		return nil, time.Time{}, fmt.Errorf("session could not be fetched: %w", err)
 	}
-	return &s, nil
+	at := spent.SpentAt
+	if spent.SessionID == 0 {
+		if s.RotatedAt == nil {
+			return nil, time.Time{}, nil
+		}
+		at = *s.RotatedAt
+	}
+	return &s, at, nil
 }
 
 // RotateSession replaces a session's token, keeping the old one as the
 // previous token. It reports false when the session no longer holds
 // oldHash, because another request rotated or revoked it first. The expiry
 // does not move: a session ends a fixed time after signing in.
+//
+// The replaced token is remembered, so it is recognised if it comes back.
 func (r *Repository) RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error) {
-	res := r.db.WithContext(ctx).Exec(`UPDATE sessions SET previous_hash = token_hash, token_hash = ?, rotated_at = ?, last_used_at = ?, updated_at = ?
-		WHERE id = ? AND token_hash = ? AND revoked_at IS NULL`, newHash, at, at, at, id, oldHash)
+	res := r.db.WithContext(ctx).Exec(`WITH rotated AS (
+			UPDATE sessions SET previous_hash = token_hash, token_hash = ?, rotated_at = ?, last_used_at = ?, updated_at = ?
+			WHERE id = ? AND token_hash = ? AND revoked_at IS NULL
+			RETURNING id
+		)
+		INSERT INTO session_spent_tokens (token_hash, session_id, spent_at) SELECT ?, id, ? FROM rotated`,
+		newHash, at, at, at, id, oldHash, oldHash, at)
 	if res.Error != nil {
 		return false, fmt.Errorf("session could not be rotated: %w", res.Error)
 	}

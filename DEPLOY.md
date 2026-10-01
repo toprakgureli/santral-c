@@ -186,8 +186,9 @@ so the sidebar shows which version runs:
 ```bash
 SHA=$(sudo -u santral env HOME=/opt/santral-c git -C /opt/santral-c rev-parse --short HEAD)
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/backend && /usr/local/go/bin/go build -trimpath -ldflags '-X main.version=$SHA -X main.buildTime=$NOW' -o /opt/santral-c/santral ./cmd/santral"
-sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/frontend && npm ci && VITE_BUILD_SHA=$SHA VITE_BUILD_TIME=$NOW npm run build"
+ID=$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')
+sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/backend && /usr/local/go/bin/go build -trimpath -ldflags '-X main.version=$SHA -X main.buildTime=$NOW -X main.buildID=$ID' -o /opt/santral-c/santral ./cmd/santral"
+sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/frontend && npm ci && VITE_BUILD_ID=$ID npm run build"
 sudo -u santral /opt/santral-c/santral -check-config -config /opt/santral-c/config.yml
 sudo mkdir -p /var/www/santral-c
 sudo rsync -a --delete /opt/santral-c/frontend/dist/ /var/www/santral-c/

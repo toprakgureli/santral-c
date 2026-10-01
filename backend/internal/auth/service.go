@@ -4,16 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/security"
 	"github.com/toprakgureli/santral-c/backend/internal/setting"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/hash"
 	"github.com/toprakgureli/santral-c/backend/pkg/jwt"
@@ -67,7 +70,12 @@ type Service struct {
 	settings ISettingService
 	attempts IAttempts
 	revoker  *Revoker
+	audit    IAudit
 }
+
+// SetAudit records security events (a stolen refresh token coming back)
+// in the audit trail.
+func (s *Service) SetAudit(a IAudit) { s.audit = a }
 
 // NewService builds an auth service.
 func NewService(cfg configs.Auth, sec configs.Security, repo IRepository, user IUserService, secSvc ISecurityService, deny IDenylist, settings ISettingService, attempts IAttempts, revoker *Revoker) *Service {
@@ -247,15 +255,22 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 		return nil, errs.Internal(err)
 	}
 	// A token another tab replaced a moment ago still renews: the tabs
-	// share one cookie, and the newer token is already in it.
+	// share one cookie, and the newer token is already in it. A replaced
+	// token that comes back later was copied: whoever renewed with it and
+	// whoever holds it now cannot be told apart, so the session ends for
+	// both.
 	recent := false
 	if session == nil {
-		prev, err := s.repo.SessionByPreviousHash(ctx, tokenHash)
+		spent, at, err := s.repo.SessionBySpentHash(ctx, tokenHash)
 		if err != nil {
 			return nil, errs.Internal(err)
 		}
-		if prev != nil && prev.RotatedAt != nil && time.Since(*prev.RotatedAt) <= refreshGrace {
-			session, recent = prev, true
+		if spent != nil {
+			if time.Since(at) > refreshGrace {
+				s.reused(ctx, spent, meta)
+				return nil, errs.Unauthorized("Oturumun güvenlik için kapatıldı. Lütfen tekrar giriş yap.")
+			}
+			session, recent = spent, true
 		}
 	}
 	if session == nil || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
@@ -291,13 +306,44 @@ func (s *Service) accessOnly(u *models.User, session *models.Session) (*LoginRes
 	return &LoginResult{User: responses.NewUser(u), Token: access.Value, ExpiresAt: access.ExpiresAt, RefreshExpiresAt: session.ExpiresAt}, nil
 }
 
-// Logout revokes the refresh session and denylists the access token.
+// reused ends a session whose replaced refresh token came back after the
+// grace, and records it. A session already over is left as it is.
+func (s *Service) reused(ctx context.Context, session *models.Session, meta RequestMeta) {
+	if session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
+		return
+	}
+	if err := s.revoker.EndSession(ctx, session.UserID, session.ID, time.Now()); err != nil {
+		slog.ErrorContext(ctx, "a session whose refresh token was reused could not be ended", "session", session.ID, "error", err)
+		return
+	}
+	slog.WarnContext(ctx, "refresh token reused; session ended", "session", session.ID, "user", session.UserID, "ip", meta.IP)
+	if s.audit != nil {
+		userID := session.UserID
+		s.audit.Record(ctx, audit.Entry{
+			ActorID:    &userID,
+			Action:     enums.AuditSessionReused,
+			TargetType: "session",
+			TargetID:   strconv.FormatUint(uint64(session.ID), 10),
+			IP:         meta.IP,
+			Detail:     map[string]any{"userAgent": meta.UserAgent, "device": meta.Device},
+		})
+	}
+}
+
+// Logout revokes the refresh session and denylists the access token. The
+// session is found by a token another tab has just replaced as well.
 func (s *Service) Logout(ctx context.Context, accessToken, refreshToken string) error {
 	now := time.Now()
 	if refreshToken != "" {
-		session, err := s.repo.SessionByHash(ctx, hash.SHA256(refreshToken))
+		tokenHash := hash.SHA256(refreshToken)
+		session, err := s.repo.SessionByHash(ctx, tokenHash)
 		if err != nil {
 			return errs.Internal(err)
+		}
+		if session == nil {
+			if session, _, err = s.repo.SessionBySpentHash(ctx, tokenHash); err != nil {
+				return errs.Internal(err)
+			}
 		}
 		if session != nil {
 			if err := s.repo.RevokeSession(ctx, session.ID, now); err != nil {

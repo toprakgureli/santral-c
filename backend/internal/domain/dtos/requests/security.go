@@ -5,6 +5,8 @@ type SecurityFilter struct {
 	Email   string
 	IP      string
 	Success *bool
-	Page    int
-	PerPage int
+	// ExcludeInvisibleAdmin leaves out the owner account's attempts.
+	ExcludeInvisibleAdmin bool
+	Page                  int
+	PerPage               int
 }

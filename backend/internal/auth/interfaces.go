@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
@@ -24,7 +25,7 @@ type IUserService interface {
 type IRepository interface {
 	CreateSession(ctx context.Context, s *models.Session) error
 	SessionByHash(ctx context.Context, tokenHash string) (*models.Session, error)
-	SessionByPreviousHash(ctx context.Context, tokenHash string) (*models.Session, error)
+	SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, error)
 	RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error)
 	RevokeSession(ctx context.Context, id uint, at time.Time) error
 	RevokeUserSessions(ctx context.Context, userID uint, at time.Time) error
@@ -41,6 +42,11 @@ type ISecurityService interface {
 type IAttempts interface {
 	Hit(ctx context.Context, key string, ttl time.Duration) (int64, error)
 	Once(ctx context.Context, key string, ttl time.Duration) (bool, error)
+}
+
+// IAudit records security events.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
 }
 
 // IDenylist revokes one-time token ids.

@@ -143,7 +143,7 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 		return nil, errs.Forbidden("Ekip performansını görme yetkin yok.")
 	}
 
-	agents, err := s.repo.Agents(ctx, roleIDs)
+	agents, err := s.repo.Agents(ctx, roleIDs, actor.IsInvisibleAdmin())
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -293,7 +293,7 @@ func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay,
 	default:
 		return nil, errs.Forbidden("Ekip performansını görme yetkin yok.")
 	}
-	agents, err := s.repo.Agents(ctx, roleIDs)
+	agents, err := s.repo.Agents(ctx, roleIDs, actor.IsInvisibleAdmin())
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

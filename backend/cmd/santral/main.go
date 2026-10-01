@@ -30,11 +30,15 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
-// Build stamp, set at link time via -ldflags "-X main.version=... -X main.buildTime=...".
-// They default to "dev" so a local build is obviously not a release.
+// Build stamp, set at link time via -ldflags "-X main.version=... -X
+// main.buildTime=... -X main.buildID=...". They default to "dev" so a local
+// build is obviously not a release. buildID is a random tag the deploy gives
+// the backend and the panel alike, so the panel can tell it is out of date
+// without its code carrying the commit.
 var (
 	version   = "dev"
 	buildTime = "unknown"
+	buildID   = "dev"
 )
 
 func main() {

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -29,15 +30,42 @@ import (
 
 // fakeDrive stands in for Google: it signs the service account in (checking
 // the signed request with the account's public key), answers what the
-// account may do in the folder, and keeps what was uploaded.
+// account may do in the folder, keeps what was uploaded and the locks put
+// on files. refuseLock answers a lock with a refusal; stillWritable accepts
+// the lock but keeps the file writable for the account.
 type fakeDrive struct {
-	t          *testing.T
-	public     *rsa.PublicKey
-	sharedOK   bool
-	canDelete  bool
-	mu         sync.Mutex
-	uploaded   map[string][]byte
-	deleteSeen bool
+	t             *testing.T
+	public        *rsa.PublicKey
+	sharedOK      bool
+	canDelete     bool
+	refuseLock    bool
+	stillWritable bool
+	mu            sync.Mutex
+	uploaded      map[string][]byte
+	ids           map[string]string // file id -> name
+	locks         []lockCall
+	deleteSeen    bool
+	foreignToken  bool
+}
+
+// lockCall is one content restriction asked for.
+type lockCall struct {
+	ID       string
+	ReadOnly bool
+	Owner    bool
+	Reason   string
+}
+
+// secretRemote is part of an error answer that must never reach the panel.
+const secretRemote = "internal-detail-from-google-0451"
+
+func (f *fakeDrive) locked(id string) bool {
+	for _, l := range f.locks {
+		if l.ID == id && l.ReadOnly {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeDrive) handler() http.Handler {
@@ -51,12 +79,26 @@ func (f *fakeDrive) handler() http.Handler {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok"})
 	})
+	mux.HandleFunc("/elsewhere/token", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		f.foreignToken = true
+		f.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok"})
+	})
 	mux.HandleFunc("/files/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
 			f.deleteSeen = true
 		}
 		if r.Header.Get("Authorization") != "Bearer tok" {
 			http.Error(w, "no token", http.StatusUnauthorized)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/files/")
+		f.mu.Lock()
+		_, isFile := f.ids[id]
+		f.mu.Unlock()
+		if isFile {
+			f.file(w, r, id)
 			return
 		}
 		drive := ""
@@ -79,12 +121,55 @@ func (f *fakeDrive) handler() http.Handler {
 	})
 	mux.HandleFunc("/session/", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		name := strings.TrimPrefix(r.URL.Path, "/session/")
 		f.mu.Lock()
-		f.uploaded[strings.TrimPrefix(r.URL.Path, "/session/")] = body
+		f.uploaded[name] = body
+		id := "file-" + strconv.Itoa(len(f.ids)+1)
+		f.ids[id] = name
 		f.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]string{"id": "file-1", "size": "1"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": id, "size": strconv.Itoa(len(body))})
 	})
 	return mux
+}
+
+// file answers for an uploaded file: a lock (PATCH) and its rights (GET).
+func (f *fakeDrive) file(w http.ResponseWriter, r *http.Request, id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch r.Method {
+	case http.MethodPatch:
+		if f.refuseLock {
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+				"code": 403, "message": "The user does not have permission " + secretRemote, "status": "PERMISSION_DENIED",
+				"errors": []map[string]string{{"reason": "insufficientFilePermissions", "message": secretRemote}},
+			}})
+			return
+		}
+		var in struct {
+			ContentRestrictions []struct {
+				ReadOnly        bool   `json:"readOnly"`
+				OwnerRestricted bool   `json:"ownerRestricted"`
+				Reason          string `json:"reason"`
+			} `json:"contentRestrictions"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		for _, c := range in.ContentRestrictions {
+			f.locks = append(f.locks, lockCall{ID: id, ReadOnly: c.ReadOnly, Owner: c.OwnerRestricted, Reason: c.Reason})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+	case http.MethodGet:
+		restrictions := []map[string]bool{}
+		if f.locked(id) {
+			restrictions = append(restrictions, map[string]bool{"readOnly": true})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"capabilities":        map[string]bool{"canModifyContent": !f.locked(id) || f.stillWritable},
+			"contentRestrictions": restrictions,
+		})
+	default:
+		http.Error(w, "unexpected", http.StatusMethodNotAllowed)
+	}
 }
 
 type allowAll struct{ id uint }
@@ -110,11 +195,12 @@ func setup(t *testing.T, f *fakeDrive) (*Service, string) {
 	}
 	f.public = &key.PublicKey
 	f.uploaded = map[string][]byte{}
+	f.ids = map[string]string{}
 	srv := httptest.NewServer(f.handler())
 	t.Cleanup(srv.Close)
-	oldFiles, oldUpload := driveFilesURL, driveUploadURL
-	driveFilesURL, driveUploadURL = srv.URL+"/files", srv.URL+"/upload"
-	t.Cleanup(func() { driveFilesURL, driveUploadURL = oldFiles, oldUpload })
+	oldToken, oldFiles, oldUpload := tokenURL, driveFilesURL, driveUploadURL
+	tokenURL, driveFilesURL, driveUploadURL = srv.URL+"/token", srv.URL+"/files", srv.URL+"/upload"
+	t.Cleanup(func() { tokenURL, driveFilesURL, driveUploadURL = oldToken, oldFiles, oldUpload })
 
 	oldDump := dumpDatabase
 	dumpDatabase = func(context.Context, configs.Database) (string, string, error) {
@@ -125,7 +211,8 @@ func setup(t *testing.T, f *fakeDrive) (*Service, string) {
 	t.Cleanup(func() { dumpDatabase = oldDump })
 
 	pemKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	sa, _ := json.Marshal(map[string]string{"type": "service_account", "client_email": "yedek@proje.iam.gserviceaccount.com", "private_key": string(pemKey), "token_uri": srv.URL + "/token"})
+	// The key file names another token address; it must not be used.
+	sa, _ := json.Marshal(map[string]string{"type": "service_account", "client_email": "yedek@proje.iam.gserviceaccount.com", "private_key": string(pemKey), "token_uri": srv.URL + "/elsewhere/token"})
 	ring, err := crypt.NewKeyring(strings.Repeat("cd", 32))
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +285,30 @@ func TestBackupUploadsWithAContributor(t *testing.T) {
 	if f.deleteSeen {
 		t.Fatal("the backup asked Drive to delete something")
 	}
+	if f.foreignToken {
+		t.Fatal("the token address inside the key file was used")
+	}
+	if check.CanLock == nil || !*check.CanLock {
+		t.Fatalf("check did not lock its test file: %+v", check)
+	}
+	// The check's own file and the backup are both locked for good.
+	var backupID string
+	for id, name := range f.ids {
+		if name == r.File {
+			backupID = id
+		}
+	}
+	if len(f.ids) != 2 || len(f.locks) != 2 {
+		t.Fatalf("files %v, locks %+v; want the test file and the backup, both locked", f.ids, f.locks)
+	}
+	for _, l := range f.locks {
+		if !l.ReadOnly || !l.Owner || l.Reason == "" {
+			t.Fatalf("lock %+v is not read-only for everyone but an organizer", l)
+		}
+	}
+	if !f.locked(backupID) {
+		t.Fatalf("the backup %s was not locked: %+v", backupID, f.locks)
+	}
 	// Not due again for six hours.
 	before := len(f.uploaded)
 	s.dueRun(ctx)
@@ -252,5 +363,67 @@ func TestRealDump(t *testing.T) {
 	defer func() { _ = file.Close() }()
 	if _, err := io.ReadFull(file, head); err != nil || string(head) != "PGDMP" {
 		t.Fatalf("not a custom-format dump: %q %v", head, err)
+	}
+}
+
+// TestBackupFailsWhenItCannotBeLocked: Drive refuses the lock. The copy is
+// reported as failed with a plain reason, Google's own words stay out, and
+// the panel's check says the account cannot lock.
+func TestBackupFailsWhenItCannotBeLocked(t *testing.T) {
+	f := &fakeDrive{t: t, sharedOK: true, refuseLock: true}
+	s, sa := setup(t, f)
+	ctx := context.Background()
+	if _, err := s.Save(ctx, 1, Input{Enabled: true, FolderID: "abc123", Credentials: sa}, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.run(ctx, nil)
+	r := lastRun(t, s.db)
+	if r.OK || !strings.Contains(r.Error, "kilitlenemedi") {
+		t.Fatalf("run = %+v, want failed for the lock", r)
+	}
+	if strings.Contains(r.Error, secretRemote) || !strings.Contains(r.Error, "insufficientFilePermissions") {
+		t.Fatalf("error %q should give Google's code and nothing else of its answer", r.Error)
+	}
+	check, err := s.Check(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if check.CanLock == nil || *check.CanLock || !strings.Contains(check.Problem(), "kilitleyemiyor") {
+		t.Fatalf("check = %+v, problem %q; want cannot lock", check, check.Problem())
+	}
+	if strings.Contains(check.Problem(), secretRemote) {
+		t.Fatalf("problem %q repeats Google's answer", check.Problem())
+	}
+	if f.deleteSeen {
+		t.Fatal("a file was deleted")
+	}
+}
+
+// TestBackupFailsWhenTheLockDoesNotHold: Drive takes the lock but the
+// account can still change the file, so the copy is not counted as safe.
+func TestBackupFailsWhenTheLockDoesNotHold(t *testing.T) {
+	f := &fakeDrive{t: t, sharedOK: true, stillWritable: true}
+	s, sa := setup(t, f)
+	ctx := context.Background()
+	if _, err := s.Save(ctx, 1, Input{Enabled: true, FolderID: "abc123", Credentials: sa}, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.run(ctx, nil)
+	if r := lastRun(t, s.db); r.OK || !strings.Contains(r.Error, "hâlâ değiştirebiliyor") {
+		t.Fatalf("run = %+v, want failed because the file stays writable", r)
+	}
+}
+
+func TestRemoteCodeKeepsOnlyTheCode(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"error":"invalid_grant","error_description":"Invalid JWT: secret detail"}`:              "invalid_grant",
+		`{"error":{"code":404,"message":"File not found: x","status":"NOT_FOUND"}}`:               "NOT_FOUND",
+		`{"error":{"errors":[{"reason":"notFound<script>","message":"x"}],"status":"NOT_FOUND"}}`: "notFoundscript",
+		`<html>proxy error</html>`:                     "",
+		`{"error":"` + strings.Repeat("a", 200) + `"}`: strings.Repeat("a", 60),
+	} {
+		if got := remoteCode([]byte(body)); got != want {
+			t.Errorf("remoteCode(%s) = %q, want %q", body, got, want)
+		}
 	}
 }

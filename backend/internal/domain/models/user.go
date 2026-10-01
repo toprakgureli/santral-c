@@ -88,6 +88,12 @@ func (u *User) CanManage(target *User) bool {
 	return true
 }
 
+// InvisibleAdminIDsSQL selects the ids of the users holding the
+// invisible-admin role. Lists use it to leave the owner account out for
+// everyone but another invisible admin.
+var InvisibleAdminIDsSQL = "SELECT user_roles.user_id FROM user_roles JOIN roles ON roles.id = user_roles.role_id WHERE roles.name = '" +
+	string(enums.RoleInvisibleAdmin) + "'"
+
 // IsInvisibleAdmin reports whether the user carries the invisible-admin role.
 func (u *User) IsInvisibleAdmin() bool {
 	for _, r := range u.Roles {

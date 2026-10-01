@@ -23,10 +23,13 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Agents lists active users that have an extension, with their roles. When
 // roleIDs is non-empty only users holding at least one of those roles are
-// returned.
-func (r *Repository) Agents(ctx context.Context, roleIDs []uint) ([]models.User, error) {
+// returned. withOwner keeps the invisible admins in the list.
+func (r *Repository) Agents(ctx context.Context, roleIDs []uint, withOwner bool) ([]models.User, error) {
 	q := r.db.WithContext(ctx).Preload("Roles").
 		Where("users.active = ? AND users.sip_extension IS NOT NULL AND users.sip_extension <> ''", true)
+	if !withOwner {
+		q = q.Where("users.id NOT IN (" + models.InvisibleAdminIDsSQL + ")")
+	}
 	if len(roleIDs) > 0 {
 		q = q.Where("users.id IN (?)", r.db.Table("user_roles").Select("user_id").Where("role_id IN ?", roleIDs))
 	}

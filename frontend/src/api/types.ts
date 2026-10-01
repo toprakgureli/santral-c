@@ -248,7 +248,9 @@ export interface ProfileRecord {
 export interface Profile {
   id: number;
   name: string;
-  email: string;
+  // email, stats and the record come only to a viewer who may see this
+  // person's figures (their own, or with a team performance permission).
+  email?: string;
   headline: string;
   bio: string;
   hasAvatar: boolean;
@@ -257,7 +259,8 @@ export interface Profile {
   extension?: string;
   active: boolean;
   joinedAt: string;
-  stats: ProfileStats;
+  stats?: ProfileStats;
+  canSeeRecord: boolean;
   editable: boolean;
 }
 
