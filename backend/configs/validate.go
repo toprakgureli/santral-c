@@ -50,6 +50,7 @@ func ApplyDefaults(c *Config) {
 	setInt(&c.Security.DistinctIPLimit, 5)
 	setDur(&c.Security.AttemptWindow, 15*time.Minute)
 	setInt(&c.Security.DeviceFailureLimit, 5)
+	setInt(&c.Database.MaxConns, 40)
 	if c.App.Port == "" {
 		c.App.Port = "8090"
 	}
@@ -74,6 +75,10 @@ func Check(c Config) []Problem {
 		case len(v) < min:
 			add(key, fmt.Sprintf("en az %d karakter olmalı", min), true)
 		}
+	}
+
+	if c.Database.MaxConns > 80 {
+		add("database.maxConns", fmt.Sprintf("%d, PostgreSQL'in bağlantı sınırına (varsayılan 100) çok yakın; yedek ve deploy sırasında bağlantı bulamayan istekler hata verir. 40 civarı yeterli", c.Database.MaxConns), false)
 	}
 
 	secret("auth.secret", c.Auth.Secret, 32)

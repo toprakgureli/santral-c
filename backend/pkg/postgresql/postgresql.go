@@ -2,6 +2,7 @@
 package postgresql
 
 import (
+	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -40,10 +41,7 @@ func Connect(c configs.Database) error {
 			err = fmt.Errorf("database handle could not be retrieved: %w", handleErr)
 			return
 		}
-		sqlDB.SetMaxIdleConns(10)
-		sqlDB.SetMaxOpenConns(100)
-		sqlDB.SetConnMaxLifetime(5 * time.Minute)
-		sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+		Pool(sqlDB, c.MaxConns)
 		if pingErr := sqlDB.Ping(); pingErr != nil {
 			err = fmt.Errorf("database could not be pinged: %w", pingErr)
 			return
@@ -51,6 +49,21 @@ func Connect(c configs.Database) error {
 		db = conn
 	})
 	return err
+}
+
+// defaultMaxConns is used when the configuration names no limit.
+const defaultMaxConns = 40
+
+// Pool sets how many connections the server keeps and opens at most. A
+// request that finds every connection busy waits for one to come free.
+func Pool(sqlDB *sql.DB, maxConns int) {
+	if maxConns <= 0 {
+		maxConns = defaultMaxConns
+	}
+	sqlDB.SetMaxOpenConns(maxConns)
+	sqlDB.SetMaxIdleConns(min(10, maxConns))
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
 }
 
 // Get returns the shared database handle.

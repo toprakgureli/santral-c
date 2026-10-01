@@ -91,6 +91,11 @@ type Database struct {
 	SSLMode  SSLMode `mapstructure:"sslMode"`
 	TimeZone string  `mapstructure:"timeZone"`
 	Debug    bool    `mapstructure:"debug"`
+	// MaxConns is the most connections the server opens to PostgreSQL at
+	// once. Requests beyond it wait a moment for a free one instead of
+	// failing. Keep it well under PostgreSQL's max_connections (100 by
+	// default), which backups, deploys and admin sessions share.
+	MaxConns int `mapstructure:"maxConns"`
 }
 
 // Redis holds Redis connection settings.

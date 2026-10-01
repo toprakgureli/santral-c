@@ -48,6 +48,10 @@ database:
   sslMode: disable
   timeZone: Europe/Istanbul
   debug: false
+  # Most connections the server opens to PostgreSQL at once; extra requests
+  # wait a moment for a free one. Keep it well under PostgreSQL's limit
+  # (max_connections, 100 by default), which backups and deploys share.
+  maxConns: 40
 
 redis:
   host: localhost

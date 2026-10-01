@@ -552,13 +552,15 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 		before := b.cookies()
 		var wg sync.WaitGroup
 		codes := make([]int, 2)
+		bodies := make([]string, 2)
 		for k := range 2 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				tab := newBrowser(t, srv.app, stats, b.user)
 				tab.jar = copyJar(before)
-				codes[k] = tab.do(fiber.MethodPost, "/api/v1/auth/refresh", nil).status
+				r := tab.do(fiber.MethodPost, "/api/v1/auth/refresh", nil)
+				codes[k], bodies[k] = r.status, string(r.body)
 				if k == 0 {
 					b.mu.Lock()
 					b.jar = tab.cookies()
@@ -569,7 +571,7 @@ func TestLoadOfficeSignsIn(t *testing.T) {
 		wg.Wait()
 		for _, c := range codes {
 			if c != fiber.StatusOK {
-				t.Errorf("%s: renewing from two tabs answered %v", b.user.Email, codes)
+				t.Errorf("%s: renewing from two tabs answered %v %q", b.user.Email, codes, bodies)
 				break
 			}
 		}
@@ -1073,4 +1075,33 @@ func TestPermissionMatrix(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRenewFromTwoTabs: a hundred people each have two tabs that renew the
+// same session at the same moment. Both tabs must stay signed in.
+func TestRenewFromTwoTabs(t *testing.T) {
+	srv, db := testServer(t, officeSecurity)
+	people := seedPeople(t, db, 100, enums.RoleSalesTeam, false)
+	browsers := make([]*browser, len(people))
+	together(len(people), func(i int) {
+		browsers[i] = newBrowser(t, srv.app, nil, people[i])
+		if r := browsers[i].login(loadPassword); r.status != fiber.StatusOK {
+			t.Errorf("%s: sign in answered %d %s", people[i].Email, r.status, r.body)
+		}
+	})
+	if t.Failed() {
+		t.FailNow()
+	}
+	together(len(browsers)*2, func(i int) {
+		b := browsers[i/2]
+		tab := newBrowser(t, srv.app, nil, b.user)
+		tab.jar = b.cookies()
+		if r := tab.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); r.status != fiber.StatusOK {
+			t.Errorf("%s tab %d: renewing answered %d %s", b.user.Email, i%2, r.status, r.body)
+			return
+		}
+		if r := tab.do(fiber.MethodGet, "/api/v1/auth/me", nil); r.status != fiber.StatusOK {
+			t.Errorf("%s tab %d: after renewing, me answered %d %s", b.user.Email, i%2, r.status, r.body)
+		}
+	})
 }

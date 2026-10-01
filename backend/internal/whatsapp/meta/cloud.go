@@ -20,7 +20,9 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/telemetry"
 )
 
-const graphBase = "https://graph.facebook.com"
+// GraphBase is where Graph API calls go. Tests point it at a stand-in
+// server on the loopback; nothing else changes it.
+var GraphBase = "https://graph.facebook.com"
 
 // DefaultGraphVersion is used only when a device has no version entered.
 const DefaultGraphVersion = "v23.0"
@@ -58,7 +60,7 @@ func (c *Client) base() string {
 	if v == "" {
 		v = DefaultGraphVersion
 	}
-	return graphBase + "/" + v
+	return GraphBase + "/" + v
 }
 
 func (c *Client) client() *http.Client {

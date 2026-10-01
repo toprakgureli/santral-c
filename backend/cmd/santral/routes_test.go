@@ -24,6 +24,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/hash"
+	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
 	"github.com/toprakgureli/santral-c/backend/pkg/redis"
 )
 
@@ -60,6 +61,13 @@ func TestMain(m *testing.M) {
 func testServer(t *testing.T, opts ...func(*configs.Config)) (*server, *gorm.DB) {
 	t.Helper()
 	db := testdb.Open(t)
+	// The same connection limit as a live server, so a burst queues for
+	// connections the way it does there.
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	postgresql.Pool(sqlDB, 40)
 	addr := os.Getenv(envRedis)
 	if addr == "" {
 		t.Skipf("%s is not set; skipping a test that needs Redis", envRedis)
