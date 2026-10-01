@@ -226,6 +226,10 @@ streams, lets open requests finish, then waits for background work.
 
 ## 6. nginx
 
+The site file serves HTTPS with the Cloudflare Origin Certificate, so put
+the certificate in place first (section 7, steps 1 and 2); without it
+`nginx -t` fails and nothing changes.
+
 ```bash
 sudo cp /opt/santral-c/deploy/nginx/cm.toprakgureli.com.conf /etc/nginx/sites-available/cm.toprakgureli.com
 sudo ln -s /etc/nginx/sites-available/cm.toprakgureli.com /etc/nginx/sites-enabled/
@@ -237,12 +241,17 @@ What the site file does:
 
 - restores the visitor's real IP from Cloudflare, so bans, sign-in limits
   and the audit trail see the right address;
-- limits the WhatsApp webhook and survey addresses to 10 requests a second
-  per address (bursts of 100) and 1 MB bodies;
+- answers on 443 with the Origin Certificate and on 80, so Cloudflare can be
+  switched to Full (strict) without a gap;
+- limits the WhatsApp webhook and survey addresses to 50 requests a second
+  per address (bursts of 300) and 1 MB bodies;
 - lets `/api/v1/wa/` take 110 MB bodies with no buffering and long timeouts,
   for media and streamed exports, and does the same for chat attachments;
 - forwards `/healthz` for the uptime monitor and never forwards `/metrics`;
-- never caches `index.html`, caches hashed assets for a year.
+- never caches `index.html`, caches hashed assets for a year;
+- sends the security headers with every answer, the panel page included:
+  no file-type guessing, no showing the panel inside another site, HTTPS
+  only for browsers.
 
 Always run `sudo nginx -t` before a reload: a broken file keeps the old
 configuration running, a reload without the test can take the site down.
@@ -260,10 +269,8 @@ configuration running, a reload without the test can take the site down.
      sudo nano /etc/ssl/cloudflare/cm.toprakgureli.com.key
      sudo chmod 600 /etc/ssl/cloudflare/cm.toprakgureli.com.key
      ```
-  3. In the nginx site, change the two `listen 80` lines of the main server
-     block to `listen 443 ssl http2;` and `listen [::]:443 ssl http2;`, add
-     the two `ssl_certificate` lines shown at the bottom of the file, and
-     add the small port 80 redirect block shown there.
+  3. Install the site file (section 6). It already listens on 443 with these
+     two files and still answers on 80.
   4. `sudo nginx -t`, reload, then switch Cloudflare to Full (strict).
 - SSL/TLS > Edge Certificates: turn on **Always Use HTTPS**.
 
@@ -565,8 +572,8 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-If you run the site over 443 (section 7), carry your `listen` and
-`ssl_certificate` lines over to the new copy before testing it.
+The file already carries the HTTPS lines, so a copy installs over the old
+one as it is; `nginx -t` refuses it while the certificate is missing.
 
 `deploy/test/deploy_test.sh` runs the script against a stand-in server
 (a good release, one that does not come up, a config that fails the check,

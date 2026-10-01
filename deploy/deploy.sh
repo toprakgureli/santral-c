@@ -139,6 +139,9 @@ if ! run_as_app git -C "$APP_DIR" diff --quiet "$PREV_SHA" "$GIT_SHA" -- deploy/
   echo "!!! deploy/nginx changed in this update. Install the site file again and test it:" >&2
   echo "    sudo cp $APP_DIR/deploy/nginx/cm.toprakgureli.com.conf /etc/nginx/sites-available/cm.toprakgureli.com" >&2
   echo "    sudo nginx -t && sudo systemctl reload nginx" >&2
+  echo "    The file serves HTTPS with the Cloudflare Origin Certificate in /etc/ssl/cloudflare/." >&2
+  echo "    If those files are missing, nginx -t fails, nothing is reloaded and the old file keeps" >&2
+  echo "    running; install the certificate first (DEPLOY.md, section 7)." >&2
 fi
 if ! run_as_app git -C "$APP_DIR" diff --quiet "$PREV_SHA" "$GIT_SHA" -- deploy/observability; then
   echo "!!! deploy/observability changed; restart the monitoring stack:" >&2
