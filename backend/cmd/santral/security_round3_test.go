@@ -364,11 +364,14 @@ func TestRefreshCookieStaysOnTheAuthPath(t *testing.T) {
 // back after the grace ends the session for whoever holds either token,
 // and is written in the audit trail. Inside the grace it still renews.
 func TestReusedRefreshTokenEndsTheSession(t *testing.T) {
-	srv, db := testServer(t)
+	srv, db := testServer(t, officeSecurity)
 	u := person(t, db, "Çalınan", false, systemRole(t, db, enums.RoleSalesTeam))
 	victim := signInAs(t, srv, u)
+	// The thief copied every cookie, the browser's id too, and uses them
+	// from another network.
 	thief := newBrowser(t, srv.app, nil, u)
 	thief.jar = victim.cookies()
+	thief.ip = "198.51.100.66"
 	old := victim.cookies()["sc_refresh"].Value
 
 	// The thief renews first; the victim's tab, a moment later, still works.
@@ -488,4 +491,46 @@ func TestEscalationSearchNeedsAWholeNumber(t *testing.T) {
 	if a := b.do(fiber.MethodGet, "/api/v1/escalations/list", nil); idsIn(t, a, "agentId")[writer.ID] {
 		t.Errorf("the own-records list shows someone else's: %s", a.body)
 	}
+}
+
+// TestLostRenewalAnswerKeepsTheSession: the server replaces the token but
+// its answer never reaches the browser, which keeps the old token. When
+// that browser comes back with it later, from the same address, it gets a
+// new token and stays signed in; the old token from another network still
+// ends the session.
+func TestLostRenewalAnswerKeepsTheSession(t *testing.T) {
+	srv, db := testServer(t, officeSecurity)
+	u := person(t, db, "Kopan bağlantı", false, systemRole(t, db, enums.RoleSalesTeam))
+	b := signInAs(t, srv, u)
+	before := b.cookies()
+	old := before["sc_refresh"].Value
+	if a := b.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); a.status != fiber.StatusOK {
+		t.Fatalf("renewing answered %d", a.status)
+	}
+	// The answer is lost: the browser still holds the old token.
+	b.jar = copyJar(before)
+	db.Exec("UPDATE session_spent_tokens SET spent_at = spent_at - interval '20 minutes' WHERE token_hash = ?", hash.SHA256(old))
+	if a := b.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); a.status != fiber.StatusOK {
+		t.Fatalf("the same browser with the token whose answer was lost answered %d %s", a.status, a.body)
+	}
+	if c := b.cookies()["sc_refresh"]; c == nil || c.Value == old {
+		t.Fatal("no fresh refresh token was handed out")
+	}
+	if a := b.do(fiber.MethodGet, "/api/v1/auth/me", nil); a.status != fiber.StatusOK {
+		t.Fatalf("after recovering, me answered %d", a.status)
+	}
+	var revoked int64
+	db.Raw("SELECT count(*) FROM sessions WHERE user_id = ? AND revoked_at IS NOT NULL", u.ID).Scan(&revoked)
+	if revoked != 0 {
+		t.Fatalf("%d sessions ended for a lost answer, want 0", revoked)
+	}
+	// The same old token from another network is a copy.
+	other := newBrowser(t, srv.app, nil, u)
+	other.jar = copyJar(before)
+	other.ip = "198.51.100.67"
+	time.Sleep(1100 * time.Millisecond)
+	if a := other.do(fiber.MethodPost, "/api/v1/auth/refresh", nil); a.status != fiber.StatusUnauthorized {
+		t.Fatalf("the old token from another network answered %d, want 401", a.status)
+	}
+	db.Exec("DELETE FROM audit_log WHERE actor_id = ?", u.ID)
 }

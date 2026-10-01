@@ -254,23 +254,29 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	// A token another tab replaced a moment ago still renews: the tabs
-	// share one cookie, and the newer token is already in it. A replaced
-	// token that comes back later was copied: whoever renewed with it and
-	// whoever holds it now cannot be told apart, so the session ends for
-	// both.
-	recent := false
+	// A replaced token can come back three ways:
+	//   - from the browser that handed it in, on the same address: the
+	//     answer carrying its new token was lost (a dropped connection, a
+	//     reload at that moment), or two of its tabs renewed together. It
+	//     gets a fresh token.
+	//   - from elsewhere within a moment: renewed, but without a new token,
+	//     as the tabs of one browser share their cookie.
+	//   - from elsewhere later: it was copied. Whoever renewed with it and
+	//     whoever holds it now cannot be told apart, so the session ends
+	//     for both.
+	recent, renew := false, false
 	if session == nil {
-		spent, at, err := s.repo.SessionBySpentHash(ctx, tokenHash)
+		spent, at, by, err := s.repo.SessionBySpentHash(ctx, tokenHash)
 		if err != nil {
 			return nil, errs.Internal(err)
 		}
 		if spent != nil {
-			if time.Since(at) > refreshGrace {
+			sameBrowser := by.Device != "" && by.Device == meta.Device && by.IP == meta.IP
+			if !sameBrowser && time.Since(at) > refreshGrace {
 				s.reused(ctx, spent, meta)
 				return nil, errs.Unauthorized("Oturumun güvenlik için kapatıldı. Lütfen tekrar giriş yap.")
 			}
-			session, recent = spent, true
+			session, recent, renew = spent, true, sameBrowser
 		}
 	}
 	if session == nil || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
@@ -283,7 +289,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string, meta Request
 	if !u.Active {
 		return nil, errs.Forbidden("Hesabın pasif durumda.")
 	}
-	if recent {
+	if recent && !renew {
 		return s.accessOnly(u, session)
 	}
 	return s.issue(ctx, u, meta, session)
@@ -341,7 +347,7 @@ func (s *Service) Logout(ctx context.Context, accessToken, refreshToken string) 
 			return errs.Internal(err)
 		}
 		if session == nil {
-			if session, _, err = s.repo.SessionBySpentHash(ctx, tokenHash); err != nil {
+			if session, _, _, err = s.repo.SessionBySpentHash(ctx, tokenHash); err != nil {
 				return errs.Internal(err)
 			}
 		}
@@ -393,7 +399,7 @@ func (s *Service) issue(ctx context.Context, u *models.User, meta RequestMeta, e
 	tokenHash := hash.SHA256(refresh)
 
 	if existing != nil {
-		ok, err := s.repo.RotateSession(ctx, existing.ID, existing.TokenHash, tokenHash, now)
+		ok, err := s.repo.RotateSession(ctx, existing.ID, existing.TokenHash, tokenHash, SpentBy{Device: meta.Device, IP: meta.IP}, now)
 		if err != nil {
 			return nil, errs.Internal(err)
 		}

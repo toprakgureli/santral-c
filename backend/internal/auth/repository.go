@@ -52,17 +52,26 @@ func (r *Repository) SessionByHash(ctx context.Context, tokenHash string) (*mode
 	return &s, nil
 }
 
-// SessionBySpentHash loads the session a token was replaced in and when it
-// was replaced, or nil when the token was never replaced. Tokens replaced
-// before every replacement was remembered are found as the previous token.
-func (r *Repository) SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, error) {
+// SpentBy is the browser and address that handed in a replaced token.
+type SpentBy struct {
+	Device string
+	IP     string
+}
+
+// SessionBySpentHash loads the session a token was replaced in, when it
+// was replaced and by whom, or nil when the token was never replaced.
+// Tokens replaced before every replacement was remembered are found as the
+// previous token.
+func (r *Repository) SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, SpentBy, error) {
 	var spent struct {
 		SessionID uint
 		SpentAt   time.Time
+		Device    string
+		IP        string
 	}
-	if err := r.db.WithContext(ctx).Raw("SELECT session_id, spent_at FROM session_spent_tokens WHERE token_hash = ?", tokenHash).
+	if err := r.db.WithContext(ctx).Raw("SELECT session_id, spent_at, device, ip FROM session_spent_tokens WHERE token_hash = ?", tokenHash).
 		Scan(&spent).Error; err != nil {
-		return nil, time.Time{}, fmt.Errorf("replaced token could not be looked up: %w", err)
+		return nil, time.Time{}, SpentBy{}, fmt.Errorf("replaced token could not be looked up: %w", err)
 	}
 	var s models.Session
 	q := r.db.WithContext(ctx)
@@ -73,19 +82,19 @@ func (r *Repository) SessionBySpentHash(ctx context.Context, tokenHash string) (
 	}
 	err := q.First(&s).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, time.Time{}, nil
+		return nil, time.Time{}, SpentBy{}, nil
 	}
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("session could not be fetched: %w", err)
+		return nil, time.Time{}, SpentBy{}, fmt.Errorf("session could not be fetched: %w", err)
 	}
 	at := spent.SpentAt
 	if spent.SessionID == 0 {
 		if s.RotatedAt == nil {
-			return nil, time.Time{}, nil
+			return nil, time.Time{}, SpentBy{}, nil
 		}
 		at = *s.RotatedAt
 	}
-	return &s, at, nil
+	return &s, at, SpentBy{Device: spent.Device, IP: spent.IP}, nil
 }
 
 // RotateSession replaces a session's token, keeping the old one as the
@@ -94,14 +103,14 @@ func (r *Repository) SessionBySpentHash(ctx context.Context, tokenHash string) (
 // does not move: a session ends a fixed time after signing in.
 //
 // The replaced token is remembered, so it is recognised if it comes back.
-func (r *Repository) RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error) {
+func (r *Repository) RotateSession(ctx context.Context, id uint, oldHash, newHash string, by SpentBy, at time.Time) (bool, error) {
 	res := r.db.WithContext(ctx).Exec(`WITH rotated AS (
 			UPDATE sessions SET previous_hash = token_hash, token_hash = ?, rotated_at = ?, last_used_at = ?, updated_at = ?
 			WHERE id = ? AND token_hash = ? AND revoked_at IS NULL
 			RETURNING id
 		)
-		INSERT INTO session_spent_tokens (token_hash, session_id, spent_at) SELECT ?, id, ? FROM rotated`,
-		newHash, at, at, at, id, oldHash, oldHash, at)
+		INSERT INTO session_spent_tokens (token_hash, session_id, spent_at, device, ip) SELECT ?, id, ?, ?, ? FROM rotated`,
+		newHash, at, at, at, id, oldHash, oldHash, at, by.Device, by.IP)
 	if res.Error != nil {
 		return false, fmt.Errorf("session could not be rotated: %w", res.Error)
 	}

@@ -25,8 +25,8 @@ type IUserService interface {
 type IRepository interface {
 	CreateSession(ctx context.Context, s *models.Session) error
 	SessionByHash(ctx context.Context, tokenHash string) (*models.Session, error)
-	SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, error)
-	RotateSession(ctx context.Context, id uint, oldHash, newHash string, at time.Time) (bool, error)
+	SessionBySpentHash(ctx context.Context, tokenHash string) (*models.Session, time.Time, SpentBy, error)
+	RotateSession(ctx context.Context, id uint, oldHash, newHash string, by SpentBy, at time.Time) (bool, error)
 	RevokeSession(ctx context.Context, id uint, at time.Time) error
 	RevokeUserSessions(ctx context.Context, userID uint, at time.Time) error
 }
