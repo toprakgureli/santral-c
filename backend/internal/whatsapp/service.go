@@ -176,6 +176,24 @@ func (v *viewer) seesTicket(t *models.WATicket, participants map[uint]bool) bool
 	return false
 }
 
+// devices is the devices the person sees, for narrowing reports and lists
+// that are not about one ticket.
+func (v *viewer) devices() store.Devices {
+	if !v.can(enums.WAView) {
+		return store.Devices{}
+	}
+	if v.can(enums.WAViewAll) {
+		return store.Devices{All: true}
+	}
+	ids := make([]uint, 0, len(v.channels))
+	for id, ok := range v.channels {
+		if ok {
+			ids = append(ids, id)
+		}
+	}
+	return store.Devices{IDs: ids}
+}
+
 // reach is seesTicket for the database: which tickets the viewer sees,
 // for narrowing a query before its LIMIT, so a person with a narrow view
 // still gets a full page of what they may see.

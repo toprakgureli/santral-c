@@ -53,12 +53,14 @@ func (r *Repository) Update(ctx context.Context, id uint, fields map[string]any)
 	return nil
 }
 
-// HooksPending lists ended calls still waiting for the phone system's record,
-// oldest first.
+// HooksPending lists ended calls still waiting for the phone system's record
+// whose next look is due: calls not looked for yet first, then those
+// missed the fewest times, the longest due first. A backlog of calls the
+// records never show cannot hold up a call that just ended.
 func (r *Repository) HooksPending(ctx context.Context, limit int) ([]models.CallLog, error) {
 	var out []models.CallLog
-	if err := r.db.WithContext(ctx).Where("hooks_done = false AND ended_at IS NOT NULL").
-		Order("ended_at").Limit(limit).Find(&out).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("hooks_done = false AND ended_at IS NOT NULL AND (hooks_next_at IS NULL OR hooks_next_at <= now())").
+		Order("hooks_tries, hooks_next_at NULLS FIRST, ended_at").Limit(limit).Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("pending call logs could not be listed: %w", err)
 	}
 	return out, nil

@@ -69,7 +69,9 @@ export const waApi = {
   greet: (id: number) => request<void>(`/wa/conversations/${id}/greet`, json("POST")),
   take: (id: number) => request<void>(`/wa/conversations/${id}/take`, json("POST")),
   assign: (id: number, body: { userId?: number; teamId?: number; note?: string }) => request<void>(`/wa/conversations/${id}/assign`, json("POST", body)),
-  resolve: (id: number) => request<void>(`/wa/conversations/${id}/resolve`, json("POST")),
+  // seenMessageId is the newest message on the agent's screen: a customer
+  // message after it keeps the chat open (409).
+  resolve: (id: number, seenMessageId?: number) => request<void>(`/wa/conversations/${id}/resolve`, json("POST", seenMessageId ? { seenMessageId } : undefined)),
   reopen: (id: number) => request<void>(`/wa/conversations/${id}/reopen`, json("POST")),
   updateTicket: (id: number, body: { status?: string; priority?: string; category?: string; tags?: string[] }) => request<void>(`/wa/conversations/${id}/ticket`, json("PATCH", body)),
   retry: (messageId: number) => request<void>(`/wa/messages/${messageId}/retry`, json("POST")),

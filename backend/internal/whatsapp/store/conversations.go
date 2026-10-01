@@ -91,20 +91,36 @@ func RecordInbound(tx *gorm.DB, conversationID uint, inboundAt time.Time, messag
 
 // ---------------------------------------------------------------- reading
 
-// RecordRead stores how far a person read a conversation; it never moves back.
+// ReadableMessageID is the newest message of a conversation at or before
+// a message id, or zero. A read mark is moved only to a message of the
+// conversation itself, never past its newest one.
+func (r *Repository) ReadableMessageID(ctx context.Context, conversationID, messageID uint) (uint, error) {
+	var id uint
+	err := r.db.WithContext(ctx).Raw("SELECT COALESCE(max(id), 0) FROM wa_messages WHERE conversation_id = ? AND id <= ?", conversationID, messageID).Scan(&id).Error
+	return id, err
+}
+
+// RecordRead stores how far a person read a conversation; it never moves
+// back, except from a mark past the conversation's newest message.
 func (r *Repository) RecordRead(ctx context.Context, conversationID, userID, messageID uint) error {
 	return r.db.WithContext(ctx).Exec(`INSERT INTO wa_reads (conversation_id, user_id, message_id, read_at) VALUES (?, ?, ?, now())
-		ON CONFLICT (conversation_id, user_id) DO UPDATE SET message_id = GREATEST(wa_reads.message_id, EXCLUDED.message_id), read_at = now()`,
+		ON CONFLICT (conversation_id, user_id) DO UPDATE SET message_id = GREATEST(
+			LEAST(wa_reads.message_id, (SELECT COALESCE(max(m.id), 0) FROM wa_messages m WHERE m.conversation_id = wa_reads.conversation_id)),
+			EXCLUDED.message_id), read_at = now()`,
 		conversationID, userID, messageID).Error
 }
 
 // MarkTeamRead moves the team's read mark of a conversation forward to a
 // message and counts the customer's messages after it as unread. It
-// returns how many conversations changed.
+// returns how many conversations changed. A mark that points past the
+// conversation's newest message (stored before marks were checked) is
+// put right by the next read.
 func (r *Repository) MarkTeamRead(ctx context.Context, conversationID, messageID uint) (int64, error) {
 	res := r.db.WithContext(ctx).Exec(`UPDATE wa_conversations SET team_read_id = ?,
 		unread = (SELECT count(*) FROM wa_messages m WHERE m.conversation_id = wa_conversations.id AND m.direction = 'in' AND m.kind <> 'reaction' AND m.id > ?)
-		WHERE id = ? AND team_read_id < ?`, messageID, messageID, conversationID, messageID)
+		WHERE id = ? AND (team_read_id < ?
+			OR team_read_id > (SELECT COALESCE(max(m.id), 0) FROM wa_messages m WHERE m.conversation_id = wa_conversations.id))`,
+		messageID, messageID, conversationID, messageID)
 	return res.RowsAffected, res.Error
 }
 

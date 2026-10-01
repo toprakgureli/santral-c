@@ -318,9 +318,13 @@ func (r *Repository) SendDone(ctx context.Context, id uint, wamid string) (int64
 	return res.RowsAffected, res.Error
 }
 
-// RequeueMessage queues a failed message again from the start.
-func (r *Repository) RequeueMessage(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'queued', next_try_at = now(), attempts = 0, error_code = NULL, error_text = '', failed_at = NULL WHERE id = ?", id).Error
+// RequeueMessage queues a failed outgoing message again from the start and
+// returns how many messages changed. Only a message still marked failed
+// changes, so two retries at once queue it once.
+func (r *Repository) RequeueMessage(ctx context.Context, id uint) (int64, error) {
+	res := r.db.WithContext(ctx).Exec(`UPDATE wa_messages SET status = 'queued', next_try_at = now(), attempts = 0, error_code = NULL, error_text = '', failed_at = NULL
+		WHERE id = ? AND status = 'failed' AND direction = 'out'`, id)
+	return res.RowsAffected, res.Error
 }
 
 // MessagesByIDs reads the messages with the given ids, in no particular order.

@@ -22,9 +22,14 @@ type CallLog struct {
 	// DurationUnknown marks an answered call whose end never reached the
 	// panel and that the phone system's records could not size either; its
 	// length is left out of talk time instead of being guessed.
-	DurationUnknown bool      `gorm:"column:duration_unknown;not null;default:false"`
-	CreatedAt       time.Time `gorm:"column:created_at"`
-	UpdatedAt       time.Time `gorm:"column:updated_at"`
+	DurationUnknown bool `gorm:"column:duration_unknown;not null;default:false"`
+	// HooksNextAt is when a waiting call is looked for next, HooksTries how
+	// often it was looked for in vain; each miss waits longer, so calls the
+	// records never show do not hold up newer ones.
+	HooksNextAt *time.Time `gorm:"column:hooks_next_at"`
+	HooksTries  int        `gorm:"column:hooks_tries;not null;default:0"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at"`
 }
 
 // TableName pins the table name.

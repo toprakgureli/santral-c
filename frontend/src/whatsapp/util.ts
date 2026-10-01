@@ -77,6 +77,8 @@ export function listTime(iso?: string): string {
 }
 
 export function prettyPhone(waId: string): string {
+  // A number hidden from this person (all but its last digits) shows as it came.
+  if (waId.includes("•")) return waId;
   const d = waId.replace(/\D/g, "");
   if (d.startsWith("90") && d.length === 12) return `+90 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
   return "+" + d;
@@ -225,4 +227,13 @@ export function waitTip(c: { lastInboundAt?: string; ticket?: { awaitingSince?: 
   const head = shown === a ? `Beklemeye başladığı saat: ${clockTime(a)}.` : `Müşterinin son mesajı: ${clockTime(shown)}.`;
   const total = shown === a ? "" : ` İlk cevapsız mesajı: ${clockTime(a)}, toplamda ${since(a, now)} oldu. Bekleyenler listesi bu toplam süreye bakar.`;
   return head + total + " Bir temsilci cevap yazınca sıfırlanır.";
+}
+
+// newestSeen is the id of the newest stored message among those on the
+// agent's screen, or 0 when none is stored yet. Closing a chat sends it, so
+// a customer message the agent has not seen keeps the chat open.
+export function newestSeen(list: WAMessage[]): number {
+  let n = 0;
+  for (const m of list) if (!m.pending && m.id > n) n = m.id;
+  return n;
 }

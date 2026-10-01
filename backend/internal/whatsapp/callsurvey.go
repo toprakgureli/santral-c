@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/performance"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -508,11 +509,18 @@ type CallSurveyReport struct {
 	Recent   []CallSurveyAnswer `json:"recent"`
 }
 
-// CallSurveyReport summarises the surveys of calls in the day range.
+// CallSurveyReport summarises the surveys of calls in the day range, on the
+// devices the person sees. A customer's number shows in full only on the
+// person's own calls or with the permission to see whom colleagues talk to.
 func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, toDay string) (*CallSurveyReport, error) {
 	if _, err := s.require(ctx, actorID, enums.WAReports, "WhatsApp raporlarını görme yetkin yok."); err != nil {
 		return nil, err
 	}
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	devices := v.devices()
 	from, err := time.ParseInLocation("2006-01-02", fromDay, hours.Zone)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
@@ -523,13 +531,13 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 	}
 	to := toStart.AddDate(0, 0, 1)
 	out := &CallSurveyReport{Agents: []CallSurveyAgent{}, Recent: []CallSurveyAnswer{}}
-	totals, err := s.repo.CallSurveyTotals(ctx, from, to)
+	totals, err := s.repo.CallSurveyTotals(ctx, from, to, devices)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out.Queued, out.Sent, out.Answered, out.Failed, out.Skipped, out.Average = totals.Queued, totals.Sent, totals.Answered, totals.Failed, totals.Skipped, totals.Average
 
-	agents, err := s.repo.CallSurveyAgents(ctx, from, to)
+	agents, err := s.repo.CallSurveyAgents(ctx, from, to, devices)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -542,7 +550,7 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		p := people[a.UserID]
 		out.Agents = append(out.Agents, CallSurveyAgent{User: p, Sent: a.Sent, Answered: a.Answered, Average: a.Average, Low: a.Low})
 	}
-	recent, err := s.repo.RecentCallSurveyAnswers(ctx, from, to)
+	recent, err := s.repo.RecentCallSurveyAnswers(ctx, from, to, devices)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -555,6 +563,10 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 	rpeople := s.people(ctx, rids)
 	for _, r := range recent {
 		a := CallSurveyAnswer{ID: r.ID, Phone: r.WAID, Score: r.Score, Comment: r.Comment, AnsweredAt: r.AnsweredAt}
+		own := r.UserID != nil && *r.UserID == actorID
+		if !own && !v.can(enums.CallViewPeers) {
+			a.Phone = performance.MaskNumber(r.WAID)
+		}
 		if r.UserID != nil {
 			a.Agent = rpeople[*r.UserID].Name
 		}

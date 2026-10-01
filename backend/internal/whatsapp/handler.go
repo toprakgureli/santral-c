@@ -445,7 +445,12 @@ func (r *Router) Routes(g fiber.Router) {
 		}
 		return nil, s.Assign(c.UserContext(), uid, id, in)
 	}))
-	a.Post("/conversations/:id/resolve", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.Resolve(c.UserContext(), uid, id) }))
+	a.Post("/conversations/:id/resolve", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		// An older panel sends no body; it closes as before.
+		var in ResolveInput
+		_ = c.BodyParser(&in)
+		return nil, s.Resolve(c.UserContext(), uid, id, in)
+	}))
 	a.Post("/conversations/:id/reopen", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return nil, s.Reopen(c.UserContext(), uid, id) }))
 	a.Patch("/conversations/:id/ticket", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
 		var in TicketInput

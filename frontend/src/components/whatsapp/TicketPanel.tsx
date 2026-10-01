@@ -47,8 +47,14 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
     setEditName(false);
   }, [c.id, c.name, c.note]);
 
+  // Only the latest answer counts; one that comes after the card moved on
+  // is dropped.
   useEffect(() => {
-    waApi.history(c.id).then(setHistory).catch(() => setHistory([]));
+    let live = true;
+    waApi.history(c.id).then((h) => live && setHistory(h)).catch(() => live && setHistory([]));
+    return () => {
+      live = false;
+    };
   }, [c.id, t?.status]);
 
   useEffect(() => {
@@ -64,11 +70,14 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
       setError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
     }
   };
+  // A refused change goes back to what the server holds.
   const saveTicket = async (body: Parameters<typeof waApi.updateTicket>[1]) => {
     setError(null);
     try {
       await waApi.updateTicket(conv.id, body);
     } catch (e) {
+      if (body.status !== undefined) setStatus(t?.status);
+      if (body.priority !== undefined) setPriority(t?.priority);
       setError(e instanceof ApiError ? e.message : "Kaydedilemedi.");
     }
   };

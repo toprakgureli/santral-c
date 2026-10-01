@@ -157,6 +157,10 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 			}
 		}
 		if params.HeaderFile > 0 {
+			// Only a file the person may open goes to a customer.
+			if _, err := s.usableFile(ctx, v.user, params.HeaderFile); err != nil {
+				return nil, err
+			}
 			id, _, err := s.metaMediaFor(ctx, ch, params.HeaderFile)
 			if err != nil {
 				return nil, errs.Invalid("Başlık dosyası Meta'ya yüklenemedi. "+meta.Friendly(err), err)
@@ -508,8 +512,13 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	if msg.Status != "failed" || msg.Direction != "out" {
 		return errs.Invalid("Yalnızca gönderilemeyen mesaj tekrar gönderilebilir.", nil)
 	}
-	if err := s.repo.RequeueMessage(ctx, msg.ID); err != nil {
+	changed, err := s.repo.RequeueMessage(ctx, msg.ID)
+	if err != nil {
 		return errs.Internal(err)
+	}
+	if changed == 0 {
+		// Someone pressed retry a moment earlier; the message is on its way.
+		return errs.Conflict("Bu mesaj zaten yeniden gönderiliyor.", nil)
 	}
 	warnDB(ctx, s.repo.ReloadMessage(ctx, msg))
 	s.publish(ctx, msg.ConversationID, msg, nil)

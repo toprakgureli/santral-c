@@ -785,9 +785,12 @@ type SimResult struct {
 }
 
 // Simulate runs a turn of a flow without sending anything to anyone.
-// Outside systems are really asked, so their answers can be checked.
+// Outside systems are really asked, so their answers can be checked, but
+// only for someone who may change chatbots and their outside systems; for
+// the others the step is shown as not called.
 func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*SimResult, error) {
-	if _, err := s.botManager(ctx, actorID); err != nil {
+	u, err := s.botManager(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
 	st := &flow.State{NodeID: in.NodeID, Vars: in.Vars, Tries: in.Tries}
@@ -815,9 +818,13 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 			open, chName = !h.Enabled || h.Open(at), ch.Name
 		}
 	}
-	io := flow.NewSimIO(open, at, func(id uint, vars map[string]string) (map[string]any, error) {
-		return s.callIntegration(ctx, id, vars)
-	})
+	var api func(uint, map[string]string) (map[string]any, error)
+	if u.Can(enums.WABotManage) {
+		api = func(id uint, vars map[string]string) (map[string]any, error) {
+			return s.callIntegration(ctx, id, vars)
+		}
+	}
+	io := flow.NewSimIO(open, at, api)
 	var input *flow.Input
 	if in.Start {
 		st.NodeID = ""

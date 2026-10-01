@@ -213,7 +213,7 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
               <span className="text-sm text-muted-foreground">dakika</span>
             </div>
           </FormField>
-          <FormField label="Sohbet kapandıktan sonra müşteri bu süre içinde yeniden yazarsa chatbot'a girmeden aynı temsilciye bağlansın" hint="0 yazarsan yeniden yazan her müşteriyi chatbot karşılar.">
+          <FormField label="Sohbet kapandıktan sonra müşteri bu süre içinde yeniden yazarsa aynı temsilciye bağlansın" hint="Süre, sohbetin kapandığı andan müşterinin mesajına kadar sayılır. Temsilci o an vardiyada ve müsaitse sohbet chatbot'a girmeden ona döner. Süre geçtiyse ya da temsilci müsait değilse sohbet baştan dağıtılır: chatbot varsa önce o karşılar, sonra müsait birine gider. 0 yazarsan her dönüşte sohbet baştan dağıtılır.">
             <div className="flex items-center gap-2">
               <input type="number" min={0} max={10080} className={cn(inputCls, "w-28")} value={s.returnMinutes} onChange={(e) => up((d) => { d.returnMinutes = Math.min(10080, Math.max(0, Number(e.target.value) || 0)); })} disabled={!pGen} />
               <span className="text-sm text-muted-foreground">dakika</span>

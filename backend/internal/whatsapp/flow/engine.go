@@ -672,10 +672,13 @@ func (o *SimIO) Callback(note string) { o.Out = append(o.Out, SimOutput{Kind: "c
 // Survey records sending the satisfaction survey.
 func (o *SimIO) Survey() { o.Out = append(o.Out, SimOutput{Kind: "survey"}) }
 
-// CallAPI calls an outside system through the test screen's caller.
+// CallAPI calls an outside system through the test screen's caller. Without
+// a caller the system is not reached: the step is shown as not called and
+// the flow goes on as if the answer were empty.
 func (o *SimIO) CallAPI(id uint, vars map[string]string) (map[string]any, error) {
 	if o.api == nil {
-		return nil, fmt.Errorf("sorgu yok")
+		o.Out = append(o.Out, SimOutput{Kind: "api", Detail: "çağrılmadı. Dış sistemi gerçekten denemek için chatbot düzenleme yetkisi gerekir; akış boş cevapla devam etti."})
+		return map[string]any{}, nil
 	}
 	res, err := o.api(id, vars)
 	detail := "başarılı"

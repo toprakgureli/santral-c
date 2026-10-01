@@ -568,19 +568,24 @@ func (s *Service) createCallback(ctx context.Context, ch *models.WAChannel, conv
 	viewers, _ := s.loadViewers(ctx)
 	var ids []uint
 	for id, v := range viewers {
-		if v.can(enums.WACallbacks) {
+		if v.can(enums.WACallbacks) && v.seesChannel(ch.ID) {
 			ids = append(ids, id)
 		}
 	}
 	s.push.Push(ids, Event{Type: "wa.callback", ConversationID: conv.ID, Text: contactView(c).Display + " geri aranmak istiyor."})
 }
 
-// Callbacks lists the requests, open ones first.
+// Callbacks lists the requests on the devices the person sees, open ones
+// first.
 func (s *Service) Callbacks(ctx context.Context, actorID uint, all bool) ([]CallbackView, error) {
 	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini görme yetkin yok."); err != nil {
 		return nil, err
 	}
-	rows, err := s.repo.Callbacks(ctx, all)
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.repo.Callbacks(ctx, all, v.devices())
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -591,10 +596,21 @@ func (s *Service) Callbacks(ctx context.Context, actorID uint, all bool) ([]Call
 	return out, nil
 }
 
-// DoneCallback closes a request.
+// DoneCallback closes a request on a device the person sees.
 func (s *Service) DoneCallback(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini kapatma yetkin yok."); err != nil {
 		return err
 	}
-	return s.repo.DoneCallback(ctx, id, actorID)
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	found, err := s.repo.DoneCallback(ctx, id, actorID, v.devices())
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if found == 0 {
+		return errs.NotFound("Geri arama talebi bulunamadı.")
+	}
+	return nil
 }

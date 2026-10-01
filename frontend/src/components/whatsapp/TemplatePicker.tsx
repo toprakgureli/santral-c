@@ -64,15 +64,21 @@ export default function TemplatePicker({ channelId, open, onClose, onSend, defau
     setError(null);
     const lastId = lastTemplate();
     setLast(lastId);
+    let live = true;
     waApi.templates(channelId).then((l) => {
+      if (!live) return;
       // the last one used comes first and is already chosen
       const ok = l.filter((t) => t.status === "APPROVED").sort((a, b) => Number(b.id === lastId) - Number(a.id === lastId));
       setList(ok);
       if (ok[0]?.id === lastId) setPick(ok[0]);
     }).catch((e) => {
+      if (!live) return;
       setList([]);
       setError(e instanceof ApiError ? e.message : "Şablonlar alınamadı.");
     });
+    return () => {
+      live = false;
+    };
   }, [open, channelId]);
 
   const parts = useMemo(() => {

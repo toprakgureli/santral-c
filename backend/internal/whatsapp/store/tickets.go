@@ -102,6 +102,28 @@ func (r *Repository) StartAwaiting(ctx context.Context, id uint) error {
 
 // ---------------------------------------------------------------- distribution
 
+// AgentAvailable reports inside a transaction whether a person can take a
+// chat on a device now: placed on the device, active, on shift and
+// available, as EligibleAgents counts them.
+func AgentAvailable(tx *gorm.DB, channelID, userID uint) (bool, error) {
+	var ok bool
+	err := tx.Raw(`SELECT EXISTS (SELECT 1 FROM wa_channel_members m
+		JOIN users u ON u.id = m.user_id AND u.active
+		JOIN shifts sh ON sh.user_id = m.user_id AND sh.ended_at IS NULL
+		LEFT JOIN agent_presence ap ON ap.user_id = m.user_id
+		WHERE m.channel_id = ? AND m.user_id = ? AND COALESCE(ap.state, 'available') = 'available')`, channelID, userID).Scan(&ok).Error
+	return ok, err
+}
+
+// ReleaseOwner takes a ticket from its owner inside a transaction, so it is
+// handed out afresh; the former owner stays on it as a helper.
+func ReleaseOwner(tx *gorm.DB, ticketID, ownerID uint) error {
+	if err := tx.Exec("UPDATE wa_tickets SET owner_id = NULL, updated_at = now() WHERE id = ?", ticketID).Error; err != nil {
+		return err
+	}
+	return DemoteOwner(tx, ticketID, ownerID)
+}
+
 // EligibleAgents lists the members of a device who are active, on shift
 // and available, optionally only those in a team. The one who got a
 // ticket longest ago comes first.
@@ -293,10 +315,36 @@ func (r *Repository) SetRatingTexts(ctx context.Context, id uint, texts string) 
 
 // ResolveTicket closes a ticket unless it is closed already and returns how
 // many tickets changed, so only the first of two people closing goes on.
-func (r *Repository) ResolveTicket(ctx context.Context, id uint, by *uint) (int64, error) {
-	res := r.db.WithContext(ctx).Exec(`UPDATE wa_tickets SET status = 'resolved', resolved_at = now(), resolved_by = ?,
-		awaiting_since = NULL, waiting_listed_at = NULL, updated_at = now() WHERE id = ? AND status <> 'resolved'`, by, id)
-	return res.RowsAffected, res.Error
+//
+// seenID is the newest message the person closing had on screen; zero
+// means it is not known. When the customer wrote anything after it, the
+// ticket stays open and unseen is true. The ticket's row is held while
+// this is checked, so a message stored meanwhile is either seen here or
+// reopens the ticket after it closed.
+func (r *Repository) ResolveTicket(ctx context.Context, id uint, by *uint, seenID uint) (changed int64, unseen bool, err error) {
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		cur, err := LockTicketRow(tx, id)
+		if err != nil {
+			return err
+		}
+		if cur.ID == 0 || cur.Status == "resolved" {
+			return nil
+		}
+		if seenID > 0 {
+			if err := tx.Raw(`SELECT EXISTS (SELECT 1 FROM wa_messages
+				WHERE ticket_id = ? AND direction = 'in' AND kind <> 'reaction' AND id > ?)`, id, seenID).Scan(&unseen).Error; err != nil {
+				return err
+			}
+			if unseen {
+				return nil
+			}
+		}
+		res := tx.Exec(`UPDATE wa_tickets SET status = 'resolved', resolved_at = now(), resolved_by = ?,
+			awaiting_since = NULL, waiting_listed_at = NULL, updated_at = now() WHERE id = ? AND status <> 'resolved'`, by, id)
+		changed = res.RowsAffected
+		return res.Error
+	})
+	return changed, unseen, err
 }
 
 // ReopenTicket opens a closed ticket again by hand and returns how many
