@@ -104,8 +104,11 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
   arka planda doldurur.
 - **İşletme**: Prometheus için `/metrics` (sadece sunucunun kendisine
   açık), Jaeger'a giden istek izleri (OpenTelemetry), `deploy/observability`
-  altında hazır Grafana ekranı ve uyarı kuralları. systemd birimi servise
-  diski salt okunur gösterir.
+  altında hazır Grafana ekranı ve uyarı kuralları (diskleri node_exporter
+  ölçer). `system.health` yetkisi olanlar panelde sistem uyarılarını görür:
+  disk doluyor, Redis cevap vermiyor, yedek gecikti, WhatsApp kuyruğu
+  birikti gibi. İsteklerin, bağlantıların ve sorguların süresi sınırlıdır.
+  systemd birimi servise diski salt okunur gösterir.
 - **Kod düzeni**: Uber Go stil rehberi, service / repository / handler
   katmanlı modüller, chatbot motoru, saat kuralları ve mesaj okuma için
   tablolu testler, yarım yıllık geçmişle dolu bir veritabanında yük
@@ -163,7 +166,7 @@ sunucu çalışabilir.
 | `auth.secret` | 64 karakterlik rastgele değer. Erişim anahtarlarını ve giriş adımlarını imzalar. Değiştirirsen yarım kalan girişler baştan başlar, açık paneller kendini yenileyip devam eder ([DEPLOY.md](DEPLOY.md)). |
 | `auth.refreshTTL` | Bir girişin ne kadar sürdüğü. `168h` herkesin haftada bir yeniden giriş yapması demek. Yedi günden uzun olamaz. |
 | `security.dataKey` | 64 karakterlik rastgele değer. Panelden girilen bütün gizli bilgileri şifreler, anket bağlantılarını imzalar. Bir kopyasını güvenli bir yerde sakla. Değiştirmek için eskisini `security.previousDataKeys` alanına taşı ve servisi yeniden başlat ([DEPLOY.md](DEPLOY.md)). |
-| `security.mfaKey` | Tam 32 bayt rastgele değer; TOTP sırlarını şifreler. |
+| `security.mfaKey` | Rastgele bir değer (`openssl rand -hex 16`). TOTP sırlarını şifreleyen anahtar bunun SHA-256 özeti olur, yani uzunluğu fark etmez. Kontrol sadece boş ya da örnek değeri reddeder. Bir kopyasını sakla: o olmadan veritabanındaki TOTP sırları açılmaz. |
 | `security.trustedIPs` | Ofisin dış IP adresi ya da aralığı, örneğin `203.0.113.10` veya `203.0.113.0/28` (kendi adresinle değiştir). Buradaki adresler yanlış şifre yüzünden hiç engellenmez. |
 | `owner.*` | İlk yönetici hesabı. |
 | `database.*`, `redis.*` | PostgreSQL ve Redis bağlantın. |
@@ -173,12 +176,16 @@ sunucu çalışabilir.
 | `auth.cookieSecure` | HTTPS arkasında `true`. |
 | `bulutsantralim.apiKey` | OIM > Bulut Santralım > Santral Ayarlarım. |
 | `bulutsantralim.sipDomain`, `sipWssUrl` | Santral adı ve Verimor'un WebRTC adresi. Sıkı NAT arkasındaki temsilciler için `turnUrl` ekle. |
-| `bulutsantralim.sipKey` | Tam 32 bayt rastgele değer; kayıtlı SIP şifrelerini şifreler. |
+| `bulutsantralim.sipKey` | Rastgele bir değer (`openssl rand -hex 16`). Kayıtlı SIP şifrelerini şifreleyen anahtar bunun SHA-256 özeti olur. `bulutsantralim.enabled` açıkken boş ya da örnek değer olamaz. |
+| `database.statementTimeout` | Tek bir sorgunun en fazla ne kadar sürebileceği (varsayılan `30s`). Veritabanı güncellemeleri ve yedekler bu sınıra takılmaz. |
+| `database.dataPath` | Veritabanı dosyalarının durduğu diskteki bir klasör; disk dolarken uyarı gelsin diye (varsayılan `/var/lib/postgresql`). |
 | `drive.clientId`, `clientSecret`, `redirectUrl` | Google Cloud'da bir OAuth istemcisi (Web application). Yönlendirme adresi, panel adresinin sonuna `/api/v1/teams/drive/callback` eklenmiş hali olmalı; örneğin `https://cm.example.com/api/v1/teams/drive/callback`. |
 | `telemetry.otlpEndpoint`, `sampleRatio` | İsteğe bağlı. İz, bir isteğin sunucuda hangi adımlardan geçtiğini ve her adımın ne kadar sürdüğünü gösterir. İlki izlerin gideceği yer (`deploy/observability` içindeki Jaeger için `http://127.0.0.1:4318`), ikincisi isteklerin ne kadarının izleneceği, 0 ile 1 arası. Adresi boş bırakırsan iz tutulmaz. |
 
 Rastgele değerler için: `openssl rand -hex 32` (secret ve dataKey) ve
-`openssl rand -hex 16` (32 baytlık anahtarlar).
+`openssl rand -hex 16` (`mfaKey`, `sipKey`). Test kurulumunda
+`app.development` alanına `test` (ya da `development`) yaz. Başka her değer,
+yazım hatası da dahil, canlı sayılır ve canlı kontrollerinden geçer.
 
 ### Panelden yapılan ayarlar (config'e yazılmaz)
 
@@ -271,7 +278,7 @@ kaydolma, arama, sustur, beklet, aktar, kopan bağlantı ve art arda 60
 bash deploy/test/deploy_test.sh   # Linux'ta: deploy.sh'ı sahte bir sunucuya karşı dener
 ```
 
-GitHub her push ve pull request'te şunları çalıştırır
+GitHub, `main`'e her push'ta ve her pull request'te şunları çalıştırır
 (`.github/workflows/ci.yml`): gofmt, go vet, golangci-lint, PostgreSQL ve
 Redis'e karşı yarış durumu kontrolüyle Go testleri (`-short`), yük testleri
 (ayrı adımda), bilinen açık taraması (govulncheck), panelin testleri ve
@@ -284,7 +291,10 @@ altındaki Go servisine yönlendirir; PostgreSQL ve Redis aynı makinede. Adım
 adım anlatım [DEPLOY.md](DEPLOY.md)'de; systemd, nginx ve izleme dosyaları
 `deploy/` altında. nginx'te iki şey önemli: `/api/v1/wa/` için 110 MB gövde
 sınırı, tamponlamanın kapalı olması ve uzun zaman aşımı (dosyalar ve arşiv
-indirme); canlı akışlar için de `proxy_buffering off`.
+indirme). Canlı akışlar düz `/api/` bölümünden geçer; arka uç bu akışlarla
+`X-Accel-Buffering: no` başlığını gönderir, nginx de bunu görünce akışı
+biriktirmeden iletir. 20 saniyede bir giden ping, nginx'in 30 saniyelik
+bekleme sınırına takılmamasını sağlar.
 
 Güncelleme tek komut, sudo yetkisi olan kullanıcıyla:
 
@@ -293,9 +303,11 @@ BRANCH=main /opt/santral-c/deploy/deploy.sh
 ```
 
 Sunucudaki kodda elle yapılmış değişiklik varsa durur. Yeni sürümü
-çalışanın yanında derler, ayarları yeni sürümle kontrol eder, veritabanını
-kopyalar ve yeni sürüme geçer. Sağlık kontrolü bir dakika içinde geçmezse
-eski sürümü geri koyar. Paneli ancak arka uç sağlıklı açıldıktan sonra
+çalışanın yanında derler (npm paketlerinin kurulum betikleri çalışmaz,
+systemd birimi doğrudan commit'ten `git show` ile alınır), ayarları yeni
+sürümle kontrol eder, diskte yer varsa veritabanını kopyalar ve yeni sürüme
+geçer. Sağlık kontrolü bir dakika içinde geçmezse eski sürümü geri koyar;
+yeni sürüm hâlâ veritabanını güncelliyorsa daha uzun bekler. Paneli ancak arka uç sağlıklı açıldıktan sonra
 yayına alır. Her derlemeye git commit'i yazılır ve kenar çubuğunda görünür.
 
 Hesabı kilitlenen sahip `backend/` klasöründe şöyle kurtarılır:

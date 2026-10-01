@@ -87,7 +87,7 @@ caches.
 | `telemetry` | Prometheus numbers and OpenTelemetry traces |
 | `middlewares` | request context, recovery, auth guard, permission guard (`need`), device cookie, body and rate limits, safe file answers, error handler |
 | `sse` | Server-Sent Event streams that close when the session or permission ends |
-| `ops` | `/healthz` and `/metrics` |
+| `ops` | `/healthz`, `/metrics` and the system warnings (`/api/v1/system/health`) |
 | `setup` | seeding permissions, roles, settings and the owner; resealing secrets |
 | `testdb` | a real PostgreSQL for integration tests |
 
@@ -117,12 +117,25 @@ database live in their own packages and are tested on their own.
 ## Start and shutdown
 
 At start `main.go` loads `config.yml` and checks it before touching
-anything else. A live server (`app.development: live`) refuses to start on
-any fatal problem; a test setup only logs them. Then it opens the data
-keyring, connects to PostgreSQL, takes the instance lock, runs the
+anything else. A live server refuses to start on any fatal problem; a test
+setup only logs them. Only `app.development: test` (or `development`) is a
+test setup: a missing or mistyped value counts as live. Then it opens the
+data keyring, connects to PostgreSQL, takes the instance lock, runs the
 migrations, connects to Redis, seeds, reseals stored secrets with the current
 data key, sets up tracing, builds the server, starts the background loops and
 listens.
+
+The server's pool sends `statement_timeout` (`database.statementTimeout`,
+30 s) with every connection, so PostgreSQL stops a runaway query.
+Migrations run on a small pool of their own, named `santral-migrate` and
+without that limit; `deploy.sh` sees the name in `pg_stat_activity` and
+waits for a long migration instead of rolling back. Before the migrations,
+`migrations.RepairIndexes` rebuilds (`REINDEX INDEX CONCURRENTLY`) every
+index a stopped concurrent build left invalid, drops the `_ccnew`/`_ccold`
+leftovers of a stopped rebuild, and drops an invalid index that cannot be
+rebuilt so its migration makes it again. Background work that legitimately
+runs long (the WhatsApp clean-up of old rows) raises the limit for its own
+transaction with `postgresql.Long`.
 
 The instance lock is a PostgreSQL advisory lock held on its own connection.
 A second server on the same database stops with "another santral server is
@@ -131,7 +144,9 @@ assume one server, and two would migrate the schema together.
 
 `santral -check-config -config /opt/santral-c/config.yml` runs only the
 configuration check, prints each problem as `HATA` (fatal) or `UYARI` (warning) and exits with an
-error if any is fatal. It does not connect to the database. `deploy.sh` runs
+error if any is fatal. It builds the same data keyring the start builds, so
+a previous data key the start would refuse fails the check too. It does not
+connect to the database. `deploy.sh` runs
 it with the new binary before switching.
 
 Shutdown starts on SIGINT or SIGTERM, or when the listener fails (a server
@@ -152,6 +167,18 @@ The systemd unit gives the whole stop 60 seconds (`TimeoutStopSec=60`).
 
 ## A request, end to end
 
+0. Fiber matches paths case sensitively, so the paths nginx lets through are
+   the only ones that answer. Each connection has time limits
+   (`cmd/santral/timeouts.go`): 30 s to read a request (10 minutes for one
+   announcing a body over 1 MB), 2 minutes to write an answer, an hour for
+   GET answers (downloads, exports, recordings) and 24 hours for the live
+   streams (paths ending in `/stream`), 75 s idle between requests. The
+   write timer starts when the handler is done, and the per-request limits
+   are set from the request header (`HeaderReceived`), because the server's
+   write timeout would otherwise cut a stream. A request that came in on the
+   port for an already registered Meta webhook (`X-Santral-Entry:
+   existing-hook`, set by that nginx server) never reaches `/api`,
+   `/healthz` or `/metrics`.
 1. `requestid` and `RequestContext` give the request an id; every log line
    written with its context carries the id, the user once known, and the
    trace id when tracing is on.
@@ -232,7 +259,8 @@ refused exactly when the role lacks what the route needs.
   `call.record_access` is needed to listen to recordings and is held by
   `manager` and `invisible_admin` only at first; `system.backup` sets up and
   starts the database backups and is held only by `invisible_admin` at
-  first.
+  first; `system.health` shows the system warnings in the panel and is held
+  by `manager` and `invisible_admin` at first.
 - Users are never deleted: they are deactivated, which ends their sessions
   at once and keeps their history.
 - Sensitive actions (role changes, SIP changes, listening to a recording,
@@ -362,7 +390,8 @@ shutdown waits for every loop to finish its current step. The loops are the
 shift sweeper, the Drive upload sweeper, the games clock, the WhatsApp
 workers (stored webhook events, four follow-up workers, the outbox, missed
 customer files, and a clock for waiting tickets, pool distribution, chatbot
-timeouts, timed messages and leftover jobs), the database backup and, when
+timeouts, timed messages and leftover jobs), the database backup, the
+system warnings check and, when
 the PBX is enabled, the call record and presence polls and the call log
 checker.
 
@@ -371,8 +400,15 @@ checker.
 The `backup` package copies the database every six hours to a Google
 Workspace Shared Drive folder through a service account:
 
-- It checks every ten minutes whether the last scheduled copy is six hours
-  old. "Şimdi yedekle" in the panel starts one at once.
+- It checks every ten minutes whether a copy is due: six hours after the
+  start of the last good copy. A failed copy (or one a restart cut off,
+  closed as failed at the next start) is tried again after 30 minutes, then
+  after twice as long each time, at most six hours apart, and never before
+  the regular time. "Şimdi yedekle" in the panel starts one at once.
+- The dump and the upload each have an hour; the Drive client bounds
+  connecting and waiting for an answer, and the sign-in and folder check
+  have 30 seconds. A run's outcome is written even while the server stops
+  (`context.WithoutCancel`), so no run stays open.
 - `pg_dump --format=custom --no-owner --no-privileges` writes the copy into
   the service's private `/tmp`, which is removed after the upload. The file
   is named `santral-YYYY-MM-DD-HHMM.dump` (Istanbul time).
@@ -389,7 +425,8 @@ Workspace Shared Drive folder through a service account:
 - Restoring is a manual `pg_restore` of a downloaded file (DEPLOY.md).
 
 `deploy.sh` also keeps its own local copies before each switch, in
-`/var/backups/santral` (the last ten).
+`/var/backups/santral` (the last ten). It removes the old ones first, checks
+the disk has room for the new one and deletes a copy that failed half way.
 
 ## Real time
 
@@ -429,6 +466,7 @@ The most recent migrations:
 | `00042_inbound_job_steps` | gives follow-up jobs their conversation, the ticket's state when the message came and the steps done |
 | `00043_indexes` | adds indexes for growing tables, built without locking them |
 | `00044_backups` | adds the backup settings and the list of backup runs |
+| `00048_webhook_failed_at` | records when a Meta notice was given up on, so alerts count only the last hour's |
 
 ## Operations
 
@@ -438,19 +476,46 @@ The most recent migrations:
 - `/metrics` answers only to the machine itself in the Prometheus format:
   requests by route pattern and status, latency, requests in flight, open
   streams, the database pool, WhatsApp queues (outbox, oldest waiting send,
-  pending and failed webhook events, follow-up jobs), queued after-call
-  surveys, calls waiting for the PBX record, backup state and active users.
+  pending and failed webhook events, those failed in the last hour,
+  follow-up jobs), queued after-call surveys, calls waiting for the PBX
+  record, backup state, active users, how full the database's disk is
+  (`santral_database_disk_used_ratio`) and whether PostgreSQL and Redis
+  answer (`santral_dependency_up`, from the same checks as `/healthz`). The
+  numbers read from the database are left out while it is down; the
+  dependency gauge is not, so its alert fires.
+- The system warnings (`ops.Monitor`): once a minute the backend checks the
+  disk holding `database.dataPath` (`statfs`, which works under the
+  read-only file system), Redis, the age of the last good backup, Meta
+  notices given up on in the last hour, the oldest message waiting to go
+  out and the follow-up job backlog. `GET /api/v1/system/health`, behind
+  `system.health`, returns them with plain Turkish text and what to do; the
+  panel asks every minute and shows them as cards under the top bar. A
+  closed card stays closed until its fingerprint changes (the disk fills
+  another 5%, a new failure). PostgreSQL being down is the one thing the
+  panel cannot show, since every signed-in request needs it; Grafana alerts
+  on it.
 - Traces of requests, their queries and outside calls go to an OTLP/HTTP
   collector when `telemetry.otlpEndpoint` is set; `telemetry.sampleRatio`
   (0 to 1) is the share of requests traced, and a value outside that range
   traces every request.
-- `deploy/observability` runs Prometheus, Jaeger and Grafana with a ready
-  dashboard and alert rules; DEPLOY.md shows how to start and reach it.
+- `deploy/observability` runs Prometheus, Jaeger, Grafana and node_exporter
+  (read-only view of the host, 127.0.0.1 only) with a ready dashboard and
+  alert rules, among them disks over 85% and PostgreSQL or Redis
+  unreachable. Rules whose numbers vanish during an outage keep their last
+  state instead of turning OK; DEPLOY.md lists them and shows how to start
+  and reach the stack.
 - Logs are JSON on stderr (read with `journalctl -u santral`) and carry the
   request id, the user and the trace id.
 - The systemd unit sees the file system read-only (`ProtectSystem=strict`,
   `ProtectHome`) and writes only to a private `/tmp`, so code running inside
-  the service can change neither its binary nor the deploy script.
+  the service can change neither its binary nor the deploy script. It sets
+  `GOMEMLIMIT=1500MiB` under `MemoryMax=2G`.
+- `deploy.sh` installs the panel's packages with `npm ci --ignore-scripts`
+  and takes the unit file from the commit (`git show`) before building, so
+  nothing the build runs as `santral` can change what root installs. It
+  writes the deployed commit to `/var/lib/santral-deploy/deployed-sha` and
+  reads the running commit from there, resetting the checkout to it after a
+  rollback.
 
 ## Panel
 
@@ -508,7 +573,7 @@ panel address set in its popup as the panel.
   dropped connection and 60 calls in a row. The extension's test
   (`npm test`) runs its service worker against a stand-in browser API.
   `deploy/test/deploy_test.sh` runs `deploy.sh` against a stand-in server.
-- `.github/workflows/ci.yml` runs on every push and pull request: gofmt, go
+- `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests: gofmt, go
   vet, golangci-lint, the Go tests with the race detector against PostgreSQL
   and Redis (`-short`), the load tests in a step of their own, govulncheck,
   the panel's and the extension's tests and builds, and the deploy script

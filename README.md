@@ -102,7 +102,10 @@ everything an agent and a team lead actually work in.
   its rate limits and backfills history in the background.
 - **Operations**: `/metrics` for Prometheus (served only to the server
   itself), OpenTelemetry traces to Jaeger, a Grafana dashboard and alert
-  rules in `deploy/observability`, and a systemd unit that keeps the file
+  rules in `deploy/observability` (with node_exporter for the disks), system
+  warnings inside the panel for people holding `system.health` (a filling
+  disk, Redis gone, a late backup, WhatsApp queues backing up), request,
+  connection and query time limits, and a systemd unit that keeps the file
   system read-only to the service.
 - **Style**: Uber Go style guide, domain packages with service / repository /
   handler layers, table-driven tests for the chatbot engine, time rules and
@@ -160,7 +163,7 @@ example.
 | `auth.secret` | 64 random hex characters; signs access tokens and the steps of signing in. Changing it ends half-finished sign-ins; open panels renew and carry on ([DEPLOY.md](DEPLOY.md)). |
 | `auth.refreshTTL` | How long a sign-in lasts; `168h` means everyone signs in again once a week. Never more than seven days. |
 | `security.dataKey` | 64 random hex characters; seals every credential entered in the panel and signs survey links. Keep a copy somewhere safe. To replace it, move the old value to `security.previousDataKeys` and restart ([DEPLOY.md](DEPLOY.md)). |
-| `security.mfaKey` | Exactly 32 random bytes; encrypts TOTP secrets. |
+| `security.mfaKey` | A random value (`openssl rand -hex 16`); the AES key that seals TOTP secrets is its SHA-256 hash, so any length works. The check refuses only an empty or example value. Keep a copy: without it the TOTP secrets in the database cannot be read. |
 | `security.trustedIPs` | The office's public address or range, for example `203.0.113.10` or `203.0.113.0/28` (replace with yours). Addresses here are never banned for wrong passwords. |
 | `owner.*` | The first admin account. |
 | `database.*`, `redis.*` | Your PostgreSQL and Redis. |
@@ -170,12 +173,16 @@ example.
 | `auth.cookieSecure` | `true` behind HTTPS. |
 | `bulutsantralim.apiKey` | OIM > Bulut Santralım > Santral Ayarlarım. |
 | `bulutsantralim.sipDomain`, `sipWssUrl` | The PBX name and Verimor's WebRTC endpoint. Add `turnUrl` for agents behind strict NAT. |
-| `bulutsantralim.sipKey` | Exactly 32 random bytes; encrypts stored SIP passwords. |
+| `bulutsantralim.sipKey` | A random value (`openssl rand -hex 16`); the AES key that seals stored SIP passwords is its SHA-256 hash. Required, not empty or example, while `bulutsantralim.enabled` is true. |
+| `database.statementTimeout` | Longest a single query may run (default `30s`); migrations and backups run without it. |
+| `database.dataPath` | A folder on the database's disk, for the disk warning (default `/var/lib/postgresql`). |
 | `drive.clientId`, `clientSecret`, `redirectUrl` | A Google Cloud OAuth client (Web application). The redirect URI must be the panel's address followed by `/api/v1/teams/drive/callback`, for example `https://cm.example.com/api/v1/teams/drive/callback`. |
 | `telemetry.otlpEndpoint`, `sampleRatio` | Optional. Where traces go (`http://127.0.0.1:4318` for the Jaeger in `deploy/observability`) and the share of requests traced, 0 to 1. Empty turns traces off. |
 
 Generate the random values with `openssl rand -hex 32` (secret, data key) and
-`openssl rand -hex 16` (32-byte keys).
+`openssl rand -hex 16` (`mfaKey`, `sipKey`). `app.development` must say
+`test` (or `development`) for a test setup; anything else, a typo included,
+counts as live and gets the live checks.
 
 ### What you set in the panel (not in the config)
 
@@ -264,7 +271,7 @@ calls in a row. `npm run build` checks the types first.
 bash deploy/test/deploy_test.sh   # on Linux: deploy.sh against a stand-in server
 ```
 
-GitHub runs, on every push and pull request (`.github/workflows/ci.yml`):
+GitHub runs, on pushes to `main` and on pull requests (`.github/workflows/ci.yml`):
 gofmt, go vet, golangci-lint, the Go tests with the race detector against
 PostgreSQL and Redis (`-short`), the load tests without it, govulncheck, the
 panel's tests and build, the extension's tests and build, and the deploy
@@ -277,7 +284,10 @@ the Go binary under systemd; PostgreSQL and Redis on the same machine.
 [DEPLOY.md](DEPLOY.md) is the full walkthrough; `deploy/` has the systemd unit,
 nginx sites and the monitoring stack. Two nginx details matter: `/api/v1/wa/`
 needs a 110 MB body limit, no buffering and long timeouts (media and
-streamed exports), and the event streams need `proxy_buffering off`.
+streamed exports); the live event streams work through the plain `/api/`
+location because the backend sends `X-Accel-Buffering: no` with them, which
+tells nginx not to buffer, and a ping every 20 seconds keeps them under its
+30-second read timeout.
 
 Updates are one command, run as a sudo-capable user:
 
@@ -286,9 +296,11 @@ BRANCH=main /opt/santral-c/deploy/deploy.sh
 ```
 
 It refuses when the server's checkout has local changes, builds the new
-version next to the running one, checks the config with it, copies the
-database, switches, and puts the previous version back if the health check
-does not pass within a minute. The panel is published only after the
+version next to the running one (npm without install scripts, the systemd
+unit taken from the commit with `git show`), checks the config with it,
+copies the database when the disk has room, switches, and puts the previous
+version back if the health check does not pass within a minute (it waits
+longer while the new version is still migrating). The panel is published only after the
 backend is healthy. Each build is stamped with the git commit, shown in the
 sidebar.
 
