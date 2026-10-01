@@ -95,7 +95,7 @@ database live in their own packages and are tested on their own.
 | Package | What it does |
 |---|---|
 | `whatsapp` | the service, handlers, inbox, tickets, sending, surveys, reports |
-| `whatsapp/store` | the repository: channels, contacts, conversations, tickets, bots, with row locks where two agents can race |
+| `whatsapp/store` | the repository and the only way the service reaches the database: every query of the module (channels, contacts, conversations, messages, tickets, bots, rules, surveys, reports), with row locks where two agents can race |
 | `whatsapp/meta` | the Graph API client and readable explanations of Meta's errors |
 | `whatsapp/flow` | the chatbot engine: runs a published graph step by step, and a simulator for the builder |
 | `whatsapp/hours` | working hours and time ranges in Istanbul time |

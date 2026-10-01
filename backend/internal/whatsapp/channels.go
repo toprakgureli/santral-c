@@ -12,8 +12,6 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
 
-	"gorm.io/gorm"
-
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -78,7 +76,9 @@ func (s *Service) channelView(ctx context.Context, ch *models.WAChannel, full bo
 		v.SurveyHookPath = "/api/v1/wa/survey/" + ch.HookKey
 		v.ExistingToken = ch.ExistingVerifyToken
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_channel_members WHERE channel_id = ? ORDER BY user_id", ch.ID).Scan(&v.MemberIDs).Error)
+	members, err := s.repo.ChannelMemberIDs(ctx, ch.ID)
+	warnDB(ctx, err)
+	v.MemberIDs = members
 	if v.MemberIDs == nil {
 		v.MemberIDs = []uint{}
 	}
@@ -93,8 +93,8 @@ func (s *Service) Channels(ctx context.Context, actorID uint) ([]ChannelView, er
 		return nil, err
 	}
 	full := v.can(enums.WAChannelManage)
-	var list []models.WAChannel
-	if err := s.db.WithContext(ctx).Order("id").Find(&list).Error; err != nil {
+	list, err := s.repo.Channels(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]ChannelView, 0, len(list))
@@ -167,14 +167,14 @@ func (s *Service) CreateChannel(ctx context.Context, actorID uint, in ChannelInp
 		ExistingHookURL: strings.TrimSpace(in.ExistingHookURL), ExistingHookPath: hookPath,
 		ExistingVerifyToken: strings.TrimSpace(in.ExistingVerifyToken), AcceptUnsigned: hookPath != "" && in.AcceptUnsigned,
 	}
-	if err := s.db.WithContext(ctx).Create(ch).Error; err != nil {
+	if err := s.repo.CreateChannel(ctx, ch); err != nil {
 		if strings.Contains(err.Error(), "wa_channels_phone_number_idx") {
 			return nil, errs.Conflict("Bu numara zaten ekli.", err)
 		}
 		return nil, errs.Internal(err)
 	}
 	// The one who adds a device works on it from the start.
-	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_channel_members (channel_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", ch.ID, actorID).Error)
+	warnDB(ctx, s.repo.AddChannelMember(ctx, ch.ID, actorID))
 	s.forget()
 	s.forgetHookPaths()
 	s.refreshNumber(ctx, ch)
@@ -241,7 +241,7 @@ func (s *Service) UpdateChannel(ctx context.Context, actorID, id uint, in Channe
 	if hookPath == "" && ch.AppSecretEnc == "" && strings.TrimSpace(in.AppSecret) == "" {
 		return nil, errs.Invalid("Panelin kendi webhook adresi için uygulama gizli anahtarı (App secret) gerekli.", nil)
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+	if err := s.repo.UpdateChannel(ctx, id, fields); err != nil {
 		if strings.Contains(err.Error(), "wa_channels_phone_number_idx") {
 			return nil, errs.Conflict("Bu numara başka bir cihazda kayıtlı.", err)
 		}
@@ -344,7 +344,7 @@ func (s *Service) saveNumber(ctx context.Context, ch *models.WAChannel, info *me
 	if ch.DisplayPhone == "" && info.DisplayPhoneNumber != "" {
 		fields["display_phone"] = info.DisplayPhoneNumber
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", ch.ID).Updates(fields).Error)
+	warnDB(ctx, s.repo.UpdateChannel(ctx, ch.ID, fields))
 }
 
 // ---------------------------------------------------------------- settings
@@ -405,7 +405,7 @@ func (s *Service) UpdateSettings(ctx context.Context, actorID, id uint, in Setti
 	if err := validateSettings(&next); err != nil {
 		return nil, err
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Updates(map[string]any{"settings": next.Encode(), "updated_at": time.Now()}).Error; err != nil {
+	if err := s.repo.UpdateChannel(ctx, id, map[string]any{"settings": next.Encode(), "updated_at": time.Now()}); err != nil {
 		return nil, errs.Internal(err)
 	}
 	ch, _ = s.repo.Channel(ctx, id)
@@ -536,19 +536,7 @@ func (s *Service) SetMembers(ctx context.Context, actorID, id uint, userIDs []ui
 	if _, err := s.repo.Channel(ctx, id); err != nil {
 		return err
 	}
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		keep := append([]uint{0}, userIDs...)
-		if err := tx.Exec("DELETE FROM wa_channel_members WHERE channel_id = ? AND user_id NOT IN ?", id, keep).Error; err != nil {
-			return err
-		}
-		for _, uid := range userIDs {
-			if err := tx.Exec("INSERT INTO wa_channel_members (channel_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", id, uid).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
+	if err := s.repo.SetChannelMembers(ctx, id, userIDs); err != nil {
 		return errs.Internal(err)
 	}
 	s.forget()

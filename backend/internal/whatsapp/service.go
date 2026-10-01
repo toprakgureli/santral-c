@@ -48,9 +48,9 @@ type IAudit interface {
 	Record(ctx context.Context, e audit.Entry)
 }
 
-// Service is the WhatsApp module.
+// Service is the WhatsApp module. It reaches the database only through
+// repo.
 type Service struct {
-	db      *gorm.DB
 	repo    *store.Repository
 	users   IUsers
 	push    IPusher
@@ -78,7 +78,6 @@ type Service struct {
 // the links sent in surveys.
 func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, auditor IAudit, ring *crypt.Keyring, secret string) *Service {
 	return &Service{
-		db:          db,
 		repo:        store.New(db),
 		users:       users,
 		push:        push,
@@ -177,49 +176,31 @@ func (v *viewer) seesTicket(t *models.WATicket, participants map[uint]bool) bool
 	return false
 }
 
-// visibleTickets is seesTicket as SQL: the ids of the tickets the viewer
-// sees, for narrowing a query before its LIMIT, so a person with a narrow
-// view still gets a full page of what they may see.
-func (v *viewer) visibleTickets() (string, []any) {
+// reach is seesTicket for the database: which tickets the viewer sees,
+// for narrowing a query before its LIMIT, so a person with a narrow view
+// still gets a full page of what they may see.
+func (v *viewer) reach() store.Reach {
 	if !v.can(enums.WAView) {
-		return "SELECT id FROM wa_tickets WHERE false", nil
+		return store.Reach{None: true}
 	}
-	var where []string
-	var args []any
-	if !v.can(enums.WAViewAll) {
-		chans := make([]uint, 0, len(v.channels))
-		for id := range v.channels {
-			chans = append(chans, id)
-		}
-		if len(chans) == 0 {
-			return "SELECT id FROM wa_tickets WHERE false", nil
-		}
-		where = append(where, "t.channel_id IN ?")
-		args = append(args, chans)
-		uid := v.user.ID
-		reach := []string{"t.owner_id = ?", "EXISTS (SELECT 1 FROM wa_ticket_participants p WHERE p.ticket_id = t.id AND p.user_id = ?)"}
-		args = append(args, uid, uid)
-		if v.can(enums.WAViewTeam) && len(v.teams) > 0 {
-			teams := make([]uint, 0, len(v.teams))
-			for id := range v.teams {
-				teams = append(teams, id)
-			}
-			reach = append(reach, "t.team_id IN ?")
-			args = append(args, teams)
-		}
-		if v.can(enums.WAPool) {
-			reach = append(reach, "(t.status NOT IN ('resolved','bot') AND t.owner_id IS NULL)")
-		}
-		if v.can(enums.WAWaiting) {
-			reach = append(reach, "(t.waiting_listed_at IS NOT NULL AND t.status <> 'resolved')")
-		}
-		where = append(where, "("+strings.Join(reach, " OR ")+")")
+	if v.can(enums.WAViewAll) {
+		return store.Reach{All: true}
 	}
-	q := "SELECT t.id FROM wa_tickets t"
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
+	r := store.Reach{
+		Channels: make([]uint, 0, len(v.channels)),
+		UserID:   v.user.ID,
+		Pool:     v.can(enums.WAPool),
+		Waiting:  v.can(enums.WAWaiting),
 	}
-	return q, args
+	for id := range v.channels {
+		r.Channels = append(r.Channels, id)
+	}
+	if v.can(enums.WAViewTeam) {
+		for id := range v.teams {
+			r.Teams = append(r.Teams, id)
+		}
+	}
+	return r
 }
 
 // likeEscape makes typed text match itself in a LIKE pattern: % and _
@@ -236,27 +217,16 @@ func (s *Service) loadViewers(ctx context.Context) (map[uint]*viewer, error) {
 	}
 	s.mu.Unlock()
 
-	var ids []uint
-	if err := s.db.WithContext(ctx).Raw(`
-		SELECT DISTINCT ur.user_id FROM user_roles ur
-		JOIN role_permissions rp ON rp.role_id = ur.role_id
-		JOIN permissions p ON p.id = rp.permission_id
-		JOIN users u ON u.id = ur.user_id
-		WHERE p.key = ? AND u.active`, string(enums.WAView)).Scan(&ids).Error; err != nil {
+	ids, err := s.repo.ActiveUsersWithPermission(ctx, string(enums.WAView))
+	if err != nil {
 		return nil, err
 	}
-	var members []struct {
-		ChannelID uint
-		UserID    uint
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT channel_id, user_id FROM wa_channel_members").Scan(&members).Error; err != nil {
+	members, err := s.repo.ChannelMembers(ctx)
+	if err != nil {
 		return nil, err
 	}
-	var teams []struct {
-		TeamID uint
-		UserID uint
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT team_id, user_id FROM wa_team_members").Scan(&teams).Error; err != nil {
+	teams, err := s.repo.TeamMembers(ctx)
+	if err != nil {
 		return nil, err
 	}
 	out := make(map[uint]*viewer, len(ids))
@@ -301,13 +271,13 @@ func (s *Service) viewerOf(ctx context.Context, userID uint) (*viewer, error) {
 		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkin yok.")
 	}
 	v := &viewer{user: u, channels: map[uint]bool{}, teams: map[uint]bool{}}
-	var chans []uint
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT channel_id FROM wa_channel_members WHERE user_id = ?", userID).Scan(&chans).Error)
+	chans, err := s.repo.ChannelsOfUser(ctx, userID)
+	warnDB(ctx, err)
 	for _, c := range chans {
 		v.channels[c] = true
 	}
-	var teams []uint
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT team_id FROM wa_team_members WHERE user_id = ?", userID).Scan(&teams).Error)
+	teams, err := s.repo.TeamsOfUser(ctx, userID)
+	warnDB(ctx, err)
 	for _, t := range teams {
 		v.teams[t] = true
 	}
@@ -379,7 +349,7 @@ type Event struct {
 // bump moves a conversation's version forward so reconnecting panels see
 // the change.
 func (s *Service) bump(ctx context.Context, conversationID uint) {
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_conversations SET version = nextval('wa_version_seq') WHERE id = ?", conversationID).Error)
+	warnDB(ctx, s.repo.BumpConversation(ctx, conversationID))
 }
 
 // publish sends a conversation's fresh summary (and optionally a message)

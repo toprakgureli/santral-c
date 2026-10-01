@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
@@ -27,26 +27,9 @@ const (
 	mediaKeepWindow = 72 * time.Hour
 )
 
-// inboundJob is a stored customer message whose follow-up work is not done:
-// starting or continuing a chatbot, handing the chat out, automatic rules.
-type inboundJob struct {
-	MessageID uint
-	Created   bool
-	Reopened  bool
-	First     bool
-	OptedOut  bool
-	Attempts  int
-	// ResolvedAt is when the ticket had been resolved before this message
-	// reopened it; OwnerID who had it when the message came.
-	ResolvedAt *time.Time
-	OwnerID    *uint
-	// Steps lists the steps already done, comma separated.
-	Steps string
-}
-
 // finishInboundJob removes a message's job once its follow-up work is done.
 func (s *Service) finishInboundJob(ctx context.Context, messageID uint) {
-	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_inbound_jobs WHERE message_id = ?", messageID).Error)
+	warnDB(ctx, s.repo.DeleteInboundJob(ctx, messageID))
 }
 
 // inboundWorker runs follow-up work until ctx ends. Work for a message is
@@ -71,31 +54,21 @@ func (s *Service) inboundWorker(ctx context.Context) {
 	}
 }
 
-func (s *Service) takeInboundJob(ctx context.Context) (inboundJob, bool) {
-	var jobs []inboundJob
-	err := s.db.WithContext(ctx).Raw(`WITH due AS (
-			SELECT j.message_id FROM wa_inbound_jobs j
-			WHERE j.claimed_at < ?
-			  AND NOT EXISTS (SELECT 1 FROM wa_inbound_jobs o WHERE o.conversation_id = j.conversation_id AND o.message_id < j.message_id)
-			ORDER BY j.message_id LIMIT 1
-			FOR UPDATE OF j SKIP LOCKED)
-		UPDATE wa_inbound_jobs j SET claimed_at = now(), attempts = j.attempts + 1
-		FROM due WHERE j.message_id = due.message_id
-		RETURNING j.message_id, j.created, j.reopened, j.first, j.opted_out, j.attempts, j.resolved_at, j.owner_id, j.steps`,
-		time.Now().Add(-inboundJobGrace)).Scan(&jobs).Error
+func (s *Service) takeInboundJob(ctx context.Context) (store.InboundJob, bool) {
+	jobs, err := s.repo.TakeInboundJob(ctx, time.Now().Add(-inboundJobGrace))
 	if err != nil {
 		if ctx.Err() == nil {
 			slog.ErrorContext(ctx, "whatsapp follow-up work could not be taken", "error", err)
 		}
-		return inboundJob{}, false
+		return store.InboundJob{}, false
 	}
 	if len(jobs) == 0 {
-		return inboundJob{}, false
+		return store.InboundJob{}, false
 	}
 	return jobs[0], true
 }
 
-func (s *Service) runInboundJob(ctx context.Context, job inboundJob) {
+func (s *Service) runInboundJob(ctx context.Context, job store.InboundJob) {
 	if job.Attempts > inboundJobTries {
 		slog.ErrorContext(ctx, "whatsapp follow-up work given up", "message", job.MessageID, "attempts", job.Attempts-1)
 		s.finishInboundJob(ctx, job.MessageID)
@@ -112,7 +85,7 @@ func (s *Service) runInboundJob(ctx context.Context, job inboundJob) {
 			case <-beat.Done():
 				return
 			case <-t.C:
-				warnDB(beat, s.db.WithContext(beat).Exec("UPDATE wa_inbound_jobs SET claimed_at = now() WHERE message_id = ?", job.MessageID).Error)
+				warnDB(beat, s.repo.RenewInboundJob(beat, job.MessageID))
 			}
 		}
 	})
@@ -130,9 +103,9 @@ func (s *Service) runInboundJob(ctx context.Context, job inboundJob) {
 
 // resumeInbound rebuilds what a stored message's follow-up work needs and
 // runs the steps not done yet.
-func (s *Service) resumeInbound(ctx context.Context, job inboundJob) {
-	var msg models.WAMessage
-	if err := s.db.WithContext(ctx).First(&msg, job.MessageID).Error; err != nil {
+func (s *Service) resumeInbound(ctx context.Context, job store.InboundJob) {
+	msg, err := s.repo.LoadMessage(ctx, job.MessageID)
+	if err != nil {
 		slog.WarnContext(ctx, "whatsapp follow-up message could not be loaded", "message", job.MessageID, "error", err)
 		return
 	}
@@ -156,7 +129,7 @@ func (s *Service) resumeInbound(ctx context.Context, job inboundJob) {
 		slog.WarnContext(ctx, "whatsapp follow-up device could not be loaded", "message", job.MessageID, "error", err)
 		return
 	}
-	res := &inboundResult{msg: &msg, conv: conv, ticket: ticket, contact: contact,
+	res := &inboundResult{msg: msg, conv: conv, ticket: ticket, contact: contact,
 		created: job.Created, reopened: job.Reopened, first: job.First, optedOut: job.OptedOut,
 		resolvedAt: job.ResolvedAt, ownerAtMessage: job.OwnerID}
 	if job.Attempts > 1 {
@@ -181,7 +154,7 @@ func (j *jobSteps) run(ctx context.Context, name string, fn func()) {
 	}
 	fn()
 	j.done += name + ","
-	warnDB(ctx, j.s.db.WithContext(ctx).Exec("UPDATE wa_inbound_jobs SET steps = steps || ? WHERE message_id = ?", name+",", j.messageID).Error)
+	warnDB(ctx, j.s.repo.AddInboundStep(ctx, j.messageID, name))
 }
 
 // mediaLoop fetches customer files that were never kept, apart from the
@@ -202,16 +175,7 @@ func (s *Service) mediaLoop(ctx context.Context) {
 // sweepMedia fetches customer files that were never kept, for example
 // because the server stopped during the download.
 func (s *Service) sweepMedia(ctx context.Context) {
-	var rows []struct {
-		ID        uint
-		ChannelID uint
-	}
-	err := s.db.WithContext(ctx).Raw(`SELECT id, channel_id FROM wa_messages
-		WHERE direction = 'in' AND media IS NOT NULL
-		  AND COALESCE(media->>'metaId', '') <> '' AND COALESCE(media->>'storeId', '') = ''
-		  AND COALESCE(media->>'failed', '') = '' AND COALESCE((media->>'size')::bigint, 0) = 0
-		  AND created_at BETWEEN ? AND ?
-		ORDER BY id LIMIT 10`, time.Now().Add(-mediaKeepWindow), time.Now().Add(-mediaKeepGrace)).Scan(&rows).Error
+	rows, err := s.repo.UnkeptFiles(ctx, time.Now().Add(-mediaKeepWindow), time.Now().Add(-mediaKeepGrace))
 	if err != nil {
 		if ctx.Err() == nil {
 			slog.ErrorContext(ctx, "whatsapp files to keep could not be listed", "error", err)

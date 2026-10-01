@@ -75,24 +75,14 @@ func (s *Service) MyPrefs(ctx context.Context, actorID uint) (*Prefs, error) {
 		return nil, err
 	}
 	out := &Prefs{Sound: true, Desktop: true, Conversations: []ConvPref{}}
-	var row struct {
-		Sound      bool
-		Desktop    bool
-		MutedUntil *time.Time
-	}
-	if s.db.WithContext(ctx).Raw("SELECT sound, desktop, muted_until FROM wa_user_prefs WHERE user_id = ?", actorID).Scan(&row).RowsAffected > 0 {
+	if row, found := s.repo.UserPrefs(ctx, actorID); found {
 		out.Sound, out.Desktop = row.Sound, row.Desktop
 		if row.MutedUntil != nil && row.MutedUntil.After(time.Now()) {
 			out.MutedUntil = row.MutedUntil
 		}
 	}
-	var convs []struct {
-		ConversationID uint
-		MutedUntil     *time.Time
-		PinnedAt       *time.Time
-	}
-	if err := s.db.WithContext(ctx).Raw(`SELECT conversation_id, muted_until, pinned_at FROM wa_user_conversations
-		WHERE user_id = ? AND (pinned_at IS NOT NULL OR muted_until > now())`, actorID).Scan(&convs).Error; err != nil {
+	convs, err := s.repo.ConversationPrefs(ctx, actorID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	for _, c := range convs {
@@ -123,9 +113,7 @@ func (s *Service) SavePrefs(ctx context.Context, actorID uint, in PrefsInput) (*
 	} else if set {
 		until = t
 	}
-	if err := s.db.WithContext(ctx).Exec(`INSERT INTO wa_user_prefs (user_id, sound, desktop, muted_until, updated_at) VALUES (?, ?, ?, ?, now())
-		ON CONFLICT (user_id) DO UPDATE SET sound = EXCLUDED.sound, desktop = EXCLUDED.desktop, muted_until = EXCLUDED.muted_until, updated_at = now()`,
-		actorID, sound, desktop, until).Error; err != nil {
+	if err := s.repo.SaveUserPrefs(ctx, actorID, sound, desktop, until); err != nil {
 		return nil, errs.Internal(err)
 	}
 	return s.MyPrefs(ctx, actorID)
@@ -143,11 +131,11 @@ func (s *Service) SaveConvPref(ctx context.Context, actorID, conversationID uint
 	if !setMute && in.Pin == nil {
 		return s.MyPrefs(ctx, actorID)
 	}
-	if err := s.db.WithContext(ctx).Exec("INSERT INTO wa_user_conversations (user_id, conversation_id) VALUES (?, ?) ON CONFLICT DO NOTHING", actorID, conversationID).Error; err != nil {
+	if err := s.repo.AddConversationPref(ctx, actorID, conversationID); err != nil {
 		return nil, errs.Internal(err)
 	}
 	if setMute {
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET muted_until = ? WHERE user_id = ? AND conversation_id = ?", until, actorID, conversationID).Error)
+		warnDB(ctx, s.repo.MuteConversation(ctx, actorID, conversationID, until))
 	}
 	if in.Pin != nil {
 		var pinned *time.Time
@@ -155,8 +143,8 @@ func (s *Service) SaveConvPref(ctx context.Context, actorID, conversationID uint
 			now := time.Now()
 			pinned = &now
 		}
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_user_conversations SET pinned_at = ? WHERE user_id = ? AND conversation_id = ?", pinned, actorID, conversationID).Error)
+		warnDB(ctx, s.repo.PinConversation(ctx, actorID, conversationID, pinned))
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_user_conversations WHERE user_id = ? AND pinned_at IS NULL AND (muted_until IS NULL OR muted_until < now())", actorID).Error)
+	warnDB(ctx, s.repo.DropIdleConversationPrefs(ctx, actorID))
 	return s.MyPrefs(ctx, actorID)
 }

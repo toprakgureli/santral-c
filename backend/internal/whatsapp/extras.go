@@ -9,9 +9,6 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/outside"
-	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
-
-	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -34,16 +31,18 @@ func (s *Service) Teams(ctx context.Context, actorID uint) ([]TeamView, error) {
 	if _, err := s.viewerOf(ctx, actorID); err != nil {
 		return nil, err
 	}
-	var list []models.WATeam
-	if err := s.db.WithContext(ctx).Order("name").Find(&list).Error; err != nil {
+	list, err := s.repo.TeamsByName(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]TeamView, 0, len(list))
 	for _, t := range list {
 		v := TeamView{ID: t.ID, Name: t.Name, Color: t.Color, MemberIDs: []uint{}}
-		if err := s.db.WithContext(ctx).Raw("SELECT user_id FROM wa_team_members WHERE team_id = ? ORDER BY user_id", t.ID).Scan(&v.MemberIDs).Error; err != nil {
+		members, err := s.repo.TeamMemberIDs(ctx, t.ID)
+		if err != nil {
 			return nil, errs.Internal(err)
 		}
+		v.MemberIDs = members
 		if v.MemberIDs == nil {
 			v.MemberIDs = []uint{}
 		}
@@ -68,27 +67,7 @@ func (s *Service) SaveTeam(ctx context.Context, actorID, id uint, in TeamInput) 
 	if name == "" {
 		return errs.Invalid("Ekibe bir ad ver.", nil)
 	}
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if id == 0 {
-			t := &models.WATeam{Name: name, Color: in.Color}
-			if err := tx.Create(t).Error; err != nil {
-				return err
-			}
-			id = t.ID
-		} else if err := tx.Exec("UPDATE wa_teams SET name = ?, color = ? WHERE id = ?", name, in.Color, id).Error; err != nil {
-			return err
-		}
-		if err := tx.Exec("DELETE FROM wa_team_members WHERE team_id = ?", id).Error; err != nil {
-			return err
-		}
-		for _, uid := range in.MemberIDs {
-			if err := tx.Exec("INSERT INTO wa_team_members (team_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING", id, uid).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
+	if err := s.repo.SaveTeam(ctx, id, name, in.Color, in.MemberIDs); err != nil {
 		return errs.Internal(err)
 	}
 	s.forget()
@@ -100,7 +79,7 @@ func (s *Service) DeleteTeam(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WATeamManage, "Ekip düzenleme yetkin yok."); err != nil {
 		return err
 	}
-	if err := s.db.WithContext(ctx).Delete(&models.WATeam{}, id).Error; err != nil {
+	if err := s.repo.DeleteTeam(ctx, id); err != nil {
 		return errs.Internal(err)
 	}
 	s.forget()
@@ -132,9 +111,8 @@ func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentView, error)
 	}
 	people := s.people(ctx, ids)
 	online := s.push.OnlineUsers(ids)
-	var avail []uint
-	if err := s.db.WithContext(ctx).Raw(`SELECT sh.user_id FROM shifts sh LEFT JOIN agent_presence ap ON ap.user_id = sh.user_id
-		WHERE sh.ended_at IS NULL AND COALESCE(ap.state, 'available') = 'available'`).Scan(&avail).Error; err != nil {
+	avail, err := s.repo.AvailableAgents(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	am := map[uint]bool{}
@@ -172,14 +150,11 @@ func (s *Service) QuickReplies(ctx context.Context, actorID, channelID uint) ([]
 	if err != nil {
 		return nil, err
 	}
-	q := s.db.WithContext(ctx).Order("shortcut")
-	if channelID > 0 {
-		q = q.Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", channelID))
-	} else if !v.can(enums.WAQuickReply) {
+	if channelID == 0 && !v.can(enums.WAQuickReply) {
 		return nil, errs.Forbidden("Hazır yanıtları düzenleme yetkin yok.")
 	}
-	var list []models.WAQuickReply
-	if err := q.Find(&list).Error; err != nil {
+	list, err := s.repo.QuickReplies(ctx, channelID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]QuickReplyView, 0, len(list))
@@ -207,10 +182,10 @@ func (s *Service) SaveQuickReply(ctx context.Context, actorID, id uint, in Quick
 	}
 	r := models.WAQuickReply{ID: id, Shortcut: in.Shortcut, Title: strings.TrimSpace(in.Title), Body: in.Body, ChannelIDs: jsonString(in.ChannelIDs), CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
 	if id == 0 {
-		return s.db.WithContext(ctx).Create(&r).Error
+		return s.repo.CreateQuickReply(ctx, &r)
 	}
-	return s.db.WithContext(ctx).Model(&models.WAQuickReply{}).Where("id = ?", id).Updates(map[string]any{
-		"shortcut": r.Shortcut, "title": r.Title, "body": r.Body, "channel_ids": r.ChannelIDs, "updated_at": time.Now()}).Error
+	return s.repo.UpdateQuickReply(ctx, id, map[string]any{
+		"shortcut": r.Shortcut, "title": r.Title, "body": r.Body, "channel_ids": r.ChannelIDs, "updated_at": time.Now()})
 }
 
 // DeleteQuickReply removes a ready answer.
@@ -218,7 +193,7 @@ func (s *Service) DeleteQuickReply(ctx context.Context, actorID, id uint) error 
 	if _, err := s.require(ctx, actorID, enums.WAQuickReply, "Hazır yanıtları düzenleme yetkin yok."); err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Delete(&models.WAQuickReply{}, id).Error
+	return s.repo.DeleteQuickReply(ctx, id)
 }
 
 // CopyToChannel copies a device's quick replies, rules or chatbots to
@@ -235,27 +210,23 @@ func (s *Service) CopyToChannel(ctx context.Context, actorID, from, to uint, wha
 		}
 		// The same answer is simply switched on for the target number too; a
 		// shortcut the target already has is left alone.
-		src, dst := fmt.Sprintf("[%d]", from), fmt.Sprintf("[%d]", to)
-		res := s.db.WithContext(ctx).Exec(`UPDATE wa_quick_replies q SET channel_ids = q.channel_ids || ?::jsonb, updated_at = now()
-			WHERE q.channel_ids @> ?::jsonb AND NOT q.channel_ids @> ?::jsonb
-			AND NOT EXISTS (SELECT 1 FROM wa_quick_replies o WHERE o.id <> q.id AND lower(o.shortcut) = lower(q.shortcut) AND o.channel_ids @> ?::jsonb)`,
-			dst, src, dst, dst)
-		if res.Error != nil {
-			return 0, errs.Internal(res.Error)
+		shared, err := s.repo.ShareQuickReplies(ctx, from, to)
+		if err != nil {
+			return 0, errs.Internal(err)
 		}
-		n = int(res.RowsAffected)
+		n = int(shared)
 	case "rules":
 		if _, err := s.require(ctx, actorID, enums.WAAutomation, "Otomatik mesajları düzenleme yetkin yok."); err != nil {
 			return 0, err
 		}
-		var list []models.WAAutomation
-		if err := s.db.WithContext(ctx).Where("channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", from)).Find(&list).Error; err != nil {
+		list, err := s.repo.RulesOnChannel(ctx, from)
+		if err != nil {
 			return 0, errs.Internal(err)
 		}
 		for _, r := range list {
 			c := models.WAAutomation{Name: r.Name, Active: false, ChannelIDs: jsonString([]uint{to}), Trigger: r.Trigger, Conditions: r.Conditions, Actions: r.Actions,
 				CooldownMin: r.CooldownMin, Position: r.Position, CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
-			if s.db.WithContext(ctx).Create(&c).Error == nil {
+			if s.repo.CreateRule(ctx, &c) == nil {
 				n++
 			}
 		}
@@ -308,15 +279,15 @@ func (s *Service) UpdateContact(ctx context.Context, actorID, id uint, in Contac
 	if in.Blocked != nil {
 		fields["blocked"] = *in.Blocked
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WAContact{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+	if err := s.repo.UpdateContact(ctx, id, fields); err != nil {
 		return nil, errs.Internal(err)
 	}
 	c, err := s.repo.Contact(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	var convs []uint
-	warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT id FROM wa_conversations WHERE contact_id = ?", id).Scan(&convs).Error)
+	convs, err := s.repo.ConversationIDsOfContact(ctx, id)
+	warnDB(ctx, err)
 	for _, cid := range convs {
 		s.publish(ctx, cid, nil, nil)
 	}
@@ -341,11 +312,8 @@ type HistoryItem struct {
 // visibleTickets returns the ids of a customer's recent tickets the viewer
 // may see, by the same rules as the conversation list.
 func (s *Service) visibleTickets(ctx context.Context, v *viewer, contactID uint) (map[uint]bool, error) {
-	var tickets []models.WATicket
-	if err := s.db.WithContext(ctx).
-		Select("id", "channel_id", "status", "owner_id", "team_id", "waiting_listed_at").
-		Where("contact_id = ?", contactID).Order("id DESC").Limit(historyLimit).
-		Find(&tickets).Error; err != nil {
+	tickets, err := s.repo.RecentTicketsOfContact(ctx, contactID, historyLimit)
+	if err != nil {
 		return nil, errs.Internal(fmt.Errorf("customer tickets could not be listed: %w", err))
 	}
 	if len(tickets) == 0 {
@@ -355,9 +323,8 @@ func (s *Service) visibleTickets(ctx context.Context, v *viewer, contactID uint)
 	for i := range tickets {
 		ids[i] = tickets[i].ID
 	}
-	var joined []uint
-	if err := s.db.WithContext(ctx).Raw("SELECT ticket_id FROM wa_ticket_participants WHERE user_id = ? AND ticket_id IN ?", v.user.ID, ids).
-		Scan(&joined).Error; err != nil {
+	joined, err := s.repo.JoinedTickets(ctx, v.user.ID, ids)
+	if err != nil {
 		return nil, errs.Internal(fmt.Errorf("ticket participants could not be listed: %w", err))
 	}
 	in := make(map[uint]bool, len(joined))
@@ -392,24 +359,8 @@ func (s *Service) ContactHistory(ctx context.Context, actorID, contactID uint) (
 	if len(visible) == 0 {
 		return []HistoryItem{}, nil
 	}
-	var rows []struct {
-		ConversationID uint
-		TicketID       uint
-		Number         int64
-		ChannelID      uint
-		ChannelName    string
-		Status         string
-		Owner          string
-		CreatedAt      time.Time
-		ResolvedAt     *time.Time
-		Rating         *int
-		Messages       int64
-	}
-	if err := s.db.WithContext(ctx).Raw(`SELECT t.conversation_id, t.id AS ticket_id, t.number, t.channel_id, c.name AS channel_name, t.status,
-		COALESCE(u.name, '') AS owner, t.created_at, t.resolved_at, t.rating,
-		(SELECT count(*) FROM wa_messages m WHERE m.ticket_id = t.id AND m.direction IN ('in','out')) AS messages
-		FROM wa_tickets t JOIN wa_channels c ON c.id = t.channel_id LEFT JOIN users u ON u.id = t.owner_id
-		WHERE t.contact_id = ? ORDER BY t.id DESC LIMIT ?`, contactID, historyLimit).Scan(&rows).Error; err != nil {
+	rows, err := s.repo.ContactTickets(ctx, contactID, historyLimit)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	ratings := v.can(enums.WARatings)
@@ -439,11 +390,8 @@ func (s *Service) LookupNumber(ctx context.Context, actorID uint, number string)
 	if len(key) < 3 {
 		return []ConversationView{}, nil
 	}
-	seen, seenArgs := v.visibleTickets()
-	var convs []models.WAConversation
-	if err := s.db.WithContext(ctx).Where("contact_id IN (SELECT id FROM wa_contacts WHERE peer_key = ?) AND ticket_id IS NOT NULL", key).
-		Where("ticket_id IN ("+seen+")", seenArgs...).
-		Order("last_message_at DESC NULLS LAST").Limit(20).Find(&convs).Error; err != nil {
+	convs, err := s.repo.ConversationsOfNumber(ctx, v.reach(), key)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	visible, _ := s.filterVisible(ctx, v, convs)
@@ -465,34 +413,7 @@ func (s *Service) StartConversation(ctx context.Context, actorID, channelID uint
 		return nil, errs.Invalid("Numara anlaşılamadı. Örnek: 0555 123 45 67", err)
 	}
 	waID := strings.TrimPrefix(e164, "+")
-	var convID uint
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		c, err := store.UpsertContact(tx, waID, "")
-		if err != nil {
-			return err
-		}
-		if n := strings.TrimSpace(name); n != "" && c.Name == "" {
-			if err := tx.Exec("UPDATE wa_contacts SET name = ? WHERE id = ?", n, c.ID).Error; err != nil {
-				return err
-			}
-		}
-		conv, _, err := store.UpsertConversation(tx, channelID, c.ID)
-		if err != nil {
-			return err
-		}
-		convID = conv.ID
-		if conv.TicketID == nil {
-			t := models.WATicket{ConversationID: conv.ID, ChannelID: channelID, ContactID: c.ID, Status: "open", Priority: "normal", Tags: "[]", OwnerID: uintPtr(actorID)}
-			if err := tx.Create(&t).Error; err != nil {
-				return err
-			}
-			if err := tx.Exec("UPDATE wa_conversations SET ticket_id = ?, last_message_at = now() WHERE id = ?", t.ID, conv.ID).Error; err != nil {
-				return err
-			}
-			return tx.Exec("INSERT INTO wa_ticket_participants (ticket_id, user_id, role) VALUES (?, ?, 'owner') ON CONFLICT DO NOTHING", t.ID, actorID).Error
-		}
-		return nil
-	})
+	convID, err := s.repo.StartConversation(ctx, channelID, waID, strings.TrimSpace(name), actorID)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -519,8 +440,8 @@ func (s *Service) Integrations(ctx context.Context, actorID uint) ([]Integration
 	if _, err := s.botManager(ctx, actorID); err != nil {
 		return nil, err
 	}
-	var list []models.WAIntegration
-	if err := s.db.WithContext(ctx).Order("name").Find(&list).Error; err != nil {
+	list, err := s.repo.Integrations(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]IntegrationView, 0, len(list))
@@ -580,11 +501,11 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 		// The stored headers (an API key, a token) belong to the address
 		// they were entered for; moving to another server drops them, so
 		// they can never be sent somewhere new without being typed again.
-		var old models.WAIntegration
-		if err := s.db.WithContext(ctx).Select("url").First(&old, id).Error; err != nil {
+		old, err := s.repo.IntegrationURL(ctx, id)
+		if err != nil {
 			return errs.NotFound("Entegrasyon bulunamadı.")
 		}
-		if was, err := url.Parse(old.URL); err != nil || was.Scheme != u.Scheme || was.Host != u.Host {
+		if was, err := url.Parse(old); err != nil || was.Scheme != u.Scheme || was.Host != u.Host {
 			fields["headers_enc"] = ""
 		}
 	}
@@ -593,9 +514,9 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 		if v, ok := fields["headers_enc"].(string); ok {
 			r.HeadersEnc = v
 		}
-		return s.db.WithContext(ctx).Create(&r).Error
+		return s.repo.CreateIntegration(ctx, &r)
 	}
-	return s.db.WithContext(ctx).Model(&models.WAIntegration{}).Where("id = ?", id).Updates(fields).Error
+	return s.repo.UpdateIntegration(ctx, id, fields)
 }
 
 // DeleteIntegration removes an outside system.
@@ -603,7 +524,7 @@ func (s *Service) DeleteIntegration(ctx context.Context, actorID, id uint) error
 	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Delete(&models.WAIntegration{}, id).Error
+	return s.repo.DeleteIntegration(ctx, id)
 }
 
 // TestIntegration calls an outside system with sample values.
@@ -640,7 +561,7 @@ func (s *Service) createCallback(ctx context.Context, ch *models.WAChannel, conv
 		return
 	}
 	cb := &models.WACallback{ChannelID: uintPtr(ch.ID), ContactID: uintPtr(c.ID), TicketID: uintPtr(t.ID), Phone: "+" + c.WAID, Note: strings.TrimSpace(note), Status: "open", CreatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(cb).Error; err != nil {
+	if err := s.repo.CreateCallback(ctx, cb); err != nil {
 		return
 	}
 	s.event(ctx, nil, conv, t.ID, 0, "Müşteri geri aranmak istedi. Talep geri arama listesine eklendi.")
@@ -659,21 +580,13 @@ func (s *Service) Callbacks(ctx context.Context, actorID uint, all bool) ([]Call
 	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini görme yetkin yok."); err != nil {
 		return nil, err
 	}
-	q := `SELECT b.id, COALESCE(ch.name, '') AS channel_name, COALESCE(t.conversation_id, 0) AS conversation_id,
-		COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), b.phone) AS customer, b.phone, b.note, b.status,
-		COALESCE(u.name, '') AS done_by, b.done_at, b.created_at
-		FROM wa_callbacks b LEFT JOIN wa_channels ch ON ch.id = b.channel_id LEFT JOIN wa_contacts c ON c.id = b.contact_id
-		LEFT JOIN wa_tickets t ON t.id = b.ticket_id LEFT JOIN users u ON u.id = b.done_by`
-	if !all {
-		q += " WHERE b.status = 'open' OR b.done_at > now() - interval '1 day'"
-	}
-	q += " ORDER BY (b.status = 'open') DESC, b.id DESC LIMIT 300"
-	var out []CallbackView
-	if err := s.db.WithContext(ctx).Raw(q).Scan(&out).Error; err != nil {
+	rows, err := s.repo.Callbacks(ctx, all)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	if out == nil {
-		out = []CallbackView{}
+	out := make([]CallbackView, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, CallbackView(r))
 	}
 	return out, nil
 }
@@ -683,5 +596,5 @@ func (s *Service) DoneCallback(ctx context.Context, actorID, id uint) error {
 	if _, err := s.require(ctx, actorID, enums.WACallbacks, "Geri arama taleplerini kapatma yetkin yok."); err != nil {
 		return err
 	}
-	return s.db.WithContext(ctx).Exec("UPDATE wa_callbacks SET status = 'done', done_by = ?, done_at = now() WHERE id = ?", actorID, id).Error
+	return s.repo.DoneCallback(ctx, id, actorID)
 }

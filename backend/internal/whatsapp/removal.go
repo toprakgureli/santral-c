@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
-	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -32,7 +31,7 @@ func (s *Service) RemoveChannel(ctx context.Context, actorID, id uint, ip string
 	if err != nil {
 		return nil, err
 	}
-	used, err := s.exists(ctx, "SELECT 1 FROM wa_conversations WHERE channel_id = ? LIMIT 1", id)
+	used, err := s.repo.ChannelHasConversations(ctx, id)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -40,9 +39,9 @@ func (s *Service) RemoveChannel(ctx context.Context, actorID, id uint, ip string
 	action := enums.AuditWAChannelDeleted
 	if used {
 		action = enums.AuditWAChannelDeactivated
-		err = s.db.WithContext(ctx).Model(&models.WAChannel{}).Where("id = ?", id).Update("active", false).Error
+		err = s.repo.DeactivateChannel(ctx, id)
 	} else {
-		err = s.db.WithContext(ctx).Delete(&models.WAChannel{}, id).Error
+		err = s.repo.DeleteChannel(ctx, id)
 	}
 	if err != nil {
 		return nil, errs.Internal(err)
@@ -64,14 +63,13 @@ func (s *Service) RemoveBot(ctx context.Context, actorID, id uint, ip string) (*
 	if err != nil {
 		return nil, err
 	}
-	used, err := s.exists(ctx, `SELECT 1 FROM wa_bot_versions WHERE bot_id = ?
-		UNION ALL SELECT 1 FROM wa_bot_events WHERE bot_id = ? LIMIT 1`, id, id)
+	used, err := s.repo.BotHasHistory(ctx, id)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	// Turn it off first so no new customer enters while the ones inside are
 	// handed to a person.
-	if err := s.db.WithContext(ctx).Model(&models.WABot{}).Where("id = ?", id).Update("active", false).Error; err != nil {
+	if err := s.repo.DeactivateBot(ctx, id); err != nil {
 		return nil, errs.Internal(err)
 	}
 	if err := s.endBotSessions(ctx, id, "Chatbot kaldırıldı."); err != nil {
@@ -80,7 +78,7 @@ func (s *Service) RemoveBot(ctx context.Context, actorID, id uint, ip string) (*
 	action := enums.AuditWABotDeactivated
 	if !used {
 		action = enums.AuditWABotDeleted
-		if err := s.db.WithContext(ctx).Delete(&models.WABot{}, id).Error; err != nil {
+		if err := s.repo.DeleteBot(ctx, id); err != nil {
 			return nil, errs.Internal(err)
 		}
 	}
@@ -90,8 +88,8 @@ func (s *Service) RemoveBot(ctx context.Context, actorID, id uint, ip string) (*
 
 // endBotSessions hands every customer inside the chatbot to a person.
 func (s *Service) endBotSessions(ctx context.Context, botID uint, note string) error {
-	var convs []uint
-	if err := s.db.WithContext(ctx).Raw("SELECT conversation_id FROM wa_bot_sessions WHERE bot_id = ?", botID).Scan(&convs).Error; err != nil {
+	convs, err := s.repo.BotSessionConversations(ctx, botID)
+	if err != nil {
 		return errs.Internal(fmt.Errorf("chatbot sessions could not be listed: %w", err))
 	}
 	for _, c := range convs {
@@ -107,15 +105,6 @@ func (s *Service) endBotSessions(ctx context.Context, botID uint, note string) e
 		}
 	}
 	return nil
-}
-
-// exists reports whether query returns a row.
-func (s *Service) exists(ctx context.Context, query string, args ...any) (bool, error) {
-	var hits []int
-	if err := s.db.WithContext(ctx).Raw(query, args...).Scan(&hits).Error; err != nil {
-		return false, fmt.Errorf("existence check failed: %w", err)
-	}
-	return len(hits) > 0, nil
 }
 
 // record writes an audit entry for a WhatsApp settings change.

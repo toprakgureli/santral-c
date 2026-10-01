@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/meta"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -65,7 +66,7 @@ func (s *Service) SetTemplateFill(ctx context.Context, actorID, id uint, fill []
 	if fill == nil {
 		fill = []string{}
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE id = ?", jsonString(fill), id).Error; err != nil {
+	if err := s.repo.SetTemplateFill(ctx, id, jsonString(fill)); err != nil {
 		return nil, errs.Internal(err)
 	}
 	t, err := s.repo.Template(ctx, id)
@@ -93,12 +94,8 @@ func (s *Service) Templates(ctx context.Context, actorID, channelID uint) ([]Tem
 	if !manage && !(pick && v.seesChannel(ch.ID)) {
 		return nil, errs.Forbidden("Şablonları görme yetkin yok.")
 	}
-	q := s.db.WithContext(ctx).Where("waba_id = ?", ch.WABAID)
-	if !manage {
-		q = q.Where("status = 'APPROVED'")
-	}
-	var list []models.WATemplate
-	if err := q.Order("name, language").Find(&list).Error; err != nil {
+	list, err := s.repo.TemplatesOf(ctx, ch.WABAID, !manage)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]TemplateView, 0, len(list))
@@ -139,17 +136,14 @@ func (s *Service) syncTemplates(ctx context.Context, ch *models.WAChannel) (int,
 		if comps == "" || comps == "null" {
 			comps = "[]"
 		}
-		if err := s.db.WithContext(ctx).Exec(`INSERT INTO wa_templates (waba_id, meta_id, name, language, category, status, components, rejected_reason, quality, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, now())
-			ON CONFLICT (waba_id, name, language) DO UPDATE SET meta_id = EXCLUDED.meta_id, category = EXCLUDED.category, status = EXCLUDED.status,
-				components = EXCLUDED.components, rejected_reason = EXCLUDED.rejected_reason, quality = EXCLUDED.quality, updated_at = now()`,
-			ch.WABAID, t.ID, t.Name, t.Language, t.Category, t.Status, comps, cleanReason(t.RejectedReason), t.QualityScore.Score).Error; err != nil {
+		if err := s.repo.UpsertSyncedTemplate(ctx, ch.WABAID, store.SyncedTemplate{MetaID: t.ID, Name: t.Name, Language: t.Language, Category: t.Category,
+			Status: t.Status, Components: comps, RejectedReason: cleanReason(t.RejectedReason), Quality: t.QualityScore.Score}); err != nil {
 			return 0, err
 		}
 		seen = append(seen, t.ID)
 	}
 	if len(seen) > 0 {
-		if err := s.db.WithContext(ctx).Exec("DELETE FROM wa_templates WHERE waba_id = ? AND meta_id <> '' AND meta_id NOT IN ?", ch.WABAID, seen).Error; err != nil {
+		if err := s.repo.DeleteTemplatesNotIn(ctx, ch.WABAID, seen); err != nil {
 			return 0, err
 		}
 	}
@@ -164,8 +158,8 @@ func cleanReason(r string) string {
 }
 
 func (s *Service) syncAllTemplates(ctx context.Context) {
-	var chans []models.WAChannel
-	warnDB(ctx, s.db.WithContext(ctx).Where("active").Find(&chans).Error)
+	chans, err := s.repo.ActiveChannels(ctx)
+	warnDB(ctx, err)
 	done := map[string]bool{}
 	for i := range chans {
 		if done[chans[i].WABAID] {
@@ -311,10 +305,7 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 	}
 	t := &models.WATemplate{WABAID: ch.WABAID, MetaID: metaID, Name: in.Name, Language: in.Language, Category: in.Category, Status: status,
 		Components: jsonString(comps), CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Exec(`INSERT INTO wa_templates (waba_id, meta_id, name, language, category, status, components, created_by, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, now()) ON CONFLICT (waba_id, name, language) DO UPDATE SET meta_id = EXCLUDED.meta_id, status = EXCLUDED.status,
-		components = EXCLUDED.components, category = EXCLUDED.category, updated_at = now()`,
-		t.WABAID, t.MetaID, t.Name, t.Language, t.Category, t.Status, t.Components, actorID).Error; err != nil {
+	if err := s.repo.UpsertCreatedTemplate(ctx, t, actorID); err != nil {
 		return nil, errs.Internal(err)
 	}
 	fill := []string{}
@@ -323,10 +314,10 @@ func (s *Service) CreateTemplate(ctx context.Context, actorID uint, in TemplateI
 			fill = append(fill, f)
 		}
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET fill = ? WHERE waba_id = ? AND name = ? AND language = ?", jsonString(fill), t.WABAID, t.Name, t.Language).Error; err != nil {
+	if err := s.repo.SetTemplateFillByName(ctx, t.WABAID, t.Name, t.Language, jsonString(fill)); err != nil {
 		return nil, errs.Internal(err)
 	}
-	if err := s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ?", t.WABAID, t.Name, t.Language).First(t).Error; err != nil {
+	if err := s.repo.ReloadTemplateByName(ctx, t); err != nil {
 		return nil, errs.Internal(err)
 	}
 	v := templateView(t)
@@ -362,15 +353,14 @@ func (s *Service) DeleteTemplate(ctx context.Context, actorID, id uint) error {
 	if err != nil {
 		return err
 	}
-	var ch models.WAChannel
-	if err := s.db.WithContext(ctx).Where("waba_id = ?", t.WABAID).First(&ch).Error; err == nil {
-		if cl, err := s.cloudFor(&ch); err == nil {
+	if ch, err := s.repo.ChannelOfAccount(ctx, t.WABAID); err == nil {
+		if cl, err := s.cloudFor(ch); err == nil {
 			if err := cl.DeleteTemplate(ctx, t.Name); err != nil {
 				return errs.Invalid("Meta şablonu silmedi. "+meta.Friendly(err), err)
 			}
 		}
 	}
-	if err := s.db.WithContext(ctx).Where("waba_id = ? AND name = ?", t.WABAID, t.Name).Delete(&models.WATemplate{}).Error; err != nil {
+	if err := s.repo.DeleteTemplateByName(ctx, t.WABAID, t.Name); err != nil {
 		return errs.Internal(err)
 	}
 	return nil
@@ -388,10 +378,8 @@ func (s *Service) onTemplateStatus(ctx context.Context, wabaID string, raw json.
 		return nil
 	}
 	id := fmt.Sprint(v.MessageTemplateID)
-	res := s.db.WithContext(ctx).Exec("UPDATE wa_templates SET status = ?, rejected_reason = ?, updated_at = now() WHERE waba_id = ? AND (meta_id = ? OR (name = ? AND language = ?))",
-		v.Event, cleanReason(v.Reason), wabaID, id, v.MessageTemplateName, v.MessageTemplateLanguage)
-	if res.Error != nil {
-		return res.Error
+	if err := s.repo.SetTemplateStatus(ctx, wabaID, id, v.MessageTemplateName, v.MessageTemplateLanguage, v.Event, cleanReason(v.Reason)); err != nil {
+		return err
 	}
 	viewers, _ := s.loadViewers(ctx)
 	var ids []uint
@@ -419,7 +407,7 @@ func (s *Service) onTemplateQuality(ctx context.Context, wabaID string, raw json
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil
 	}
-	return s.db.WithContext(ctx).Exec("UPDATE wa_templates SET quality = ? WHERE waba_id = ? AND name = ? AND language = ?", v.NewQualityScore, wabaID, v.MessageTemplateName, v.MessageTemplateLanguage).Error
+	return s.repo.SetTemplateQuality(ctx, wabaID, v.MessageTemplateName, v.MessageTemplateLanguage, v.NewQualityScore)
 }
 
 func templateStatusWord(e string) string {

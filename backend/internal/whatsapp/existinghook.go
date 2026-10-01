@@ -61,8 +61,8 @@ func (s *Service) IsExistingHook(ctx context.Context, path string) bool {
 	existingHooks.mu.Lock()
 	defer existingHooks.mu.Unlock()
 	if time.Since(existingHooks.at) > 30*time.Second {
-		var list []string
-		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT DISTINCT existing_hook_path FROM wa_channels WHERE existing_hook_path <> ''").Scan(&list).Error)
+		list, err := s.repo.ExistingHookPaths(ctx)
+		warnDB(ctx, err)
 		existingHooks.paths = map[string]bool{}
 		for _, p := range list {
 			existingHooks.paths[p] = true
@@ -73,8 +73,8 @@ func (s *Service) IsExistingHook(ctx context.Context, path string) bool {
 }
 
 func (s *Service) channelsOnPath(ctx context.Context, path string) ([]models.WAChannel, error) {
-	var list []models.WAChannel
-	if err := s.db.WithContext(ctx).Where("existing_hook_path = ?", "/"+strings.Trim(path, "/")).Order("id").Find(&list).Error; err != nil {
+	list, err := s.repo.ChannelsOnHookPath(ctx, "/"+strings.Trim(path, "/"))
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	if len(list) == 0 {
@@ -87,7 +87,7 @@ func (s *Service) channelsOnPath(ctx context.Context, path string) ([]models.WAC
 // panel says why nothing arrives. It is written at most once a minute.
 func (s *Service) rejected(ctx context.Context, list []models.WAChannel, why string) {
 	for _, ch := range list {
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_channels SET last_error = ?, last_error_at = now() WHERE id = ? AND (last_error_at IS NULL OR last_error_at < now() - interval '1 minute' OR last_error <> ?)", why, ch.ID, why).Error)
+		warnDB(ctx, s.repo.NoteRejection(ctx, ch.ID, why))
 	}
 }
 

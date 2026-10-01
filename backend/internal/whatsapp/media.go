@@ -85,16 +85,16 @@ func (s *Service) mediaRef(msg *models.WAMessage) MediaRef {
 }
 
 func (s *Service) saveRef(ctx context.Context, msgID uint, ref MediaRef) {
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_messages SET media = ? WHERE id = ?", jsonString(ref), msgID).Error)
+	warnDB(ctx, s.repo.SetMessageMedia(ctx, msgID, jsonString(ref)))
 }
 
 // keepMedia copies a customer's file to storage.
 func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uint) {
-	var msg models.WAMessage
-	if err := s.db.WithContext(ctx).First(&msg, msgID).Error; err != nil {
+	msg, err := s.repo.LoadMessage(ctx, msgID)
+	if err != nil {
 		return
 	}
-	ref := s.mediaRef(&msg)
+	ref := s.mediaRef(msg)
 	if ref.MetaID == "" || ref.StoreID != "" {
 		return
 	}
@@ -148,8 +148,8 @@ func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uin
 		}
 	}
 	s.saveRef(ctx, msgID, ref)
-	warnDB(ctx, s.db.WithContext(ctx).First(&msg, msgID).Error)
-	s.publish(ctx, msg.ConversationID, &msg, nil)
+	warnDB(ctx, s.repo.ReloadMessage(ctx, msg))
+	s.publish(ctx, msg.ConversationID, msg, nil)
 }
 
 // MediaStream is a file ready to be written to the browser.
@@ -164,14 +164,14 @@ type MediaStream struct {
 
 // OpenMedia streams a message's file to someone who sees the chat.
 func (s *Service) OpenMedia(ctx context.Context, actorID, messageID uint, rangeHeader string) (*MediaStream, error) {
-	var msg models.WAMessage
-	if err := s.db.WithContext(ctx).First(&msg, messageID).Error; err != nil {
+	msg, err := s.repo.LoadMessage(ctx, messageID)
+	if err != nil {
 		return nil, errs.NotFound("Dosya bulunamadı.")
 	}
 	if _, _, _, err := s.reachable(ctx, actorID, msg.ConversationID); err != nil {
 		return nil, err
 	}
-	ref := s.mediaRef(&msg)
+	ref := s.mediaRef(msg)
 	if ref.StoreID != "" && s.storage != nil {
 		resp, err := s.storage.Open(ctx, ref.StoreID, rangeHeader)
 		if err == nil {
@@ -308,8 +308,7 @@ func (s *Service) SendMedia(ctx context.Context, actorID, conversationID uint, n
 		msg.ClientID = strPtr(cid)
 	}
 	if replyTo > 0 {
-		var target models.WAMessage
-		if s.db.WithContext(ctx).Where("id = ? AND conversation_id = ?", replyTo, conv.ID).First(&target).Error == nil && target.WAMID != nil {
+		if target, err := s.repo.MessageInConversation(ctx, replyTo, conv.ID); err == nil && target.WAMID != nil {
 			msg.ReplyToWAMID = target.WAMID
 		}
 	}

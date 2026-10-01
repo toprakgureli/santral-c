@@ -1,7 +1,8 @@
-// Package store reads and writes the WhatsApp module's shared records:
-// devices, customers, conversations, tickets and their participants,
-// templates and chatbots. The functions that take a transaction run inside
-// one the caller opened.
+// Package store holds every query of the WhatsApp module: devices,
+// customers, conversations and messages, tickets and their participants,
+// teams, templates, chatbots, rules, surveys, preferences and reports. The
+// service reaches the database only through it. The functions that take a
+// transaction run inside one the caller opened with Repository.Transaction.
 package store
 
 import (
@@ -27,6 +28,13 @@ type Repository struct {
 // New builds the repository.
 func New(db *gorm.DB) *Repository {
 	return &Repository{db: db}
+}
+
+// Transaction runs fn in one database transaction: it commits when fn
+// returns nil and rolls back otherwise. The functions of this package that
+// take a *gorm.DB run on the tx it hands to fn.
+func (r *Repository) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	return r.db.WithContext(ctx).Transaction(fn)
 }
 
 // Channel loads a device.

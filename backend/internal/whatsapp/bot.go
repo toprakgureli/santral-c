@@ -17,8 +17,6 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/outside"
 
-	"gorm.io/gorm"
-
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -108,7 +106,7 @@ func (o *liveIO) Tag(tags []string, priority, category string) {
 	if c := strings.TrimSpace(category); c != "" {
 		fields["category"] = c
 	}
-	_ = o.s.db.WithContext(o.ctx).Model(&models.WATicket{}).Where("id = ?", o.ticket.ID).Updates(fields).Error
+	_ = o.s.repo.UpdateTicket(o.ctx, o.ticket.ID, fields)
 }
 
 func (o *liveIO) Callback(note string) {
@@ -131,13 +129,12 @@ func (o *liveIO) HoursOpen() bool {
 }
 
 func (o *liveIO) Mark(nodeID, kind string) {
-	_ = o.s.db.WithContext(o.ctx).Exec("INSERT INTO wa_bot_events (bot_id, version, conversation_id, node_id, kind) VALUES (?, ?, ?, ?, ?)",
-		o.bot.ID, o.version, o.conv.ID, nodeID, kind).Error
+	_ = o.s.repo.AddBotEvent(o.ctx, o.bot.ID, o.version, o.conv.ID, nodeID, kind)
 }
 
 func (s *Service) botGraph(ctx context.Context, botID uint, version int) (*flow.Graph, error) {
-	var raw string
-	if err := s.db.WithContext(ctx).Raw("SELECT graph FROM wa_bot_versions WHERE bot_id = ? AND version = ?", botID, version).Scan(&raw).Error; err != nil || raw == "" {
+	raw, err := s.repo.BotGraph(ctx, botID, version)
+	if err != nil || raw == "" {
 		return nil, errors.New("chatbot sürümü bulunamadı")
 	}
 	var g flow.Graph
@@ -151,8 +148,8 @@ func (s *Service) botGraph(ctx context.Context, botID uint, version int) (*flow.
 // after-hours flow when the device is closed, a keyword flow when the
 // message matches, else the entry flow.
 func (s *Service) pickBot(ctx context.Context, ch *models.WAChannel, text string) *models.WABot {
-	var bots []models.WABot
-	if err := s.db.WithContext(ctx).Where("active AND published_version > 0 AND channel_ids @> ?::jsonb", fmt.Sprintf("[%d]", ch.ID)).Order("id").Find(&bots).Error; err != nil {
+	bots, err := s.repo.ActiveBotsOnChannel(ctx, ch.ID)
+	if err != nil {
 		return nil
 	}
 	h := device.Parse(ch.Settings).Hours
@@ -215,13 +212,11 @@ func (s *Service) startBot(ctx context.Context, ch *models.WAChannel, conv *mode
 		st.Vars["musteri"] = firstName(v.Display)
 		st.Vars["numara"] = "+" + contact.WAID
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'bot', updated_at = now() WHERE id = ?", ticket.ID).Error; err != nil {
+	if err := s.repo.SetTicketBot(ctx, ticket.ID); err != nil {
 		return false
 	}
 	ticket.Status = "bot"
-	if err := s.db.WithContext(ctx).Exec(`INSERT INTO wa_bot_sessions (conversation_id, bot_id, version, node_id, vars, tries) VALUES (?, ?, ?, '', '{}', 0)
-		ON CONFLICT (conversation_id) DO UPDATE SET bot_id = EXCLUDED.bot_id, version = EXCLUDED.version, node_id = '', vars = '{}', tries = 0, started_at = now(), updated_at = now()`,
-		conv.ID, bot.ID, bot.PublishedVersion).Error; err != nil {
+	if err := s.repo.StartBotSession(ctx, conv.ID, bot.ID, bot.PublishedVersion); err != nil {
 		return false
 	}
 	s.runStep(ctx, ch, conv, ticket, bot, bot.PublishedVersion, g, st, nil)
@@ -230,14 +225,14 @@ func (s *Service) startBot(ctx context.Context, ch *models.WAChannel, conv *mode
 
 // continueBot feeds the customer's answer to their flow.
 func (s *Service) continueBot(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, ticket *models.WATicket, msg *models.WAMessage) bool {
-	var sess models.WABotSession
-	if err := s.db.WithContext(ctx).Where("conversation_id = ?", conv.ID).First(&sess).Error; err != nil {
+	sess, err := s.repo.BotSession(ctx, conv.ID)
+	if err != nil {
 		// The flow is gone (ended or timed out): a person takes over.
 		s.botToHuman(ctx, ch, conv, ticket, 0, "")
 		return false
 	}
-	var bot models.WABot
-	if err := s.db.WithContext(ctx).First(&bot, sess.BotID).Error; err != nil {
+	bot, err := s.repo.LoadBot(ctx, sess.BotID)
+	if err != nil {
 		s.botToHuman(ctx, ch, conv, ticket, 0, "")
 		return false
 	}
@@ -267,7 +262,7 @@ func (s *Service) continueBot(ctx context.Context, ch *models.WAChannel, conv *m
 			in.ChoiceID = p.Payload
 		}
 	}
-	s.runStep(ctx, ch, conv, ticket, &bot, sess.Version, g, st, in)
+	s.runStep(ctx, ch, conv, ticket, bot, sess.Version, g, st, in)
 	return true
 }
 
@@ -276,11 +271,10 @@ func (s *Service) runStep(ctx context.Context, ch *models.WAChannel, conv *model
 	io := &liveIO{s: s, ctx: ctx, ch: ch, conv: conv, ticket: ticket, bot: bot, version: version}
 	flow.Step(g, st, in, io)
 	if !st.Done {
-		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_bot_sessions SET node_id = ?, vars = ?, tries = ?, updated_at = now() WHERE conversation_id = ?",
-			st.NodeID, jsonString(st.Vars), st.Tries, conv.ID).Error)
+		warnDB(ctx, s.repo.SaveBotSession(ctx, conv.ID, st.NodeID, jsonString(st.Vars), st.Tries))
 		return
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conv.ID).Error)
+	warnDB(ctx, s.repo.DeleteBotSession(ctx, conv.ID))
 	summary := botSummary(st.Vars)
 	switch {
 	case io.handed:
@@ -319,11 +313,11 @@ func (s *Service) botToHuman(ctx context.Context, ch *models.WAChannel, conv *mo
 	if teamID > 0 {
 		fields["team_id"] = teamID
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Model(&models.WATicket{}).Where("id = ? AND status = 'bot'", ticket.ID).Updates(fields).Error)
+	warnDB(ctx, s.repo.UpdateBotTicket(ctx, ticket.ID, fields))
 	line := "Chatbot sohbeti bir temsilciye aktardı."
 	if teamID > 0 {
-		var name string
-		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT name FROM wa_teams WHERE id = ?", teamID).Scan(&name).Error)
+		name, err := s.repo.TeamName(ctx, teamID)
+		warnDB(ctx, err)
 		if name != "" {
 			line = "Chatbot sohbeti " + name + " ekibine aktardı."
 		}
@@ -333,32 +327,27 @@ func (s *Service) botToHuman(ctx context.Context, ch *models.WAChannel, conv *mo
 	}
 	s.event(ctx, nil, conv, ticket.ID, 0, line)
 	// The waiting clock starts only now that a person is needed.
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET awaiting_since = now(), waiting_listed_at = NULL WHERE id = ?", ticket.ID).Error)
+	warnDB(ctx, s.repo.StartAwaiting(ctx, ticket.ID))
 	s.distribute(ctx, ch, ticket.ID)
 	s.publish(ctx, conv.ID, nil, nil)
 }
 
 // endBot stops a conversation's flow, if any.
 func (s *Service) endBot(ctx context.Context, conversationID uint, kind string) {
-	var sess models.WABotSession
-	if s.db.WithContext(ctx).Where("conversation_id = ?", conversationID).First(&sess).Error != nil {
+	sess, err := s.repo.BotSession(ctx, conversationID)
+	if err != nil {
 		return
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("DELETE FROM wa_bot_sessions WHERE conversation_id = ?", conversationID).Error)
-	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_bot_events (bot_id, version, conversation_id, node_id, kind) VALUES (?, ?, ?, ?, ?)", sess.BotID, sess.Version, conversationID, sess.NodeID, kind).Error)
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open' WHERE status = 'bot' AND conversation_id = ?", conversationID).Error)
+	warnDB(ctx, s.repo.DeleteBotSession(ctx, conversationID))
+	warnDB(ctx, s.repo.AddBotEvent(ctx, sess.BotID, sess.Version, conversationID, sess.NodeID, kind))
+	warnDB(ctx, s.repo.ReleaseBotTicket(ctx, conversationID))
 }
 
 // sweepBots ends flows whose customer went quiet; the ticket is closed
 // without a survey and opens again when they write.
 func (s *Service) sweepBots(ctx context.Context) {
-	var rows []struct {
-		ConversationID uint
-		ChannelID      uint
-		UpdatedAt      time.Time
-	}
-	warnDB(ctx, s.db.WithContext(ctx).Raw(`SELECT s.conversation_id, c.channel_id, s.updated_at FROM wa_bot_sessions s JOIN wa_conversations c ON c.id = s.conversation_id
-		WHERE s.updated_at < now() - interval '5 minutes'`).Scan(&rows).Error)
+	rows, err := s.repo.IdleBotSessions(ctx)
+	warnDB(ctx, err)
 	for _, r := range rows {
 		ch, err := s.repo.Channel(ctx, r.ChannelID)
 		if err != nil {
@@ -373,12 +362,12 @@ func (s *Service) sweepBots(ctx context.Context) {
 		}
 		// A ticket a person already has is never closed by the chatbot's
 		// clock; only the leftover session goes.
-		res := s.db.WithContext(ctx).Exec("UPDATE wa_tickets SET status = 'open' WHERE id = ? AND status = 'bot'", ticket.ID)
-		if res.Error != nil {
-			warnDB(ctx, res.Error)
+		opened, err := s.repo.OpenBotTicket(ctx, ticket.ID)
+		if err != nil {
+			warnDB(ctx, err)
 			continue
 		}
-		if res.RowsAffected == 0 {
+		if opened == 0 {
 			s.endBot(ctx, conv.ID, "handoff")
 			continue
 		}
@@ -422,8 +411,8 @@ func (s *Service) botView(ctx context.Context, b *models.WABot) BotView {
 	if b.PublishedVersion == 0 {
 		v.DraftChanged = true
 	} else {
-		var pub string
-		warnDB(ctx, s.db.WithContext(ctx).Raw("SELECT graph::text FROM wa_bot_versions WHERE bot_id = ? AND version = ?", b.ID, b.PublishedVersion).Scan(&pub).Error)
+		pub, err := s.repo.BotVersionText(ctx, b.ID, b.PublishedVersion)
+		warnDB(ctx, err)
 		var a, c any
 		_ = json.Unmarshal([]byte(pub), &a)
 		_ = json.Unmarshal([]byte(b.Draft), &c)
@@ -448,8 +437,8 @@ func (s *Service) Bots(ctx context.Context, actorID uint) ([]BotView, error) {
 	if _, err := s.botManager(ctx, actorID); err != nil {
 		return nil, err
 	}
-	var list []models.WABot
-	if err := s.db.WithContext(ctx).Order("id").Find(&list).Error; err != nil {
+	list, err := s.repo.Bots(ctx)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := make([]BotView, 0, len(list))
@@ -464,11 +453,11 @@ func (s *Service) Bot(ctx context.Context, actorID, id uint) (*BotView, error) {
 	if _, err := s.botManager(ctx, actorID); err != nil {
 		return nil, err
 	}
-	var b models.WABot
-	if err := s.db.WithContext(ctx).First(&b, id).Error; err != nil {
+	b, err := s.repo.LoadBot(ctx, id)
+	if err != nil {
 		return nil, errs.NotFound("Chatbot bulunamadı.")
 	}
-	v := s.botView(ctx, &b)
+	v := s.botView(ctx, b)
 	return &v, nil
 }
 
@@ -533,16 +522,16 @@ func (s *Service) checkBotConflict(ctx context.Context, id uint, trigger string,
 	if !active || trigger == "keyword" || (trigger == "entry" && sc.Mode != "always") {
 		return nil
 	}
-	var others []models.WABot
-	if err := s.db.WithContext(ctx).Where("active AND trigger = ? AND id <> ? AND (trigger <> 'entry' OR COALESCE(schedule->>'mode', 'always') = 'always')", trigger, id).Find(&others).Error; err != nil {
+	others, err := s.repo.ConflictingBots(ctx, trigger, id)
+	if err != nil {
 		return errs.Internal(err)
 	}
 	for _, o := range others {
 		for _, a := range parseIDs(o.ChannelIDs) {
 			for _, b := range channels {
 				if a == b {
-					var name string
-					if err := s.db.WithContext(ctx).Raw("SELECT name FROM wa_channels WHERE id = ?", a).Scan(&name).Error; err != nil {
+					name, err := s.repo.ChannelName(ctx, a)
+					if err != nil {
 						return errs.Internal(err)
 					}
 					return errs.Conflict(fmt.Sprintf("%s cihazında zaten açık bir %s var: %s. Önce onu kapat ya da cihazdan çıkar.", name, triggerWord(trigger), o.Name), nil)
@@ -577,7 +566,7 @@ func (s *Service) CreateBot(ctx context.Context, actorID uint, in BotInput) (*Bo
 	}
 	b := &models.WABot{Name: name, Description: strings.TrimSpace(in.Description), Trigger: trigger, Keywords: jsonString(cleanTags(in.Keywords)),
 		Schedule: jsonString(sc), ChannelIDs: "[]", Draft: starterGraph(), CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(b).Error; err != nil {
+	if err := s.repo.CreateBot(ctx, b); err != nil {
 		return nil, errs.Internal(err)
 	}
 	v := s.botView(ctx, b)
@@ -591,8 +580,8 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 	if err != nil {
 		return nil, err
 	}
-	var b models.WABot
-	if err := s.db.WithContext(ctx).First(&b, id).Error; err != nil {
+	b, err := s.repo.LoadBot(ctx, id)
+	if err != nil {
 		return nil, errs.NotFound("Chatbot bulunamadı.")
 	}
 	fields := map[string]any{"updated_at": time.Now()}
@@ -635,7 +624,7 @@ func (s *Service) UpdateBot(ctx context.Context, actorID, id uint, in BotInput) 
 		delete(fields, "description")
 		delete(fields, "keywords")
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WABot{}).Where("id = ?", id).Updates(fields).Error; err != nil {
+	if err := s.repo.UpdateBot(ctx, id, fields); err != nil {
 		return nil, errs.Internal(err)
 	}
 	return s.Bot(ctx, actorID, id)
@@ -649,7 +638,7 @@ func (s *Service) SaveDraft(ctx context.Context, actorID, id uint, g flow.Graph)
 	if len(g.Nodes) > 300 {
 		return nil, errs.Invalid("Bir akış en fazla 300 kutu olabilir.", nil)
 	}
-	if err := s.db.WithContext(ctx).Model(&models.WABot{}).Where("id = ?", id).Updates(map[string]any{"draft": jsonString(g), "updated_at": time.Now()}).Error; err != nil {
+	if err := s.repo.UpdateBot(ctx, id, map[string]any{"draft": jsonString(g), "updated_at": time.Now()}); err != nil {
 		return nil, errs.Internal(err)
 	}
 	return s.Bot(ctx, actorID, id)
@@ -666,8 +655,8 @@ func (s *Service) PublishBot(ctx context.Context, actorID, id uint) (*PublishRes
 	if _, err := s.require(ctx, actorID, enums.WABotPublish, "Chatbot yayınlama yetkin yok."); err != nil {
 		return nil, err
 	}
-	var b models.WABot
-	if err := s.db.WithContext(ctx).First(&b, id).Error; err != nil {
+	b, err := s.repo.LoadBot(ctx, id)
+	if err != nil {
 		return nil, errs.NotFound("Chatbot bulunamadı.")
 	}
 	var g flow.Graph
@@ -678,13 +667,7 @@ func (s *Service) PublishBot(ctx context.Context, actorID, id uint) (*PublishRes
 		return &PublishResult{Problems: p}, nil
 	}
 	next := b.PublishedVersion + 1
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("INSERT INTO wa_bot_versions (bot_id, version, graph, published_by) VALUES (?, ?, ?, ?)", id, next, b.Draft, actorID).Error; err != nil {
-			return err
-		}
-		return tx.Exec("UPDATE wa_bots SET published_version = ?, published_at = now(), updated_at = now() WHERE id = ?", next, id).Error
-	})
-	if err != nil {
+	if err := s.repo.PublishBot(ctx, id, next, b.Draft, actorID); err != nil {
 		return nil, errs.Internal(err)
 	}
 	v, err := s.Bot(ctx, actorID, id)
@@ -706,13 +689,13 @@ func (s *Service) BotVersions(ctx context.Context, actorID, id uint) ([]BotVersi
 	if _, err := s.botManager(ctx, actorID); err != nil {
 		return nil, err
 	}
-	var out []BotVersion
-	if err := s.db.WithContext(ctx).Raw(`SELECT v.version, COALESCE(u.name, '') AS published_by, v.created_at FROM wa_bot_versions v
-		LEFT JOIN users u ON u.id = v.published_by WHERE v.bot_id = ? ORDER BY v.version DESC`, id).Scan(&out).Error; err != nil {
+	rows, err := s.repo.BotVersions(ctx, id)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	if out == nil {
-		out = []BotVersion{}
+	out := make([]BotVersion, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, BotVersion(r))
 	}
 	return out, nil
 }
@@ -722,11 +705,11 @@ func (s *Service) RestoreVersion(ctx context.Context, actorID, id uint, version 
 	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot düzenleme yetkin yok."); err != nil {
 		return nil, err
 	}
-	var raw string
-	if err := s.db.WithContext(ctx).Raw("SELECT graph::text FROM wa_bot_versions WHERE bot_id = ? AND version = ?", id, version).Scan(&raw).Error; err != nil || raw == "" {
+	raw, err := s.repo.BotVersionText(ctx, id, version)
+	if err != nil || raw == "" {
 		return nil, errs.NotFound("Sürüm bulunamadı.")
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_bots SET draft = ?, updated_at = now() WHERE id = ?", raw, id).Error; err != nil {
+	if err := s.repo.SetBotDraft(ctx, id, raw); err != nil {
 		return nil, errs.Internal(err)
 	}
 	return s.Bot(ctx, actorID, id)
@@ -737,8 +720,8 @@ func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, ch
 	if _, err := s.require(ctx, actorID, enums.WABotManage, "Chatbot kopyalama yetkin yok."); err != nil {
 		return nil, err
 	}
-	var src models.WABot
-	if err := s.db.WithContext(ctx).First(&src, id).Error; err != nil {
+	src, err := s.repo.LoadBot(ctx, id)
+	if err != nil {
 		return nil, errs.NotFound("Chatbot bulunamadı.")
 	}
 	name = strings.TrimSpace(name)
@@ -750,7 +733,7 @@ func (s *Service) CopyBot(ctx context.Context, actorID, id uint, name string, ch
 	}
 	b := &models.WABot{Name: name, Description: src.Description, Trigger: src.Trigger, Keywords: src.Keywords, Schedule: src.Schedule, ChannelIDs: jsonString(channelIDs),
 		Draft: src.Draft, CreatedBy: uintPtr(actorID), UpdatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(b).Error; err != nil {
+	if err := s.repo.CreateBot(ctx, b); err != nil {
 		return nil, errs.Internal(err)
 	}
 	v := s.botView(ctx, b)
@@ -819,9 +802,8 @@ func (s *Service) Simulate(ctx context.Context, actorID uint, in SimInput) (*Sim
 	chID := in.ChannelID
 	var bot *models.WABot
 	if in.BotID > 0 {
-		var b models.WABot
-		if err := s.db.WithContext(ctx).First(&b, in.BotID).Error; err == nil {
-			bot = &b
+		if b, err := s.repo.LoadBot(ctx, in.BotID); err == nil {
+			bot = b
 			if ids := parseIDs(b.ChannelIDs); chID == 0 && len(ids) > 0 {
 				chID = ids[0]
 			}
@@ -895,18 +877,14 @@ func (s *Service) BotReport(ctx context.Context, actorID, id uint, days int) (*B
 		days = 30
 	}
 	since := time.Now().AddDate(0, 0, -days)
-	var rows []struct {
-		NodeID string
-		Kind   string
-		N      int64
-	}
-	if err := s.db.WithContext(ctx).Raw("SELECT node_id, kind, count(*) AS n FROM wa_bot_events WHERE bot_id = ? AND created_at >= ? GROUP BY node_id, kind", id, since).Scan(&rows).Error; err != nil {
+	rows, err := s.repo.BotEventCounts(ctx, id, since)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out := &BotStats{Nodes: map[string]int64{}, Fails: map[string]int64{}, Drops: map[string]int64{}}
 	var g flow.Graph
-	var draft string
-	if err := s.db.WithContext(ctx).Raw("SELECT draft::text FROM wa_bots WHERE id = ?", id).Scan(&draft).Error; err != nil {
+	draft, err := s.repo.BotDraft(ctx, id)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	_ = json.Unmarshal([]byte(draft), &g)
@@ -940,8 +918,8 @@ func (s *Service) BotReport(ctx context.Context, actorID, id uint, days int) (*B
 // callIntegration asks an outside system with the flow's variables and
 // returns its JSON answer.
 func (s *Service) callIntegration(ctx context.Context, id uint, vars map[string]string) (map[string]any, error) {
-	var in models.WAIntegration
-	if err := s.db.WithContext(ctx).First(&in, id).Error; err != nil {
+	in, err := s.repo.LoadIntegration(ctx, id)
+	if err != nil {
 		return nil, errors.New("dış sorgu bulunamadı")
 	}
 	target, err := outside.FillURL(in.URL, vars)

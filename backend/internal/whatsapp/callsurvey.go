@@ -10,12 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/hours"
-	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
@@ -107,11 +103,11 @@ func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurve
 		if err != nil {
 			return nil, errs.Invalid("Anketin gideceği WhatsApp numarasını seç.", nil)
 		}
-		var tpl models.WATemplate
-		if s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ? AND status = 'APPROVED'", ch.WABAID, in.Template, in.TemplateLang).First(&tpl).Error != nil {
+		tpl, err := s.repo.ApprovedTemplateIn(ctx, ch.WABAID, in.Template, in.TemplateLang)
+		if err != nil {
 			return nil, errs.Invalid("Onaylı bir şablon seç.", nil)
 		}
-		quick, urlVar := templateButtons(&tpl)
+		quick, urlVar := templateButtons(tpl)
 		if in.Mode == "buttons" && quick == 0 {
 			return nil, errs.Invalid("Bu şablonda cevap düğmesi yok. Düğmeli anket için hızlı cevap düğmeli bir şablon seç.", nil)
 		}
@@ -129,7 +125,7 @@ func (s *Service) SaveCallSurvey(ctx context.Context, actorID uint, in CallSurve
 				return nil, errs.Invalid("Link müşteriye ulaşmıyor: şablonda değişkenli bir link düğmesi olmalı ya da bir boşluğa {link} yazılmalı.", nil)
 			}
 		}
-		if n := bodyVars(&tpl); len(in.Params) < n {
+		if n := bodyVars(tpl); len(in.Params) < n {
 			return nil, errs.Invalid(fmt.Sprintf("Şablondaki %d boşluğun hepsini doldur.", n), nil)
 		}
 	}
@@ -236,22 +232,20 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 		return
 	}
 	key := phone.Key(waID)
-	var c models.WAContact
-	if s.db.WithContext(ctx).Where("wa_id = ?", waID).First(&c).Error == nil && c.Blocked {
+	if c, err := s.repo.ContactByWAID(ctx, waID); err == nil && c.Blocked {
 		return
 	}
 	status, note := "queued", ""
 	if set.QuietDays > 0 {
-		var n int64
-		warnDB(ctx, s.db.WithContext(ctx).Model(&models.WACallSurvey{}).
-			Where("peer_key = ? AND status IN ('queued','sending','sent','answered') AND created_at > ?", key, time.Now().AddDate(0, 0, -set.QuietDays)).Count(&n).Error)
+		n, err := s.repo.RecentCallSurveys(ctx, key, time.Now().AddDate(0, 0, -set.QuietDays))
+		warnDB(ctx, err)
 		if n > 0 {
 			status, note = "skipped", fmt.Sprintf("Son %d günde zaten soruldu", set.QuietDays)
 		}
 	}
 	row := models.WACallSurvey{CallID: log.CallID, UserID: log.UserID, PeerKey: key, WAID: waID, ChannelID: uintPtr(set.ChannelID), Direction: log.Direction,
 		TalkSeconds: log.DurationSeconds, Status: status, Note: note, SendAt: time.Now().Add(time.Duration(set.DelayMinutes) * time.Minute), CreatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "call_id"}}, DoNothing: true}).Create(&row).Error; err != nil {
+	if err := s.repo.QueueCallSurvey(ctx, &row); err != nil {
 		slog.WarnContext(ctx, "call survey could not be queued", "call", log.CallID, "error", err)
 	}
 }
@@ -266,13 +260,7 @@ const staleCallSurvey = 10 * time.Minute
 // stays taken and is never sent a second time.
 func (s *Service) sendDueCallSurveys(ctx context.Context) {
 	s.flagStaleCallSurveys(ctx)
-	var rows []models.WACallSurvey
-	err := s.db.WithContext(ctx).Raw(`WITH due AS (
-			SELECT id FROM wa_call_surveys WHERE status = 'queued' AND send_at <= now()
-			ORDER BY send_at LIMIT 20 FOR UPDATE SKIP LOCKED)
-		UPDATE wa_call_surveys SET status = 'sending', claimed_at = now()
-		FROM due WHERE wa_call_surveys.id = due.id
-		RETURNING wa_call_surveys.*`).Scan(&rows).Error
+	rows, err := s.repo.TakeDueCallSurveys(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "call surveys could not be taken", "error", err)
 		return
@@ -303,14 +291,13 @@ func (s *Service) sendDueCallSurveys(ctx context.Context) {
 // flagStaleCallSurveys marks surveys cut off while being sent as failed
 // rather than sending them again.
 func (s *Service) flagStaleCallSurveys(ctx context.Context) {
-	res := s.db.WithContext(ctx).Exec(`UPDATE wa_call_surveys SET status = 'failed', note = ?
-		WHERE status = 'sending' AND claimed_at < ?`, "Gönderilip gönderilmediği anlaşılamadı", time.Now().Add(-staleCallSurvey))
-	if res.Error != nil {
-		slog.ErrorContext(ctx, "stale call surveys could not be checked", "error", res.Error)
+	n, err := s.repo.FailStaleCallSurveys(ctx, "Gönderilip gönderilmediği anlaşılamadı", time.Now().Add(-staleCallSurvey))
+	if err != nil {
+		slog.ErrorContext(ctx, "stale call surveys could not be checked", "error", err)
 		return
 	}
-	if res.RowsAffected > 0 {
-		slog.WarnContext(ctx, "call surveys were cut off while sending", "count", res.RowsAffected)
+	if n > 0 {
+		slog.WarnContext(ctx, "call surveys were cut off while sending", "count", n)
 	}
 }
 
@@ -326,9 +313,8 @@ func (s *Service) finishCallSurvey(ctx context.Context, id uint, status, note st
 	if msgID != nil {
 		fields["message_id"] = *msgID
 	}
-	res := s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ? AND status = 'sending'", id).Updates(fields)
-	if res.Error != nil {
-		slog.ErrorContext(ctx, "call survey outcome could not be stored; it stays taken and is not sent again", "survey", id, "status", status, "error", res.Error)
+	if err := s.repo.FinishCallSurvey(ctx, id, fields); err != nil {
+		slog.ErrorContext(ctx, "call survey outcome could not be stored; it stays taken and is not sent again", "survey", id, "status", status, "error", err)
 	}
 }
 
@@ -337,22 +323,11 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 	if err != nil || !ch.Active {
 		return fmt.Errorf("anket numarası bulunamadı ya da kapalı")
 	}
-	var tpl models.WATemplate
-	if s.db.WithContext(ctx).Where("waba_id = ? AND name = ? AND language = ? AND status = 'APPROVED'", ch.WABAID, set.Template, set.TemplateLang).First(&tpl).Error != nil {
+	tpl, err := s.repo.ApprovedTemplateIn(ctx, ch.WABAID, set.Template, set.TemplateLang)
+	if err != nil {
 		return fmt.Errorf("şablon onaylı değil ya da silinmiş")
 	}
-	var conv *models.WAConversation
-	var contact *models.WAContact
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		c, err := store.UpsertContact(tx, r.WAID, "")
-		if err != nil {
-			return err
-		}
-		contact = c
-		cv, _, err := store.UpsertConversation(tx, ch.ID, c.ID)
-		conv = cv
-		return err
-	})
+	contact, conv, err := s.repo.EnsureConversation(ctx, ch.ID, r.WAID)
 	if err != nil {
 		return err
 	}
@@ -399,12 +374,12 @@ func (s *Service) sendCallSurvey(ctx context.Context, set CallSurveySettings, r 
 		params.Buttons = []string{query}
 	}
 	if set.Mode == "buttons" {
-		quick, _ := templateButtons(&tpl)
+		quick, _ := templateButtons(tpl)
 		for i := 0; i < quick; i++ {
 			params.quickPayloads = append(params.quickPayloads, fmt.Sprintf("csv:%d:%d", r.ID, i))
 		}
 	}
-	obj, preview, err := buildTemplate(&tpl, params)
+	obj, preview, err := buildTemplate(tpl, params)
 	if err != nil {
 		return err
 	}
@@ -445,8 +420,8 @@ func callSurveyAnswer(m *hookMessage) (uint, int, bool) {
 
 // recordCallSurvey stores a score for a call, from a button or the form.
 func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, score int, comment string, answers ...RatingAnswer) (*models.WACallSurvey, bool) {
-	var r models.WACallSurvey
-	if s.db.WithContext(ctx).First(&r, id).Error != nil {
+	r, err := s.repo.LoadCallSurvey(ctx, id)
+	if err != nil {
 		return nil, false
 	}
 	if waID != "" && r.WAID != waID {
@@ -456,8 +431,8 @@ func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, sc
 		return nil, false
 	}
 	first := r.AnsweredAt == nil
-	if err := s.db.WithContext(ctx).Model(&models.WACallSurvey{}).Where("id = ?", id).
-		Updates(map[string]any{"status": "answered", "score": score, "comment": strings.TrimSpace(comment), "answers": jsonString(append([]RatingAnswer{}, answers...)), "answered_at": time.Now()}).Error; err != nil {
+	if err := s.repo.UpdateCallSurvey(ctx, id,
+		map[string]any{"status": "answered", "score": score, "comment": strings.TrimSpace(comment), "answers": jsonString(append([]RatingAnswer{}, answers...)), "answered_at": time.Now()}); err != nil {
 		return nil, false
 	}
 	set := s.callSurveySettings(ctx)
@@ -485,7 +460,7 @@ func (s *Service) recordCallSurvey(ctx context.Context, id uint, waID string, sc
 		}
 		s.push.Push(ids, ev)
 	}
-	return &r, first
+	return r, first
 }
 
 // onCallSurveyTap handles a button tap after the message is stored.
@@ -548,37 +523,14 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 	}
 	to := toStart.AddDate(0, 0, 1)
 	out := &CallSurveyReport{Agents: []CallSurveyAgent{}, Recent: []CallSurveyAnswer{}}
-	var totals struct {
-		Queued, Sent, Answered, Failed, Skipped int64
-		Average                                 float64
-	}
-	if err := s.db.WithContext(ctx).Raw(`SELECT
-		count(*) FILTER (WHERE cs.status IN ('queued','sending')) AS queued,
-		count(*) FILTER (WHERE cs.status IN ('sent','answered') AND COALESCE(m.status,'') <> 'failed') AS sent,
-		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
-		count(*) FILTER (WHERE cs.status = 'failed' OR m.status = 'failed') AS failed,
-		count(*) FILTER (WHERE cs.status = 'skipped') AS skipped,
-		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average
-		FROM wa_call_surveys cs LEFT JOIN wa_messages m ON m.id = cs.message_id
-		WHERE cs.created_at >= ? AND cs.created_at < ?`, from, to).Scan(&totals).Error; err != nil {
+	totals, err := s.repo.CallSurveyTotals(ctx, from, to)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	out.Queued, out.Sent, out.Answered, out.Failed, out.Skipped, out.Average = totals.Queued, totals.Sent, totals.Answered, totals.Failed, totals.Skipped, totals.Average
 
-	var agents []struct {
-		UserID   uint
-		Sent     int64
-		Answered int64
-		Average  float64
-		Low      int64
-	}
-	if err := s.db.WithContext(ctx).Raw(`SELECT cs.user_id,
-		count(*) FILTER (WHERE cs.status IN ('sent','answered')) AS sent,
-		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
-		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average,
-		count(*) FILTER (WHERE cs.score <= 2) AS low
-		FROM wa_call_surveys cs WHERE cs.user_id IS NOT NULL AND cs.created_at >= ? AND cs.created_at < ?
-		GROUP BY cs.user_id ORDER BY answered DESC`, from, to).Scan(&agents).Error; err != nil {
+	agents, err := s.repo.CallSurveyAgents(ctx, from, to)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	ids := []uint{}
@@ -590,17 +542,8 @@ func (s *Service) CallSurveyReport(ctx context.Context, actorID uint, fromDay, t
 		p := people[a.UserID]
 		out.Agents = append(out.Agents, CallSurveyAgent{User: p, Sent: a.Sent, Answered: a.Answered, Average: a.Average, Low: a.Low})
 	}
-	var recent []struct {
-		ID             uint
-		UserID         *uint
-		WAID           string
-		Score          int
-		Comment        string
-		ConversationID *uint
-		AnsweredAt     time.Time
-	}
-	if err := s.db.WithContext(ctx).Raw(`SELECT id, user_id, wa_id, score, comment, conversation_id, answered_at FROM wa_call_surveys
-		WHERE status = 'answered' AND created_at >= ? AND created_at < ? ORDER BY answered_at DESC LIMIT 30`, from, to).Scan(&recent).Error; err != nil {
+	recent, err := s.repo.RecentCallSurveyAnswers(ctx, from, to)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	rids := []uint{}

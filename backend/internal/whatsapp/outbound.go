@@ -170,8 +170,8 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		msg.Kind, msg.Body, msg.SenderLabel = "template", preview, tpl.Name
 		payload = map[string]any{"type": "template", "template": obj}
 	case "reaction":
-		var target models.WAMessage
-		if err := s.db.WithContext(ctx).Where("id = ? AND conversation_id = ?", in.TargetID, conv.ID).First(&target).Error; err != nil || target.WAMID == nil {
+		target, err := s.repo.MessageInConversation(ctx, in.TargetID, conv.ID)
+		if err != nil || target.WAMID == nil {
 			return nil, errs.NotFound("Tepki verilecek mesaj bulunamadı.")
 		}
 		msg.Kind, msg.Body = "reaction", in.Emoji
@@ -180,8 +180,7 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 		return nil, errs.Invalid("Mesaj türü tanınmadı.", nil)
 	}
 	if in.ReplyTo > 0 && msg.Kind != "reaction" {
-		var target models.WAMessage
-		if err := s.db.WithContext(ctx).Where("id = ? AND conversation_id = ?", in.ReplyTo, conv.ID).First(&target).Error; err == nil && target.WAMID != nil {
+		if target, err := s.repo.MessageInConversation(ctx, in.ReplyTo, conv.ID); err == nil && target.WAMID != nil {
 			msg.ReplyToWAMID = target.WAMID
 		}
 	}
@@ -195,14 +194,14 @@ func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *model
 	nt := time.Now()
 	msg.NextTryAt = &nt
 	before := s.audience(ctx, ticket)
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(msg).Error; err != nil {
+	err := s.repo.Transaction(ctx, func(tx *gorm.DB) error {
+		if err := store.CreateMessage(tx, msg); err != nil {
 			return err
 		}
 		if msg.Kind == "reaction" {
 			return nil
 		}
-		if err := tx.Exec("UPDATE wa_conversations SET last_message_id = ?, last_message_at = now() WHERE id = ?", msg.ID, conv.ID).Error; err != nil {
+		if err := store.SetLastMessage(tx, conv.ID, msg.ID); err != nil {
 			return err
 		}
 		if msg.SenderKind == "agent" && actorID > 0 {
@@ -212,9 +211,8 @@ func (s *Service) enqueue(ctx context.Context, ch *models.WAChannel, conv *model
 	})
 	if err != nil {
 		if msg.ClientID != nil && strings.Contains(err.Error(), "client_id") {
-			var existing models.WAMessage
-			if s.db.WithContext(ctx).Where("client_id = ?", *msg.ClientID).First(&existing).Error == nil {
-				views, _ := s.messageViews(ctx, []models.WAMessage{existing})
+			if existing, err := s.repo.MessageByClientID(ctx, *msg.ClientID); err == nil {
+				views, _ := s.messageViews(ctx, []models.WAMessage{*existing})
 				if len(views) > 0 {
 					return &views[0], nil
 				}
@@ -246,38 +244,36 @@ func markAnswered(tx *gorm.DB, stale *models.WATicket, userID uint, template boo
 	if ticket.WaitingListedAt != nil && ticket.AwaitingSince != nil {
 		wait := int(time.Since(*ticket.AwaitingSince).Seconds())
 		if wait > ticket.LongestWaitSec {
-			if err := tx.Exec("UPDATE wa_tickets SET longest_wait_sec = ? WHERE id = ?", wait, ticket.ID).Error; err != nil {
+			if err := store.SetLongestWait(tx, ticket.ID, wait); err != nil {
 				return err
 			}
 		}
 	}
 	status := ticket.Status
-	reopen := ""
+	reopen := false
 	if status == "bot" {
 		status = "open"
 	}
 	if status == "resolved" && template {
 		status = "open"
-		reopen = ", reopen_count = reopen_count + 1, resolved_at = NULL"
+		reopen = true
 	}
 	owner := ticket.OwnerID
 	if owner == nil {
 		owner = uintPtr(userID)
 	}
-	if err := tx.Exec(`UPDATE wa_tickets SET awaiting_since = NULL, waiting_listed_at = NULL, status = ?, owner_id = ?,
-		first_response_at = COALESCE(first_response_at, now()), updated_at = now()`+reopen+` WHERE id = ?`, status, *owner, ticket.ID).Error; err != nil {
+	if err := store.MarkTicketAnswered(tx, ticket.ID, status, *owner, reopen); err != nil {
 		return err
 	}
 	role := "helper"
 	if *owner == userID {
 		role = "owner"
 	}
-	if err := tx.Exec(`INSERT INTO wa_ticket_participants (ticket_id, user_id, role, first_reply_at) VALUES (?, ?, ?, now())
-		ON CONFLICT (ticket_id, user_id) DO UPDATE SET first_reply_at = COALESCE(wa_ticket_participants.first_reply_at, now())`, ticket.ID, userID, role).Error; err != nil {
+	if err := store.RecordFirstReply(tx, ticket.ID, userID, role); err != nil {
 		return err
 	}
 	if ticket.OwnerID == nil {
-		if err := tx.Exec("INSERT INTO wa_assignments (ticket_id, kind, to_user, by_user) VALUES (?, 'claim', ?, ?)", ticket.ID, userID, userID).Error; err != nil {
+		if err := store.RecordClaim(tx, ticket.ID, userID); err != nil {
 			return err
 		}
 	}
@@ -350,16 +346,7 @@ const staleSend = 5 * time.Minute
 // out in the order they were written: a later one waits while an earlier
 // one is being sent or retried.
 func (s *Service) sendBatch(ctx context.Context) bool {
-	var list []models.WAMessage
-	err := s.db.WithContext(ctx).Raw(`WITH due AS (
-			SELECT m.id FROM wa_messages m
-			WHERE m.status = 'queued' AND m.next_try_at <= now()
-			  AND NOT EXISTS (SELECT 1 FROM wa_messages p WHERE p.conversation_id = m.conversation_id AND p.status IN ('queued','sending') AND p.id < m.id)
-			ORDER BY m.id LIMIT 20
-			FOR UPDATE OF m SKIP LOCKED)
-		UPDATE wa_messages SET status = 'sending', sending_at = now()
-		FROM due WHERE wa_messages.id = due.id
-		RETURNING wa_messages.*`).Scan(&list).Error
+	list, err := s.repo.TakeDueMessages(ctx)
 	if err != nil {
 		slog.ErrorContext(ctx, "whatsapp outbox could not be read", "error", err)
 		return false
@@ -383,8 +370,8 @@ func (s *Service) sendBatch(ctx context.Context) bool {
 		cancel()
 		if err != nil {
 			slog.ErrorContext(ctx, "whatsapp send panicked", "message", msg.ID, "error", err)
-			s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?, attempts = attempts + 1 WHERE id = ? AND status = 'sending'",
-				"Gönderilirken beklenmeyen bir hata oldu.", msg.ID)
+			n, err := s.repo.SendBroke(ctx, msg.ID, "Gönderilirken beklenmeyen bir hata oldu.")
+			s.finishSend(ctx, msg.ID, n, err)
 		}
 	}
 	// Anything taken means the next message of the same conversation may
@@ -403,18 +390,18 @@ func (s *Service) requeue(list []models.WAMessage) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'queued', sending_at = NULL WHERE id IN ? AND status = 'sending'", ids).Error)
+	warnDB(ctx, s.repo.RequeueSending(ctx, ids))
 }
 
-// finishSend writes the outcome of a send. It only touches a message that
-// is still 'sending', so it never overwrites a later state.
-func (s *Service) finishSend(ctx context.Context, id uint, query string, args ...any) {
-	res := s.db.WithContext(ctx).Exec(query, args...)
-	if res.Error != nil {
-		slog.ErrorContext(ctx, "whatsapp send outcome could not be stored", "message", id, "error", res.Error)
+// finishSend reports how writing the outcome of a send went. The outcome
+// only touches a message that is still 'sending', so it never overwrites a
+// later state; changed is how many messages it changed.
+func (s *Service) finishSend(ctx context.Context, id uint, changed int64, err error) {
+	if err != nil {
+		slog.ErrorContext(ctx, "whatsapp send outcome could not be stored", "message", id, "error", err)
 		return
 	}
-	if res.RowsAffected == 0 {
+	if changed == 0 {
 		slog.WarnContext(ctx, "whatsapp send outcome arrived after the message left 'sending'", "message", id)
 	}
 }
@@ -423,11 +410,9 @@ func (s *Service) finishSend(ctx context.Context, id uint, query string, args ..
 // Whether Meta got them is unknown, so they are not sent again by
 // themselves; the agent sees the note and decides.
 func (s *Service) flagStaleSends(ctx context.Context, age time.Duration) {
-	var stale []models.WAMessage
-	err := s.db.WithContext(ctx).Raw(`UPDATE wa_messages SET status = 'failed', failed_at = now(), error_text = ?
-		WHERE status = 'sending' AND sending_at < ? RETURNING *`,
+	stale, err := s.repo.FailStaleSends(ctx,
 		"Gönderilip gönderilmediği anlaşılamadı. Müşteriye ulaşıp ulaşmadığını kontrol et, gerekirse tekrar gönder.",
-		time.Now().Add(-age)).Scan(&stale).Error
+		time.Now().Add(-age))
 	if err != nil {
 		slog.ErrorContext(ctx, "whatsapp stale sends could not be checked", "error", err)
 		return
@@ -440,8 +425,9 @@ func (s *Service) flagStaleSends(ctx context.Context, age time.Duration) {
 
 func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 	fail := func(code int, text string) {
-		s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'failed', failed_at = now(), error_code = ?, error_text = ?, attempts = attempts + 1 WHERE id = ? AND status = 'sending'", code, text, msg.ID)
-		if err := s.db.WithContext(ctx).First(msg, msg.ID).Error; err != nil {
+		n, err := s.repo.SendFailed(ctx, msg.ID, code, text)
+		s.finishSend(ctx, msg.ID, n, err)
+		if err := s.repo.ReloadMessage(ctx, msg); err != nil {
 			slog.WarnContext(ctx, "whatsapp failed message could not be reloaded", "message", msg.ID, "error", err)
 			return
 		}
@@ -481,7 +467,8 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 		attempts := msg.Attempts + 1
 		if meta.Retryable(err) && attempts < 6 {
 			next := time.Now().Add(time.Duration(10*(1<<attempts)) * time.Second)
-			s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET status = 'queued', attempts = ?, next_try_at = ?, error_text = ? WHERE id = ? AND status = 'sending'", attempts, next, meta.Friendly(err), msg.ID)
+			n, ferr := s.repo.SendLater(ctx, msg.ID, attempts, next, meta.Friendly(err))
+			s.finishSend(ctx, msg.ID, n, ferr)
 			return
 		}
 		code := 0
@@ -495,8 +482,9 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 		fail(code, meta.Friendly(err))
 		return
 	}
-	s.finishSend(ctx, msg.ID, "UPDATE wa_messages SET wamid = ?, status = 'sent', sent_at = now(), attempts = attempts + 1, error_text = '' WHERE id = ? AND status = 'sending'", wamid, msg.ID)
-	if err := s.db.WithContext(ctx).First(msg, msg.ID).Error; err != nil {
+	n, err := s.repo.SendDone(ctx, msg.ID, wamid)
+	s.finishSend(ctx, msg.ID, n, err)
+	if err := s.repo.ReloadMessage(ctx, msg); err != nil {
 		slog.WarnContext(ctx, "whatsapp sent message could not be reloaded", "message", msg.ID, "error", err)
 		return
 	}
@@ -506,8 +494,8 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 
 // Retry queues a failed message again.
 func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
-	var msg models.WAMessage
-	if err := s.db.WithContext(ctx).First(&msg, messageID).Error; err != nil {
+	msg, err := s.repo.LoadMessage(ctx, messageID)
+	if err != nil {
 		return errs.NotFound("Mesaj bulunamadı.")
 	}
 	v, _, _, err := s.reachable(ctx, actorID, msg.ConversationID)
@@ -520,11 +508,11 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	if msg.Status != "failed" || msg.Direction != "out" {
 		return errs.Invalid("Yalnızca gönderilemeyen mesaj tekrar gönderilebilir.", nil)
 	}
-	if err := s.db.WithContext(ctx).Exec("UPDATE wa_messages SET status = 'queued', next_try_at = now(), attempts = 0, error_code = NULL, error_text = '', failed_at = NULL WHERE id = ?", msg.ID).Error; err != nil {
+	if err := s.repo.RequeueMessage(ctx, msg.ID); err != nil {
 		return errs.Internal(err)
 	}
-	warnDB(ctx, s.db.WithContext(ctx).First(&msg, msg.ID).Error)
-	s.publish(ctx, msg.ConversationID, &msg, nil)
+	warnDB(ctx, s.repo.ReloadMessage(ctx, msg))
+	s.publish(ctx, msg.ConversationID, msg, nil)
 	wake(s.wakeOutbox)
 	return nil
 }

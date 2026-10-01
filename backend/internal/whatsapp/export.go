@@ -60,8 +60,8 @@ func (s *Service) PrepareExport(ctx context.Context, actorID, conversationID uin
 	if err != nil {
 		return nil, err
 	}
-	var msgs []models.WAMessage
-	if err := s.db.WithContext(ctx).Where("conversation_id = ? AND kind <> 'reaction'", conv.ID).Order("id").Find(&msgs).Error; err != nil {
+	msgs, err := s.repo.ConversationMessages(ctx, conv.ID)
+	if err != nil {
 		return nil, errs.Internal(err)
 	}
 	e := &Export{s: s, ch: ch, contact: contact, msgs: msgs, names: map[uint]string{}}

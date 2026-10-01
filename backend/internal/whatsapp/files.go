@@ -104,7 +104,7 @@ func (s *Service) UploadFile(ctx context.Context, actorID uint, name, mime strin
 		return nil, errs.Invalid("Dosya saklanamadı: "+err.Error(), err)
 	}
 	f := &models.WAFile{StorageID: store, Name: name, Mime: mime, Size: int64(len(data)), CreatedBy: uintPtr(actorID), CreatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Create(f).Error; err != nil {
+	if err := s.repo.CreateFile(ctx, f); err != nil {
 		return nil, errs.Internal(err)
 	}
 	v := fileView(f)
@@ -112,11 +112,11 @@ func (s *Service) UploadFile(ctx context.Context, actorID uint, name, mime strin
 }
 
 func (s *Service) file(ctx context.Context, id uint) (*models.WAFile, error) {
-	var f models.WAFile
-	if err := s.db.WithContext(ctx).First(&f, id).Error; err != nil {
+	f, err := s.repo.LoadFile(ctx, id)
+	if err != nil {
 		return nil, errs.NotFound("Dosya bulunamadı.")
 	}
-	return &f, nil
+	return f, nil
 }
 
 // OpenFile streams an uploaded file for the panel's previews.
