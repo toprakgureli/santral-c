@@ -65,7 +65,7 @@ func managerPermissions() []Permission {
 		EscalationView, EscalationSearch, EscalationManage, EscalationListAll,
 		UserView, UserCreate, UserUpdate, UserDeactivate,
 		RoleView, RoleManage, RoleAssign,
-		SystemLogs, SystemAuditView,
+		SystemLogs, SystemAuditView, SystemHealth,
 		PerformanceViewRole,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
 		GamesPlay, GamesManage,

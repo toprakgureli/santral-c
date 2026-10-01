@@ -1,7 +1,8 @@
 # systemd unit for the santral-c backend.
 # Install: copy to /etc/systemd/system/santral.service, then
 #   systemctl daemon-reload && systemctl enable --now santral
-# deploy.sh installs a changed copy of this file by itself.
+# deploy.sh installs a changed copy of this file by itself, taken from the
+# commit being deployed (git show), never from the working tree.
 [Unit]
 Description=santral-c call manager backend
 After=network-online.target postgresql.service redis-server.service
@@ -14,6 +15,10 @@ Group=santral
 WorkingDirectory=/opt/santral-c
 # config.yml lives next to the binary in the working directory.
 Environment=SANTRAL_CONFIG=/opt/santral-c/config.yml
+# The Go runtime collects garbage harder as it nears this, well before the
+# MemoryMax below would stop the service (files up to 100 MB are held in
+# memory while they are sent).
+Environment=GOMEMLIMIT=1500MiB
 ExecStart=/opt/santral-c/santral -config /opt/santral-c/config.yml
 Restart=always
 RestartSec=3

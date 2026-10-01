@@ -7,12 +7,14 @@ monitoring stack (Prometheus, Grafana, Jaeger) runs on the same host in
 Docker and listens on 127.0.0.1 only.
 
 ```
-browser ──HTTPS──▶ Cloudflare ──HTTPS (Full strict)──▶ nginx ──┬─ /       panel (/var/www/santral-c)
-                                                               └─ /api/  ▶ 127.0.0.1:8090 (santral)
-Meta, Tally ──HTTPS──▶ Cloudflare ──▶ nginx ─ /api/v1/wa/hook, /api/v1/wa/survey (rate limited, 1 MB)
+browser ──HTTPS──▶ Cloudflare ──HTTPS (Full strict)──▶ nginx :443 ──┬─ /       panel (/var/www/santral-c)
+                                 (Origin Certificate) (also :80)    └─ /api/  ▶ 127.0.0.1:8090 (santral)
+Meta, Tally ──HTTPS──▶ Cloudflare ──▶ nginx :443 ─ /api/v1/wa/hook, /api/v1/wa/survey (rate limited, 1 MB)
+Meta (address already registered) ──▶ nginx :5001 ─ registered webhook paths only (optional, section 9)
 softphone ──SIP over WSS──▶ api.bulutsantralim.com   (straight from the browser, not through nginx)
 santral ──every 6 hours──▶ Google Shared Drive (database copies)
 you ──SSH tunnel──▶ Grafana 127.0.0.1:3000, Prometheus 127.0.0.1:9090, Jaeger 127.0.0.1:16686
+                    (node_exporter 127.0.0.1:9100 reports the disks to Prometheus)
 ```
 
 ## 0. Packages
@@ -110,6 +112,13 @@ Check these values in the prod template as well:
 - `telemetry.otlpEndpoint: "http://127.0.0.1:4318"` sends traces to Jaeger
   (section 11); `telemetry.sampleRatio: 0.2` traces one request in five.
   Leave `otlpEndpoint` empty to turn traces off.
+- `database.statementTimeout: 30s`: PostgreSQL stops any single query of the
+  backend that runs longer (the same 30 seconds nginx waits for an `/api/`
+  answer). Migrations and the backups' `pg_dump` run without it; the
+  WhatsApp clean-up of old rows may take up to 10 minutes.
+- `database.dataPath: /var/lib/postgresql`: a folder on the disk that holds
+  the database files. The system warnings (section 11) report when that disk
+  fills up. Change it if the database lives elsewhere.
 
 ### Sign-in limits and the office address
 
@@ -144,7 +153,9 @@ Adresleri on the same page.
 ### Checking the config
 
 The backend checks `config.yml` before it touches the database, and a live
-server (`app.development: live`) refuses to start on any `HATA` line. Once
+server refuses to start on any `HATA` line. Only `app.development: test`
+(or `development`) is a test setup; a missing, mistyped or unknown value
+counts as live, with an `UYARI` line naming it. Once
 the binary is built (section 4) you can run the same check by hand:
 
 ```bash
@@ -153,8 +164,9 @@ sudo -u santral /opt/santral-c/santral -check-config -config /opt/santral-c/conf
 
 It prints `HATA` (stops the server) and `UYARI` (reported, the server still
 starts) lines, or `config.yml uygun`. It stops on an empty, example or
-too short `auth.secret` or `security.dataKey`, an empty or example `mfaKey`,
-a missing `sipKey` or API key while `bulutsantralim.enabled` is true,
+too short `auth.secret` or `security.dataKey`, a `previousDataKeys` entry
+the server could not use (shorter than 32 characters), an empty or example
+`mfaKey`, a missing `sipKey` or API key while `bulutsantralim.enabled` is true,
 `accessTTL` over 24 hours, `refreshTTL` not longer than `accessTTL`,
 missing database or Redis settings, `auth.cookieSecure: false` on a live
 server and an unreadable `trustedIPs` entry. It warns about `app.host` not
@@ -176,7 +188,12 @@ sudo -u postgres createdb --owner santral santral
 
 Type the same password you put in `database.password`. Redis works as
 installed, on localhost:6379. The backend applies the migrations itself on
-every start.
+every start, on a connection of its own named `santral-migrate` with no
+statement timeout, and logs "migrating the database" and "database is up to
+date". Before that it rebuilds any index a stopped concurrent build left
+unusable (PostgreSQL marks it invalid and `CREATE INDEX ... IF NOT EXISTS`
+would skip it for ever); one that cannot be rebuilt is dropped, so its
+migration makes it again.
 
 ## 4. First build
 
@@ -186,9 +203,10 @@ so the sidebar shows which version runs:
 ```bash
 SHA=$(sudo -u santral env HOME=/opt/santral-c git -C /opt/santral-c rev-parse --short HEAD)
 NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-ID=$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')
+ID=$(od -An -N6 -tx1 /dev/urandom | tr -d ' 
+')
 sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/backend && /usr/local/go/bin/go build -trimpath -ldflags '-X main.version=$SHA -X main.buildTime=$NOW -X main.buildID=$ID' -o /opt/santral-c/santral ./cmd/santral"
-sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/frontend && npm ci && VITE_BUILD_ID=$ID npm run build"
+sudo -u santral env HOME=/opt/santral-c bash -c "cd /opt/santral-c/frontend && npm ci --ignore-scripts && VITE_BUILD_ID=$ID npm run build"
 sudo -u santral /opt/santral-c/santral -check-config -config /opt/santral-c/config.yml
 sudo mkdir -p /var/www/santral-c
 sudo rsync -a --delete /opt/santral-c/frontend/dist/ /var/www/santral-c/
@@ -221,9 +239,19 @@ private `/tmp`: the backend writes nothing on disk except there (the
 backup dump is made there and removed after the upload). So code running
 inside the service can change neither its own binary nor the deploy script.
 It also runs without capabilities, with a narrowed set of system calls, at
-most 2 GB of memory, and restarts always. Logs go to the journal, never to
+most 2 GB of memory (`GOMEMLIMIT=1500MiB` makes Go collect garbage harder
+well before that), and restarts always. Logs go to the journal, never to
 files. Stopping waits up to 60 seconds: the backend closes the live
 streams, lets open requests finish, then waits for background work.
+
+The backend bounds every connection, so a client that stops half way
+cannot hold one for ever: a request must arrive within 30 seconds (10
+minutes when it announces a body over 1 MB, an upload), an answer must go
+out within 2 minutes (an hour for GET requests: downloads, exports,
+recordings; 24 hours for the live streams, the paths ending in `/stream`),
+and an idle kept-alive connection closes after 75 seconds. The time a
+handler works is not counted. Paths are case sensitive: `/API/v1/...` is not
+`/api/v1/...` and answers 404.
 
 ## 6. nginx
 
@@ -246,8 +274,12 @@ What the site file does:
   switched to Full (strict) without a gap;
 - limits the WhatsApp webhook and survey addresses to 50 requests a second
   per address (bursts of 300) and 1 MB bodies;
-- lets `/api/v1/wa/` take 110 MB bodies with no buffering and long timeouts,
-  for media and streamed exports, and does the same for chat attachments;
+- lets `/api/v1/wa/` take 110 MB bodies with no buffering and 300-second
+  timeouts, for media and streamed exports;
+- streams chat attachments (`/api/v1/teams/attachments/`) from Drive to the
+  browser without buffering and with 900-second timeouts; their uploads go
+  from the browser straight to Drive, so they keep the site's 8 MB body
+  limit;
 - forwards `/healthz` for the uptime monitor and never forwards `/metrics`;
 - never caches `index.html`, caches hashed assets for a year;
 - sends the security headers with every answer, the panel page included:
@@ -291,7 +323,8 @@ server's own address for SSH (section 11).
    colleague is talking to) and `call.transfer_external` (hand a call to a
    number outside the phone system, always audited) start on every default
    role; take them away where they are not wanted. `system.backup` (section
-   10) is held only by the owner at first.
+   10) is held only by the owner at first; `system.health` (the system
+   warnings, section 11) by the owner and Yönetici.
 
 Users are never deleted, only deactivated (Kullanıcılar), which signs them
 out at once and keeps their history.
@@ -322,6 +355,10 @@ Nothing below goes into `config.yml`; the panel seals what you type with
 - **A webhook address already registered in Meta**: if it cannot be changed,
   choose "Meta'da zaten kayıtlı bir webhook" on the number and install
   `deploy/nginx/whatsapp-existing-webhook.conf` (instructions inside it).
+  That port reaches only the registered webhook paths: nginx turns away
+  `/api`, `/healthz` and `/metrics` in any spelling, and marks the requests
+  (`X-Santral-Entry: existing-hook`) so the backend refuses them too.
+  Capitals in the registered path do not matter.
 - **Return to the same agent**: WhatsApp > Ayarlar > Cihaz ayarları >
   Chatbot. A customer who writes again within the set minutes after their
   chat was resolved goes straight back to the agent who had it, without the
@@ -340,9 +377,14 @@ rebuilt on its own.
 
 ### Copies to a Shared Drive
 
-Every six hours the backend dumps the whole database (`pg_dump`, custom
-format) and uploads it to a folder in a Google Workspace Shared Drive
-through a service account. The account must be only a **Contributor** in
+Every six hours (counted from the start of the last good copy) the backend
+dumps the whole database (`pg_dump`, custom format) and uploads it to a
+folder in a Google Workspace Shared Drive through a service account. A
+failed copy is tried again after 30 minutes, then after an hour, two hours
+and so on, at most six hours apart. The dump may take an hour and the
+upload another hour; past that they are given up and the run is recorded as
+failed, so a stuck connection never stops the backups. A run cut off by a
+restart is closed as failed at the next start. The account must be only a **Contributor** in
 that Shared Drive: it can add files and cannot delete them, so even a
 server taken over cannot wipe its own backups. Before every upload the
 backend asks Drive what the account may do and refuses when the folder is
@@ -383,7 +425,12 @@ failed.
 ### Restoring a copy
 
 Never put a dump in a world-readable place such as `/tmp`. Keep it in
-`/var/backups/santral`, which only `postgres` can open.
+`/var/backups/santral`, which only `postgres` can open. `deploy.sh` makes
+that folder; before the first deploy, make it yourself:
+
+```bash
+sudo install -d -m 700 -o postgres -g postgres /var/backups/santral
+```
 
 1. Download the file from the Drive folder, then send it from your computer
    straight into that folder (replace `198.51.100.20` with your server's
@@ -419,7 +466,10 @@ Try steps 1 and 2 once after setting up backups, so you know it works.
 
 `deploy.sh` also dumps the database before every switch into
 `/var/backups/santral`, named `pre-deploy-` plus the date, the time and the
-commit that was running, and keeps the last ten. The folder is open only to `postgres` (mode 700), so list it as
+commit that was running, and keeps the last ten. It removes the old ones
+before the dump, and refuses to deploy when the disk would not hold the new
+copy with 1 GB to spare (`DUMP_MARGIN_MB`); a copy that fails half way is
+deleted. The folder is open only to `postgres` (mode 700), so list it as
 `postgres`; a plain `ls` from your own shell sees nothing:
 
 ```bash
@@ -443,12 +493,37 @@ backup on their own; the Drive copies are.
   ```bash
   curl -fsS http://127.0.0.1:8090/metrics
   ```
+  `santral_dependency_up{dep="postgres"}` and `{dep="redis"}` come from the
+  same checks `/healthz` runs and read 0 while that part is down; the numbers
+  read from the database are missing then.
+
+### System warnings in the panel
+
+People holding `system.health` ("Sistem uyarılarını görür"; at first the
+owner and Yönetici) see the server's warnings as cards under the top bar,
+each saying what is wrong and what to do. The backend checks once a minute:
+
+| Warning | When |
+|---|---|
+| Sunucunun diski doluyor | the disk holding `database.dataPath` is 85% full (critical from 95%) |
+| Redis cevap vermiyor | Redis does not answer |
+| Veritabanı yedeği gecikti | backups are on and the last good one is over 7 hours old (critical after a day), or none worked an hour after they were switched on |
+| WhatsApp bildirimleri işlenemedi | a Meta notice was given up on in the last hour |
+| WhatsApp mesajları gönderilemiyor | the oldest message waiting to go out has waited 10 minutes (critical after 30) |
+| Gelen mesajların işleri birikti | over 200 customer messages wait for their follow-up work |
+
+The panel asks `GET /api/v1/system/health` every minute. A card closed with
+its cross stays closed until the warning changes (the disk fills another 5%,
+a new notice fails). When PostgreSQL itself is down the panel cannot ask at
+all, since every signed-in request needs the database; the Grafana alert
+"Veritabanı ya da Redis kapalı" covers that.
 
 ### The monitoring stack
 
 `deploy/observability` runs Prometheus (keeps the numbers for 30 days),
-Jaeger (traces) and Grafana (a ready dashboard and alerts) in Docker. All
-three listen on 127.0.0.1 only:
+Jaeger (traces), Grafana (a ready dashboard and alerts) and node_exporter
+(the host's disks, memory and processor; it sees the host's file system
+read-only) in Docker. All of them listen on 127.0.0.1 only:
 
 | Service | Address on the server |
 |---|---|
@@ -456,6 +531,7 @@ three listen on 127.0.0.1 only:
 | Prometheus | 127.0.0.1:9090 |
 | Jaeger web screen | 127.0.0.1:16686 |
 | Jaeger trace intake (OTLP over HTTP) | 127.0.0.1:4318 |
+| node_exporter | 127.0.0.1:9100 |
 
 Start it:
 
@@ -465,7 +541,8 @@ sudo docker compose -f /opt/santral-c/deploy/observability/docker-compose.yml up
 sudo docker compose -f /opt/santral-c/deploy/observability/docker-compose.yml ps
 ```
 
-Prometheus reads the backend's `/metrics` every 15 seconds. For traces, keep
+Prometheus reads the backend's `/metrics` and node_exporter every 15
+seconds. For traces, keep
 `telemetry.otlpEndpoint: "http://127.0.0.1:4318"` in `config.yml` and
 restart the backend (`sudo systemctl restart santral`).
 
@@ -486,8 +563,8 @@ for a new password at the first sign-in; set a strong one right away. The
 dashboard is under Dashboards > santral-c > **santral-c genel bakış**:
 requests, error rate, response times, the slowest routes, live streams,
 WhatsApp queues, after-call surveys, calls waiting for the phone system's
-record, backups, database connections, memory and CPU, and a link to the
-traces. Grafana starts in Turkish; the menu names below are the English
+record, backups, database connections, memory and CPU, whether PostgreSQL
+and Redis answer, how full the disks are, and a link to the traces. Grafana starts in Turkish; the menu names below are the English
 ones.
 
 ### Alerts
@@ -497,12 +574,22 @@ These rules ship in `grafana/provisioning/alerting/rules.yml`:
 | Alert | Fires when |
 |---|---|
 | Sunucu kapalı | Prometheus cannot reach the backend for 2 minutes |
-| Yedek gecikti | backups are on and the last good one is over 7 hours old, for 10 minutes |
+| Veritabanı ya da Redis kapalı | the backend cannot reach PostgreSQL or Redis for 2 minutes (`santral_dependency_up` is 0) |
+| Kök disk doluyor | the root file system is over 85% full, for 5 minutes |
+| Veritabanı diski doluyor | the disk holding `database.dataPath` is over 85% full, for 5 minutes |
+| Disk ölçülemiyor | Prometheus cannot reach node_exporter for 5 minutes |
+| Yedek gecikti | backups are on and the last good one is over 7 hours old, for 10 minutes; also when the numbers are missing that long (no backend, no backups) |
 | Son yedek başarısız | the most recent backup failed |
-| İşlenemeyen WhatsApp bildirimi | some of Meta's notices could not be processed, for 5 minutes |
+| İşlenemeyen WhatsApp bildirimi | a Meta notice was given up on in the last hour, for 5 minutes; it clears by itself an hour after the last failure |
 | WhatsApp gönderimi takıldı | the oldest waiting message has waited over 10 minutes, for 5 minutes |
 | Mesaj sonrası işler birikiyor | over 200 customer messages wait for their follow-up work, for 10 minutes |
 | Sunucu hataları arttı | over 5% of requests end in a server error, for 10 minutes |
+
+While PostgreSQL is down every number the backend reads from the database
+is missing. "Veritabanı ya da Redis kapalı" fires then; the other rules keep
+the state they had (`noDataState: KeepLast`) instead of turning OK. "Sunucu
+kapalı", "Yedek gecikti" and "Disk ölçülemiyor" alert on missing numbers,
+since there the missing number is the problem itself.
 
 Grafana sends alerts only to a contact point you add:
 
@@ -529,26 +616,39 @@ What it does, in order:
 1. Refuses to run when the checkout on the server has local changes to
    tracked files (it lists them); `FORCE=1` overrides that and the changes
    are lost.
-2. Pulls `origin/$BRANCH` and builds the backend as `santral.new` next to
-   the running binary, stamped with the commit.
+2. Reads the running commit from `/var/lib/santral-deploy/deployed-sha`,
+   written after every good deploy (the checkout's HEAD can be a commit
+   that was rolled back). Pulls `origin/$BRANCH`, takes
+   `deploy/santral.service` from that commit with `git show` before
+   anything is built, and builds the backend as `santral.new` next to the
+   running binary, stamped with the commit.
 3. Checks `config.yml` with the new binary (`-check-config`). On a `HATA`
    line it stops; nothing was switched and the running version keeps
    running.
-4. Builds the panel.
-5. Dumps the database into `/var/backups/santral` (section 10) and keeps
-   the last ten of these copies.
-6. Installs `deploy/santral.service` when it changed, keeping the old one.
+4. Builds the panel with `npm ci --ignore-scripts`: no npm package runs an
+   install script on the server (the build needs none).
+5. Removes old local copies, checks the disk has room for a new one (the
+   size of the last copy, or of the database, plus half, plus 1 GB) and
+   dumps the database into `/var/backups/santral` (section 10). Without the
+   room, or when the dump fails (the half-written file is deleted), it
+   stops and nothing was switched.
+6. Installs the unit from step 2 when it differs from the installed one,
+   keeping the old one. The working tree's copy is never installed, so a
+   build step cannot change what root runs.
 7. Keeps the running binary as `santral.prev`, puts the new one in place
    and restarts the service. Migrations run at that start.
-8. Waits up to a minute for `/healthz`. If it does not pass, it prints the
-   last 60 log lines, puts `santral.prev` (and the old unit) back and
-   restarts. If even that does not come up, it prints the path of the dump
-   from step 5. The panel files are not touched.
+8. Waits up to a minute for `/healthz`, longer (up to `MIGRATE_WAIT`) while
+   the new version is still migrating the database (its `santral-migrate`
+   connection shows in `pg_stat_activity`). If it does not pass, it prints
+   the last 60 log lines, puts `santral.prev` (and the old unit) back,
+   resets the checkout to the running commit and restarts. If even that
+   does not come up, it prints the path of the dump from step 5. The panel
+   files are not touched.
 9. Only after the backend is healthy, publishes the panel to
-   `/var/www/santral-c`.
-10. Warns when `deploy/nginx` or `deploy/observability` changed, with the
-    commands to install them; tests nginx with `nginx -t` and reloads it
-    only if the test passes.
+   `/var/www/santral-c` and writes the commit down as the running one.
+10. Warns when `deploy/nginx` or `deploy/observability` changed since the
+    running commit, with the commands to install them; tests nginx with
+    `nginx -t` and reloads it only if the test passes.
 
 These environment variables override its defaults:
 
@@ -562,6 +662,9 @@ These environment variables override its defaults:
 | `DB_NAME` | `santral` |
 | `BACKUP_DIR` | `/var/backups/santral` |
 | `HEALTH_WAIT` | `60` (seconds) |
+| `MIGRATE_WAIT` | `1800` (seconds; how long a start that is still migrating is waited for) |
+| `DUMP_MARGIN_MB` | `1024` (room left free after the local copy) |
+| `STATE_DIR` | `/var/lib/santral-deploy` (where the running commit is written) |
 | `UNIT` | `/etc/systemd/system/santral.service` |
 | `FORCE` | unset; `1` deploys over local changes |
 
@@ -578,7 +681,9 @@ one as it is; `nginx -t` refuses it while the certificate is missing.
 
 `deploy/test/deploy_test.sh` runs the script against a stand-in server
 (a good release, one that does not come up, a config that fails the check,
-local changes on the server).
+local changes on the server, a start that is still migrating, a disk too
+full for the copy, a copy that fails half way, an npm package that edits
+the unit file in the working tree).
 
 ## 13. Replacing keys
 

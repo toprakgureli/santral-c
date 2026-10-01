@@ -15,7 +15,29 @@ type Development string
 const (
 	Test Development = "test"
 	Live Development = "live"
+	// Dev is accepted as another name for the test mode.
+	Dev Development = "development"
 )
+
+// IsLive reports whether the server runs for real. Only an explicit test
+// value turns the live checks off: a missing, mistyped or unknown value
+// counts as live, so a typo never opens a live server to test settings.
+func (d Development) IsLive() bool {
+	switch Development(strings.ToLower(strings.TrimSpace(string(d)))) {
+	case Test, Dev:
+		return false
+	}
+	return true
+}
+
+// Known reports whether the value is one of the names the server knows.
+func (d Development) Known() bool {
+	switch Development(strings.ToLower(strings.TrimSpace(string(d)))) {
+	case Test, Dev, Live:
+		return true
+	}
+	return false
+}
 
 // SSLMode is the PostgreSQL sslmode.
 type SSLMode string
@@ -96,6 +118,13 @@ type Database struct {
 	// failing. Keep it well under PostgreSQL's max_connections (100 by
 	// default), which backups, deploys and admin sessions share.
 	MaxConns int `mapstructure:"maxConns"`
+	// StatementTimeout is the longest a single query of the server may run
+	// (30 s when left out). Migrations and pg_dump run without it.
+	StatementTimeout time.Duration `mapstructure:"statementTimeout"`
+	// DataPath is a folder on the disk that holds the database files; the
+	// system warnings report when that disk fills up. Default
+	// /var/lib/postgresql.
+	DataPath string `mapstructure:"dataPath"`
 }
 
 // Redis holds Redis connection settings.

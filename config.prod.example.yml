@@ -60,6 +60,12 @@ database:
   # wait a moment for a free one. Keep it well under PostgreSQL's limit
   # (max_connections, 100 by default), which backups and deploys share.
   maxConns: 40
+  # Longest a single query may run; PostgreSQL stops it after that.
+  # Migrations and the backups' pg_dump run without this limit.
+  statementTimeout: 30s
+  # A folder on the disk that holds the database files; the panel's system
+  # warnings say when that disk fills up.
+  dataPath: /var/lib/postgresql
 
 redis:
   host: localhost

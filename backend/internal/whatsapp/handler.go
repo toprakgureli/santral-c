@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -114,7 +113,7 @@ const existingHookKey = "waExistingHook"
 // the limits and the handler after it only act on those.
 func (h *Handler) markExisting(c *fiber.Ctx) error {
 	if (c.Method() == fiber.MethodGet || c.Method() == fiber.MethodPost) &&
-		!strings.HasPrefix(c.Path(), "/api/") && h.s.IsExistingHook(c.UserContext(), c.Path()) {
+		!reservedPath(c.Path()) && h.s.IsExistingHook(c.UserContext(), c.Path()) {
 		c.Locals(existingHookKey, true)
 	}
 	return c.Next()

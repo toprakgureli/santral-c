@@ -127,6 +127,9 @@ const (
 	SystemBackup    Permission = "system.backup"
 	SystemLogs      Permission = "system.logs"
 	SystemAuditView Permission = "system.audit_view"
+	// SystemHealth shows the panel's system warnings: a filling disk, a
+	// late backup, WhatsApp queues backing up.
+	SystemHealth Permission = "system.health"
 )
 
 // PermissionInfo describes a permission for seeding.
@@ -214,6 +217,7 @@ var permissions = []PermissionInfo{
 	{SystemBackup, "Veritabanı yedeklemesini ayarlar ve başlatır"},
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
+	{SystemHealth, "Sistem uyarılarını görür (disk doluyor, yedek gecikti, WhatsApp kuyruğu birikti gibi)"},
 }
 
 // Permissions returns a copy of the full permission catalog.

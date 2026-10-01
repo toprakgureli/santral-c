@@ -109,7 +109,8 @@ var gauges = []gauge{
 	newGauge("santral_whatsapp_outbox_sending", "Outgoing WhatsApp messages being sent right now.", "SELECT count(*) FROM wa_messages WHERE status = 'sending'"),
 	newGauge("santral_whatsapp_outbox_oldest_seconds", "Age of the oldest message waiting to be sent, 0 when none waits.", "SELECT COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)), 0) FROM wa_messages WHERE status IN ('queued','sending')"),
 	newGauge("santral_whatsapp_webhook_events_pending", "Meta notices waiting to be processed.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'pending'"),
-	newGauge("santral_whatsapp_webhook_events_failed", "Meta notices that could not be processed.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'failed'"),
+	newGauge("santral_whatsapp_webhook_events_failed", "Meta notices that could not be processed and are still waiting for a retry, however old.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'failed'"),
+	newGauge("santral_whatsapp_webhook_events_failed_recent", "Meta notices given up on in the last hour; the alert counts these, so one old notice does not keep it on.", "SELECT count(*) FROM wa_webhook_events WHERE status = 'failed' AND failed_at > now() - interval '1 hour'"),
 	newGauge("santral_whatsapp_inbound_jobs", "Customer messages whose follow-up work is not done yet.", "SELECT count(*) FROM wa_inbound_jobs"),
 	newGauge("santral_call_surveys_queued", "Call surveys waiting to be sent.", "SELECT count(*) FROM wa_call_surveys WHERE status = 'queued'"),
 	newGauge("santral_call_logs_unverified", "Ended calls waiting for the phone system's record.", "SELECT count(*) FROM call_logs WHERE hooks_done = false"),
@@ -134,7 +135,9 @@ func (q *queryCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 // Collect reads every gauge; one that cannot be read is left out of this
-// scrape and logged.
+// scrape and logged. While the database is down they are all missing;
+// santral_dependency_up (from the health checks) says so, and the alerts
+// on it fire.
 func (q *queryCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

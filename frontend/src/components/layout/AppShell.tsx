@@ -9,6 +9,7 @@ import BreakOverlay from "./BreakOverlay";
 import WelcomeCard from "./WelcomeCard";
 import WrapUpCard from "./WrapUpCard";
 import UnreachedPrompt from "./UnreachedPrompt";
+import SystemAlerts from "./SystemAlerts";
 import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { ShiftProvider } from "@/shift/ShiftContext";
 import { PresenceProvider } from "@/presence/PresenceContext";
@@ -59,6 +60,7 @@ export default function AppShell() {
     <UnreachedPrompt />
     <MentionToasts />
     <WAAlerts />
+    <SystemAlerts />
     <div className="min-h-svh bg-background">
       <Sidebar
         open={menuOpen}

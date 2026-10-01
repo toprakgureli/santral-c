@@ -32,10 +32,30 @@ func existingPath(raw string) (string, error) {
 		return "", errs.Invalid("Kayıtlı webhook adresini tam yaz. Örnek: https://alanadi.com/webhook/whatsapp", nil)
 	}
 	p := "/" + strings.Trim(u.EscapedPath(), "/")
-	if p == "/" || strings.HasPrefix(p, "/api/") || p == "/healthz" {
+	if p == "/" || reservedPath(p) {
 		return "", errs.Invalid("Bu adres kullanılamaz; Meta'da kayıtlı olan webhook adresini yaz.", nil)
 	}
 	return p, nil
+}
+
+// reservedPath reports whether a path belongs to the server itself, in any
+// spelling: the panel's API, the health check and the metrics.
+func reservedPath(p string) bool {
+	p = strings.ToLower(p)
+	for _, r := range []string{"/api", "/healthz", "/metrics"} {
+		if p == r || strings.HasPrefix(p, r+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// hookKey is how a registered path is compared: without the slashes at
+// its ends and without regard to capitals, so an address typed in the
+// panel as /Webhook/WhatsApp still matches the /webhook/whatsapp Meta
+// calls (or the other way round).
+func hookKey(path string) string {
+	return "/" + strings.ToLower(strings.Trim(path, "/"))
 }
 
 // hookPaths caches the paths in use, so the check on every request of the
@@ -57,7 +77,7 @@ func (s *Service) forgetHookPaths() {
 // IsExistingHook tells whether a request path belongs to a registered
 // webhook of some number.
 func (s *Service) IsExistingHook(ctx context.Context, path string) bool {
-	path = "/" + strings.Trim(path, "/")
+	path = hookKey(path)
 	existingHooks.mu.Lock()
 	defer existingHooks.mu.Unlock()
 	if time.Since(existingHooks.at) > 30*time.Second {
@@ -65,7 +85,7 @@ func (s *Service) IsExistingHook(ctx context.Context, path string) bool {
 		warnDB(ctx, err)
 		existingHooks.paths = map[string]bool{}
 		for _, p := range list {
-			existingHooks.paths[p] = true
+			existingHooks.paths[hookKey(p)] = true
 		}
 		existingHooks.at = time.Now()
 	}
@@ -73,7 +93,7 @@ func (s *Service) IsExistingHook(ctx context.Context, path string) bool {
 }
 
 func (s *Service) channelsOnPath(ctx context.Context, path string) ([]models.WAChannel, error) {
-	list, err := s.repo.ChannelsOnHookPath(ctx, "/"+strings.Trim(path, "/"))
+	list, err := s.repo.ChannelsOnHookPath(ctx, hookKey(path))
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

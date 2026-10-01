@@ -67,6 +67,23 @@ export interface BackupView {
   runs: { id: number; startedAt: string; finishedAt?: string; ok: boolean; file: string; size: number; error?: string; manual: boolean }[];
 }
 
+// SystemWarning is one of the server's system warnings (system.health).
+export interface SystemWarning {
+  key: string;
+  level: "warning" | "critical";
+  title: string;
+  text: string;
+  action: string;
+  link?: string;
+  fingerprint: string;
+}
+
+// SystemHealth is the server's current list of system warnings.
+export interface SystemHealth {
+  warnings: SystemWarning[];
+  checkedAt: string;
+}
+
 // BackupCheck is what the backup account may do in its folder.
 export interface BackupCheck {
   // canLock is there once the check has tried locking a small test file.
@@ -382,6 +399,9 @@ export const api = {
     request<BackupView>("/backup/", { method: "PUT", body: JSON.stringify(body) }),
   checkBackup: () => request<BackupCheck>("/backup/check", { method: "POST" }),
   runBackup: () => request<BackupView>("/backup/run", { method: "POST" }),
+
+  // System warnings (system.health)
+  systemHealth: () => request<SystemHealth>("/system/health"),
   syncAllSipStatus: () => request<SipSyncJob>("/pbx/sip/sync-all"),
 
   // Roles & permissions

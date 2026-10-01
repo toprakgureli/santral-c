@@ -8,3 +8,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["127.0.0.1:8090"]
+
+  # The host's disks, memory and processor (node_exporter, docker-compose.yml).
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]

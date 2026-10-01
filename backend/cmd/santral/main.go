@@ -67,7 +67,7 @@ func run() error {
 	}
 	// A live server refuses a bad configuration before it touches the
 	// database; a test setup only reports it.
-	live := configs.Cnf.App.Development == configs.Live
+	live := configs.Cnf.App.Development.IsLive()
 	for _, p := range problems {
 		if !p.Fatal || !live {
 			slog.Warn("configuration problem", "key", p.Key, "problem", p.Message)
@@ -100,7 +100,7 @@ func run() error {
 		return err
 	}
 	defer lock.release()
-	if err := migrations.Run(sqlDB); err != nil {
+	if err := migrate(configs.Cnf.Database); err != nil {
 		return err
 	}
 	if err := redis.Connect(configs.Cnf.Redis); err != nil {
@@ -183,6 +183,25 @@ func run() error {
 	}
 	slog.Info("server stopped")
 	return runErr
+}
+
+// migrate brings the schema up to date on a connection of its own, without
+// the statement timeout of the server's pool. While it runs, deploy.sh sees
+// the connection's name in pg_stat_activity and waits for it instead of
+// rolling the deploy back.
+func migrate(c configs.Database) error {
+	db, err := postgresql.OpenMigrator(c)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+	slog.Info("migrating the database")
+	start := time.Now()
+	if err := migrations.Run(db); err != nil {
+		return err
+	}
+	slog.Info("database is up to date", "took", time.Since(start).Round(time.Millisecond).String())
+	return nil
 }
 
 // reportConfig prints the configuration check for deploy.sh and fails on

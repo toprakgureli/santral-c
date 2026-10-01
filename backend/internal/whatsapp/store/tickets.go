@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/postgresql"
 )
 
 // LoadTicket reads a ticket and returns the database error as it is.
@@ -397,11 +399,13 @@ type HousekeepingFailure struct {
 
 // Housekeep deletes old processed webhook events, stale pending statuses
 // and old chatbot steps. Every query runs even when an earlier one fails;
-// the failures are returned in order.
+// the failures are returned in order. The first clean up of a big table
+// may take minutes, longer than a request's query may.
 func (r *Repository) Housekeep(ctx context.Context) []HousekeepingFailure {
 	var failed []HousekeepingFailure
 	for _, q := range housekeepingQueries {
-		if err := r.db.WithContext(ctx).Exec(q).Error; err != nil {
+		err := postgresql.Long(ctx, r.db, 10*time.Minute, func(tx *gorm.DB) error { return tx.Exec(q).Error })
+		if err != nil {
 			failed = append(failed, HousekeepingFailure{Query: q, Err: err})
 		}
 	}

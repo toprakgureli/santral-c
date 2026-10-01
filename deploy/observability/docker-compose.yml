@@ -6,7 +6,9 @@
 #   sudo docker compose -f /opt/santral-c/deploy/observability/docker-compose.yml up -d
 #
 # Prometheus and Grafana share the host's network so Prometheus can read the
-# backend's /metrics, which answers only on the server itself.
+# backend's /metrics, which answers only on the server itself. node_exporter
+# reports the host's disks, memory and processor; it sees the host's file
+# system read-only under /host.
 services:
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -19,6 +21,19 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+|var/lib/containers/.+)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+    read_only: true
     restart: unless-stopped
 
   jaeger:

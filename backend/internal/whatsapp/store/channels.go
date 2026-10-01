@@ -113,10 +113,10 @@ func (r *Repository) ExistingHookPaths(ctx context.Context) ([]string, error) {
 }
 
 // ChannelsOnHookPath reads the devices that share a registered webhook
-// path, in the order they were added.
+// path, in the order they were added. Capitals do not matter.
 func (r *Repository) ChannelsOnHookPath(ctx context.Context, path string) ([]models.WAChannel, error) {
 	var list []models.WAChannel
-	if err := r.db.WithContext(ctx).Where("existing_hook_path = ?", path).Order("id").Find(&list).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("existing_hook_path <> '' AND lower(existing_hook_path) = lower(?)", path).Order("id").Find(&list).Error; err != nil {
 		return nil, err
 	}
 	return list, nil

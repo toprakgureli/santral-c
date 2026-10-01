@@ -62,6 +62,8 @@ type google struct {
 
 // token gets an access token for the service account.
 func (g *google) token(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(g.sa.PrivateKey))
 	if err != nil {
 		return "", fmt.Errorf("private key: %w", err)
@@ -124,6 +126,8 @@ func (f FolderCheck) Problem() string {
 
 // checkFolder asks Drive what the service account may do in folder.
 func (g *google) checkFolder(ctx context.Context, token, folder string) (*FolderCheck, error) {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
 	q := url.Values{
 		"fields":            {"id,name,mimeType,driveId,capabilities(canAddChildren,canDeleteChildren,canTrashChildren,canRemoveChildren)"},
 		"supportsAllDrives": {"true"},
