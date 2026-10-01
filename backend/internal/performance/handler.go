@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -76,15 +77,17 @@ func (h *Handler) AgentCalls(c *fiber.Ctx) error {
 type Router struct {
 	handler *Handler
 	guard   fiber.Handler
+	need    middlewares.Requirer
 }
 
 // NewRouter builds a performance router.
-func NewRouter(handler *Handler, guard fiber.Handler) *Router {
-	return &Router{handler: handler, guard: guard}
+func NewRouter(handler *Handler, guard fiber.Handler, need middlewares.Requirer) *Router {
+	return &Router{handler: handler, guard: guard, need: need}
 }
 
 // Routes registers the performance routes onto g.
 func (r *Router) Routes(g fiber.Router) {
-	g.Get("/performance/today", r.guard, r.handler.Today)
-	g.Get("/performance/calls", r.guard, r.handler.AgentCalls)
+	view := r.need(enums.PerformanceViewAll, enums.PerformanceViewRole)
+	g.Get("/performance/today", r.guard, view, r.handler.Today)
+	g.Get("/performance/calls", r.guard, view, r.handler.AgentCalls)
 }

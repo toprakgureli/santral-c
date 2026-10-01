@@ -19,9 +19,8 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
-
-var istanbul = time.FixedZone("+03", 3*3600)
 
 const (
 	pageSize       = 50
@@ -367,7 +366,7 @@ func (s *Service) markDelivered(ctx context.Context, actorID uint, m *models.Cha
 }
 
 func stamp(t time.Time) string {
-	return t.In(istanbul).Format(time.RFC3339)
+	return t.In(tz.Istanbul).Format(time.RFC3339)
 }
 
 func dmKey(a, b uint) string {
@@ -1362,7 +1361,6 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 	for _, e := range order {
 		v.Reactions = append(v.Reactions, *grouped[e])
 	}
-	_ = g
 	return v
 }
 

@@ -145,17 +145,17 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	security.NewRouter(secHandler, guard, need).Routes(api)
 	setting.NewRouter(settingHandler, guard, need).Routes(api)
 	audit.NewRouter(auditHandler, guard, need).Routes(api)
-	contact.NewRouter(contactHandler, guard).Routes(api)
+	contact.NewRouter(contactHandler, guard, need).Routes(api)
 	escalation.NewRouter(escalationHandler, guard, need).Routes(api)
-	calllog.NewRouter(callLogHandler, guard).Routes(api)
+	calllog.NewRouter(callLogHandler, guard, need).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
-	performance.NewRouter(perfHandler, guard).Routes(api)
+	performance.NewRouter(perfHandler, guard, need).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
 	drive := teams.NewDrive(cfg.Drive, ring, db)
 	teamsSvc := teams.NewService(teams.NewRepository(db), actors, teams.NewHub(), drive, auditSvc)
-	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
+	teams.NewRouter(teams.NewHandler(teamsSvc), guard, need).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), actors, teamsSvc)
-	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
+	games.NewRouter(games.NewHandler(gamesSvc), guard, need).Routes(api)
 	waSvc := whatsapp.NewService(db, actors, teamsSvc, drive, auditSvc, ring, cfg.Auth.Secret)
 	waRouter := whatsapp.NewRouter(whatsapp.NewHandler(waSvc), guard)
 	waRouter.Routes(api)
@@ -199,7 +199,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		// What follows a call waits until the phone system's record shows it.
 		callLogSvc.SetVerifier(verimorSvc)
 		s.workers = append(s.workers, verimorSvc.Start, callLogSvc.StartVerifier)
-		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
+		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard, need).Routes(api)
 	}
 	return s, nil
 }

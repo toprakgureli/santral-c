@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -389,23 +390,28 @@ func (h *Handler) Record(c *fiber.Ctx) error {
 type Router struct {
 	handler *Handler
 	guard   fiber.Handler
+	need    middlewares.Requirer
 }
 
 // NewRouter builds a router.
-func NewRouter(h *Handler, guard fiber.Handler) *Router {
-	return &Router{handler: h, guard: guard}
+func NewRouter(h *Handler, guard fiber.Handler, need middlewares.Requirer) *Router {
+	return &Router{handler: h, guard: guard, need: need}
 }
 
 // Routes registers the routes under /games.
 func (r *Router) Routes(api fiber.Router) {
 	g := api.Group("/games", r.guard)
+	manage := r.need(enums.GamesManage)
+	// Reading the setup and the list of items is open to every signed-in
+	// user (players see only the enabled items); joining and playing are
+	// checked against games.play and the break rule in the service.
 	g.Get("/config", r.handler.Config)
-	g.Put("/settings", r.handler.UpdateSettings)
+	g.Put("/settings", manage, r.handler.UpdateSettings)
 	g.Get("/items", r.handler.Items)
-	g.Post("/items", r.handler.CreateItem)
-	g.Put("/items/:id", r.handler.UpdateItem)
-	g.Delete("/items/:id", r.handler.DeleteItem)
-	g.Post("/items/import", r.handler.ImportItems)
+	g.Post("/items", manage, r.handler.CreateItem)
+	g.Put("/items/:id", manage, r.handler.UpdateItem)
+	g.Delete("/items/:id", manage, r.handler.DeleteItem)
+	g.Post("/items/import", manage, r.handler.ImportItems)
 	g.Get("/leaderboard", r.handler.Leaderboard)
 	g.Get("/record/:uid", r.handler.Record)
 	g.Post("/groups/:gid", r.handler.Create)

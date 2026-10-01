@@ -12,6 +12,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // historyLimit caps how many past escalations are returned for one number.
@@ -112,14 +113,14 @@ func (s *Service) List(ctx context.Context, actorID uint, q ListQuery) (*ListPag
 		return nil, errs.Forbidden("Eskalasyon kayıtlarını görme yetkiniz yok.")
 	}
 	if q.From != "" {
-		t, err := time.ParseInLocation("2006-01-02", q.From, istanbul)
+		t, err := time.ParseInLocation("2006-01-02", q.From, tz.Istanbul)
 		if err != nil {
 			return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 		}
 		f.From = t
 	}
 	if q.To != "" {
-		t, err := time.ParseInLocation("2006-01-02", q.To, istanbul)
+		t, err := time.ParseInLocation("2006-01-02", q.To, tz.Istanbul)
 		if err != nil {
 			return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 		}
@@ -314,9 +315,6 @@ func (s *Service) Log(ctx context.Context, actorID uint, req requests.Escalation
 	return &res, nil
 }
 
-// istanbul is the panel's display zone; stored stamps are UTC.
-var istanbul = time.FixedZone("+03", 3*3600)
-
 // Labels of the record written when an agent marks a call as needing no
 // escalation. They live on the record itself, not in the catalog.
 const (
@@ -484,7 +482,7 @@ func toRecord(e *models.CallEscalation) Record {
 		ReasonName:   e.ReasonName,
 		Note:         e.Note,
 		AgentName:    e.AgentName,
-		CreatedAt:    e.CreatedAt.In(istanbul).Format("02.01.2006 15:04"),
+		CreatedAt:    e.CreatedAt.In(tz.Istanbul).Format("02.01.2006 15:04"),
 	}
 	if e.AgentID != nil {
 		rec.AgentID = *e.AgentID

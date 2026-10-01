@@ -23,6 +23,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 	"github.com/toprakgureli/santral-c/backend/pkg/sheet"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // IActorResolver loads the acting user for authorization.
@@ -1167,15 +1168,11 @@ func (s *Service) Stats(ctx context.Context, actorID uint) (*Stats, error) {
 	return &Stats{}, nil
 }
 
-// istanbul is the tenant's timezone (UTC+3, no DST). Using a fixed zone avoids
-// depending on the OS tzdata being present.
-var istanbul = time.FixedZone("+03", 3*3600)
-
 // todayStart returns the UTC instant of local (Istanbul) midnight today, so
 // "today" resets at 00:00 local rather than at 00:00 UTC.
 func todayStart() time.Time {
-	now := time.Now().In(istanbul)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istanbul)
+	now := time.Now().In(tz.Istanbul)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz.Istanbul)
 }
 
 // computeStats reads today's total and missed call counts from the hosted API.

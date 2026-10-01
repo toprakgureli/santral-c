@@ -277,22 +277,6 @@ func (r *Repository) OpenPeersByExtension(ctx context.Context) (map[string]strin
 	return out, nil
 }
 
-// NamesByExtension maps each extension to the active users registered on it,
-// ordered by name, so the agent list can show who sits behind a number.
-func (r *Repository) NamesByExtension(ctx context.Context) (map[string][]string, error) {
-	users, err := r.UsersByExtension(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string][]string, len(users))
-	for ext, list := range users {
-		for _, u := range list {
-			out[ext] = append(out[ext], u.Name)
-		}
-	}
-	return out, nil
-}
-
 // ExtUser is one active panel user on an extension.
 type ExtUser struct {
 	ID        uint   `json:"id"`

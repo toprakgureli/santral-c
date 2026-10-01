@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // The call-record mirror. Verimor's CDR API cannot search: its number filter
@@ -262,7 +263,7 @@ func (r *Repository) SetMirrorCursor(ctx context.Context, day string) error {
 // dayBounds returns the Istanbul-local [start, next day start) of a
 // YYYY-MM-DD day.
 func dayBounds(day string) (time.Time, time.Time, error) {
-	t, err := time.ParseInLocation("2006-01-02", day, istanbul)
+	t, err := time.ParseInLocation("2006-01-02", day, tz.Istanbul)
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
@@ -306,7 +307,7 @@ func (s *Service) runMirror(ctx context.Context) bool {
 	if !sleepCtx(ctx, 20*time.Second) {
 		return false
 	}
-	today := time.Now().In(istanbul)
+	today := time.Now().In(tz.Istanbul)
 	todayDay := today.Format("2006-01-02")
 
 	latest, ok, err := s.repo.LatestCDRAt(ctx)
@@ -314,9 +315,9 @@ func (s *Service) runMirror(ctx context.Context) bool {
 		slog.WarnContext(ctx, "cdr mirror could not read its state", "error", err)
 	}
 	if ok && time.Since(latest) > mirrorRepairAfter {
-		for d := today; !d.Before(latest.In(istanbul).Truncate(24 * time.Hour)); d = d.AddDate(0, 0, -1) {
+		for d := today; !d.Before(latest.In(tz.Istanbul).Truncate(24 * time.Hour)); d = d.AddDate(0, 0, -1) {
 			day := d.Format("2006-01-02")
-			if day < latest.In(istanbul).Format("2006-01-02") {
+			if day < latest.In(tz.Istanbul).Format("2006-01-02") {
 				break
 			}
 			if !s.mirrorDay(ctx, day) {
@@ -337,7 +338,7 @@ func (s *Service) runMirror(ctx context.Context) bool {
 	}
 	next := todayDay
 	if cursor != "" {
-		t, err := time.ParseInLocation("2006-01-02", cursor, istanbul)
+		t, err := time.ParseInLocation("2006-01-02", cursor, tz.Istanbul)
 		if err != nil {
 			slog.WarnContext(ctx, "cdr mirror cursor is malformed, restarting backfill", "cursor", cursor)
 		} else {
@@ -352,7 +353,7 @@ func (s *Service) runMirror(ctx context.Context) bool {
 			slog.WarnContext(ctx, "cdr mirror cursor could not be saved", "day", day, "error", err)
 			return false
 		}
-		t, _ := time.ParseInLocation("2006-01-02", day, istanbul)
+		t, _ := time.ParseInLocation("2006-01-02", day, tz.Istanbul)
 		day = t.AddDate(0, 0, -1).Format("2006-01-02")
 	}
 	slog.InfoContext(ctx, "cdr mirror backfill complete", "oldestDay", floor)

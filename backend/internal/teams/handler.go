@@ -17,6 +17,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/internal/sse"
+	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
 
@@ -842,53 +843,57 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 type Router struct {
 	handler *Handler
 	guard   fiber.Handler
+	need    middlewares.Requirer
 }
 
 // NewRouter builds a chat router.
-func NewRouter(handler *Handler, guard fiber.Handler) *Router {
-	return &Router{handler: handler, guard: guard}
+func NewRouter(handler *Handler, guard fiber.Handler, need middlewares.Requirer) *Router {
+	return &Router{handler: handler, guard: guard, need: need}
 }
 
 // Routes registers the chat routes onto g.
 func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/teams", r.guard)
-	group.Get("/people", r.handler.People)
-	group.Get("/overview", r.handler.Overview)
-	group.Get("/stream", r.handler.Stream)
-	group.Post("/groups", r.handler.Create)
-	group.Post("/dm/:uid", r.handler.OpenDM)
-	group.Post("/invites/:id/:decision", r.handler.DecideInvite)
-	group.Get("/groups/:id", r.handler.Detail)
-	group.Put("/groups/:id", r.handler.Update)
-	group.Delete("/groups/:id", r.handler.Delete)
-	group.Put("/groups/:id/avatar", r.handler.SetAvatar)
-	group.Get("/groups/:id/avatar", r.handler.Avatar)
-	group.Post("/groups/:id/members", r.handler.AddMembers)
-	group.Put("/groups/:id/members/:uid", r.handler.UpdateMember)
-	group.Delete("/groups/:id/members/:uid", r.handler.RemoveMember)
-	group.Post("/groups/:id/invites", r.handler.Invite)
-	group.Post("/groups/:id/mute", r.handler.Mute)
-	group.Post("/groups/:id/read", r.handler.Read)
-	group.Post("/groups/:id/unread", r.handler.Unread)
-	group.Get("/groups/:id/messages", r.handler.Messages)
-	group.Post("/groups/:id/messages", r.handler.Send)
-	group.Delete("/groups/:id/messages/:mid", r.handler.DeleteMessage)
-	group.Put("/groups/:id/messages/:mid", r.handler.Edit)
-	group.Get("/groups/:id/messages/:mid/receipts", r.handler.Receipts)
-	group.Get("/groups/:id/search", r.handler.Search)
-	group.Get("/groups/:id/media", r.handler.Media)
-	group.Post("/groups/:id/typing", r.handler.Typing)
-	group.Post("/groups/:id/uploads", r.handler.BeginUpload)
-	group.Post("/uploads/:aid/finish", r.handler.FinishUpload)
-	group.Delete("/uploads/:aid", r.handler.CancelUpload)
-	group.Get("/attachments/:aid", r.handler.Attachment)
-	group.Get("/attachments/:aid/thumb", r.handler.Thumb)
-	group.Get("/drive/status", r.handler.DriveStatus)
-	group.Get("/drive/connect", r.handler.DriveConnect)
-	group.Get("/drive/callback", r.handler.DriveCallback)
-	group.Post("/drive/disconnect", r.handler.DriveDisconnect)
-	group.Post("/presence", r.handler.Presence)
-	group.Post("/groups/:id/messages/:mid/reactions", r.handler.React)
+	// The Drive connection is a system setting, not a chat feature; the
+	// service checks room seats and DM rules on top of teams.view.
+	view, drive := r.need(enums.TeamsView), r.need(enums.SystemSettings)
+	group.Get("/people", view, r.handler.People)
+	group.Get("/overview", view, r.handler.Overview)
+	group.Get("/stream", view, r.handler.Stream)
+	group.Post("/groups", view, r.handler.Create)
+	group.Post("/dm/:uid", view, r.handler.OpenDM)
+	group.Post("/invites/:id/:decision", view, r.handler.DecideInvite)
+	group.Get("/groups/:id", view, r.handler.Detail)
+	group.Put("/groups/:id", view, r.handler.Update)
+	group.Delete("/groups/:id", view, r.handler.Delete)
+	group.Put("/groups/:id/avatar", view, r.handler.SetAvatar)
+	group.Get("/groups/:id/avatar", view, r.handler.Avatar)
+	group.Post("/groups/:id/members", view, r.handler.AddMembers)
+	group.Put("/groups/:id/members/:uid", view, r.handler.UpdateMember)
+	group.Delete("/groups/:id/members/:uid", view, r.handler.RemoveMember)
+	group.Post("/groups/:id/invites", view, r.handler.Invite)
+	group.Post("/groups/:id/mute", view, r.handler.Mute)
+	group.Post("/groups/:id/read", view, r.handler.Read)
+	group.Post("/groups/:id/unread", view, r.handler.Unread)
+	group.Get("/groups/:id/messages", view, r.handler.Messages)
+	group.Post("/groups/:id/messages", view, r.handler.Send)
+	group.Delete("/groups/:id/messages/:mid", view, r.handler.DeleteMessage)
+	group.Put("/groups/:id/messages/:mid", view, r.handler.Edit)
+	group.Get("/groups/:id/messages/:mid/receipts", view, r.handler.Receipts)
+	group.Get("/groups/:id/search", view, r.handler.Search)
+	group.Get("/groups/:id/media", view, r.handler.Media)
+	group.Post("/groups/:id/typing", view, r.handler.Typing)
+	group.Post("/groups/:id/uploads", view, r.handler.BeginUpload)
+	group.Post("/uploads/:aid/finish", view, r.handler.FinishUpload)
+	group.Delete("/uploads/:aid", view, r.handler.CancelUpload)
+	group.Get("/attachments/:aid", view, r.handler.Attachment)
+	group.Get("/attachments/:aid/thumb", view, r.handler.Thumb)
+	group.Get("/drive/status", drive, r.handler.DriveStatus)
+	group.Get("/drive/connect", drive, r.handler.DriveConnect)
+	group.Get("/drive/callback", drive, r.handler.DriveCallback)
+	group.Post("/drive/disconnect", drive, r.handler.DriveDisconnect)
+	group.Post("/presence", view, r.handler.Presence)
+	group.Post("/groups/:id/messages/:mid/reactions", view, r.handler.React)
 }
 
 func actor(c *fiber.Ctx) (uint, error) {

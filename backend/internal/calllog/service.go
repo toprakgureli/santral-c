@@ -12,6 +12,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // todayLimit caps how many of today's calls the panel history lists.
@@ -19,9 +20,6 @@ const todayLimit = 200
 
 // shortLongSeconds is the boundary between a short and a long conversation.
 const shortLongSeconds = 30
-
-// istanbul is the tenant timezone (UTC+3, no DST); today resets at local 00:00.
-var istanbul = time.FixedZone("+03", 3*3600)
 
 // Service is the call-log application service.
 type Service struct {
@@ -356,7 +354,7 @@ func (s *Service) Lookup(ctx context.Context, actorID uint, number string) (*Loo
 	byAgent := map[uint]*LookupAgent{}
 	for _, l := range logs {
 		uid := *l.UserID
-		item := LookupItem{UUID: l.CallID, Direction: l.Direction, Disposition: l.Disposition, AgentID: uid, AgentName: names[uid], StartedAt: l.StartedAt.In(istanbul).Format(time.RFC3339), DurationSeconds: l.DurationSeconds}
+		item := LookupItem{UUID: l.CallID, Direction: l.Direction, Disposition: l.Disposition, AgentID: uid, AgentName: names[uid], StartedAt: l.StartedAt.In(tz.Istanbul).Format(time.RFC3339), DurationSeconds: l.DurationSeconds}
 		out.Items = append(out.Items, item)
 		out.Total++
 		if out.LastAt == "" {
@@ -394,8 +392,8 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	if !canViewAll(actor) && !canViewOwn(actor) {
 		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkiniz yok.")
 	}
-	now := time.Now().In(istanbul)
-	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istanbul)
+	now := time.Now().In(tz.Istanbul)
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz.Istanbul)
 	logs, counts, err := s.repo.Today(ctx, actorID, from, shortLongSeconds, todayLimit)
 	if err != nil {
 		return nil, errs.Internal(err)

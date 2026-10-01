@@ -24,6 +24,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 const (
@@ -51,9 +52,6 @@ type Rooms interface {
 	PostSystem(ctx context.Context, groupID uint, text string)
 	Push(ids []uint, event any)
 }
-
-// istanbul is the panel's time zone (UTC+3, no daylight saving).
-var istanbul = time.FixedZone("+03", 3*3600)
 
 // Service is the games engine.
 type Service struct {
@@ -1263,8 +1261,8 @@ func (s *Service) Leaderboard(ctx context.Context, actorID uint, period, kind st
 	since := time.Time{}
 	if period != "all" {
 		// The month starts at midnight in Istanbul, whatever the server's zone.
-		now := time.Now().In(istanbul)
-		since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, istanbul)
+		now := time.Now().In(tz.Istanbul)
+		since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, tz.Istanbul)
 	}
 	rows, err := s.repo.Leaderboard(ctx, since, kind)
 	if err != nil {

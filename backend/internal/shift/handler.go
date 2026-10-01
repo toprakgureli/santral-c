@@ -69,6 +69,8 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 
 // Routes registers the shift routes onto g.
 func (r *Router) Routes(g fiber.Router) {
+	// Every signed-in user opens and closes their own shift; no permission
+	// is involved.
 	group := g.Group("/shift", r.guard)
 	group.Get("/", r.handler.Current)
 	group.Post("/start", r.handler.Start)

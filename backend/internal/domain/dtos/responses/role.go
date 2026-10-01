@@ -13,16 +13,6 @@ type Role struct {
 	PermissionIDs []uint `json:"permissionIds"`
 }
 
-// NewRoles maps role models to their response view. Permission ids are included
-// when the models were loaded with their permissions; counts default to zero.
-func NewRoles(roles []models.Role) []Role {
-	out := make([]Role, 0, len(roles))
-	for i := range roles {
-		out = append(out, NewRole(&roles[i], 0))
-	}
-	return out
-}
-
 // NewRole maps one role model to its response view with a user count.
 func NewRole(r *models.Role, userCount int64) Role {
 	ids := make([]uint, 0, len(r.Permissions))

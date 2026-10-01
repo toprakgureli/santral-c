@@ -26,6 +26,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // SealPurpose is the keyring label of the stored service account key.
@@ -325,7 +326,7 @@ func (s *Service) copy(ctx context.Context) (string, int64, error) {
 		return "", 0, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	name := "santral-" + time.Now().In(time.FixedZone("+03", 3*3600)).Format("2006-01-02-1504") + ".dump"
+	name := "santral-" + time.Now().In(tz.Istanbul).Format("2006-01-02-1504") + ".dump"
 	// A long upload may outlive the first token.
 	if token, err = g.token(ctx); err != nil {
 		return "", 0, err

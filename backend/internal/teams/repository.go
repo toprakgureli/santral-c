@@ -257,11 +257,6 @@ func (r *Repository) UpdateGroup(ctx context.Context, id uint, fields map[string
 	return nil
 }
 
-// TouchGroup bumps updated_at so the room floats to the top of lists.
-func (r *Repository) TouchGroup(ctx context.Context, id uint) error {
-	return r.UpdateGroup(ctx, id, map[string]any{})
-}
-
 // DeleteGroup soft-deletes a room.
 func (r *Repository) DeleteGroup(ctx context.Context, id uint) error {
 	return r.UpdateGroup(ctx, id, map[string]any{"deleted_at": time.Now()})

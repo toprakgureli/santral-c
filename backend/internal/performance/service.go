@@ -11,14 +11,12 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // shortLongSeconds mirrors the call-log boundary between a short and a long
 // conversation.
 const shortLongSeconds = 30
-
-// istanbul is the tenant's timezone (UTC+3, no DST).
-var istanbul = time.FixedZone("+03", 3*3600)
 
 // IActorResolver loads the acting user for authorization.
 type IActorResolver interface {
@@ -109,11 +107,11 @@ func (s *Service) Today(ctx context.Context, actorID uint) (*Team, error) {
 // Range is Today over an inclusive local day range (YYYY-MM-DD). Live status
 // is always current; the figures cover the requested days.
 func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string) (*Team, error) {
-	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", fromDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}
@@ -267,11 +265,11 @@ type AgentCallList struct {
 // AgentCalls lists one agent's calls over the inclusive local day range,
 // for an actor who may see that agent on the team page.
 func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay, toDay string) (*AgentCallList, error) {
-	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", fromDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}
@@ -388,7 +386,7 @@ func roleNames(u models.User) []string {
 }
 
 func todayLocal() string {
-	return time.Now().In(istanbul).Format("2006-01-02")
+	return time.Now().In(tz.Istanbul).Format("2006-01-02")
 }
 
 // MaskNumber hides a phone number but its last two digits, so a list still

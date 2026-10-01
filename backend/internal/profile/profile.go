@@ -18,10 +18,9 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 	"github.com/toprakgureli/santral-c/backend/pkg/validator"
 )
-
-var istanbul = time.FixedZone("+03", 3*3600)
 
 // A connected call of 30 seconds or more is a real conversation (the same
 // rule as the team page).
@@ -250,11 +249,11 @@ func (s *Service) Get(ctx context.Context, actorID, userID uint) (*Profile, erro
 
 // RecordRange returns a user's record over an inclusive local day range.
 func (s *Service) RecordRange(ctx context.Context, userID uint, fromDay, toDay string) (*Record, error) {
-	from, err := time.ParseInLocation("2006-01-02", fromDay, istanbul)
+	from, err := time.ParseInLocation("2006-01-02", fromDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Başlangıç tarihi geçersiz.", err)
 	}
-	toStart, err := time.ParseInLocation("2006-01-02", toDay, istanbul)
+	toStart, err := time.ParseInLocation("2006-01-02", toDay, tz.Istanbul)
 	if err != nil {
 		return nil, errs.Invalid("Bitiş tarihi geçersiz.", err)
 	}
@@ -301,7 +300,7 @@ func build(u *models.User, stats Stats, editable bool) *Profile {
 		HasAvatar: u.Avatar != "",
 		Roles:     roles,
 		Active:    u.Active,
-		JoinedAt:  u.CreatedAt.In(istanbul).Format("2006-01-02"),
+		JoinedAt:  u.CreatedAt.In(tz.Istanbul).Format("2006-01-02"),
 		Stats:     stats,
 		Editable:  editable,
 	}
@@ -377,7 +376,7 @@ func (h *Handler) Record(c *fiber.Ctx) error {
 		to = from
 	}
 	if from == "" {
-		today := time.Now().In(istanbul)
+		today := time.Now().In(tz.Istanbul)
 		to = today.Format("2006-01-02")
 		from = today.AddDate(0, 0, -6).Format("2006-01-02")
 	}
@@ -421,6 +420,8 @@ func NewRouter(handler *Handler, guard fiber.Handler) *Router {
 
 // Routes registers the profile routes onto g.
 func (r *Router) Routes(g fiber.Router) {
+	// Profiles are for every signed-in user: one's own to edit, others' to
+	// read (the service hides what the caller may not see).
 	group := g.Group("/profile", r.guard)
 	group.Get("/me", r.handler.Mine)
 	group.Put("/me", r.handler.UpdateMine)

@@ -14,6 +14,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
+	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
 // Working-day cutoffs in Istanbul time. The day nominally ends at 18:30; a
@@ -23,10 +24,6 @@ const (
 	autoEndHour, autoEndMinute   = 19, 20
 	sweepEvery                   = time.Minute
 )
-
-// istanbul is the tenant's timezone (UTC+3, no DST), fixed so the cutoff does
-// not depend on the host's tzdata.
-var istanbul = time.FixedZone("+03", 3*3600)
 
 // Who closed a shift.
 const (
@@ -212,8 +209,8 @@ func (s *Service) record(ctx context.Context, actor *uint, action string, sh *mo
 
 // at returns the given wall-clock time (Istanbul) on the day the shift started.
 func at(started time.Time, hour, minute int) time.Time {
-	d := started.In(istanbul)
-	return time.Date(d.Year(), d.Month(), d.Day(), hour, minute, 0, 0, istanbul)
+	d := started.In(tz.Istanbul)
+	return time.Date(d.Year(), d.Month(), d.Day(), hour, minute, 0, 0, tz.Istanbul)
 }
 
 // autoEndFor is the first 19:20 (Istanbul) after the shift started: the same
