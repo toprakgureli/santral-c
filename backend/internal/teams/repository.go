@@ -165,21 +165,35 @@ func (r *Repository) Unread(ctx context.Context, userID uint) (map[uint]int64, e
 		N       int64
 	}
 	var rows []row
+	// Each room counts at most unreadCap lines: the panel shows "99+" past
+	// that, and a room with a long unread tail must not be counted in full
+	// on every refresh.
 	err := r.db.WithContext(ctx).Raw(
-		"SELECT m.group_id, count(*) AS n FROM chat_messages m "+
-			"JOIN chat_members s ON s.group_id = m.group_id AND s.user_id = ? "+
-			"WHERE m.id > s.last_read_id AND m.deleted_at IS NULL AND (m.sender_id IS NULL OR m.sender_id <> ?) "+
-			"GROUP BY m.group_id", userID, userID,
+		"SELECT s.group_id, (SELECT count(*) FROM (SELECT 1 FROM chat_messages m "+
+			"WHERE m.group_id = s.group_id AND m.id > s.last_read_id AND m.deleted_at IS NULL "+
+			"AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) LIMIT ?) c) AS n "+
+			"FROM chat_members s WHERE s.user_id = ?", unreadCap, userID,
 	).Scan(&rows).Error
 	if err != nil {
 		return nil, fmt.Errorf("unread counts could not be computed: %w", err)
 	}
 	out := make(map[uint]int64, len(rows))
 	for _, x := range rows {
-		out[x.GroupID] = x.N
+		if x.N > 0 {
+			out[x.GroupID] = x.N
+		}
 	}
 	return out, nil
 }
+
+// unreadCap is the most unread lines counted per room.
+const unreadCap = 100
+
+// receiptWindow is how far back per-line delivery and read times are
+// written. Older lines are covered by the seat's pointers alone (shown with
+// the line's own time), so someone returning to a long history does not
+// write a row for every line in it.
+const receiptWindow = "7 days"
 
 // MemberCounts counts seats per room.
 func (r *Repository) MemberCounts(ctx context.Context, groupIDs []uint) (map[uint]int64, error) {
@@ -267,13 +281,30 @@ func (r *Repository) AddMembers(ctx context.Context, seats []models.ChatMember) 
 	if len(seats) == 0 {
 		return nil
 	}
-	if err := r.db.WithContext(ctx).Exec(
-		"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at) VALUES "+placeholders(len(seats), 6)+" ON CONFLICT DO NOTHING",
-		seatArgs(seats)...,
-	).Error; err != nil {
-		return fmt.Errorf("members could not be added: %w", err)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var added []struct {
+			GroupID uint
+			UserID  uint
+		}
+		if err := tx.Raw(
+			"INSERT INTO chat_members (group_id, user_id, role, can_post, invited_by, joined_at) VALUES "+placeholders(len(seats), 6)+
+				" ON CONFLICT DO NOTHING RETURNING group_id, user_id",
+			seatArgs(seats)...,
+		).Scan(&added).Error; err != nil {
+			return fmt.Errorf("members could not be added: %w", err)
+		}
+		// A new member can scroll back through the room's history, but it
+		// does not count as unread for them.
+		for _, a := range added {
+			if err := tx.Exec(
+				"UPDATE chat_members SET last_read_id = x.top, last_delivered_id = x.top "+
+					"FROM (SELECT COALESCE(max(id), 0) AS top FROM chat_messages WHERE group_id = ?) x "+
+					"WHERE group_id = ? AND user_id = ?", a.GroupID, a.GroupID, a.UserID).Error; err != nil {
+				return fmt.Errorf("new member's read pointer could not be set: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 func placeholders(rows, cols int) string {
@@ -511,6 +542,7 @@ func (r *Repository) MarkRead(ctx context.Context, groupID, userID, messageID ui
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at, read_at) "+
 			"SELECT m.id, s.user_id, now(), now() FROM chat_members s "+
 			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_read_id AND m.id <= ? "+
+			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO UPDATE SET "+
 			"read_at = COALESCE(chat_receipts.read_at, EXCLUDED.read_at), "+
@@ -572,6 +604,7 @@ func (r *Repository) MarkDelivered(ctx context.Context, groupID, userID, message
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
 			"SELECT m.id, s.user_id, now() FROM chat_members s "+
 			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id AND m.id <= ? "+
+			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.group_id = ? AND s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO NOTHING",
 		messageID, groupID, userID).Error; err != nil {
@@ -601,16 +634,19 @@ func (r *Repository) MarkDeliveredAll(ctx context.Context, userID uint) ([]Deliv
 		"INSERT INTO chat_receipts (message_id, user_id, delivered_at) "+
 			"SELECT m.id, s.user_id, now() FROM chat_members s "+
 			"JOIN chat_messages m ON m.group_id = s.group_id AND m.id > s.last_delivered_id "+
+			"AND m.created_at > now() - interval '"+receiptWindow+"' "+
 			"WHERE s.user_id = ? AND (m.sender_id IS NULL OR m.sender_id <> s.user_id) "+
 			"ON CONFLICT (message_id, user_id) DO NOTHING", userID).Error; err != nil {
 		return nil, fmt.Errorf("delivery receipts could not be logged: %w", err)
 	}
 	var out []Delivered
 	err := r.db.WithContext(ctx).Raw(
+		// Only the person's own rooms, each read from the top of its index.
 		"UPDATE chat_members s SET last_delivered_id = x.max_id "+
-			"FROM (SELECT group_id, MAX(id) AS max_id FROM chat_messages GROUP BY group_id) x "+
+			"FROM (SELECT o.group_id, (SELECT max(m.id) FROM chat_messages m WHERE m.group_id = o.group_id) AS max_id "+
+			"FROM chat_members o WHERE o.user_id = ?) x "+
 			"WHERE s.group_id = x.group_id AND s.user_id = ? AND s.last_delivered_id < x.max_id "+
-			"RETURNING s.group_id AS group_id, s.last_delivered_id AS delivered_id, s.last_read_id AS read_id", userID).
+			"RETURNING s.group_id AS group_id, s.last_delivered_id AS delivered_id, s.last_read_id AS read_id", userID, userID).
 		Scan(&out).Error
 	if err != nil {
 		return nil, fmt.Errorf("delivery pointers could not be moved: %w", err)

@@ -56,7 +56,8 @@ func TestMain(m *testing.M) {
 }
 
 // testServer builds the whole application on the test database and Redis.
-func testServer(t *testing.T) (*server, *gorm.DB) {
+// opts adjust the configuration before the application is built.
+func testServer(t *testing.T, opts ...func(*configs.Config)) (*server, *gorm.DB) {
 	t.Helper()
 	db := testdb.Open(t)
 	addr := os.Getenv(envRedis)
@@ -93,6 +94,9 @@ func testServer(t *testing.T) (*server, *gorm.DB) {
 		// because the background work is never started.
 		Bulutsantralim: configs.Bulutsantralim{Enabled: true, APIKey: "route-test", APIBase: "http://127.0.0.1:1"},
 		Owner:          configs.Owner{Name: "Test Owner", Email: "owner@route-test.local", Password: "Owner-Route-Test-1"},
+	}
+	for _, o := range opts {
+		o(&cfg)
 	}
 	configs.Cnf = cfg
 	if err := setup.Seed(db); err != nil {
