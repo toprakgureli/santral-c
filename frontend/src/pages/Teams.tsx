@@ -2,7 +2,7 @@
 // unread counts and pending invites; middle, the open room; right, its
 // members: a three-column chat.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BellOff, BellRing, Gamepad2, Hash, Images, Plus, Search, Settings2, Trophy, Users, VolumeX } from "lucide-react";
 import StartGameDialog from "../games/StartGameDialog";
@@ -94,6 +94,11 @@ export function Teams() {
     if (teams.notifications === "default") void teams.askNotifications();
   }, [teams.notifications]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The room shown follows the address; an answer for a room left in the
+  // meantime is dropped, and a message to jump to belongs to the old room.
+  const shown = useRef(groupId);
+  shown.current = groupId;
+  useEffect(() => setTarget(null), [groupId]);
   const loadDetail = useCallback(() => {
     if (!groupId) {
       setDetail(null);
@@ -102,10 +107,12 @@ export function Teams() {
     api
       .teamsGroup(groupId)
       .then((g) => {
+        if (shown.current !== groupId) return;
         setDetail(g);
         setDetailError(null);
       })
       .catch((e) => {
+        if (shown.current !== groupId) return;
         setDetail(null);
         setDetailError(e instanceof ApiError ? e.message : "Grup açılamadı.");
       });

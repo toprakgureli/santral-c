@@ -17,6 +17,7 @@ import type { WAChannel, WAConversation, WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { inBucket, isWaiting, listTime, since, sortTime, waitShown, waitTip, type Bucket } from "@/whatsapp/util";
 import { useTopmost } from "@/components/ui/windowStack";
+import { WindowedList } from "@/components/ui/WindowedList";
 
 const CHIPS: { key: Bucket; label: string; tip: string }[] = [
   { key: "mine", label: "Benim", tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
@@ -51,6 +52,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
   const [older, setOlder] = useState<WAConversation[]>([]);
   const [olderDone, setOlderDone] = useState(false);
   const [menu, setMenu] = useState<{ c: WAConversation; x: number; y: number } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30000);
@@ -157,7 +159,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pb-3">
         {!wa.loaded && Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3">
             <div className="size-12 animate-pulse rounded-full bg-muted/70" />
@@ -170,10 +172,16 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
             <p className="text-sm font-medium">{q ? "Eşleşen sohbet yok" : EMPTY[bucket]}</p>
           </div>
         )}
-        {list.map((c) => (
-          <Row key={c.id} c={c} me={wa.me} now={now} active={c.id === activeId} typing={wa.typing(c.id)} showChannel={channels.length > 1} muted={wa.muted(c.id)} pinned={wa.pinned(c.id)}
-            onOpen={() => onOpen(c.id)} onMenu={(x, y) => setMenu({ c, x, y })} />
-        ))}
+        <WindowedList
+          scroller={scroller}
+          items={list}
+          keyOf={convKey}
+          estimate={77}
+          render={(c) => (
+            <Row c={c} me={wa.me} now={now} active={c.id === activeId} typing={wa.typing(c.id)} showChannel={channels.length > 1} muted={wa.muted(c.id)} pinned={wa.pinned(c.id)}
+              onOpen={() => onOpen(c.id)} onMenu={(x, y) => setMenu({ c, x, y })} />
+          )}
+        />
         {bucket === "resolved" && list.length >= 20 && !olderDone && (
           <button type="button" onClick={() => void loadOlder()} className="mx-auto mt-2 block rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Daha eski sohbetler</button>
         )}
@@ -182,6 +190,8 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
     </aside>
   );
 }
+
+const convKey = (c: WAConversation) => c.id;
 
 function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, onMenu }: { c: WAConversation; me: number; now: number; active: boolean; typing: string | null; showChannel: boolean; muted: boolean; pinned: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
   const t = c.ticket;

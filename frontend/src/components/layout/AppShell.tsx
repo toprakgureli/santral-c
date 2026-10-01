@@ -80,8 +80,10 @@ export default function AppShell() {
       >
         <Topbar title={titleFor(pathname)} onMenuClick={() => setMenuOpen((v) => !v)} />
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
-          {/* Keyed by path so the entrance animation replays on each navigation. */}
-          <div key={pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
+          {/* Keyed by page so the entrance animation replays on each navigation.
+              Opening another WhatsApp conversation or chat room keeps the page,
+              its list and where that list was scrolled. */}
+          <div key={pathname.replace(/^\/(whatsapp|teams)\/\d+$/, "/$1")} className="animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
             <ErrorBoundary>
               <Suspense fallback={<PageLoading />}>
                 <Outlet />
