@@ -179,14 +179,31 @@ type ICallVerifier interface {
 // of it. Without one (no phone system configured) it runs at once.
 func (s *Service) SetVerifier(v ICallVerifier) { s.verifier = v }
 
+// hooksMatter reports whether anything follows a final call, so it is
+// worth waiting for the phone system's record of it: the automatic
+// escalation entry follows a real conversation and an outgoing call that
+// did not get through, the WhatsApp survey an answered call. Nothing
+// follows a missed incoming ring (a queue call ringing many agents leaves
+// one for each) or a call between colleagues.
+func hooksMatter(log models.CallLog) bool {
+	if log.Direction == "internal" {
+		return false
+	}
+	return log.Disposition == "answered" || log.Direction == "outbound"
+}
+
 // finish runs what follows a final call: at once when there is nothing to
-// check against, otherwise after the phone system's record confirms it.
+// check against, otherwise after the phone system's record confirms it. A
+// call nothing follows does not wait at all.
 func (s *Service) finish(ctx context.Context, log models.CallLog) error {
 	if s.verifier == nil {
 		s.ended(ctx, log)
 		return nil
 	}
-	if err := s.repo.Update(ctx, log.ID, map[string]any{"hooks_done": false}); err != nil {
+	if !hooksMatter(log) {
+		return nil
+	}
+	if err := s.repo.Update(ctx, log.ID, map[string]any{"hooks_done": false, "hooks_next_at": time.Now(), "hooks_tries": 0}); err != nil {
 		return errs.Internal(err)
 	}
 	return nil
@@ -195,6 +212,18 @@ func (s *Service) finish(ctx context.Context, log models.CallLog) error {
 // verifyAfter is how long a call waits for the phone system's record before
 // what follows it is dropped.
 const verifyAfter = 2 * time.Hour
+
+// verifyBackoff is how long a call missing from the phone system's records
+// waits before the next look: half a minute after the first miss, twice as
+// long after each further one, at most twenty minutes.
+func verifyBackoff(misses int) time.Duration {
+	const most = 20 * time.Minute
+	d := 30 * time.Second
+	for i := 1; i < misses && d < most; i++ {
+		d *= 2
+	}
+	return min(d, most)
+}
 
 // StartVerifier checks waiting calls against the phone system's records every
 // half minute until ctx ends.
@@ -216,9 +245,10 @@ func (s *Service) StartVerifier(ctx context.Context, g *safe.Group) {
 	})
 }
 
-// VerifyPending checks the calls waiting for the phone system's record once:
-// a confirmed call gets the system's own length and runs what follows it;
-// one never seen within verifyAfter is closed without it.
+// VerifyPending checks the calls whose look is due once: a confirmed call
+// gets the system's own length and runs what follows it; one never seen
+// within verifyAfter, or whose agent has no extension to match it by, is
+// closed without it; any other is looked for again later.
 func (s *Service) VerifyPending(ctx context.Context) {
 	logs, err := s.repo.HooksPending(ctx, 200)
 	if err != nil {
@@ -229,42 +259,60 @@ func (s *Service) VerifyPending(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		ext := ""
-		if l.UserID != nil {
-			if u, err := s.users.GetByID(ctx, *l.UserID); err == nil && u.SIPExtension != nil {
-				ext = *u.SIPExtension
-			}
+		s.verifyOne(ctx, l)
+	}
+}
+
+func (s *Service) verifyOne(ctx context.Context, l models.CallLog) {
+	expired := l.EndedAt != nil && time.Since(*l.EndedAt) > verifyAfter
+	later := func() {
+		if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_tries": l.HooksTries + 1, "hooks_next_at": time.Now().Add(verifyBackoff(l.HooksTries + 1))}); err != nil {
+			slog.WarnContext(ctx, "next look at a call could not be stored", "call", l.CallID, "error", err)
 		}
-		found := false
-		if ext != "" {
-			var talk int
-			var answered bool
-			found, talk, answered, err = s.verifier.CallSeen(ctx, ext, l.PeerNumber, l.StartedAt)
-			if err != nil {
-				slog.WarnContext(ctx, "phone record could not be checked", "call", l.CallID, "error", err)
-				continue
-			}
-			if found {
-				// The phone system's own figures win over the browser's.
-				l.DurationSeconds = talk
-				if !answered && l.Disposition == "answered" {
-					l.Disposition = "no_answer"
-				}
-			}
+	}
+	drop := func(why string) {
+		slog.WarnContext(ctx, why, "call", l.CallID)
+		if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true}); err != nil {
+			slog.WarnContext(ctx, "unverified call could not be closed", "call", l.CallID, "error", err)
 		}
-		switch {
-		case found:
-			if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true, "duration_seconds": l.DurationSeconds, "disposition": l.Disposition}); err != nil {
-				slog.WarnContext(ctx, "verified call could not be stored", "call", l.CallID, "error", err)
-				continue
-			}
-			s.ended(ctx, l)
-		case l.EndedAt != nil && time.Since(*l.EndedAt) > verifyAfter:
-			slog.WarnContext(ctx, "call never appeared in the phone records; nothing follows it", "call", l.CallID)
-			if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true}); err != nil {
-				slog.WarnContext(ctx, "unverified call could not be closed", "call", l.CallID, "error", err)
-			}
+	}
+	ext := ""
+	if l.UserID != nil {
+		u, err := s.users.GetByID(ctx, *l.UserID)
+		if err != nil {
+			later()
+			return
 		}
+		if u.SIPExtension != nil {
+			ext = *u.SIPExtension
+		}
+	}
+	if ext == "" {
+		drop("call has no extension to match the phone records by; nothing follows it")
+		return
+	}
+	found, talk, answered, err := s.verifier.CallSeen(ctx, ext, l.PeerNumber, l.StartedAt)
+	if err != nil {
+		slog.WarnContext(ctx, "phone record could not be checked", "call", l.CallID, "error", err)
+		later()
+		return
+	}
+	switch {
+	case found:
+		// The phone system's own figures win over the browser's.
+		l.DurationSeconds = talk
+		if !answered && l.Disposition == "answered" {
+			l.Disposition = "no_answer"
+		}
+		if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true, "duration_seconds": l.DurationSeconds, "disposition": l.Disposition}); err != nil {
+			slog.WarnContext(ctx, "verified call could not be stored", "call", l.CallID, "error", err)
+			return
+		}
+		s.ended(ctx, l)
+	case expired:
+		drop("call never appeared in the phone records; nothing follows it")
+	default:
+		later()
 	}
 }
 

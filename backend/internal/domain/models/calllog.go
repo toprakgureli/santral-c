@@ -18,9 +18,14 @@ type CallLog struct {
 	DurationSeconds int        `gorm:"column:duration_seconds;not null;default:0"`
 	// HooksDone is false while the call waits for the phone system's record
 	// before what follows it runs.
-	HooksDone bool      `gorm:"column:hooks_done;not null;default:true"`
-	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
+	HooksDone bool `gorm:"column:hooks_done;not null;default:true"`
+	// HooksNextAt is when a waiting call is looked for next, HooksTries how
+	// often it was looked for in vain; each miss waits longer, so calls the
+	// records never show do not hold up newer ones.
+	HooksNextAt *time.Time `gorm:"column:hooks_next_at"`
+	HooksTries  int        `gorm:"column:hooks_tries;not null;default:0"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at"`
 }
 
 // TableName pins the table name.
