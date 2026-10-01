@@ -74,6 +74,15 @@ func (r *Repository) UserCount(ctx context.Context, id uint) (int64, error) {
 	return count, nil
 }
 
+// HolderIDs lists the users who carry a role.
+func (r *Repository) HolderIDs(ctx context.Context, id uint) ([]uint, error) {
+	var ids []uint
+	if err := r.db.WithContext(ctx).Raw("SELECT user_id FROM user_roles WHERE role_id = ?", id).Scan(&ids).Error; err != nil {
+		return nil, fmt.Errorf("role holders could not be listed: %w", err)
+	}
+	return ids, nil
+}
+
 // Permissions returns the full permission catalog ordered by module then key.
 func (r *Repository) Permissions(ctx context.Context) ([]models.Permission, error) {
 	var perms []models.Permission

@@ -3,6 +3,10 @@
 // to the panel). On every other tab it draws the floating mini softphone that
 // remote-controls the panel's session. Styles are isolated in a shadow root and
 // follow the OS light/dark preference.
+//
+// The page cannot reach the widget: its shadow root is closed, its buttons
+// act only on real clicks, and only the tab on the panel's address (set in
+// the popup) is treated as the panel. Other pages' messages are ignored.
 
 (() => {
   if (window.top !== window) return;
@@ -12,7 +16,7 @@
   host.id = "santralc-miniwidget-host";
   host.style.cssText = "position:fixed;right:20px;bottom:20px;z-index:2147483647;";
   document.documentElement.appendChild(host);
-  const root = host.attachShadow({ mode: "open" });
+  const root = host.attachShadow({ mode: "closed" });
 
   const I = {
     call: '<path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.24 1.02l-2.2 2.2z"/>',
@@ -72,18 +76,27 @@
   let panelOpen = false; // is the SantralC panel open somewhere?
   let lastPing = 0;
 
-  function postToPage(m) { try { window.postMessage({ santralc: "ext", ...m }, "*"); } catch { /* ignore */ } }
+  function postToPage(m) { try { window.postMessage({ santralc: "ext", ...m }, location.origin); } catch { /* ignore */ } }
 
-  window.addEventListener("message", (e) => {
-    const d = e.data;
-    if (e.source !== window || !d || d.santralc !== "panel") return;
-    // Any message from the page means this IS the panel tab: hide the widget
-    // here and relay a heartbeat so other tabs know the panel is open.
+  // Only the panel's own tab listens to the page; it hides the widget there
+  // and relays the panel's state and heartbeat to the worker.
+  chrome.runtime.sendMessage({ to: "sw", type: "getPanelOrigin" }, (res) => {
+    if (chrome.runtime.lastError || !res || res.origin !== location.origin) return;
     isPanel = true;
     host.style.display = "none";
-    chrome.runtime.sendMessage({ to: "sw", type: "panelAlive" }).catch(() => {});
-    if (d.type === "state") chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (e.source !== window || e.origin !== location.origin || !d || d.santralc !== "panel") return;
+      chrome.runtime.sendMessage({ to: "sw", type: "panelAlive" }).catch(() => {});
+      if (d.type === "state") chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
+    });
   });
+
+  // on wires a handler that only real user input runs; a page cannot
+  // press the widget's buttons by script.
+  function on(el, type, fn) {
+    el?.addEventListener(type, (e) => { if (e.isTrusted) fn(e); });
+  }
 
   // Hide the widget if the panel's heartbeat stops (panel closed).
   setInterval(() => {
@@ -179,15 +192,16 @@
 
   function bind() {
     const q = (id) => root.getElementById(id);
-    q("dialbtn")?.addEventListener("click", () => {
+    const dial = () => {
       const typed = q("dial").value.trim();
       if (!typed) return;
       // "Dahili" sends the digits as typed; "+90" normalises whatever was
       // typed (0530..., 90530..., +90 530...) to the 0XXXXXXXXXX the PBX dials.
       const n = q("prefix").value === "" ? normalizeDial(typed) : normalizeDial(typed.length <= 5 ? typed : typed.replace(/^\+?90/, "").replace(/^0/, ""));
       if (n) send("call", n);
-    });
-    q("peer")?.addEventListener("click", copyPeer);
+    };
+    on(q("dialbtn"), "click", dial);
+    on(q("peer"), "click", copyPeer);
     const durEl = q("dur");
     if (tick) { clearInterval(tick); tick = null; }
     if (durEl && state.answeredAt) {
@@ -197,15 +211,15 @@
         el.textContent = clock((Date.now() - state.answeredAt) / 1000);
       }, 1000);
     }
-    q("dial")?.addEventListener("keydown", (e) => { if (e.key === "Enter") q("dialbtn").click(); });
-    q("answer")?.addEventListener("click", () => send("answer"));
-    q("hangup")?.addEventListener("click", () => send("hangup"));
-    q("mute")?.addEventListener("click", () => send("mute"));
-    q("hold")?.addEventListener("click", () => send("hold"));
-    q("keys")?.addEventListener("click", () => { showKeys = !showKeys; if (showKeys) showXfer = false; render(); });
-    q("xfer")?.addEventListener("click", () => { showXfer = !showXfer; if (showXfer) showKeys = false; render(); });
-    q("xdo")?.addEventListener("click", () => { const v = normalizeDial(q("xnum").value); if (v) send("transfer", v); });
-    root.querySelectorAll(".key").forEach((b) => b.addEventListener("click", () => send("dtmf", b.getAttribute("data-k"))));
+    on(q("dial"), "keydown", (e) => { if (e.key === "Enter") dial(); });
+    on(q("answer"), "click", () => send("answer"));
+    on(q("hangup"), "click", () => send("hangup"));
+    on(q("mute"), "click", () => send("mute"));
+    on(q("hold"), "click", () => send("hold"));
+    on(q("keys"), "click", () => { showKeys = !showKeys; if (showKeys) showXfer = false; render(); });
+    on(q("xfer"), "click", () => { showXfer = !showXfer; if (showXfer) showKeys = false; render(); });
+    on(q("xdo"), "click", () => { const v = normalizeDial(q("xnum").value); if (v) send("transfer", v); });
+    root.querySelectorAll(".key").forEach((b) => on(b, "click", () => send("dtmf", b.getAttribute("data-k"))));
 
     const drag = q("drag");
     if (drag) drag.addEventListener("mousedown", (e) => {

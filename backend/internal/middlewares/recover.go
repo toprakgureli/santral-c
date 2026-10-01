@@ -21,7 +21,7 @@ func Recover() fiber.Handler {
 			}
 			slog.ErrorContext(c.UserContext(), "panic recovered",
 				"method", c.Method(),
-				"path", c.Path(),
+				"path", logPath(c),
 				"panic", fmt.Sprint(r),
 				"stack", string(debug.Stack()),
 			)

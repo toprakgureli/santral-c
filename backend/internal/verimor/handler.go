@@ -262,12 +262,9 @@ func (h *Handler) Recording(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	c.Set("Content-Type", f.Type)
+	middlewares.FileHeaders(c, f.Type, "kayit-"+safeName(uuid)+".mp3", c.Query("download") != "")
 	c.Set("Accept-Ranges", "bytes")
 	c.Set("Cache-Control", "private, max-age=3600")
-	if c.Query("download") != "" {
-		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="kayit-%s.mp3"`, safeName(uuid)))
-	}
 	// Honour a Range request so the audio element can seek (it expects 206).
 	if start, end, ok := parseRange(c.Get("Range"), len(f.Data)); ok {
 		c.Status(fiber.StatusPartialContent)
@@ -352,7 +349,7 @@ func (h *Handler) Stream(c *fiber.Ctx) error {
 		First:   initial,
 		Events:  ch,
 		Close:   func() { h.service.StreamStop(ch) },
-		Allowed: func(ctx context.Context) error { return h.service.StreamAllowed(ctx, id) },
+		Allowed: func(ctx context.Context) error { return h.service.StreamAllowed(ctx, id, ch) },
 	})
 }
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"fmt"
 	"image"
 	"net/url"
 	"strconv"
@@ -722,21 +721,16 @@ func (h *Handler) Attachment(c *fiber.Ctx) error {
 		return err
 	}
 	c.Status(resp.StatusCode)
-	for _, k := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"} {
+	for _, k := range []string{"Content-Length", "Content-Range", "ETag", "Last-Modified"} {
 		if v := resp.Header.Get(k); v != "" {
 			c.Set(k, v)
 		}
 	}
-	if resp.Header.Get("Content-Type") == "" {
-		c.Set("Content-Type", a.Mime)
-	}
+	// The type stored when the file was attached decides how it is sent,
+	// never the type the storage reports back.
+	middlewares.FileHeaders(c, a.Mime, a.Name, c.Query("download") == "1" || a.Kind == "file")
 	c.Set("Accept-Ranges", "bytes")
 	c.Set("Cache-Control", "private, max-age=86400")
-	disposition := "inline"
-	if c.Query("download") == "1" || a.Kind == "file" {
-		disposition = "attachment"
-	}
-	c.Set("Content-Disposition", fmt.Sprintf("%s; filename*=UTF-8''%s", disposition, url.PathEscape(a.Name)))
 	size := -1
 	if resp.ContentLength >= 0 {
 		size = int(resp.ContentLength)

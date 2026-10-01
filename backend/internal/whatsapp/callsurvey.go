@@ -2,9 +2,6 @@ package whatsapp
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -189,10 +186,17 @@ func parseComponents(t *models.WATemplate) []tplComponent {
 	return out
 }
 
+// callSurveyLinkPurpose names the key that signs after-call survey links.
+const callSurveyLinkPurpose = "call-survey-link"
+
 func (s *Service) callSurveyToken(id uint) string {
-	mac := hmac.New(sha256.New, []byte(s.secret+":call"))
-	_, _ = fmt.Fprint(mac, id) // writing to a hash cannot fail
-	return hex.EncodeToString(mac.Sum(nil))[:24]
+	return linkToken(s.ring.MACKeys(callSurveyLinkPurpose)[0], fmt.Sprint(id))
+}
+
+// callSurveyTokenOK checks an after-call survey link, older links included.
+func (s *Service) callSurveyTokenOK(id uint, token string) bool {
+	keys := append(s.ring.MACKeys(callSurveyLinkPurpose), []byte(s.secret+":call"))
+	return linkTokenOK(keys, fmt.Sprint(id), token)
 }
 
 // mobileWAID returns the WhatsApp id for a number that can have WhatsApp:

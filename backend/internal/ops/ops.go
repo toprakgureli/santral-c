@@ -66,7 +66,19 @@ func (h *Handler) Health(c *fiber.Ctx) error {
 	if status != fiber.StatusOK {
 		word = "down"
 	}
+	// The build and the parts are told only on the server itself; from
+	// outside the answer is just up or down, so nobody learns which commit
+	// of the public code runs here.
+	if !local(c) {
+		return c.Status(status).JSON(fiber.Map{"status": word})
+	}
 	return c.Status(status).JSON(fiber.Map{"status": word, "checks": checks, "version": h.build.Version, "buildTime": h.build.Time})
+}
+
+// local reports whether a request comes from the server itself rather than
+// through the reverse proxy.
+func local(c *fiber.Ctx) bool {
+	return c.Context().RemoteIP().IsLoopback() && c.Get(fiber.HeaderXForwardedFor) == ""
 }
 
 // metric is one number on the metrics page.
@@ -88,7 +100,7 @@ var queueMetrics = []metric{
 // on the server itself (the reverse proxy never forwards it), since the
 // numbers are nobody else's business.
 func (h *Handler) Metrics(c *fiber.Ctx) error {
-	if !c.Context().RemoteIP().IsLoopback() || c.Get(fiber.HeaderXForwardedFor) != "" {
+	if !local(c) {
 		return fiber.ErrNotFound
 	}
 	ctx, cancel := context.WithTimeout(c.UserContext(), checkTimeout)

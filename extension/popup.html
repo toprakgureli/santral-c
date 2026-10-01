@@ -4,18 +4,32 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { color-scheme: light dark; --bg:#fff; --fg:#1b1e24; --muted:#6b7280; --accent:#2f59c4; }
-      @media (prefers-color-scheme: dark){ :root{ --bg:#1f2329; --fg:#f3f4f6; --muted:#9aa1ad; --accent:#5b8cff; } }
+      :root { color-scheme: light dark; --bg:#fff; --fg:#1b1e24; --muted:#6b7280; --accent:#2f59c4; --input:#eef0f3; --danger:#e5484d; --ok:#22a06b; }
+      @media (prefers-color-scheme: dark){ :root{ --bg:#1f2329; --fg:#f3f4f6; --muted:#9aa1ad; --accent:#5b8cff; --input:rgba(255,255,255,0.09); --danger:#ff5e57; --ok:#2ecc71; } }
       body { width: 280px; margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
       h1 { font-size: 14px; margin: 0 0 8px; }
       p { color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
       b { color: var(--fg); }
+      label { display: block; font-weight: 600; margin: 12px 0 6px; }
+      .row { display: flex; gap: 6px; }
+      input { flex: 1; min-width: 0; height: 32px; border: 0; border-radius: 8px; padding: 0 10px; background: var(--input); color: var(--fg); font: inherit; outline: none; }
+      button { height: 32px; border: 0; border-radius: 8px; padding: 0 12px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+      .note { font-size: 12px; margin-top: 6px; min-height: 16px; }
+      .note.bad { color: var(--danger); }
+      .note.good { color: var(--ok); }
     </style>
   </head>
   <body>
     <h1 style="display:flex;align-items:center;gap:8px"><img src="icons/icon32.png" width="22" height="22" alt="" style="border-radius:6px" />SantralC Mini</h1>
-    <p>Softphone <b>santral-c panelinde</b> çalışır; ayar girmene gerek yok.</p>
+    <p>Softphone <b>santral-c panelinde</b> çalışır.</p>
     <p>Panelde oturum açıkken, mini widget <b>her sekmede</b> görünür ve panelin çağrısını uzaktan yönetir (ara, cevapla, sustur, beklet, aktar).</p>
-    <p>Görünmüyorsa o sekmeyi <b>yenile</b>. Panel sekmesinde gizlidir (panel kendi arayüzünü gösterir).</p>
+    <p>Görünmüyorsa o sekmeyi <b>yenile</b>. Panel sekmesinde gizlidir.</p>
+    <label for="origin">Panel adresi</label>
+    <div class="row">
+      <input id="origin" placeholder="https://cm.ornek.com" autocomplete="off" />
+      <button id="save" type="button">Kaydet</button>
+    </div>
+    <div id="note" class="note">Sadece bu adresteki sekme panel sayılır.</div>
+    <script type="module" src="./popup.js"></script>
   </body>
 </html>

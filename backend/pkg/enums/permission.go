@@ -34,6 +34,12 @@ const (
 	CallTransfer     Permission = "call.transfer"
 	CallHangup       Permission = "call.hangup"
 	CallRecordAccess Permission = "call.record_access"
+	// CallTransferExternal allows a transfer to a number outside the phone
+	// system; transfers to an extension or a queue need only CallTransfer.
+	CallTransferExternal Permission = "call.transfer_external"
+	// CallViewPeers shows the number and contact other agents are talking
+	// to, on the live agent list, in performance and on profiles.
+	CallViewPeers Permission = "call.view_peers"
 
 	CDRViewOwn Permission = "cdr.view_own"
 	CDRViewAll Permission = "cdr.view_all"
@@ -134,6 +140,8 @@ var permissions = []PermissionInfo{
 	{CallTransfer, "Çağrı aktarır"},
 	{CallHangup, "Çağrı sonlandırır"},
 	{CallRecordAccess, "Çağrı kayıtlarına erişir"},
+	{CallTransferExternal, "Çağrıyı santral dışındaki bir numaraya aktarır"},
+	{CallViewPeers, "Diğer temsilcilerin görüştüğü numarayı ve kişiyi görür"},
 	{CDRViewOwn, "Kendi çağrı kayıtlarını (CDR) görür"},
 	{CDRViewAll, "Tüm CDR kayıtlarını görür"},
 	{CDRExport, "CDR dışa aktarır"},

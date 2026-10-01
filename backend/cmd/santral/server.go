@@ -144,8 +144,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard).Routes(api)
 	profile.NewRouter(profile.NewHandler(profile.NewService(profile.NewRepository(db))), guard).Routes(api)
-	drive := teams.NewDrive(cfg.Drive, cfg.Auth.Secret, ring, db)
-	teamsSvc := teams.NewService(teams.NewRepository(db), actors, teams.NewHub(), drive)
+	drive := teams.NewDrive(cfg.Drive, ring, db)
+	teamsSvc := teams.NewService(teams.NewRepository(db), actors, teams.NewHub(), drive, auditSvc)
 	teams.NewRouter(teams.NewHandler(teamsSvc), guard).Routes(api)
 	gamesSvc := games.NewService(games.NewRepository(db), actors, teamsSvc)
 	games.NewRouter(games.NewHandler(gamesSvc), guard).Routes(api)
@@ -183,7 +183,9 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		verimorSvc.SetContacts(contactRepo)
 		shiftSvc.SetPresence(verimorSvc)
 		perfSvc.SetLive(verimorSvc)
-		s.workers = append(s.workers, verimorSvc.Start)
+		// What follows a call waits until the phone system's record shows it.
+		callLogSvc.SetVerifier(verimorSvc)
+		s.workers = append(s.workers, verimorSvc.Start, callLogSvc.StartVerifier)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard).Routes(api)
 	}
 	return s, nil

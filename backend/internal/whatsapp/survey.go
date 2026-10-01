@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"strconv"
@@ -25,10 +26,37 @@ import (
 // plus a signature, so a score can only land on the ticket it was sent
 // for. The native survey asks inside WhatsApp with a 1-5 list.
 
+// Survey links are signed with a key of their own, derived from the data
+// key. Links sent before carry the older signature, made with the session
+// secret; those are still accepted so no customer's link stops working.
+const surveyLinkPurpose = "survey-link"
+
 func (s *Service) surveyToken(ticketID uint) string {
-	mac := hmac.New(sha256.New, []byte(s.secret+":survey"))
-	_, _ = fmt.Fprintf(mac, "%d", ticketID) // writing to a hash cannot fail
+	return linkToken(s.ring.MACKeys(surveyLinkPurpose)[0], fmt.Sprintf("%d", ticketID))
+}
+
+// surveyTokenOK checks a survey link's signature against every key that
+// may have made it.
+func (s *Service) surveyTokenOK(ticketID uint, token string) bool {
+	keys := append(s.ring.MACKeys(surveyLinkPurpose), []byte(s.secret+":survey"))
+	return linkTokenOK(keys, fmt.Sprintf("%d", ticketID), token)
+}
+
+// linkToken signs a link's subject with key.
+func linkToken(key []byte, subject string) string {
+	mac := hmac.New(sha256.New, key)
+	_, _ = io.WriteString(mac, subject) // writing to a hash cannot fail
 	return hex.EncodeToString(mac.Sum(nil))[:24]
+}
+
+// linkTokenOK reports whether token signs subject with any of keys.
+func linkTokenOK(keys [][]byte, subject, token string) bool {
+	for _, k := range keys {
+		if hmac.Equal([]byte(token), []byte(linkToken(k, subject))) {
+			return true
+		}
+	}
+	return false
 }
 
 // surveyDue says whether a resolved ticket should get the survey: once per
@@ -237,7 +265,7 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if call != "" {
 		// the survey after a phone call
 		cid, err := strconv.Atoi(call)
-		if err != nil || cid <= 0 || !hmac.Equal([]byte(token), []byte(s.callSurveyToken(uint(cid)))) {
+		if err != nil || cid <= 0 || !s.callSurveyTokenOK(uint(cid), token) {
 			return errs.Unauthorized("Anket bağlantısı bu görüşmeye ait değil.")
 		}
 		if score >= 1 {
@@ -251,7 +279,7 @@ func (s *Service) TallyWebhook(ctx context.Context, key, signature string, body 
 	if err != nil || tid <= 0 {
 		return errs.Invalid("Ankette sohbet bilgisi yok.", nil)
 	}
-	if !hmac.Equal([]byte(token), []byte(s.surveyToken(uint(tid)))) {
+	if !s.surveyTokenOK(uint(tid), token) {
 		return errs.Unauthorized("Anket bağlantısı bu sohbete ait değil.")
 	}
 	if score < 1 {

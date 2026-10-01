@@ -163,6 +163,9 @@ func (s *Service) Update(ctx context.Context, actorID, id uint, req requests.Rol
 	if err := ensureCanGrant(actor, role.Permissions, perms); err != nil {
 		return nil, err
 	}
+	if err := s.ensureHoldersManageable(ctx, actor, id); err != nil {
+		return nil, err
+	}
 	if enums.Role(role.Name) == enums.RoleInvisibleAdmin && !hasKey(perms, enums.RoleManage) {
 		return nil, errs.Invalid("Görünmez yönetici rolünden rol yönetimi yetkisi kaldırılamaz.", nil)
 	}
@@ -213,6 +216,30 @@ func (s *Service) Delete(ctx context.Context, actorID, id uint, meta Meta) error
 		return errs.Internal(err)
 	}
 	s.record(ctx, actorID, enums.AuditRoleDeleted, id, meta, map[string]any{"name": role.Name, "displayName": role.DisplayName})
+	return nil
+}
+
+// ensureHoldersManageable refuses to change a role that someone with more
+// rights than the actor carries: taking permissions away from it would
+// bring that person down to the actor's level, and their account within
+// the actor's reach.
+func (s *Service) ensureHoldersManageable(ctx context.Context, actor *models.User, roleID uint) error {
+	if actor.IsInvisibleAdmin() {
+		return nil
+	}
+	ids, err := s.repo.HolderIDs(ctx, roleID)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	for _, id := range ids {
+		holder, err := s.users.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !actor.CanManage(holder) {
+			return errs.Forbidden("Bu rol sizden daha yetkili bir kullanıcıda; düzenleyemezsiniz.")
+		}
+	}
 	return nil
 }
 

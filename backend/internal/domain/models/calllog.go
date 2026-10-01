@@ -16,8 +16,11 @@ type CallLog struct {
 	AnsweredAt      *time.Time `gorm:"column:answered_at"`
 	EndedAt         *time.Time `gorm:"column:ended_at"`
 	DurationSeconds int        `gorm:"column:duration_seconds;not null;default:0"`
-	CreatedAt       time.Time  `gorm:"column:created_at"`
-	UpdatedAt       time.Time  `gorm:"column:updated_at"`
+	// HooksDone is false while the call waits for the phone system's record
+	// before what follows it runs.
+	HooksDone bool      `gorm:"column:hooks_done;not null;default:true"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
 }
 
 // TableName pins the table name.

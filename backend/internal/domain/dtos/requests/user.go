@@ -4,7 +4,7 @@ package requests
 type UserCreate struct {
 	Name         string `json:"name" validate:"required,min=2,max=120"`
 	Email        string `json:"email" validate:"required,email,max=255"`
-	Password     string `json:"password" validate:"required,min=8,max=16"`
+	Password     string `json:"password" validate:"required,min=8,max=64"`
 	RoleIDs      []uint `json:"roleIds" validate:"required,min=1,dive,gt=0"`
 	SIPExtension string `json:"sipExtension" validate:"omitempty,numeric,min=2,max=32"`
 }
@@ -30,7 +30,7 @@ type AvatarUpdate struct {
 
 // UserPassword is an admin password reset.
 type UserPassword struct {
-	Password string `json:"password" validate:"required,min=8,max=16"`
+	Password string `json:"password" validate:"required,min=8,max=64"`
 }
 
 // UserActive toggles a user's active state.

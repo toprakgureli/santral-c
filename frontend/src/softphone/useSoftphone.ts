@@ -589,7 +589,17 @@ export function useSoftphone(enabled: boolean): Phone {
       setError(e instanceof ApiError ? e.message : "Çağrı aktarılamadı.");
       return;
     }
-    await s.refer(uri).catch(() => undefined);
+    // The phone system can still refuse the hand-over (busy, no such
+    // number); the agent is told instead of left wondering.
+    try {
+      await s.refer(uri, {
+        requestDelegate: {
+          onReject: () => setError("Santral aktarmayı kabul etmedi. Numarayı kontrol edip tekrar deneyin."),
+        },
+      });
+    } catch {
+      setError("Çağrı aktarılamadı.");
+    }
   }, []);
 
   const sendDtmf = useCallback((key: string) => {

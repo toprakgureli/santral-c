@@ -63,9 +63,14 @@ var Client = &http.Client{
 		MaxIdleConns:          20,
 		IdleConnTimeout:       60 * time.Second,
 	},
+	// Redirects stay on the same server: the request may carry an outside
+	// system's secret headers, which must never reach another address.
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 3 {
 			return fmt.Errorf("çok fazla yönlendirme")
+		}
+		if req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host {
+			return fmt.Errorf("başka bir sunucuya yönlendirildi; güvenlik için izlenmedi")
 		}
 		return nil
 	},

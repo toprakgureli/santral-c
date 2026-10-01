@@ -49,3 +49,13 @@ func TestFillHeaderDropsLineBreaks(t *testing.T) {
 		t.Fatalf("FillHeader() = %q", got)
 	}
 }
+
+func TestFillURLDots(t *testing.T) {
+	got, err := FillURL("https://api.example.com/customers/{id}/orders", map[string]string{"id": ".."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://api.example.com/customers/%2E%2E/orders" {
+		t.Errorf("got %q", got)
+	}
+}

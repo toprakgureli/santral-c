@@ -2,6 +2,7 @@ package calllog
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -26,8 +27,10 @@ var istanbul = time.FixedZone("+03", 3*3600)
 type Service struct {
 	repo  *Repository
 	users IActorResolver
-	// OnEnded, when set, hears every call the moment it is final.
-	OnEnded func(ctx context.Context, log models.CallLog)
+	// OnEnded, when set, hears every call once it is final and, with a
+	// verifier, confirmed by the phone system.
+	OnEnded  func(ctx context.Context, log models.CallLog)
+	verifier ICallVerifier
 }
 
 // NewService builds a call-log service.
@@ -62,7 +65,10 @@ type EntryList struct {
 }
 
 // Record applies one phase (start, answer, end) of a softphone call, keyed by
-// the client-generated call id so the phases upsert one row.
+// the client-generated call id so the phases upsert one row. Only the agent
+// who started a call may answer or end it, an end that arrives twice changes
+// nothing, and the length the browser reports is capped by the time that
+// really passed.
 func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLogEvent) error {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
@@ -75,6 +81,9 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 	existing, err := s.repo.Get(ctx, req.CallID)
 	if err != nil {
 		return errs.Internal(err)
+	}
+	if existing != nil && (existing.UserID == nil || *existing.UserID != actorID) {
+		return errs.NotFound("Çağrı kaydı bulunamadı.")
 	}
 
 	switch req.Phase {
@@ -96,7 +105,7 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 			return errs.Internal(err)
 		}
 	case "answer":
-		if existing == nil {
+		if existing == nil || existing.EndedAt != nil {
 			return nil
 		}
 		now := time.Now()
@@ -104,16 +113,15 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 			return errs.Internal(err)
 		}
 	case "end":
-		now := time.Now()
-		fields := map[string]any{
-			"ended_at":         now,
-			"disposition":      dispositionOr(req.Disposition, existing),
-			"duration_seconds": req.DurationSeconds,
+		if existing != nil && existing.EndedAt != nil {
+			return nil // already final; a second end changes nothing
 		}
+		now := time.Now()
 		if existing == nil {
 			// The start was never recorded (e.g. a very short call); create a
 			// finalized row so nothing is lost.
 			id := actorID
+			seconds := clampSeconds(req.DurationSeconds, maxUnstartedCall)
 			log := &models.CallLog{
 				CallID:          req.CallID,
 				UserID:          &id,
@@ -121,26 +129,145 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 				PeerNumber:      strings.TrimSpace(req.Peer),
 				PeerKey:         phone.Key(req.Peer),
 				Disposition:     dispositionOr(req.Disposition, nil),
-				StartedAt:       now.Add(-time.Duration(req.DurationSeconds) * time.Second),
+				StartedAt:       now.Add(-time.Duration(seconds) * time.Second),
 				EndedAt:         &now,
-				DurationSeconds: req.DurationSeconds,
+				DurationSeconds: seconds,
 			}
 			if err := s.repo.Create(ctx, log); err != nil {
 				return errs.Internal(err)
 			}
-			s.ended(ctx, *log)
-			return nil
-		}
-		if err := s.repo.Update(ctx, existing.ID, fields); err != nil {
-			return errs.Internal(err)
+			return s.finish(ctx, *log)
 		}
 		final := *existing
 		final.EndedAt = &now
-		final.Disposition = fields["disposition"].(string)
-		final.DurationSeconds = req.DurationSeconds
-		s.ended(ctx, final)
+		final.Disposition = dispositionOr(req.Disposition, existing)
+		final.DurationSeconds = clampSeconds(req.DurationSeconds, now.Sub(existing.StartedAt)+5*time.Second)
+		if err := s.repo.Update(ctx, existing.ID, map[string]any{
+			"ended_at":         now,
+			"disposition":      final.Disposition,
+			"duration_seconds": final.DurationSeconds,
+		}); err != nil {
+			return errs.Internal(err)
+		}
+		return s.finish(ctx, final)
 	}
 	return nil
+}
+
+// maxUnstartedCall caps the length of a call whose start the panel never
+// heard about.
+const maxUnstartedCall = 4 * time.Hour
+
+// clampSeconds keeps a reported length between zero and limit.
+func clampSeconds(seconds int, limit time.Duration) int {
+	if seconds < 0 {
+		return 0
+	}
+	if most := int(limit / time.Second); seconds > most {
+		return most
+	}
+	return seconds
+}
+
+// ICallVerifier finds a call in the phone system's own records.
+type ICallVerifier interface {
+	// CallSeen looks for a call between extension and peer that started
+	// around at. It reports whether one was found, how long the two sides
+	// talked and whether it was answered.
+	CallSeen(ctx context.Context, extension, peer string, at time.Time) (found bool, talkSeconds int, answered bool, err error)
+}
+
+// SetVerifier makes what follows a call wait for the phone system's record
+// of it. Without one (no phone system configured) it runs at once.
+func (s *Service) SetVerifier(v ICallVerifier) { s.verifier = v }
+
+// finish runs what follows a final call: at once when there is nothing to
+// check against, otherwise after the phone system's record confirms it.
+func (s *Service) finish(ctx context.Context, log models.CallLog) error {
+	if s.verifier == nil {
+		s.ended(ctx, log)
+		return nil
+	}
+	if err := s.repo.Update(ctx, log.ID, map[string]any{"hooks_done": false}); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// verifyAfter is how long a call waits for the phone system's record before
+// what follows it is dropped.
+const verifyAfter = 2 * time.Hour
+
+// StartVerifier checks waiting calls against the phone system's records every
+// half minute until ctx ends.
+func (s *Service) StartVerifier(ctx context.Context, g *safe.Group) {
+	if s.verifier == nil {
+		return
+	}
+	g.Loop(ctx, "call log verifier", func(ctx context.Context) {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			s.VerifyPending(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	})
+}
+
+// VerifyPending checks the calls waiting for the phone system's record once:
+// a confirmed call gets the system's own length and runs what follows it;
+// one never seen within verifyAfter is closed without it.
+func (s *Service) VerifyPending(ctx context.Context) {
+	logs, err := s.repo.HooksPending(ctx, 200)
+	if err != nil {
+		slog.WarnContext(ctx, "calls waiting for the phone record could not be read", "error", err)
+		return
+	}
+	for _, l := range logs {
+		if ctx.Err() != nil {
+			return
+		}
+		ext := ""
+		if l.UserID != nil {
+			if u, err := s.users.GetByID(ctx, *l.UserID); err == nil && u.SIPExtension != nil {
+				ext = *u.SIPExtension
+			}
+		}
+		found := false
+		if ext != "" {
+			var talk int
+			var answered bool
+			found, talk, answered, err = s.verifier.CallSeen(ctx, ext, l.PeerNumber, l.StartedAt)
+			if err != nil {
+				slog.WarnContext(ctx, "phone record could not be checked", "call", l.CallID, "error", err)
+				continue
+			}
+			if found {
+				// The phone system's own figures win over the browser's.
+				l.DurationSeconds = talk
+				if !answered && l.Disposition == "answered" {
+					l.Disposition = "no_answer"
+				}
+			}
+		}
+		switch {
+		case found:
+			if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true, "duration_seconds": l.DurationSeconds, "disposition": l.Disposition}); err != nil {
+				slog.WarnContext(ctx, "verified call could not be stored", "call", l.CallID, "error", err)
+				continue
+			}
+			s.ended(ctx, l)
+		case l.EndedAt != nil && time.Since(*l.EndedAt) > verifyAfter:
+			slog.WarnContext(ctx, "call never appeared in the phone records; nothing follows it", "call", l.CallID)
+			if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true}); err != nil {
+				slog.WarnContext(ctx, "unverified call could not be closed", "call", l.CallID, "error", err)
+			}
+		}
+	}
 }
 
 // ended hands a final call to the hook, outliving the request.

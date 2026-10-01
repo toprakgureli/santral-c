@@ -3,7 +3,7 @@ import type { Phone } from "./useSoftphone";
 import { normalizeDial } from "./dial";
 
 function postPanel(type: string, extra?: Record<string, unknown>) {
-  window.postMessage({ santralc: "panel", type, ...(extra ?? {}) }, "*");
+  window.postMessage({ santralc: "panel", type, ...(extra ?? {}) }, window.location.origin);
 }
 
 // usePanelBridge connects the panel's live softphone to the SantralC extension
@@ -46,7 +46,7 @@ export function usePanelBridge(phone: Phone, active: boolean) {
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const d = e.data;
-      if (e.source !== window || !d || d.santralc !== "ext" || d.type !== "cmd") return;
+      if (e.source !== window || e.origin !== window.location.origin || !d || d.santralc !== "ext" || d.type !== "cmd") return;
       if (!activeRef.current) return;
       const p = phoneRef.current;
       const arg = String(d.arg ?? "");

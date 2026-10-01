@@ -4,6 +4,7 @@ package setting
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -74,7 +75,14 @@ func NewService(db *gorm.DB, users IActorResolver, auditor IAudit) *Service {
 // MFAPolicy returns the MFA mode and, for trusted mode, the addresses that
 // skip the code. Without a stored mode the old on/off flag decides.
 func (s *Service) MFAPolicy(ctx context.Context) (string, []string) {
-	mode := strings.TrimSpace(s.value(ctx, KeyMFAMode))
+	raw, err := s.lookup(ctx, KeyMFAMode)
+	if err != nil {
+		// Unknown is treated as required: a database hiccup must not let
+		// sign-ins skip the second step.
+		slog.WarnContext(ctx, "mfa policy could not be read; asking for the code", "error", err)
+		return MFAOn, nil
+	}
+	mode := strings.TrimSpace(raw)
 	switch mode {
 	case MFAOn, MFAOff, MFATrusted:
 	default:
@@ -272,6 +280,22 @@ func (s *Service) set(ctx context.Context, key, value string) error {
 		return fmt.Errorf("setting %s could not be saved: %w", key, err)
 	}
 	return nil
+}
+
+// lookup reads one setting, "" when missing, with the read's error.
+func (s *Service) lookup(ctx context.Context, key string) (string, error) {
+	var values []string
+	if err := s.db.WithContext(ctx).
+		Model(&models.SystemSetting{}).
+		Where("key = ?", key).
+		Limit(1).
+		Pluck("value", &values).Error; err != nil {
+		return "", fmt.Errorf("setting %s could not be read: %w", key, err)
+	}
+	if len(values) == 0 {
+		return "", nil
+	}
+	return values[0], nil
 }
 
 // value reads one setting, "" when missing.

@@ -24,5 +24,6 @@ func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/security", r.guard, r.need(enums.SystemLogs))
 	group.Get("/attempts", r.handler.Attempts)
 	group.Get("/bans", r.handler.Bans)
-	group.Delete("/bans/:id", r.handler.Unban)
+	// Reading the logs is not enough to lift a ban.
+	group.Delete("/bans/:id", r.need(enums.SystemSettings), r.handler.Unban)
 }

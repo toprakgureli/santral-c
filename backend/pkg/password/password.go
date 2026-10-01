@@ -1,5 +1,5 @@
 // Package password holds the account password policy shared by every place a
-// password is set: 8 to 16 characters with an upper-case letter, a lower-case
+// password is set: 8 to 64 characters with an upper-case letter, a lower-case
 // letter, a digit and a special character.
 package password
 
@@ -13,14 +13,14 @@ import (
 // Length bounds of the policy.
 const (
 	MinLength = 8
-	MaxLength = 16
+	MaxLength = 64
 )
 
 // Validate returns a typed invalid error when the password breaks the policy.
 func Validate(pw string) error {
 	n := utf8.RuneCountInString(pw)
 	if n < MinLength || n > MaxLength {
-		return errs.Invalid("Şifre 8 ile 16 karakter arasında olmalı.", nil)
+		return errs.Invalid("Şifre 8 ile 64 karakter arasında olmalı.", nil)
 	}
 	var upper, lower, digit, special bool
 	for _, r := range pw {

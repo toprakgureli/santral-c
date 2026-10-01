@@ -127,6 +127,22 @@ func (k *Keyring) Current(sealed string) bool {
 	return ok && id == k.current.id
 }
 
+// MACKeys returns the signing keys for purpose, the current one first and
+// then those of the previous master keys, so a link signed before the data
+// key was replaced still checks. Each purpose gets its own key, apart from
+// the ones that seal secrets.
+func (k *Keyring) MACKeys(purpose string) [][]byte {
+	out := make([][]byte, 0, 1+len(k.previous))
+	for _, m := range append([]masterKey{k.current}, k.previous...) {
+		derived, err := hkdf.Key(sha256.New, m.secret, nil, "santral-c/mac/"+purpose, 32)
+		if err != nil {
+			continue
+		}
+		out = append(out, derived)
+	}
+	return out
+}
+
 func (k *Keyring) key(id string) (masterKey, bool) {
 	if id == k.current.id {
 		return k.current, true

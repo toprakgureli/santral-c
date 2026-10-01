@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SantralC-MiniWidget",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Her sekmede görünen mini softphone: ara, cevapla, sustur, beklet, aktar.",
   "action": {
     "default_popup": "popup.html",
@@ -15,7 +15,8 @@
     "service_worker": "background.js"
   },
   "permissions": [
-    "tabs"
+    "tabs",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"

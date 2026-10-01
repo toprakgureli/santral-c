@@ -573,6 +573,17 @@ func (s *Service) SaveIntegration(ctx context.Context, actorID, id uint, in Inte
 			return errs.Internal(err)
 		}
 		fields["headers_enc"] = enc
+	} else if id != 0 {
+		// The stored headers (an API key, a token) belong to the address
+		// they were entered for; moving to another server drops them, so
+		// they can never be sent somewhere new without being typed again.
+		var old models.WAIntegration
+		if err := s.db.WithContext(ctx).Select("url").First(&old, id).Error; err != nil {
+			return errs.NotFound("Entegrasyon bulunamadı.")
+		}
+		if was, err := url.Parse(old.URL); err != nil || was.Scheme != u.Scheme || was.Host != u.Host {
+			fields["headers_enc"] = ""
+		}
 	}
 	if id == 0 {
 		r := models.WAIntegration{Name: fields["name"].(string), Method: in.Method, URL: fields["url"].(string), Body: in.Body, TimeoutSec: in.TimeoutSec, UpdatedAt: time.Now()}

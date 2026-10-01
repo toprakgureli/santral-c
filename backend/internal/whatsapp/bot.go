@@ -57,7 +57,7 @@ func (o *liveIO) SendMedia(kind, url string, fileID uint, fileName, caption stri
 			}
 			return
 		}
-		k, _ := mediaKind(f.Mime, 0)
+		k := storedKind(f.Mime)
 		ref := MediaRef{MetaID: metaID, StoreID: f.StorageID, Mime: f.Mime, Name: f.Name, Size: f.Size}
 		msg := &models.WAMessage{ChannelID: o.ch.ID, ConversationID: o.conv.ID, TicketID: uintPtr(o.ticket.ID), Direction: "out", Kind: k,
 			SenderKind: "bot", SenderLabel: o.bot.Name, Body: strings.TrimSpace(caption), Media: strPtr(jsonString(ref)), Status: "queued", CreatedAt: time.Now()}

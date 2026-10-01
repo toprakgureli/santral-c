@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -33,6 +34,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/configs"
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
+	"github.com/toprakgureli/santral-c/backend/pkg/lockout"
 )
 
 const (
@@ -52,11 +54,10 @@ const (
 
 // Drive talks to Google Drive on behalf of the connected account.
 type Drive struct {
-	cfg    configs.Drive
-	secret string         // signs the OAuth state
-	ring   *crypt.Keyring // encrypts the refresh token
-	db     *gorm.DB
-	http   *http.Client
+	cfg  configs.Drive
+	ring *crypt.Keyring // encrypts the refresh token, signs the link state
+	db   *gorm.DB
+	http *http.Client
 
 	mu      sync.Mutex
 	access  string
@@ -65,11 +66,11 @@ type Drive struct {
 
 // NewDrive builds the Drive client. It is usable even when nothing is
 // configured: every call then fails with a clear message.
-func NewDrive(cfg configs.Drive, secret string, ring *crypt.Keyring, db *gorm.DB) *Drive {
+func NewDrive(cfg configs.Drive, ring *crypt.Keyring, db *gorm.DB) *Drive {
 	if cfg.FolderName == "" {
 		cfg.FolderName = "SantralC"
 	}
-	return &Drive{cfg: cfg, secret: secret, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}}
+	return &Drive{cfg: cfg, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}}
 }
 
 // DriveSealPurpose is the keyring label of the stored Drive refresh token.
@@ -111,16 +112,22 @@ func (d *Drive) Account(ctx context.Context) string {
 
 // ---------------------------------------------------------------- oauth
 
-// State signs the connecting user's id so the callback can trust it.
+// driveStatePurpose names the key that signs the account-link state.
+const driveStatePurpose = "drive-state"
+
+// State signs the connecting user's id so the callback can trust it. Each
+// state carries a random nonce and works once.
 func (d *Drive) State(userID uint) string {
-	payload := fmt.Sprintf("%d:%d", userID, time.Now().Add(15*time.Minute).Unix())
-	mac := hmac.New(sha256.New, []byte(d.secret))
+	nonce := make([]byte, 9)
+	_, _ = rand.Read(nonce)
+	payload := fmt.Sprintf("%d:%d:%s", userID, time.Now().Add(15*time.Minute).Unix(), base64.RawURLEncoding.EncodeToString(nonce))
+	mac := hmac.New(sha256.New, d.ring.MACKeys(driveStatePurpose)[0])
 	mac.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// VerifyState returns the user id a state was issued for.
-func (d *Drive) VerifyState(state string) (uint, error) {
+// VerifyState returns the user id a state was issued for, once.
+func (d *Drive) VerifyState(ctx context.Context, state string) (uint, error) {
 	parts := strings.SplitN(state, ".", 2)
 	if len(parts) != 2 {
 		return 0, errors.New("state okunamadı")
@@ -133,17 +140,28 @@ func (d *Drive) VerifyState(state string) (uint, error) {
 	if err != nil {
 		return 0, errors.New("state okunamadı")
 	}
-	mac := hmac.New(sha256.New, []byte(d.secret))
+	mac := hmac.New(sha256.New, d.ring.MACKeys(driveStatePurpose)[0])
 	mac.Write(payload)
 	if !hmac.Equal(sig, mac.Sum(nil)) {
 		return 0, errors.New("state imzası geçersiz")
 	}
-	var uid uint
-	var exp int64
-	if _, err := fmt.Sscanf(string(payload), "%d:%d", &uid, &exp); err != nil || time.Now().Unix() > exp {
+	fields := strings.SplitN(string(payload), ":", 3)
+	if len(fields) != 3 {
+		return 0, errors.New("state okunamadı")
+	}
+	uid, err1 := strconv.ParseUint(fields[0], 10, 64)
+	exp, err2 := strconv.ParseInt(fields[1], 10, 64)
+	if err1 != nil || err2 != nil || time.Now().Unix() > exp {
 		return 0, errors.New("state süresi dolmuş")
 	}
-	return uid, nil
+	first, err := lockout.Once(ctx, "drive-state:"+fields[2], 20*time.Minute)
+	if err != nil {
+		return 0, fmt.Errorf("state denetlenemedi: %w", err)
+	}
+	if !first {
+		return 0, errors.New("bu bağlantı adımı zaten kullanıldı")
+	}
+	return uint(uid), nil
 }
 
 // AuthURL is where the administrator is sent to grant access.

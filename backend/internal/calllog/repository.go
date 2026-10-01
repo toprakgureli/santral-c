@@ -53,6 +53,17 @@ func (r *Repository) Update(ctx context.Context, id uint, fields map[string]any)
 	return nil
 }
 
+// HooksPending lists ended calls still waiting for the phone system's record,
+// oldest first.
+func (r *Repository) HooksPending(ctx context.Context, limit int) ([]models.CallLog, error) {
+	var out []models.CallLog
+	if err := r.db.WithContext(ctx).Where("hooks_done = false AND ended_at IS NOT NULL").
+		Order("ended_at").Limit(limit).Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("pending call logs could not be listed: %w", err)
+	}
+	return out, nil
+}
+
 // Counts is a breakdown of a user's calls since a cut-off.
 type Counts struct {
 	Short      int64 `json:"short"`

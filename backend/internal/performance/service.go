@@ -197,11 +197,15 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 			ext = *u.SIPExtension
 		}
 		row := Row{UserID: u.ID, Name: u.Name, Extension: ext, Roles: roleNames(u), Shift: shifts[u.ID], Calls: counts[u.ID], Escalations: escalations[u.ID], BreakSeconds: breaks[u.ID]}
+		// Who a colleague talks to is shown only with its own permission.
+		showPeer := u.ID == actor.ID || actor.Can(enums.CallViewPeers)
 		_, onCall := open[u.ID]
 		row.Status, row.Since = s.status(u.ID, ext, onCall, presence, shifts, live, lastCalls)
 		if c, ok := open[u.ID]; ok && row.Status == "talking" {
 			row.Call = &CurrentCall{Peer: c.PeerNumber, Direction: c.Direction, StartedAt: c.StartedAt}
-			if s.contacts != nil {
+			if !showPeer {
+				row.Call.Peer = MaskNumber(c.PeerNumber)
+			} else if s.contacts != nil {
 				if e164, err := phone.Normalize(c.PeerNumber); err == nil {
 					row.Call.PeerName = s.contacts.NameByNumber(ctx, e164)
 				}
@@ -216,7 +220,9 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 		row.Recent = []RecentCall{}
 		for _, l := range recent[u.ID] {
 			rc := RecentCall{Peer: l.PeerNumber, Direction: l.Direction, Disposition: l.Disposition, StartedAt: l.StartedAt, DurationSeconds: l.DurationSeconds}
-			if s.contacts != nil {
+			if !showPeer {
+				rc.Peer = MaskNumber(l.PeerNumber)
+			} else if s.contacts != nil {
 				if e164, err := phone.Normalize(l.PeerNumber); err == nil {
 					rc.PeerName = s.contacts.NameByNumber(ctx, e164)
 				}
@@ -308,9 +314,12 @@ func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay,
 		return nil, errs.Internal(err)
 	}
 	out := &AgentCallList{UserID: userID, From: fromDay, To: toDay, Items: make([]AgentCall, 0, len(logs))}
+	showPeer := userID == actor.ID || actor.Can(enums.CallViewPeers)
 	for _, l := range logs {
 		c := AgentCall{UUID: l.CallID, Peer: l.PeerNumber, Direction: l.Direction, Disposition: l.Disposition, StartedAt: l.StartedAt, DurationSeconds: l.DurationSeconds}
-		if s.contacts != nil {
+		if !showPeer {
+			c.Peer = MaskNumber(l.PeerNumber)
+		} else if s.contacts != nil {
 			if e164, err := phone.Normalize(l.PeerNumber); err == nil {
 				c.PeerName = s.contacts.NameByNumber(ctx, e164)
 			}
@@ -380,4 +389,32 @@ func roleNames(u models.User) []string {
 
 func todayLocal() string {
 	return time.Now().In(istanbul).Format("2006-01-02")
+}
+
+// MaskNumber hides a phone number but its last two digits, so a list still
+// tells calls apart without showing whom they were with.
+func MaskNumber(n string) string {
+	digits := 0
+	for _, r := range n {
+		if r >= '0' && r <= '9' {
+			digits++
+		}
+	}
+	if digits <= 4 {
+		// An extension, not a customer.
+		return n
+	}
+	out := make([]rune, 0, len(n))
+	seen := 0
+	for _, r := range n {
+		if r >= '0' && r <= '9' {
+			seen++
+			if seen <= digits-2 {
+				out = append(out, '•')
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	return string(out)
 }

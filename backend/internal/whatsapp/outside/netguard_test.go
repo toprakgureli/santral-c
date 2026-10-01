@@ -2,6 +2,7 @@ package outside
 
 import (
 	"net"
+	"net/http"
 	"testing"
 )
 
@@ -15,5 +16,17 @@ func TestBlockedIP(t *testing.T) {
 		if blockedIP(net.ParseIP(ip)) {
 			t.Errorf("%s should be allowed", ip)
 		}
+	}
+}
+
+func TestRedirectStaysOnServer(t *testing.T) {
+	first, _ := http.NewRequest(http.MethodGet, "https://api.example.com/a", nil)
+	same, _ := http.NewRequest(http.MethodGet, "https://api.example.com/b", nil)
+	other, _ := http.NewRequest(http.MethodGet, "https://collector.example.net/b", nil)
+	if err := Client.CheckRedirect(same, []*http.Request{first}); err != nil {
+		t.Errorf("same server refused: %v", err)
+	}
+	if err := Client.CheckRedirect(other, []*http.Request{first}); err == nil {
+		t.Error("redirect to another server was followed")
 	}
 }

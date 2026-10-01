@@ -62,7 +62,8 @@ type Service struct {
 
 	// hub fans real-time agent-list updates out to SSE subscribers.
 	hubMu sync.Mutex
-	subs  map[chan []byte]struct{}
+	// subs maps each subscriber to whether it may see who agents talk to.
+	subs map[chan []byte]bool
 
 	// recordings keeps recently played recordings for seeking.
 	recordings *recordingCache
@@ -425,6 +426,11 @@ func (s *Service) sipTarget(ctx context.Context, actorID, targetID uint, extensi
 	if target.IsInvisibleAdmin() && !actor.IsInvisibleAdmin() {
 		return nil, errs.NotFound("Kullanıcı bulunamadı.")
 	}
+	// Binding a line to oneself would hand over its password and its call
+	// history; someone else does it, except the owner account.
+	if target.ID == actor.ID && !actor.IsInvisibleAdmin() {
+		return nil, errs.Forbidden("Kendi dahilinizi değiştiremezsiniz; başka bir yöneticiden isteyin.")
+	}
 	if !actor.CanManage(target) {
 		return nil, errs.Forbidden("Bu kullanıcının sizde olmayan yetkileri var, bu işlemi yapamazsınız.")
 	}
@@ -740,10 +746,26 @@ type PBXQueue struct {
 // path never touches the rate-limited API; it returns an empty list while
 // warming.
 func (s *Service) Extensions(ctx context.Context, actorID uint) ([]PBXExtension, error) {
-	if _, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer); err != nil {
+	actor, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer)
+	if err != nil {
 		return nil, err
 	}
-	return s.overlaidExtensions(ctx), nil
+	list := s.overlaidExtensions(ctx)
+	if !actor.Can(enums.CallViewPeers) {
+		list = withoutPeers(list)
+	}
+	return list, nil
+}
+
+// withoutPeers is the agent list without the numbers and contacts agents are
+// talking to, for someone who may not see them.
+func withoutPeers(list []PBXExtension) []PBXExtension {
+	out := make([]PBXExtension, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Peer, out[i].PeerName = "", ""
+	}
+	return out
 }
 
 // overlaidExtensions builds the agent list from the warm snapshot with our
@@ -811,29 +833,31 @@ type extensionsEvent struct {
 	Items []PBXExtension `json:"items"`
 }
 
-// extensionsJSON returns the current overlaid agent list as an SSE data payload.
-func (s *Service) extensionsJSON(ctx context.Context) []byte {
-	data, err := json.Marshal(extensionsEvent{Type: "extensions", Items: s.overlaidExtensions(ctx)})
+// extensionsJSON returns an agent list as an SSE data payload.
+func extensionsJSON(list []PBXExtension) []byte {
+	data, err := json.Marshal(extensionsEvent{Type: "extensions", Items: list})
 	if err != nil {
 		return []byte(`{"type":"extensions","items":[]}`)
 	}
 	return data
 }
 
-// broadcastExtensions pushes the current agent list to all SSE subscribers.
+// broadcastExtensions pushes the current agent list to all SSE subscribers,
+// without the call peers to those who may not see them.
 func (s *Service) broadcastExtensions(ctx context.Context) {
-	s.broadcast(s.extensionsJSON(ctx))
+	list := s.overlaidExtensions(ctx)
+	s.broadcast(extensionsJSON(list), extensionsJSON(withoutPeers(list)))
 }
 
 // Subscribe registers an SSE subscriber and returns its channel. Authorization
 // is the caller's responsibility (see StreamStart).
-func (s *Service) subscribe() chan []byte {
+func (s *Service) subscribe(peers bool) chan []byte {
 	ch := make(chan []byte, 8)
 	s.hubMu.Lock()
 	if s.subs == nil {
-		s.subs = make(map[chan []byte]struct{})
+		s.subs = make(map[chan []byte]bool)
 	}
-	s.subs[ch] = struct{}{}
+	s.subs[ch] = peers
 	s.hubMu.Unlock()
 	return ch
 }
@@ -847,10 +871,14 @@ func (s *Service) unsubscribe(ch chan []byte) {
 	s.hubMu.Unlock()
 }
 
-func (s *Service) broadcast(msg []byte) {
+func (s *Service) broadcast(full, masked []byte) {
 	s.hubMu.Lock()
 	defer s.hubMu.Unlock()
-	for ch := range s.subs {
+	for ch, peers := range s.subs {
+		msg := masked
+		if peers {
+			msg = full
+		}
 		select {
 		case ch <- msg:
 		default: // drop for a slow consumer rather than block the poller
@@ -861,17 +889,34 @@ func (s *Service) broadcast(msg []byte) {
 // StreamStart authorizes an SSE client and returns the initial agent-list
 // payload plus a channel of subsequent updates. Call StreamStop to release it.
 func (s *Service) StreamStart(ctx context.Context, actorID uint) ([]byte, chan []byte, error) {
-	if _, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer); err != nil {
+	actor, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer)
+	if err != nil {
 		return nil, nil, err
 	}
-	return s.extensionsJSON(ctx), s.subscribe(), nil
+	peers := actor.Can(enums.CallViewPeers)
+	list := s.overlaidExtensions(ctx)
+	if !peers {
+		list = withoutPeers(list)
+	}
+	return extensionsJSON(list), s.subscribe(peers), nil
 }
 
 // StreamAllowed reports whether the actor may still receive the live agent
 // list.
-func (s *Service) StreamAllowed(ctx context.Context, actorID uint) error {
-	_, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer)
-	return err
+func (s *Service) StreamAllowed(ctx context.Context, actorID uint, ch chan []byte) error {
+	actor, err := s.authorizeAny(ctx, actorID, enums.AgentView, enums.CallTransfer)
+	if err != nil {
+		return err
+	}
+	// A stream opened with the call peers ends once that permission is
+	// gone; the panel reconnects and gets the list without them.
+	s.hubMu.Lock()
+	peers := s.subs[ch]
+	s.hubMu.Unlock()
+	if peers && !actor.Can(enums.CallViewPeers) {
+		return errs.Forbidden("Görüşme bilgilerini görme yetkiniz kaldırıldı.")
+	}
+	return nil
 }
 
 // StreamStop releases an SSE subscriber channel.
@@ -1101,21 +1146,6 @@ func (s *Service) computeStats(ctx context.Context) (*Stats, error) {
 // to another number, and logs the hand-over. The transfer itself travels
 // from the browser to the PBX, so this is where the panel says yes or no.
 func (s *Service) AuthorizeTransfer(ctx context.Context, actorID uint, callID, target string) error {
-	if err := s.authorizeTransfer(ctx, actorID); err != nil {
-		return err
-	}
-	if !transferTarget.MatchString(target) {
-		return errs.Invalid("Aktarılacak numara anlaşılamadı.", nil)
-	}
-	slog.InfoContext(ctx, "call transfer allowed", "call", callID, "target", target)
-	return nil
-}
-
-// transferTarget is an extension or a phone number, digits with an
-// optional leading plus.
-var transferTarget = regexp.MustCompile(`^\+?[0-9]{2,20}$`)
-
-func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return err
@@ -1123,8 +1153,50 @@ func (s *Service) authorizeTransfer(ctx context.Context, actorID uint) error {
 	if !actor.Can(enums.CallTransfer) {
 		return errs.Forbidden("Çağrı aktarma yetkiniz yok.")
 	}
+	if !transferTarget.MatchString(target) {
+		return errs.Invalid("Aktarılacak numara anlaşılamadı.", nil)
+	}
+	if s.internalTarget(target) {
+		slog.InfoContext(ctx, "call transfer allowed", "call", callID, "target", target)
+		return nil
+	}
+	// A number outside the phone system needs its own permission, and
+	// every such transfer is written to the audit log.
+	if !actor.Can(enums.CallTransferExternal) {
+		return errs.Forbidden("Santral dışındaki bir numaraya aktarma yetkiniz yok. Dahili ya da kuyruk numarası yazın.")
+	}
+	s.audit.Record(ctx, audit.Entry{
+		ActorID:    &actorID,
+		Action:     enums.AuditCallTransferredOut,
+		TargetType: "call",
+		TargetID:   callID,
+		Detail:     map[string]any{"to": target},
+	})
 	return nil
 }
+
+// internalTarget reports whether a transfer target is inside the phone
+// system: an extension or a queue the system lists, or a short number.
+func (s *Service) internalTarget(target string) bool {
+	if !strings.HasPrefix(target, "+") && len(target) <= 5 {
+		return true
+	}
+	for _, e := range s.snapExtensions() {
+		if e.Extension == target {
+			return true
+		}
+	}
+	for _, q := range s.snapQueues() {
+		if q.Number == target {
+			return true
+		}
+	}
+	return false
+}
+
+// transferTarget is an extension or a phone number, digits with an
+// optional leading plus.
+var transferTarget = regexp.MustCompile(`^\+?[0-9]{2,20}$`)
 
 // authorizeAny loads the actor and passes when they hold at least one of the
 // permissions.

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
@@ -43,11 +44,17 @@ type Service struct {
 	users IActorResolver
 	hub   *Hub
 	drive *Drive
+	audit IAudit
+}
+
+// IAudit records administrative changes.
+type IAudit interface {
+	Record(ctx context.Context, e audit.Entry)
 }
 
 // NewService builds a chat service.
-func NewService(repo *Repository, users IActorResolver, hub *Hub, drive *Drive) *Service {
-	return &Service{repo: repo, users: users, hub: hub, drive: drive}
+func NewService(repo *Repository, users IActorResolver, hub *Hub, drive *Drive, auditor IAudit) *Service {
+	return &Service{repo: repo, users: users, hub: hub, drive: drive, audit: auditor}
 }
 
 // ---------------------------------------------------------------- views
@@ -263,7 +270,9 @@ func (s *Service) seat(ctx context.Context, actor *models.User, groupID uint) (*
 	if err != nil {
 		return nil, nil, errs.Internal(err)
 	}
-	if m == nil && !actor.Can(enums.TeamsAdmin) {
+	// A chat admin may step into any group, but a direct conversation
+	// belongs to its two people only.
+	if m == nil && (g.Kind == "dm" || !actor.Can(enums.TeamsAdmin)) {
 		return nil, nil, errs.NotFound("Grup bulunamadı.")
 	}
 	return g, m, nil
@@ -1331,7 +1340,7 @@ func (s *Service) messageView(actor *models.User, g *models.ChatGroup, m *models
 		}
 		v.Body = ""
 	}
-	v.CanDelete = !v.Deleted && r.Kind == "text" && (v.Mine || isAdmin(m) || actor.Can(enums.TeamsAdmin))
+	v.CanDelete = !v.Deleted && r.Kind == "text" && (v.Mine || (g.Kind != "dm" && (isAdmin(m) || actor.Can(enums.TeamsAdmin))))
 	grouped := map[string]*ReactionView{}
 	order := []string{}
 	for _, rx := range reactions {
@@ -1716,7 +1725,7 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 	if err != nil {
 		return err
 	}
-	_, m, err := s.seat(ctx, actor, groupID)
+	g, m, err := s.seat(ctx, actor, groupID)
 	if err != nil {
 		return err
 	}
@@ -1731,7 +1740,8 @@ func (s *Service) DeleteMessage(ctx context.Context, actorID, groupID, messageID
 		return errs.Invalid("Sistem mesajı silinemez.", nil)
 	}
 	mine := msg.SenderID != nil && *msg.SenderID == actorID
-	if !(mine || isAdmin(m) || actor.Can(enums.TeamsAdmin)) {
+	// In a direct conversation each side deletes only their own lines.
+	if !(mine || (g.Kind != "dm" && (isAdmin(m) || actor.Can(enums.TeamsAdmin)))) {
 		return errs.Forbidden("Bu mesajı silme yetkiniz yok.")
 	}
 	if err := s.repo.SoftDeleteMessage(ctx, messageID, actorID); err != nil {

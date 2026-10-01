@@ -275,16 +275,9 @@ func (h *Handler) Export(c *fiber.Ctx) error {
 }
 
 func serveStream(c *fiber.Ctx, m *MediaStream) error {
-	c.Set("Content-Type", m.Mime)
+	middlewares.FileHeaders(c, m.Mime, m.Name, c.Query("download") == "1")
 	c.Set("Cache-Control", "private, max-age=86400")
 	c.Set("Accept-Ranges", "bytes")
-	disp := "inline"
-	if c.Query("download") == "1" {
-		disp = "attachment"
-	}
-	if m.Name != "" {
-		c.Set("Content-Disposition", fmt.Sprintf("%s; filename*=UTF-8''%s", disp, pathEscape(m.Name)))
-	}
 	if m.ContentRange != "" {
 		c.Set("Content-Range", m.ContentRange)
 	}

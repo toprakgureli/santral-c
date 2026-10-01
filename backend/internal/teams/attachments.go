@@ -17,7 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
@@ -54,10 +56,11 @@ func attachmentView(a *models.ChatAttachment) AttachmentView {
 	return AttachmentView{ID: a.ID, Kind: a.Kind, Name: a.Name, Mime: a.Mime, Size: a.Size, Width: a.Width, Height: a.Height, DurationMs: a.DurationMs, HasThumb: a.Thumb != "", Ready: a.Status == "ready"}
 }
 
-// kindOf sorts a mime type into image, video or file.
+// kindOf sorts a mime type into image, video or file. Only picture types
+// the browser shows safely count as images; an SVG is a file.
 func kindOf(mime string) string {
 	switch {
-	case strings.HasPrefix(mime, "image/"):
+	case strings.HasPrefix(mime, "image/") && middlewares.Inlinable(mime):
 		return "image"
 	case strings.HasPrefix(mime, "video/"):
 		return "video"
@@ -463,8 +466,10 @@ func (s *Service) driveAdmin(ctx context.Context, actorID uint) (*models.User, e
 	if err != nil {
 		return nil, err
 	}
-	if !actor.Can(enums.TeamsAdmin) {
-		return nil, errs.Forbidden("Bu işlem için Teams yönetim yetkisi gerekir.")
+	// Every chat and WhatsApp file goes to this account, so linking it is
+	// a system setting, not a chat moderation right.
+	if !actor.Can(enums.SystemSettings) {
+		return nil, errs.Forbidden("Dosya depolama hesabını yalnızca sistem ayarları yetkisi olanlar yönetebilir.")
 	}
 	return actor, nil
 }
@@ -502,7 +507,7 @@ func (s *Service) DriveCallback(ctx context.Context, actorID uint, state, code s
 	if _, err := s.driveAdmin(ctx, actorID); err != nil {
 		return "", err
 	}
-	uid, err := s.drive.VerifyState(state)
+	uid, err := s.drive.VerifyState(ctx, state)
 	if err != nil || uid != actorID {
 		return "", errs.Invalid("Bağlantı isteği doğrulanamadı, yeniden deneyin.", nil)
 	}
@@ -518,6 +523,7 @@ func (s *Service) DriveCallback(ctx context.Context, actorID uint, state, code s
 	if _, err := s.drive.Folder(ctx); err != nil {
 		return "", errs.Invalid("Drive klasörü oluşturulamadı: "+err.Error(), nil)
 	}
+	s.audit.Record(ctx, audit.Entry{ActorID: &actorID, Action: enums.AuditDriveConnected, TargetType: "drive", Detail: map[string]any{"account": email}})
 	return email, nil
 }
 
@@ -526,8 +532,10 @@ func (s *Service) DriveDisconnect(ctx context.Context, actorID uint) error {
 	if _, err := s.driveAdmin(ctx, actorID); err != nil {
 		return err
 	}
+	account := s.drive.Account(ctx)
 	if err := s.drive.Disconnect(ctx); err != nil {
 		return errs.Internal(err)
 	}
+	s.audit.Record(ctx, audit.Entry{ActorID: &actorID, Action: enums.AuditDriveDisconnected, TargetType: "drive", Detail: map[string]any{"account": account}})
 	return nil
 }

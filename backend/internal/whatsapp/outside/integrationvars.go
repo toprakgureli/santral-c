@@ -42,11 +42,21 @@ func FillURL(raw string, vars map[string]string) (string, error) {
 		return "", err
 	}
 	path, query, hasQuery := strings.Cut(raw, "?")
-	out := varfill.FillWith(path, vars, url.PathEscape)
+	out := varfill.FillWith(path, vars, pathValue)
 	if hasQuery {
 		out += "?" + varfill.FillWith(query, vars, url.QueryEscape)
 	}
 	return out, nil
+}
+
+// pathValue escapes a value for a path segment. A value of only dots is
+// escaped too, so an answer like ".." cannot climb to another path.
+func pathValue(v string) string {
+	e := url.PathEscape(v)
+	if strings.Trim(e, ".") == "" {
+		return strings.ReplaceAll(e, ".", "%2E")
+	}
+	return e
 }
 
 // FillJSON puts vars into a JSON body as escaped string content, so a quote

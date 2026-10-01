@@ -13,13 +13,16 @@ const (
 
 	AuditCallRecordingOpened string = "call.recording_opened"
 	AuditCallRecordingDenied string = "call.recording_denied"
+	AuditCallTransferredOut  string = "call.transferred_out"
 
 	AuditRoleCreated string = "role.created"
 	AuditRoleUpdated string = "role.updated"
 	AuditRoleDeleted string = "role.deleted"
 
-	AuditSettingsUpdated string = "settings.updated"
-	AuditIPUnbanned      string = "security.ip_unbanned"
+	AuditSettingsUpdated   string = "settings.updated"
+	AuditDriveConnected    string = "drive.connected"
+	AuditDriveDisconnected string = "drive.disconnected"
+	AuditIPUnbanned        string = "security.ip_unbanned"
 
 	AuditShiftStarted string = "shift.started"
 	AuditShiftEnded   string = "shift.ended"

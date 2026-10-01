@@ -213,10 +213,35 @@ func mediaKind(mime string, size int64) (string, error) {
 		}
 		return "audio", nil
 	}
+	if !documentTypes[mime] {
+		return "", errs.Invalid("Bu dosya türü gönderilemez. PDF, Word, Excel, PowerPoint ya da düz metin gönderebilirsiniz.", nil)
+	}
 	if size > 100<<20 {
 		return "", errs.Invalid("Dosya en fazla 100 MB olabilir.", nil)
 	}
 	return "document", nil
+}
+
+// storedKind is the kind of a file already stored; one uploaded before the
+// type list existed still counts as a document.
+func storedKind(mime string) string {
+	if k, err := mediaKind(mime, 0); err == nil {
+		return k
+	}
+	return "document"
+}
+
+// documentTypes are the document types WhatsApp delivers. Anything else
+// (a web page, a picture format it does not show) is refused at upload.
+var documentTypes = map[string]bool{
+	"application/pdf":    true,
+	"text/plain":         true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/vnd.ms-excel": true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"application/vnd.ms-powerpoint":                                             true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
 }
 
 // SendMedia uploads a file to Meta and queues it for the customer.

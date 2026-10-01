@@ -27,7 +27,8 @@ export function Settings() {
   const canSeeLogs = can(user, "system.logs");
   const canManage = can(user, "system.settings");
   const canBreakLimit = can(user, "agent.break_limit");
-  const canDrive = can(user, "teams.admin");
+  // The storage account carries every chat and WhatsApp file: a system setting.
+  const canDrive = can(user, "system.settings");
   const canGames = can(user, "games.manage");
 
   const [attempts, setAttempts] = useState<Paged<LoginAttempt> | null>(null);
@@ -117,7 +118,7 @@ export function Settings() {
                         <td className="py-2.5 tabular-nums">{b.attempts}</td>
                         <td className="py-2.5 whitespace-nowrap text-muted-foreground">{formatDateTime(b.until)}</td>
                         <td className="py-2.5 text-right">
-                          <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => { setUnbanError(null); setUnbanning(b); }}>Kaldır</Button>
+                          {canManage && <Button variant="secondary" className="h-8 px-3 text-xs" onClick={() => { setUnbanError(null); setUnbanning(b); }}>Kaldır</Button>}
                         </td>
                       </tr>
                     ))}

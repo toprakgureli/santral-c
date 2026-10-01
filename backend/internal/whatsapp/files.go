@@ -37,7 +37,7 @@ type FileView struct {
 }
 
 func fileView(f *models.WAFile) FileView {
-	kind, _ := mediaKind(f.Mime, 0)
+	kind := storedKind(f.Mime)
 	return FileView{ID: f.ID, Name: f.Name, Mime: f.Mime, Size: f.Size, Kind: kind, URL: fmt.Sprintf("/api/v1/wa/files/%d", f.ID)}
 }
 

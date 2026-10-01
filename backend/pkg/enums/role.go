@@ -57,7 +57,7 @@ func allPermissions() []Permission {
 
 func managerPermissions() []Permission {
 	return []Permission{
-		CallViewAll, CallOriginate, CallTransfer, CallHangup, CallRecordAccess,
+		CallViewAll, CallOriginate, CallTransfer, CallTransferExternal, CallHangup, CallRecordAccess, CallViewPeers,
 		CDRViewAll, CDRExport, QualityView,
 		AgentView, AgentManage, AgentPresenceViewAll,
 		QueueView, QueueManage,
@@ -78,7 +78,7 @@ func managerPermissions() []Permission {
 
 func technicalTeamPermissions() []Permission {
 	return []Permission{
-		CallViewOwn, CallViewAll, CallTransfer, CallHangup,
+		CallViewOwn, CallViewAll, CallTransfer, CallTransferExternal, CallHangup, CallViewPeers,
 		CDRViewOwn, CDRViewAll, QualityView,
 		ContactView, EscalationView, EscalationSearch, EscalationListOwn, AgentView, AgentPresenceViewAll, SystemLogs,
 		PerformanceViewRole,
@@ -90,7 +90,7 @@ func technicalTeamPermissions() []Permission {
 
 func salesTeamPermissions() []Permission {
 	return []Permission{
-		CallViewOwn, CallOriginate, CallTransfer, CallHangup,
+		CallViewOwn, CallOriginate, CallTransfer, CallTransferExternal, CallHangup, CallViewPeers,
 		CDRViewOwn, ContactView, ContactManage, EscalationView, EscalationListOwn, EscalationAuto, AgentView,
 		PerformanceViewRole,
 		TeamsView, TeamsMemberInvite,

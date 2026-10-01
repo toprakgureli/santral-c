@@ -3,6 +3,7 @@ package middlewares
 import (
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -21,7 +22,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	}
 	slog.Log(c.UserContext(), level, "request failed",
 		"method", c.Method(),
-		"path", c.Path(),
+		"path", logPath(c),
 		"status", e.Status,
 		"code", string(e.Code),
 		"error", e.Err,
@@ -31,6 +32,15 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 		"code":    e.Code,
 		"message": e.Message,
 	})
+}
+
+// logPath is the request path for a log line. A route whose path carries a
+// secret (a webhook key, a survey token) is logged as its pattern.
+func logPath(c *fiber.Ctx) string {
+	if r := c.Route(); r != nil && (strings.Contains(r.Path, ":key") || strings.Contains(r.Path, ":token")) {
+		return r.Path
+	}
+	return c.Path()
 }
 
 func resolve(err error) *errs.Error {

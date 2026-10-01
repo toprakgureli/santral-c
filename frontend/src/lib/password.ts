@@ -1,9 +1,9 @@
-// Account password policy, mirrored from backend/pkg/password: 8 to 16
+// Account password policy, mirrored from backend/pkg/password: 8 to 64
 // characters with an upper-case letter, a lower-case letter, a digit and a
 // special character.
 
 export const PASSWORD_MIN = 8;
-export const PASSWORD_MAX = 16;
+export const PASSWORD_MAX = 64;
 
 export type PasswordRule = { key: string; label: string; ok: boolean };
 

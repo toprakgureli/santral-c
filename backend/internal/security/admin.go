@@ -59,8 +59,12 @@ func (a *Admin) Bans(ctx context.Context, actorID uint) ([]responses.IPBanItem, 
 
 // Unban lifts an IP ban and records who did it.
 func (a *Admin) Unban(ctx context.Context, actorID, id uint, ip string) error {
-	if err := a.authorize(ctx, actorID); err != nil {
+	actor, err := a.users.GetByID(ctx, actorID)
+	if err != nil {
 		return err
+	}
+	if !actor.Can(enums.SystemSettings) {
+		return errs.Forbidden("IP banını kaldırmak için sistem ayarları yetkisi gerekir.")
 	}
 	ban, err := a.repo.BanByID(ctx, id)
 	if err != nil {

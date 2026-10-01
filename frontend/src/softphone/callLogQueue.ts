@@ -4,7 +4,7 @@
 // fails (the API was restarting) is kept in localStorage and retried with
 // backoff, and a tab that closes mid-call sends its end as a beacon.
 
-import { api } from "@/api/client";
+import { ApiError, api } from "@/api/client";
 import { userKey } from "@/lib/userStorage";
 
 export interface CallLogBody {
@@ -55,7 +55,12 @@ export function sendCallLog(body: CallLogBody, attempt = 0): void {
   api
     .logCall(body)
     .then(() => forget(body))
-    .catch(() => {
+    .catch((e) => {
+      // The server refused it for good (not ours, malformed): stop trying.
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && ![401, 408, 429].includes(e.status)) {
+        forget(body);
+        return;
+      }
       if (body.phase !== "end") return;
       if (attempt < DELAYS.length) window.setTimeout(() => sendCallLog(body, attempt + 1), DELAYS[attempt]);
     });
