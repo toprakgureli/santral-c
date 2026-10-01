@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext, type EndedCall } from "@/softphone/SoftphoneContext";
 import { clockTime } from "@/lib/time";
+import { userKey } from "@/lib/userStorage";
 
 const KEY = "santral.wrapup.pending";
 // A connected call that ended within this many seconds was the PBX playing an
@@ -38,10 +39,10 @@ const DONE_KEY = "santral.wrapup.done";
 // (from the dashboard, mid-call), so the wrap-up card does not ask again.
 export function markWrapUpDone(callId: string) {
   try {
-    const raw = window.sessionStorage.getItem(DONE_KEY);
+    const raw = window.sessionStorage.getItem(userKey(DONE_KEY));
     const ids = raw ? (JSON.parse(raw) as string[]) : [];
     if (!ids.includes(callId)) ids.push(callId);
-    window.sessionStorage.setItem(DONE_KEY, JSON.stringify(ids.slice(-50)));
+    window.sessionStorage.setItem(userKey(DONE_KEY), JSON.stringify(ids.slice(-50)));
   } catch {
     // storage unavailable; the card may ask once more, which is harmless
   }
@@ -49,7 +50,7 @@ export function markWrapUpDone(callId: string) {
 
 function isWrapUpDone(callId: string): boolean {
   try {
-    const raw = window.sessionStorage.getItem(DONE_KEY);
+    const raw = window.sessionStorage.getItem(userKey(DONE_KEY));
     return raw ? (JSON.parse(raw) as string[]).includes(callId) : false;
   } catch {
     return false;
@@ -58,7 +59,7 @@ function isWrapUpDone(callId: string): boolean {
 
 function readPending(): EndedCall[] {
   try {
-    const raw = window.sessionStorage.getItem(KEY);
+    const raw = window.sessionStorage.getItem(userKey(KEY));
     return raw ? (JSON.parse(raw) as EndedCall[]) : [];
   } catch {
     return [];
@@ -67,7 +68,7 @@ function readPending(): EndedCall[] {
 
 function writePending(items: EndedCall[]) {
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(items));
+    window.sessionStorage.setItem(userKey(KEY), JSON.stringify(items));
   } catch {
     // storage unavailable; the list still lives in memory for this page
   }

@@ -7,6 +7,11 @@ import NumberSearch from "./NumberSearch";
 import ShiftButton from "./ShiftButton";
 import ThemeMenu from "./ThemeMenu";
 import UserAvatar from "@/components/ui/UserAvatar";
+import { ConfirmDialog } from "@/components/ui";
+import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
+
+// Phone states in which signing out would cut a live call.
+const LIVE_CALL = new Set(["calling", "ringing", "incoming", "in-call", "held"]);
 
 type TopbarProps = {
   title: string;
@@ -17,7 +22,15 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const phone = useSoftphoneContext();
+
+  const leave = async () => {
+    setConfirmLeave(false);
+    await logout();
+    navigate("/login");
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -91,10 +104,10 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
               </button>
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   setOpen(false);
-                  await logout();
-                  navigate("/login");
+                  if (LIVE_CALL.has(phone.status)) setConfirmLeave(true);
+                  else void leave();
                 }}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-destructive",
@@ -108,6 +121,15 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmLeave}
+        title="Görüşme sürüyor"
+        description="Çıkış yaparsan devam eden görüşme kapanır. Yine de çıkmak istiyor musun?"
+        confirmLabel="Çıkış yap"
+        tone="warning"
+        onConfirm={() => void leave()}
+        onCancel={() => setConfirmLeave(false)}
+      />
     </header>
   );
 }

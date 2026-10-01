@@ -5,6 +5,7 @@
 // backoff, and a tab that closes mid-call sends its end as a beacon.
 
 import { api } from "@/api/client";
+import { userKey } from "@/lib/userStorage";
 
 export interface CallLogBody {
   callId: string;
@@ -20,7 +21,7 @@ const DELAYS = [3000, 10000, 30000, 60000, 120000];
 
 function readPending(): CallLogBody[] {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(userKey(KEY));
     return raw ? (JSON.parse(raw) as CallLogBody[]) : [];
   } catch {
     return [];
@@ -29,8 +30,8 @@ function readPending(): CallLogBody[] {
 
 function writePending(items: CallLogBody[]) {
   try {
-    if (items.length === 0) window.localStorage.removeItem(KEY);
-    else window.localStorage.setItem(KEY, JSON.stringify(items.slice(-50)));
+    if (items.length === 0) window.localStorage.removeItem(userKey(KEY));
+    else window.localStorage.setItem(userKey(KEY), JSON.stringify(items.slice(-50)));
   } catch {
     // storage unavailable; the in-memory retry below still runs
   }
@@ -71,7 +72,9 @@ export function beaconCallEnd(body: CallLogBody): void {
   remember(body);
   try {
     const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
-    if (navigator.sendBeacon("/api/v1/calls/log/", blob)) return;
+    // Handed to the browser: it is delivered after the tab closes, so the
+    // stored copy must not be sent again on the next load.
+    if (navigator.sendBeacon("/api/v1/calls/log/", blob)) forget(body);
   } catch {
     // fall through: the stored copy is retried on the next load
   }

@@ -54,16 +54,86 @@ export class ApiError extends Error {
 // the refresh token expired). AuthContext listens and returns to sign-in.
 export const SESSION_ENDED = "santral:session-ended";
 
-// A single in-flight refresh is shared by all concurrent 401s so the session
-// survives silently (the access token is short-lived; the refresh token is not).
-let refreshing: Promise<boolean> | null = null;
+// ensureSession renews the session if it can. Live streams call it after
+// their connection drops: "renewed" means reconnect now, "ended" means the
+// sign-in screen is showing, "unknown" means try again a little later.
+export async function ensureSession(): Promise<Renewal> {
+  try {
+    const r = await fetch(BASE + "/auth/me", { credentials: "include" });
+    if (r.ok) return "renewed";
+    if (r.status !== 401) return "unknown";
+  } catch {
+    return "unknown";
+  }
+  const renewal = await tryRefresh();
+  if (renewal === "ended") endSession();
+  return renewal;
+}
 
-function tryRefresh(): Promise<boolean> {
+// The outcome of renewing the session: renewed, over (the server said the
+// session is gone), or not known yet (network, overload, a deploy).
+type Renewal = "renewed" | "ended" | "unknown";
+
+// A single in-flight refresh is shared by all concurrent 401s in this tab, and
+// tabs take turns through a browser lock, so the session survives silently
+// (the access token is short-lived; the refresh token is not).
+let refreshing: Promise<Renewal> | null = null;
+
+// When another tab renewed within this window, the shared cookie is already
+// fresh and this tab only needs to retry its request.
+const RENEWED_KEY = "santral.renewedAt";
+const RENEWED_FRESH_MS = 10_000;
+
+function renewedLately(): boolean {
+  try {
+    const at = Number(localStorage.getItem(RENEWED_KEY) ?? 0);
+    return Date.now() - at < RENEWED_FRESH_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markRenewed() {
+  try {
+    localStorage.setItem(RENEWED_KEY, String(Date.now()));
+  } catch {
+    // storage may be unavailable; the server tolerates a second renewal
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+// renewOnce asks the server for a new access token. Only 401 and 403 mean the
+// session is over; anything else is tried again a few times and then left
+// undecided, so a network blip never signs anyone out or drops a call.
+async function renewOnce(): Promise<Renewal> {
+  const waits = [0, 1000, 3000, 7000];
+  for (const wait of waits) {
+    if (wait) await sleep(wait);
+    try {
+      const r = await fetch(BASE + "/auth/refresh", { method: "POST", credentials: "include" });
+      if (r.ok) {
+        markRenewed();
+        return "renewed";
+      }
+      if (r.status === 401 || r.status === 403) return "ended";
+    } catch {
+      // network error: try again
+    }
+  }
+  return "unknown";
+}
+
+function tryRefresh(): Promise<Renewal> {
   if (!refreshing) {
-    refreshing = fetch(BASE + "/auth/refresh", { method: "POST", credentials: "include" })
-      .then((r) => r.ok)
-      .catch(() => false)
-      .finally(() => { refreshing = null; });
+    const run = async (): Promise<Renewal> => (renewedLately() ? "renewed" : renewOnce());
+    const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+    const turn: Promise<Renewal> = locks ? (locks.request("santral-refresh", run) as unknown as Promise<Renewal>) : run();
+    const shared = turn.finally(() => {
+      refreshing = null;
+    });
+    refreshing = shared;
+    return shared;
   }
   return refreshing;
 }
@@ -95,18 +165,24 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
   const isForm = options.body instanceof FormData;
   const baseHeaders: Record<string, string> = isForm ? {} : { "Content-Type": "application/json" };
   const res = await fetch(BASE + path, {
-    credentials: "include",
-    headers: { ...baseHeaders, ...(options.headers ?? {}) },
     ...options,
+    credentials: "include",
+    headers: { ...baseHeaders, ...((options.headers as Record<string, string>) ?? {}) },
   });
   // Access token expired: refresh once (using the long-lived refresh cookie) and
-  // retry, so the user is not logged out mid-session. When that is not
-  // possible the session is over.
+  // retry, so the user is not logged out mid-session. Only a session the
+  // server says is over ends here; an undecided renewal fails this request
+  // and keeps the user signed in.
   if (res.status === 401 && renewable(path)) {
-    if (allowRetry && (await tryRefresh())) {
+    const renewal = allowRetry ? await tryRefresh() : "ended";
+    if (renewal === "renewed") {
       return request<T>(path, options, false);
     }
-    endSession();
+    if (renewal === "ended") {
+      endSession();
+    } else {
+      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar deneyin.");
+    }
   }
   if (res.status === 204) {
     return undefined as T;
@@ -116,7 +192,13 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
     const body = parseBody(text);
     throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "İstek başarısız oldu.");
   }
-  return (text ? JSON.parse(text) : undefined) as T;
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // A proxy page instead of our answer.
+    throw new ApiError(502, "BAD_RESPONSE", "Sunucudan beklenmeyen bir yanıt geldi. Birazdan tekrar deneyin.");
+  }
 }
 
 // download fetches a file endpoint (same auth/refresh handling as request) and
@@ -124,10 +206,15 @@ export async function request<T>(path: string, options: RequestInit = {}, allowR
 export async function download(path: string, fallbackName: string, allowRetry = true): Promise<void> {
   const res = await fetch(BASE + path, { credentials: "include" });
   if (res.status === 401) {
-    if (allowRetry && (await tryRefresh())) {
+    const renewal = allowRetry ? await tryRefresh() : "ended";
+    if (renewal === "renewed") {
       return download(path, fallbackName, false);
     }
-    endSession();
+    if (renewal === "ended") {
+      endSession();
+    } else {
+      throw new ApiError(503, "UNAVAILABLE", "Sunucuya şu an ulaşılamıyor. Birazdan tekrar deneyin.");
+    }
   }
   if (!res.ok) {
     const body = parseBody(await res.text());
@@ -152,7 +239,8 @@ export async function download(path: string, fallbackName: string, allowRetry = 
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Some browsers read the file only after click() returns.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function query(params: Record<string, string | number | undefined>): string {

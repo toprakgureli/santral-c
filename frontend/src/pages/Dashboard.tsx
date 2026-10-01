@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { openLiveStream } from "../lib/liveStream";
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -114,23 +115,19 @@ export function Dashboard() {
     // frames arrive and no error fires either. So always run a slow poll as the
     // source of truth; SSE only accelerates it when frames do come through.
     const poll = window.setInterval(loadExts, 20000);
-    let es: EventSource | null = null;
-    try {
-      es = new EventSource("/api/v1/pbx/stream", { withCredentials: true });
-      es.onmessage = (e) => {
+    const close = openLiveStream("/api/v1/pbx/stream", {
+      onMessage: (data) => {
         try {
-          const msg = JSON.parse(e.data);
+          const msg = JSON.parse(data);
           if (msg?.type === "extensions" && Array.isArray(msg.items) && live) { setExts(msg.items); setExtsLoaded(true); }
         } catch {
           // ignore malformed frames
         }
-      };
-    } catch {
-      // the poll above already covers this
-    }
+      },
+    });
     return () => {
       live = false;
-      es?.close();
+      close();
       window.clearInterval(poll);
     };
   }, [canTransfer]);

@@ -5,6 +5,8 @@
 // and stay out of the badge.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { userKey } from "../lib/userStorage";
+import { openLiveStream } from "../lib/liveStream";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/api/client";
 import type { TeamsEvent, TeamsGroup, TeamsInvite, TeamsMessage } from "@/api/types";
@@ -64,7 +66,7 @@ const MENTIONS_KEY = "teams.mentions";
 
 function loadMentions(): MentionToast[] {
   try {
-    const raw = localStorage.getItem(MENTIONS_KEY);
+    const raw = localStorage.getItem(userKey(MENTIONS_KEY));
     const list = raw ? (JSON.parse(raw) as MentionToast[]) : [];
     return Array.isArray(list) ? list.slice(-20) : [];
   } catch {
@@ -169,7 +171,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   );
   useEffect(() => {
     try {
-      localStorage.setItem(MENTIONS_KEY, JSON.stringify(mentions));
+      localStorage.setItem(userKey(MENTIONS_KEY), JSON.stringify(mentions));
     } catch {
       // storage unavailable
     }
@@ -308,26 +310,16 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   // Live stream with a polling fallback (a proxy may buffer SSE).
   useEffect(() => {
     if (!enabled) return;
-    let es: EventSource | null = null;
-    let closed = false;
-    let retry = 0;
-    const connect = () => {
-      if (closed) return;
-      try {
-        es = new EventSource("/api/v1/teams/stream", { withCredentials: true });
-      } catch {
-        return;
-      }
-      es.onopen = () => {
-        retry = 0;
+    return openLiveStream("/api/v1/teams/stream", {
+      onOpen: () => {
         void refresh();
         // The server forgets activity across restarts; say it again.
         sendState(true);
-      };
-      es.onmessage = (ev) => {
+      },
+      onMessage: (data) => {
         let e: TeamsEvent;
         try {
-          e = JSON.parse(ev.data) as TeamsEvent;
+          e = JSON.parse(data) as TeamsEvent;
         } catch {
           return;
         }
@@ -402,20 +394,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
           );
         }
         listeners.current.forEach((fn) => fn(e));
-      };
-      es.onerror = () => {
-        es?.close();
-        es = null;
-        if (closed) return;
-        retry = Math.min(retry + 1, 6);
-        window.setTimeout(connect, 1000 * 2 ** retry);
-      };
-    };
-    connect();
-    return () => {
-      closed = true;
-      es?.close();
-    };
+      },
+    });
   }, [enabled, refresh, notify, notifyReaction]);
 
   const subscribe = useCallback((fn: (e: TeamsEvent) => void) => {

@@ -6,6 +6,7 @@
 // version is fetched, so nothing is missed and nothing is loaded twice.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { openLiveStream } from "../lib/liveStream";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { can } from "@/lib/permissions";
@@ -261,34 +262,16 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
     if (teams.enabled) {
       return teams.subscribe((e) => handle(e as unknown as WAEvent));
     }
-    let es: EventSource | null = null;
-    let closed = false;
-    let retry = 0;
-    const connect = () => {
-      if (closed) return;
-      es = new EventSource("/api/v1/wa/stream", { withCredentials: true });
-      es.onopen = () => {
-        retry = 0;
-      };
-      es.onmessage = (ev) => {
+    return openLiveStream("/api/v1/wa/stream", {
+      onOpen: () => {},
+      onMessage: (data) => {
         try {
-          handle(JSON.parse(ev.data) as WAEvent);
+          handle(JSON.parse(data) as WAEvent);
         } catch {
           // ignore a broken frame
         }
-      };
-      es.onerror = () => {
-        es?.close();
-        if (closed) return;
-        retry = Math.min(retry + 1, 6);
-        window.setTimeout(connect, 1000 * 2 ** retry);
-      };
-    };
-    connect();
-    return () => {
-      closed = true;
-      es?.close();
-    };
+      },
+    });
   }, [enabled, teams.enabled, teams.subscribe, handle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Typing labels fade out on their own.

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ApiError, api, SESSION_ENDED } from "../api/client";
 import type { User } from "../api/types";
+import { clearUserStorage, setStorageUser } from "../lib/userStorage";
 
 interface AuthState {
   user: User | null;
@@ -20,6 +21,8 @@ const RECHECK_MS = 60_000;
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Storage keys follow whoever is signed in; set before children read them.
+  setStorageUser(user?.id ?? 0);
 
   const refresh = useCallback(async () => {
     try {
@@ -34,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout();
     } finally {
+      clearUserStorage();
       setUser(null);
     }
   }, []);
@@ -46,7 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // dropping the user unmounts the panel, which unregisters the softphone and
   // closes the live streams.
   useEffect(() => {
-    const ended = () => setUser(null);
+    const ended = () => {
+      clearUserStorage();
+      setUser(null);
+    };
     window.addEventListener(SESSION_ENDED, ended);
     return () => window.removeEventListener(SESSION_ENDED, ended);
   }, []);
