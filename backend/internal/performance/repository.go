@@ -73,21 +73,21 @@ func (r *Repository) CallCounts(ctx context.Context, from, to time.Time, shortLo
 		Select("user_id, "+
 			"count(*) AS total, "+
 			"count(*) FILTER (WHERE disposition = 'answered') AS answered, "+
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds < ?) AS short, "+
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS long, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds < ?) AS short, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS long, "+
 			"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress')) AS unanswered, "+
 			"count(*) FILTER (WHERE direction = 'inbound') AS inbound, "+
 			"count(*) FILTER (WHERE direction = 'outbound') AS outbound, "+
 			"count(*) FILTER (WHERE direction = 'inbound' AND disposition NOT IN ('answered', 'in_progress')) AS inbound_missed, "+
 			"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed, "+
-			"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
-			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real, "+
+			"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS inbound_real, "+
+			"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS outbound_real, "+
 			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk_seconds, "+
-			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds, "+
+			"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?), 0)::bigint AS avg_talk_seconds, "+
 			"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest_seconds, "+
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 300) AS over5, "+
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 600) AS over10, "+
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= 1200) AS over20, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= 300) AS over5, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= 600) AS over10, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= 1200) AS over20, "+
 			"count(DISTINCT peer_key) FILTER (WHERE disposition = 'answered' AND peer_key <> '') AS peers, "+
 			"COALESCE(AVG(EXTRACT(EPOCH FROM (answered_at - started_at))) FILTER (WHERE direction = 'inbound' AND answered_at IS NOT NULL), 0)::bigint AS avg_answer_seconds",
 			shortLong, shortLong, shortLong, shortLong, shortLong).

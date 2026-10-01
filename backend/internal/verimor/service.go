@@ -72,6 +72,14 @@ type Service struct {
 	// syncJob is the background pull of every extension's SIP password.
 	syncMu  sync.Mutex
 	syncJob SIPSyncJob
+
+	// dnd sends every extension's wanted do-not-disturb state until the
+	// phone system confirms it.
+	dnd *dndQueue
+
+	// head tracks a gap in the call-record mirror being filled page by page.
+	headMu sync.Mutex
+	head   headCatchup
 }
 
 // snapshot is the last-good view the poller keeps warm.
@@ -86,8 +94,19 @@ func NewService(client *Client, users IActorResolver, repo *Repository, auditor 
 	if cfg.WebphoneBase == "" {
 		cfg.WebphoneBase = "https://oim.verimor.com.tr/webphone"
 	}
-	return &Service{client: client, users: users, repo: repo, audit: auditor, cfg: cfg, recordings: newRecordingCache()}
+	s := &Service{client: client, users: users, repo: repo, audit: auditor, cfg: cfg, recordings: newRecordingCache()}
+	s.dnd = newDNDQueue(func(ctx context.Context, ext string, on bool) error { return s.client.SetDND(ctx, ext, on) })
+	return s
 }
+
+// TuneDND sets how fast queued do-not-disturb changes go out and how long
+// the queue pauses when the phone system pushes back. The defaults follow
+// the API budget; tests use milliseconds.
+func (s *Service) TuneDND(pace, pause time.Duration) { s.dnd.tune(pace, pause) }
+
+// DNDConfirmed reports whether the phone system has confirmed the latest
+// do-not-disturb state the panel wants for the extension.
+func (s *Service) DNDConfirmed(extension string) bool { return s.dnd.confirmed(extension) }
 
 // SetShifts wires the shift reader that gates outbound calls and presence.
 func (s *Service) SetShifts(r IShiftReader) { s.shifts = r }
@@ -142,16 +161,18 @@ func (s *Service) ShiftStarted(ctx context.Context, userID uint) {
 	}
 	s.broadcastExtensions(ctx)
 	if ext := s.extensionOf(ctx, userID); ext != "" {
-		if err := s.client.SetDND(ctx, ext, false); err != nil {
-			slog.WarnContext(ctx, "dnd could not be lifted at shift start", "user", userID, "error", err)
-		}
+		// Queued: a refusal (many agents start at nine) is retried until the
+		// phone system takes it, so nobody sits "available" without calls.
+		s.dnd.want(ctx, ext, false, true)
 	}
 }
 
 // ShiftEnded takes the agent off the floor: the open presence stretch is
 // closed so no more time accrues, the agent list shows "off shift", and the
-// hosted PBX stops routing calls to the extension.
-func (s *Service) ShiftEnded(ctx context.Context, userID uint) {
+// hosted PBX stops routing calls to the extension. A shift the evening sweep
+// closed waits its turn in the queue, so closing every shift at once does not
+// flood the phone system's API.
+func (s *Service) ShiftEnded(ctx context.Context, userID uint, swept bool) {
 	if err := s.repo.SetPresence(ctx, userID, "off"); err != nil {
 		slog.WarnContext(ctx, "presence could not be set at shift end", "user", userID, "error", err)
 		return
@@ -161,9 +182,7 @@ func (s *Service) ShiftEnded(ctx context.Context, userID uint) {
 	}
 	s.broadcastExtensions(ctx)
 	if ext := s.extensionOf(ctx, userID); ext != "" {
-		if err := s.client.SetDND(ctx, ext, true); err != nil {
-			slog.WarnContext(ctx, "dnd could not be engaged at shift end", "user", userID, "error", err)
-		}
+		s.dnd.want(ctx, ext, true, !swept)
 	}
 }
 
@@ -183,6 +202,35 @@ func (s *Service) extensionOf(ctx context.Context, userID uint) string {
 func (s *Service) Start(ctx context.Context, g *safe.Group) {
 	g.Loop(ctx, "verimor poller", s.poll)
 	g.Loop(ctx, "verimor call mirror", s.mirrorLoop)
+	g.Loop(ctx, "verimor do-not-disturb", s.RunDND)
+}
+
+// RunDND sends the queued do-not-disturb changes until ctx ends. It first
+// takes over what the panel wants from the database, so a change still
+// waiting when the server restarted is not lost.
+func (s *Service) RunDND(ctx context.Context) {
+	s.ReconcileDND(ctx)
+	s.dnd.run(ctx)
+}
+
+// dndMemory is how long after a shift ends its extension stays under the
+// queue's watch; older extensions are left alone, so an extension used
+// outside the panel is never touched.
+const dndMemory = 24 * time.Hour
+
+// ReconcileDND brings the queue in line with the panel: every extension of
+// someone on shift, or whose shift ended lately, should have do-not-disturb
+// off when they are available and on otherwise. A difference is queued.
+func (s *Service) ReconcileDND(ctx context.Context) {
+	read := time.Now()
+	wishes, err := s.repo.DNDWishes(ctx, read.Add(-dndMemory))
+	if err != nil {
+		slog.WarnContext(ctx, "do-not-disturb states could not be read", "error", err)
+		return
+	}
+	for ext, on := range wishes {
+		s.dnd.adopt(ctx, ext, on, read)
+	}
 }
 
 func (s *Service) poll(ctx context.Context) {
@@ -202,7 +250,7 @@ func (s *Service) poll(ctx context.Context) {
 		return
 	}
 	s.refreshQueues(ctx)
-	s.finalizeStaleCalls(ctx)
+	s.FinalizeStaleCalls(ctx)
 
 	callsT := time.NewTicker(30 * time.Second)
 	extT := time.NewTicker(40 * time.Second)
@@ -228,15 +276,16 @@ func (s *Service) poll(ctx context.Context) {
 		case <-queueT.C:
 			s.refreshQueues(ctx)
 		case <-staleT.C:
-			s.finalizeStaleCalls(ctx)
+			s.FinalizeStaleCalls(ctx)
 		}
 	}
 }
 
-// finalizeStaleCalls closes call logs left open past the cap, so an unclosed row
-// (its hangup was never recorded) stops reading as in-progress and stops
-// inflating call time.
-func (s *Service) finalizeStaleCalls(ctx context.Context) {
+// FinalizeStaleCalls closes call logs left open past the cap, so an unclosed
+// row (its hangup was never recorded) stops reading as in progress. The length
+// comes from the phone system's record, or is marked unknown; it never counts
+// as two hours of talk. The poller runs it every two minutes.
+func (s *Service) FinalizeStaleCalls(ctx context.Context) {
 	if _, err := s.repo.FinalizeStaleCalls(ctx); err != nil {
 		slog.WarnContext(ctx, "stale call finalize failed", "error", err)
 	}
@@ -257,29 +306,76 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 
 // refreshHead copies the newest page of call records into the mirror. It is
 // cheap (one API call) and runs every 30 seconds, so a finished call is
-// searchable within half a minute.
+// searchable within half a minute. When more calls passed since the newest
+// stored record than one page holds (the API was throttled or down), the
+// gap is filled one older page per run until the pages reach what is
+// already stored, so no record is skipped and the budget is kept.
 func (s *Service) refreshHead(ctx context.Context) {
+	s.headMu.Lock()
+	defer s.headMu.Unlock()
+	known, have, err := s.repo.LatestCDRAt(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "call-record mirror could not read its state", "error", err)
+		return
+	}
+	newest, ok := s.headPage(ctx, 1)
+	if !ok {
+		return // the next tick retries
+	}
+	if s.head.page == 0 && have && len(newest) >= headPageSize && !reaches(newest, known) {
+		s.head = headCatchup{page: 2, known: known}
+		slog.InfoContext(ctx, "call-record mirror found a gap and is filling it", "since", known)
+	}
+	if s.head.page == 0 {
+		return
+	}
+	older, ok := s.headPage(ctx, s.head.page)
+	if !ok {
+		return
+	}
+	if len(older) < headPageSize || reaches(older, s.head.known) || s.head.page >= headCatchupPages {
+		slog.InfoContext(ctx, "call-record mirror gap filled", "pages", s.head.page)
+		s.head = headCatchup{}
+		return
+	}
+	s.head.page++
+}
+
+// MirrorHead runs one pass of the newest-records copy; the poller runs it
+// every 30 seconds.
+func (s *Service) MirrorHead(ctx context.Context) { s.refreshHead(ctx) }
+
+// headPage fetches one page of the newest call records and stores it.
+func (s *Service) headPage(ctx context.Context, page int) ([]CDR, bool) {
 	params := url.Values{}
-	params.Set("page", "1")
+	params.Set("page", strconv.Itoa(page))
 	params.Set("limit", strconv.Itoa(headPageSize))
 	cdrs, _, err := s.client.CDRs(ctx, params)
 	if err != nil {
-		return // the next tick retries
+		return nil, false
 	}
 	if _, err := s.repo.UpsertCDRs(ctx, cdrs); err != nil {
 		slog.WarnContext(ctx, "call records could not be mirrored", "error", err)
+		return nil, false
 	}
+	return cdrs, true
 }
 
 func (s *Service) refreshExtensions(ctx context.Context) {
+	asked := time.Now()
 	raw, err := s.client.UserStatuses(ctx)
 	if err != nil {
 		return
 	}
 	out := make([]PBXExtension, 0, len(raw))
 	for _, e := range raw {
-		out = append(out, PBXExtension{Extension: strconv.Itoa(e.User), Status: e.Status})
+		ext := strconv.Itoa(e.User)
+		out = append(out, PBXExtension{Extension: ext, Status: e.Status})
+		// What the phone system reports is checked against what the panel
+		// wants, so do-not-disturb changed elsewhere is put right.
+		s.dnd.observe(ext, e.Status, asked)
 	}
+	s.ReconcileDND(ctx)
 	s.snapMu.Lock()
 	s.snap.exts = out
 	s.snapMu.Unlock()
@@ -865,7 +961,9 @@ func (s *Service) overlaidExtensions(ctx context.Context) []PBXExtension {
 				}
 			}
 		}
-		if out[i].Status != "AVAILABLE" {
+		// A paused agent has do-not-disturb on, so the phone system reports
+		// SS_DND; the panel's own word (break, backoffice) is the clearer one.
+		if out[i].Status != "AVAILABLE" && out[i].Status != "SS_DND" {
 			continue
 		}
 		if state, ok := presence[out[i].Extension]; ok {
@@ -1017,26 +1115,35 @@ type Stats struct {
 	Missed int `json:"missed"`
 }
 
+// StatusChange is the answer to a presence change. PBXPending is true while
+// the phone system has not yet confirmed the do-not-disturb that goes with
+// it; the change is queued and the panel says it is on its way.
+type StatusChange struct {
+	State      string `json:"state"`
+	PBXPending bool   `json:"pbxPending"`
+}
+
 // SetStatus records the actor's presence state and engages do-not-disturb on
 // the hosted PBX for any non-available state (so a paused agent stops receiving
 // calls). Presence is persisted so it survives reloads and shows in the agent
-// list.
-func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) error {
+// list. The do-not-disturb change is queued: a busy phone system delays it
+// but never fails the change.
+func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) (*StatusChange, error) {
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if actor.SIPExtension == nil || *actor.SIPExtension == "" {
-		return errs.Invalid("Hesabında tanımlı bir dahili numara yok.", nil)
+		return nil, errs.Invalid("Hesabında tanımlı bir dahili numara yok.", nil)
 	}
 	if !s.onShift(ctx, actorID) {
-		return errs.Forbidden("Durum değiştirmek için önce mesaini başlat.")
+		return nil, errs.Forbidden("Durum değiştirmek için önce mesaini başlat.")
 	}
 	if state == "" {
 		state = "available"
 	}
 	if err := s.repo.SetPresence(ctx, actorID, state); err != nil {
-		return errs.Internal(err)
+		return nil, errs.Internal(err)
 	}
 	// Log the transition so per-state durations accumulate (best effort).
 	if err := s.repo.RecordTransition(ctx, actorID, state); err != nil {
@@ -1044,10 +1151,8 @@ func (s *Service) SetStatus(ctx context.Context, actorID uint, state string) err
 	}
 	// Reflect the change on every open agent list instantly.
 	s.broadcastExtensions(ctx)
-	if err := s.client.SetDND(ctx, *actor.SIPExtension, state != "available"); err != nil {
-		return errs.Internal(err)
-	}
-	return nil
+	confirmed := s.dnd.want(ctx, *actor.SIPExtension, state != "available", true)
+	return &StatusChange{State: state, PBXPending: !confirmed}, nil
 }
 
 // Presence is the actor's current presence plus today's per-state totals and
@@ -1066,6 +1171,9 @@ type Presence struct {
 	Pauses []Pause `json:"pauses"`
 	// BreakLimit is the daily break allowance in seconds.
 	BreakLimit int64 `json:"breakLimit"`
+	// PBXPending is true while the phone system has not yet confirmed the
+	// do-not-disturb that goes with the state.
+	PBXPending bool `json:"pbxPending"`
 }
 
 // Pause is one non-available stretch of the day.
@@ -1080,12 +1188,14 @@ type Pause struct {
 // Every clock starts from zero at "Mesai Başlat" and nothing accrues off
 // shift, so a state can never read as older than the shift.
 func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
-	if _, err := s.users.GetByID(ctx, actorID); err != nil {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
 		return nil, err
 	}
+	pending := actor.SIPExtension != nil && *actor.SIPExtension != "" && !s.dnd.confirmed(*actor.SIPExtension)
 	from, onShift := s.shiftStart(ctx, actorID)
 	if !onShift {
-		return &Presence{State: "off", Totals: map[string]int64{}}, nil
+		return &Presence{State: "off", Totals: map[string]int64{}, PBXPending: pending}, nil
 	}
 	state, since, err := s.repo.GetPresence(ctx, actorID)
 	if err != nil {
@@ -1132,7 +1242,7 @@ func (s *Service) Status(ctx context.Context, actorID uint) (*Presence, error) {
 			since = last
 		}
 	}
-	out := &Presence{State: state, Totals: totals, Talk: call, Online: online, Pauses: []Pause{}, BreakLimit: 60 * 60}
+	out := &Presence{State: state, Totals: totals, Talk: call, Online: online, Pauses: []Pause{}, BreakLimit: 60 * 60, PBXPending: pending}
 	if s.breakLimit != nil {
 		out.BreakLimit = int64(s.breakLimit.BreakLimitMinutes(ctx)) * 60
 	}

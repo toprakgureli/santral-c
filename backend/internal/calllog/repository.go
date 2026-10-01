@@ -91,15 +91,15 @@ func (r *Repository) Today(ctx context.Context, userID uint, from time.Time, sho
 	err := r.db.WithContext(ctx).
 		Model(&models.CallLog{}).
 		Select(
-			"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds < ?) AS short, "+
-				"count(*) FILTER (WHERE disposition = 'answered' AND duration_seconds >= ?) AS long, "+
+			"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds < ?) AS short, "+
+				"count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS long, "+
 				"count(*) FILTER (WHERE disposition NOT IN ('answered', 'in_progress')) AS unanswered, "+
 				"count(*) FILTER (WHERE direction = 'inbound') AS inbound, "+
 				"count(*) FILTER (WHERE direction = 'outbound') AS outbound, "+
 				"count(*) FILTER (WHERE direction = 'inbound' AND disposition NOT IN ('answered', 'in_progress')) AS inbound_missed, "+
 				"count(*) FILTER (WHERE direction = 'outbound' AND disposition NOT IN ('answered', 'in_progress')) AS outbound_missed, "+
-				"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND duration_seconds >= ?) AS inbound_real, "+
-				"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND duration_seconds >= ?) AS outbound_real",
+				"count(*) FILTER (WHERE direction = 'inbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS inbound_real, "+
+				"count(*) FILTER (WHERE direction = 'outbound' AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS outbound_real",
 			shortLong, shortLong, shortLong, shortLong).
 		Where("user_id = ? AND started_at >= ?", userID, from).
 		Where("NOT (" + NotMineSQL + ")").

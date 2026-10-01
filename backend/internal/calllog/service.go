@@ -111,8 +111,11 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 			return errs.Internal(err)
 		}
 	case "end":
-		if existing != nil && existing.EndedAt != nil {
-			return nil // already final; a second end changes nothing
+		// Already final: a second end changes nothing. A call closed with an
+		// unknown length (its end was lost) still takes a late end, which
+		// carries the real length.
+		if existing != nil && existing.EndedAt != nil && !existing.DurationUnknown {
+			return nil
 		}
 		now := time.Now()
 		if existing == nil {
@@ -140,10 +143,12 @@ func (s *Service) Record(ctx context.Context, actorID uint, req requests.CallLog
 		final.EndedAt = &now
 		final.Disposition = dispositionOr(req.Disposition, existing)
 		final.DurationSeconds = clampSeconds(req.DurationSeconds, now.Sub(existing.StartedAt)+5*time.Second)
+		final.DurationUnknown = false
 		if err := s.repo.Update(ctx, existing.ID, map[string]any{
 			"ended_at":         now,
 			"disposition":      final.Disposition,
 			"duration_seconds": final.DurationSeconds,
+			"duration_unknown": false,
 		}); err != nil {
 			return errs.Internal(err)
 		}

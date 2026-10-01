@@ -193,7 +193,7 @@ func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from tim
 	var total int64
 	err := r.db.WithContext(ctx).
 		Table("call_logs").
-		Where("user_id = ? AND answered_at IS NOT NULL AND answered_at >= ?", userID, from).
+		Where("user_id = ? AND answered_at IS NOT NULL AND answered_at >= ? AND NOT duration_unknown", userID, from).
 		Select(
 			"COALESCE(SUM(EXTRACT(EPOCH FROM ("+
 				"CASE WHEN ended_at IS NULL THEN LEAST(now(), answered_at + ?::interval) ELSE ended_at END"+
@@ -209,24 +209,91 @@ func (r *Repository) CallSecondsToday(ctx context.Context, userID uint, from tim
 	return total, nil
 }
 
-// FinalizeStaleCalls closes call logs that are still open past openCallCap (their
-// hangup was never recorded), so they stop reading as "in progress" and stop
-// contributing unbounded time. A genuine late end phase still overwrites the row
-// by call id, so finalizing early is safe. Returns how many rows were closed.
+// unknownRecheck is how long a call closed with an unknown length keeps
+// being looked up in the phone system's records, which may arrive late.
+const unknownRecheck = 24 * time.Hour
+
+// staleBatch bounds one finalize pass.
+const staleBatch = 500
+
+// FinalizeStaleCalls closes call logs still open past openCallCap (their
+// hangup never reached the panel), so they stop reading as in progress. The
+// length comes from the phone system's own record of the call when the
+// mirror has one; otherwise an answered call is marked as having an unknown
+// length instead of being counted as a two-hour conversation. Calls closed
+// as unknown are looked up again for a day, as the records arrive late, and a
+// genuine late end from the panel still overwrites them. It returns how many
+// rows changed.
 func (r *Repository) FinalizeStaleCalls(ctx context.Context) (int64, error) {
-	bound := fmt.Sprintf("%d seconds", int64(openCallCap.Seconds()))
-	res := r.db.WithContext(ctx).Exec(
-		"UPDATE call_logs SET "+
-			"ended_at = LEAST(now(), started_at + ?::interval), "+
-			"duration_seconds = CASE WHEN answered_at IS NULL THEN 0 "+
-			"ELSE GREATEST(0, EXTRACT(EPOCH FROM (LEAST(now(), answered_at + ?::interval) - answered_at))::int) END, "+
-			"disposition = CASE WHEN answered_at IS NULL THEN 'no_answer' ELSE 'answered' END "+
-			"WHERE ended_at IS NULL AND started_at < now() - ?::interval",
-		bound, bound, bound)
-	if res.Error != nil {
-		return 0, fmt.Errorf("stale calls could not be finalized: %w", res.Error)
+	type stale struct {
+		ID         uint
+		Extension  string
+		PeerNumber string
+		StartedAt  time.Time
+		AnsweredAt *time.Time
+		Open       bool
 	}
-	return res.RowsAffected, nil
+	now := time.Now()
+	var rows []stale
+	if err := r.db.WithContext(ctx).Raw(`
+		SELECT c.id, COALESCE(u.sip_extension, '') AS extension, c.peer_number, c.started_at, c.answered_at,
+		       c.ended_at IS NULL AS open
+		FROM call_logs c LEFT JOIN users u ON u.id = c.user_id
+		WHERE (c.ended_at IS NULL AND c.started_at < ?) OR (c.duration_unknown AND c.started_at > ?)
+		ORDER BY c.started_at LIMIT ?`,
+		now.Add(-openCallCap), now.Add(-unknownRecheck), staleBatch).Scan(&rows).Error; err != nil {
+		return 0, fmt.Errorf("stale calls could not be listed: %w", err)
+	}
+	var changed int64
+	for _, c := range rows {
+		found, talk, answered, err := r.CallSeen(ctx, c.Extension, c.PeerNumber, c.StartedAt)
+		if err != nil {
+			return changed, err
+		}
+		var fields map[string]any
+		switch {
+		case found:
+			// The phone system's own figures.
+			disposition, from := "no_answer", c.StartedAt
+			if answered {
+				disposition = "answered"
+				if c.AnsweredAt != nil {
+					from = *c.AnsweredAt
+				}
+			}
+			fields = map[string]any{
+				"ended_at":         from.Add(time.Duration(talk) * time.Second),
+				"duration_seconds": talk,
+				"disposition":      disposition,
+				"duration_unknown": false,
+			}
+		case c.Open:
+			// Nothing tells how long it lasted: an answered call keeps its
+			// place in the counts but adds no talk time.
+			disposition := "no_answer"
+			if c.AnsweredAt != nil {
+				disposition = "answered"
+			}
+			fields = map[string]any{
+				"ended_at":         c.StartedAt.Add(openCallCap),
+				"duration_seconds": 0,
+				"disposition":      disposition,
+				"duration_unknown": c.AnsweredAt != nil,
+			}
+		default:
+			continue // still unknown; looked up again on the next pass
+		}
+		// Only a row that is still stale is changed, so a real end that
+		// arrived meanwhile wins.
+		res := r.db.WithContext(ctx).Model(&models.CallLog{}).
+			Where("id = ? AND (ended_at IS NULL OR duration_unknown)", c.ID).
+			Updates(fields)
+		if res.Error != nil {
+			return changed, fmt.Errorf("stale call could not be finalized: %w", res.Error)
+		}
+		changed += res.RowsAffected
+	}
+	return changed, nil
 }
 
 // LastCallEndedAt returns when the agent's most recent answered call ended
@@ -236,7 +303,7 @@ func (r *Repository) LastCallEndedAt(ctx context.Context, userID uint, from time
 	var last sql.NullTime
 	err := r.db.WithContext(ctx).
 		Table("call_logs").
-		Where("user_id = ? AND answered_at IS NOT NULL AND ended_at IS NOT NULL AND ended_at >= ?", userID, from).
+		Where("user_id = ? AND answered_at IS NOT NULL AND ended_at IS NOT NULL AND ended_at >= ? AND NOT duration_unknown", userID, from).
 		Select("MAX(ended_at)").
 		Row().Scan(&last)
 	if err != nil {
@@ -395,4 +462,34 @@ func (r *Repository) SetSIP(ctx context.Context, id uint, extension, encPassword
 		return fmt.Errorf("sip credentials could not be stored: %w", err)
 	}
 	return nil
+}
+
+// DNDWishes returns the do-not-disturb state the panel wants for each
+// extension it looks after: on shift, off while the agent is available and
+// on otherwise; after a shift that ended since `since`, on. Extensions of
+// people who have not been on shift lately are left out, so an extension
+// used outside the panel is never touched.
+func (r *Repository) DNDWishes(ctx context.Context, since time.Time) (map[string]bool, error) {
+	type row struct {
+		Extension string
+		DND       bool
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT u.sip_extension AS extension,
+		       (o.id IS NULL OR COALESCE(p.state, 'available') <> 'available') AS dnd
+		FROM users u
+		LEFT JOIN shifts o ON o.user_id = u.id AND o.ended_at IS NULL
+		LEFT JOIN agent_presence p ON p.user_id = u.id
+		WHERE u.active AND u.sip_extension IS NOT NULL AND u.sip_extension <> ''
+		  AND (o.id IS NOT NULL OR EXISTS (SELECT 1 FROM shifts r WHERE r.user_id = u.id AND r.ended_at >= ?))`,
+		since).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("do-not-disturb states could not be read: %w", err)
+	}
+	out := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		out[r.Extension] = r.DND
+	}
+	return out, nil
 }

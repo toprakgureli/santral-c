@@ -18,9 +18,13 @@ type CallLog struct {
 	DurationSeconds int        `gorm:"column:duration_seconds;not null;default:0"`
 	// HooksDone is false while the call waits for the phone system's record
 	// before what follows it runs.
-	HooksDone bool      `gorm:"column:hooks_done;not null;default:true"`
-	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
+	HooksDone bool `gorm:"column:hooks_done;not null;default:true"`
+	// DurationUnknown marks an answered call whose end never reached the
+	// panel and that the phone system's records could not size either; its
+	// length is left out of talk time instead of being guessed.
+	DurationUnknown bool      `gorm:"column:duration_unknown;not null;default:false"`
+	CreatedAt       time.Time `gorm:"column:created_at"`
+	UpdatedAt       time.Time `gorm:"column:updated_at"`
 }
 
 // TableName pins the table name.

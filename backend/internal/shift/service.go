@@ -32,10 +32,12 @@ const (
 )
 
 // IPresence lets the shift lifecycle drive the agent's telephony presence.
-// Implementations must tolerate users without an extension.
+// Implementations must tolerate users without an extension. swept is true
+// when the evening sweep closed the shift: the phone system is then told in
+// turn, at the pace its API allows, instead of all at once.
 type IPresence interface {
 	ShiftStarted(ctx context.Context, userID uint)
-	ShiftEnded(ctx context.Context, userID uint)
+	ShiftEnded(ctx context.Context, userID uint, swept bool)
 }
 
 // IAudit records shift transitions.
@@ -134,7 +136,7 @@ func (s *Service) End(ctx context.Context, userID uint, ip string) (*responses.S
 // StartSweeper launches the loop that closes shifts left open past the cutoff.
 func (s *Service) StartSweeper(ctx context.Context, g *safe.Group) {
 	g.Loop(ctx, "shift sweeper", func(ctx context.Context) {
-		safe.Run(ctx, "shift sweep", func() { s.sweep(ctx) })
+		safe.Run(ctx, "shift sweep", func() { s.Sweep(ctx) })
 		t := time.NewTicker(sweepEvery)
 		defer t.Stop()
 		for {
@@ -142,16 +144,16 @@ func (s *Service) StartSweeper(ctx context.Context, g *safe.Group) {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				safe.Run(ctx, "shift sweep", func() { s.sweep(ctx) })
+				safe.Run(ctx, "shift sweep", func() { s.Sweep(ctx) })
 			}
 		}
 	})
 }
 
-// sweep closes every open shift whose cutoff has passed. The close is stamped
+// Sweep closes every open shift whose cutoff has passed. The close is stamped
 // at the cutoff itself, not at sweep time, so a restart after 19:20 does not
-// credit the gap as working time.
-func (s *Service) sweep(ctx context.Context) {
+// credit the gap as working time. The sweeper runs it every minute.
+func (s *Service) Sweep(ctx context.Context) {
 	open, err := s.repo.AllOpen(ctx)
 	if err != nil {
 		slog.WarnContext(ctx, "shift sweep failed", "error", err)
@@ -178,7 +180,7 @@ func (s *Service) close(ctx context.Context, sh *models.Shift, at time.Time, by,
 		return nil // someone else closed it first, and told everyone
 	}
 	if s.presence != nil {
-		s.presence.ShiftEnded(ctx, sh.UserID)
+		s.presence.ShiftEnded(ctx, sh.UserID, by == EndedByAuto)
 	}
 	var actor *uint
 	if by == EndedByUser {
