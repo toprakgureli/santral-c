@@ -641,12 +641,6 @@ func (s *Service) clock(ctx context.Context) {
 		if every("rules", time.Minute) {
 			safe.Run(ctx, "whatsapp timed rules", func() { s.sweepTimedRules(ctx) })
 		}
-		if every("inbound", 30*time.Second) {
-			safe.Run(ctx, "whatsapp follow-up sweep", func() { s.sweepInboundJobs(ctx) })
-		}
-		if every("media", 5*time.Minute) {
-			safe.Run(ctx, "whatsapp media sweep", func() { s.sweepMedia(ctx) })
-		}
 		if every("callsurveys", 30*time.Second) {
 			safe.Run(ctx, "whatsapp call surveys", func() { s.sendDueCallSurveys(ctx) })
 		}

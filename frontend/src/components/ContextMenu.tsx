@@ -1,11 +1,13 @@
 import { useEffect } from "react";
+import { useTopmost } from "@/components/ui/windowStack";
 
 export type MenuItem = { label: string; onClick: () => void; disabled?: boolean; danger?: boolean };
 
 export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  const isTop = useTopmost(true);
   useEffect(() => {
     const close = () => onClose();
-    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     // Attach on the next tick so the same right-click that opened the menu does
     // not immediately close it.
     const timer = window.setTimeout(() => {

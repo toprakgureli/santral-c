@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"strings"
 	"time"
 	"unicode"
@@ -83,7 +84,7 @@ func (s *Service) pickItems(ctx context.Context, kind string, n int) []models.Ga
 	if err != nil || len(items) == 0 {
 		return nil
 	}
-	s.rnd.Shuffle(len(items), func(i, j int) { items[i], items[j] = items[j], items[i] })
+	rand.Shuffle(len(items), func(i, j int) { items[i], items[j] = items[j], items[i] })
 	if n > 0 && len(items) > n {
 		items = items[:n]
 	}
@@ -184,7 +185,7 @@ func (k *drawKind) Start(ctx context.Context, m *Match, s *Service) error {
 	for _, p := range m.active() {
 		st.Order = append(st.Order, p.UserID)
 	}
-	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	rand.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
 	st.Total = m.Config.Rounds * len(st.Order)
 	st.Turn = -1
 	st.Used = map[string]bool{}
@@ -932,7 +933,7 @@ func (k *storyKind) Start(ctx context.Context, m *Match, s *Service) error {
 	for _, p := range m.active() {
 		st.Order = append(st.Order, p.UserID)
 	}
-	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	rand.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
 	st.Turn = 0
 	m.setDeadline(m.Config.Seconds)
 	return nil
@@ -1683,7 +1684,7 @@ func (k *telephoneKind) Start(ctx context.Context, m *Match, s *Service) error {
 	for _, p := range m.active() {
 		st.Order = append(st.Order, p.UserID)
 	}
-	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	rand.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
 	st.Chains = make([][]tStep, len(st.Order))
 	st.Seconds = m.Config.Seconds
 	st.Step = -1
@@ -1946,11 +1947,11 @@ func (k *voiceKind) startGuessing(ctx context.Context, m *Match, s *Service) {
 		s.finish(ctx, m, nil, "yeterli kayıt yok")
 		return
 	}
-	s.rnd.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
+	rand.Shuffle(len(st.Order), func(i, j int) { st.Order[i], st.Order[j] = st.Order[j], st.Order[i] })
 	st.Rates = nil
 	for range st.Order {
 		// A pitch shift the players hear; the same for everyone in a round.
-		st.Rates = append(st.Rates, []float64{0.78, 0.86, 1.15, 1.25}[s.rnd.Intn(4)])
+		st.Rates = append(st.Rates, []float64{0.78, 0.86, 1.15, 1.25}[rand.IntN(4)])
 	}
 	st.Round = 0
 	k.open(m)

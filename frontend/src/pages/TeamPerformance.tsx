@@ -31,6 +31,7 @@ import { cn } from "../lib/utils";
 import { displayNumber } from "../softphone/dial";
 import { formatClock } from "./callFormat";
 import { clockTime, shortDateTime } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const REFRESH_MS = 15000;
 const VIEW_KEY = "santral.perf-view";
@@ -404,8 +405,9 @@ function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now
   const unreached = unreachedOf(r);
   const callFor = r.call ? Math.max(0, Math.floor((now - Date.parse(r.call.startedAt)) / 1000)) : 0;
 
+  const isTop = useTopmost(true);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);

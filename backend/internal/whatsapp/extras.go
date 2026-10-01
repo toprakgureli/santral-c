@@ -439,8 +439,11 @@ func (s *Service) LookupNumber(ctx context.Context, actorID uint, number string)
 	if len(key) < 3 {
 		return []ConversationView{}, nil
 	}
+	seen, seenArgs := v.visibleTickets()
 	var convs []models.WAConversation
-	if err := s.db.WithContext(ctx).Where("contact_id IN (SELECT id FROM wa_contacts WHERE peer_key = ?) AND ticket_id IS NOT NULL", key).Order("last_message_at DESC NULLS LAST").Limit(20).Find(&convs).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("contact_id IN (SELECT id FROM wa_contacts WHERE peer_key = ?) AND ticket_id IS NOT NULL", key).
+		Where("ticket_id IN ("+seen+")", seenArgs...).
+		Order("last_message_at DESC NULLS LAST").Limit(20).Find(&convs).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
 	visible, _ := s.filterVisible(ctx, v, convs)

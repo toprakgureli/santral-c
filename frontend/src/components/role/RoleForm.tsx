@@ -3,7 +3,7 @@ import { Copy, Info, Loader2, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import type { PermissionGroup, PermissionItem, Role } from "@/api/types";
 import AuthError from "@/components/auth/AuthError";
-import { Button, CharCount, Field, FieldGroup, FieldHint, Input, Modal, Notice, useDirty } from "@/components/ui";
+import { Button, CharCount, ConfirmDialog, Field, FieldGroup, FieldHint, Input, Modal, Notice, useDirty } from "@/components/ui";
 import { errorMessage } from "@/components/auth/messages";
 import { LIMITS } from "@/lib/limits";
 import { cn } from "@/lib/utils";
@@ -95,8 +95,10 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
     void run(() => api.createRole({ ...payload, name: form.name.trim() }));
   };
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const remove = () => {
     if (!role) return;
+    setConfirmRemove(false);
     void run(() => api.deleteRole(role.id));
   };
 
@@ -110,7 +112,7 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
       footer={
         <>
           {role && !role.system && (
-            <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={remove} disabled={busy}>
+            <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={() => setConfirmRemove(true)} disabled={busy}>
               <Trash2 />
               Sil
             </Button>
@@ -199,6 +201,14 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
           </div>
         </FieldGroup>
       </div>
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Rol silinsin mi?"
+        description={`${role?.displayName ?? "Bu rol"} silinir. Rolü taşıyan kimse yoksa silinebilir; geri alınamaz.`}
+        confirmLabel="Sil"
+        onConfirm={remove}
+        onCancel={() => setConfirmRemove(false)}
+      />
     </Modal>
   );
 }

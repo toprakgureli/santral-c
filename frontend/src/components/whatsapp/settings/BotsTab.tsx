@@ -76,7 +76,6 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
   const [copying, setCopying] = useState<WABot | null>(null);
   const [del, setDel] = useState<WABot | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [purge, setPurge] = useState<WABot | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const now = Date.now();
@@ -132,7 +131,7 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
                   <Button className="h-8 px-3 text-xs" onClick={() => navigate(`/whatsapp/bots/${b.id}`)}><Workflow /> Akışı aç</Button>
                   {manage && <Button variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setSettings(b)}><Pencil /> Ayarlar</Button>}
                   {manage && <Button variant="ghost" className="h-8 px-2.5 text-xs" onClick={() => setCopying(b)}><Copy /> Kopyala</Button>}
-                  {manage && <button type="button" data-tip={b.active ? "Kaldır" : "Tamamen sil"} aria-label={b.active ? "Kaldır" : "Tamamen sil"} onClick={() => (b.active ? setDel(b) : setPurge(b))} className="ml-auto flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>}
+                  {manage && b.active && <button type="button" data-tip="Kaldır" aria-label="Kaldır" onClick={() => setDel(b)} className="ml-auto flex size-8 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="size-3.5" /></button>}
                 </div>
               </div>
             );
@@ -150,20 +149,8 @@ export default function BotsTab({ channels }: { channels: WAChannel[] }) {
           setBusy(true);
           setMsg(null);
           waApi.removeBot(del.id)
-            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı. Tamamen silmek için yeniden çöp kutusuna basın.` : `${del.name} silindi.`); setDel(null); void load(); })
+            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı; sürümleri ve raporu duruyor.` : `${del.name} silindi.`); setDel(null); void load(); })
             .catch((e) => { setMsg(e instanceof ApiError ? e.message : "Kaldırılamadı."); setDel(null); })
-            .finally(() => setBusy(false));
-        }} />
-      <ConfirmDialog open={!!purge} title="Chatbot tamamen silinsin mi?" busy={busy} confirmText={purge?.name}
-        description={`${purge?.name}, bütün sürümleri ve raporu kalıcı olarak silinir. Bu geri alınamaz.`}
-        confirmLabel="Tamamen sil" onCancel={() => setPurge(null)}
-        onConfirm={() => {
-          if (!purge) return;
-          setBusy(true);
-          setMsg(null);
-          waApi.purgeBot(purge.id, purge.name)
-            .then(() => { setNotice(`${purge.name} silindi.`); setPurge(null); void load(); })
-            .catch((e) => { setMsg(e instanceof ApiError ? e.message : "Silinemedi."); setPurge(null); })
             .finally(() => setBusy(false));
         }} />
     </Card>

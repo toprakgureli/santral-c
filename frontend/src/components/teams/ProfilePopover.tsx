@@ -14,6 +14,7 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
 import { fmt } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 export interface PopoverAnchor {
   userId: number;
@@ -54,11 +55,12 @@ export default function ProfilePopover({ anchor, selfId, onClose }: { anchor: Po
     setPos({ left, top });
   }, [anchor.x, anchor.y, profile]);
 
+  const isTop = useTopmost(true);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) onClose();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     const t = window.setTimeout(() => {
       window.addEventListener("mousedown", onDown);
       window.addEventListener("keydown", onKey);

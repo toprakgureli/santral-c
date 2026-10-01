@@ -4,7 +4,7 @@
 // narrows the list; with escalation.search that lookup always spans every
 // agent, which is the same history the dashboard shows during a call.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { ArrowUpDown, CalendarRange, CheckCircle2, ClipboardList, Search, TriangleAlert, Users, X, Zap } from "lucide-react";
 import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
@@ -72,12 +72,19 @@ export function EscalationSearch() {
     api.escalationCategories().then(setCategories).catch(() => setCategories([]));
   }, [canAll]);
 
-  // Any filter change goes back to page one.
-  useEffect(() => {
-    setPage(1);
-  }, [debounced, from, to, agentId, categoryId]);
+  // Any filter change goes back to page one; the request waits for that,
+  // so one change sends one request.
+  const filters = `${debounced}|${from}|${to}|${agentId}|${categoryId}`;
+  const lastFilters = useRef(filters);
 
   useEffect(() => {
+    if (lastFilters.current !== filters) {
+      lastFilters.current = filters;
+      if (page !== 1) {
+        setPage(1);
+        return;
+      }
+    }
     if (searchOnly && !debounced) {
       setItems([]);
       setTotal(0);
@@ -106,7 +113,7 @@ export function EscalationSearch() {
     return () => {
       live = false;
     };
-  }, [debounced, from, to, agentId, categoryId, page, searchOnly, preset]);
+  }, [debounced, from, to, agentId, categoryId, page, searchOnly, preset, filters]);
 
   function choosePreset(key: Preset) {
     setPreset(key);

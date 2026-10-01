@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
@@ -582,7 +583,11 @@ func (s *Service) Conversations(ctx context.Context, actorID uint, since int64) 
 		return nil, errs.Internal(err)
 	}
 	var top int64
-	if err := s.db.WithContext(ctx).Raw("SELECT COALESCE(max(version), 0) FROM wa_conversations").Scan(&top).Error; err != nil {
+	if since > 0 && len(convs) == 1000 {
+		// More changed than one answer carries: the client continues from
+		// the last row it got instead of skipping the rest.
+		top = convs[len(convs)-1].Version
+	} else if err := s.db.WithContext(ctx).Raw("SELECT COALESCE(max(version), 0) FROM wa_conversations").Scan(&top).Error; err != nil {
 		return nil, errs.Internal(err)
 	}
 	return &ListResult{Items: items, Hidden: hidden, Version: top, Me: actorID}, nil
@@ -631,21 +636,13 @@ func (s *Service) ResolvedPage(ctx context.Context, actorID uint, before time.Ti
 	if err != nil {
 		return nil, err
 	}
+	seen, seenArgs := v.visibleTickets()
 	q := s.db.WithContext(ctx).Model(&models.WAConversation{}).
 		Where("ticket_id IN (SELECT id FROM wa_tickets WHERE status = 'resolved')").
+		Where("ticket_id IN ("+seen+")", seenArgs...).
 		Where("last_message_at < ?", before)
-	if !v.can(enums.WAViewAll) {
-		var chans []uint
-		for id := range v.channels {
-			chans = append(chans, id)
-		}
-		if len(chans) == 0 {
-			return []ConversationView{}, nil
-		}
-		q = q.Where("channel_id IN ?", chans)
-	}
 	if t := strings.TrimSpace(search); t != "" {
-		like := "%" + strings.ToLower(t) + "%"
+		like := "%" + likeEscape.Replace(strings.ToLower(t)) + "%"
 		q = q.Where("contact_id IN (SELECT id FROM wa_contacts WHERE lower(name) LIKE ? OR lower(profile_name) LIKE ? OR wa_id LIKE ?)", like, like, "%"+digitsOnly(t)+"%")
 	}
 	var convs []models.WAConversation
@@ -729,7 +726,9 @@ func (s *Service) Search(ctx context.Context, actorID uint, text string, convers
 	if len([]rune(t)) < 2 {
 		return []SearchHit{}, nil
 	}
-	q := s.db.WithContext(ctx).Model(&models.WAMessage{}).Where("body ILIKE ? AND direction IN ('in','out','note')", "%"+t+"%")
+	seen, seenArgs := v.visibleTickets()
+	q := s.db.WithContext(ctx).Model(&models.WAMessage{}).Where("body ILIKE ? AND direction IN ('in','out','note')", "%"+likeEscape.Replace(t)+"%").
+		Where("conversation_id IN (SELECT c.id FROM wa_conversations c WHERE c.ticket_id IN ("+seen+"))", seenArgs...)
 	if conversationID > 0 {
 		if _, _, _, err := s.reachable(ctx, actorID, conversationID); err != nil {
 			return nil, err
@@ -783,14 +782,14 @@ func (s *Service) Search(ctx context.Context, actorID uint, text string, convers
 
 func snippet(body, word string) string {
 	r := []rune(body)
-	i := strings.Index(strings.ToLower(body), strings.ToLower(word))
+	i := runeIndexFold(r, []rune(word))
 	if i < 0 || len(r) <= 120 {
 		if len(r) > 120 {
 			return string(r[:120]) + "…"
 		}
 		return body
 	}
-	start := len([]rune(body[:i])) - 40
+	start := i - 40
 	if start < 0 {
 		start = 0
 	}
@@ -806,4 +805,26 @@ func snippet(body, word string) string {
 		out += "…"
 	}
 	return out
+}
+
+// runeIndexFold finds word in text ignoring case, comparing letter by letter,
+// so letters whose lower case is longer or shorter (Turkish İ) do not shift
+// the position.
+func runeIndexFold(text, word []rune) int {
+	if len(word) == 0 {
+		return 0
+	}
+	for i := 0; i+len(word) <= len(text); i++ {
+		match := true
+		for k := range word {
+			if unicode.ToLower(text[i+k]) != unicode.ToLower(word[k]) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }

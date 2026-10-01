@@ -36,11 +36,15 @@ export const MENU: MenuGroup[] = [
       { label: "Eskalasyon Durumları", path: "/escalations", icon: Tags, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: UsersRound, permission: "user.view" },
       { label: "Roller", path: "/roles", icon: KeyRound, permission: "role.view" },
-      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit"] },
+      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit", "games.manage"] },
       { label: "Denetim Kayıtları", path: "/audit", icon: FileClock, permission: "system.audit_view" },
     ],
   },
 ];
+
+// WA_BASE is what every WhatsApp page needs before its own permission; the
+// server asks the same.
+export const WA_BASE = "whatsapp.view";
 
 // Permissions of pages that are not in the side menu. Opening any of them
 // needs one of the listed permissions, the same ones the links to them ask.

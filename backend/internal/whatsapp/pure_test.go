@@ -77,3 +77,22 @@ func TestMatchesWord(t *testing.T) {
 		t.Fatal("opt-out words must match the whole message only")
 	}
 }
+
+func TestSnippetTurkishCase(t *testing.T) {
+	body := strings.Repeat("İ", 60) + " sipariş numaram 12345 " + strings.Repeat("ı", 80)
+	got := snippet(body, "SİPARİŞ")
+	if !strings.Contains(got, "sipariş numaram") {
+		t.Errorf("snippet lost the word: %q", got)
+	}
+	// Letters that change length when lowered never push past the end.
+	_ = snippet(strings.Repeat("Ⱥ", 200)+"x", "x")
+}
+
+func TestRuneIndexFold(t *testing.T) {
+	if i := runeIndexFold([]rune("Merhaba DÜNYA"), []rune("dünya")); i != 8 {
+		t.Errorf("index = %d, want 8", i)
+	}
+	if i := runeIndexFold([]rune("abc"), []rune("x")); i != -1 {
+		t.Errorf("index = %d, want -1", i)
+	}
+}

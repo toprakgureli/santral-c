@@ -115,6 +115,10 @@ type inboundResult struct {
 	optedOut bool
 	// the device is turned off: the message is kept as history only
 	inactive bool
+	// when the ticket had been resolved before this message reopened it,
+	// and who had it when the message came
+	resolvedAt     *time.Time
+	ownerAtMessage *uint
 }
 
 // optOutAsked reports whether a customer message asks to leave marketing
@@ -246,11 +250,11 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			}
 		}
 		// Ticket: open one, or bring a resolved one back.
-		ticket, created, reopened, err := store.TouchTicket(tx, conv, at)
+		ticket, created, reopened, wasResolved, err := store.TouchTicket(tx, conv, at)
 		if err != nil {
 			return err
 		}
-		res.ticket, res.created, res.reopened = ticket, created, reopened
+		res.ticket, res.created, res.reopened, res.resolvedAt = ticket, created, reopened, wasResolved
 		if err := tx.Exec("UPDATE wa_messages SET ticket_id = ? WHERE id = ?", ticket.ID, msg.ID).Error; err != nil {
 			return err
 		}
@@ -264,8 +268,9 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		conv.LastInboundAt, conv.TicketID = at, uintPtr(ticket.ID)
 		res.conv = conv
 		// Record the work that follows, so a restart cannot lose it.
-		return tx.Exec("INSERT INTO wa_inbound_jobs (message_id, created, reopened, first, opted_out) VALUES (?, ?, ?, ?, ?)",
-			msg.ID, res.created, res.reopened, res.first, res.optedOut).Error
+		return tx.Exec(`INSERT INTO wa_inbound_jobs (message_id, conversation_id, created, reopened, first, opted_out, resolved_at, owner_id, claimed_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, '-infinity')`,
+			msg.ID, conv.ID, res.created, res.reopened, res.first, res.optedOut, res.resolvedAt, ticket.OwnerID).Error
 	})
 	if err != nil {
 		return err
@@ -283,61 +288,104 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		s.publish(ctx, res.conv.ID, res.msg, nil)
 		return nil
 	}
-	s.afterInbound(ctx, ch, res)
-	s.finishInboundJob(ctx, res.msg.ID)
+	// The message shows at once; what follows it runs in the follow-up
+	// workers, so receiving never waits for a chatbot or an outside system.
+	s.publish(ctx, res.conv.ID, res.msg, nil)
+	wake(s.wakeInbound)
 	return nil
 }
 
 // afterInbound runs everything that follows a stored customer message.
 // None of it may lose the message, so failures are only logged.
-func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *inboundResult) {
+func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *inboundResult, steps *jobSteps) {
 	msg := res.msg
 	if msg.Kind == "reaction" {
-		s.publishReaction(ctx, res.conv.ID, msg)
+		steps.run(ctx, "reaction", func() { s.publishReaction(ctx, res.conv.ID, msg) })
 		return
 	}
 	if msg.Media != nil {
-		bg, id := context.WithoutCancel(ctx), msg.ID
-		safe.Go(bg, "whatsapp keep media", func() { s.keepMedia(bg, ch, id) })
+		steps.run(ctx, "media", func() {
+			bg, id := context.WithoutCancel(ctx), msg.ID
+			safe.Go(bg, "whatsapp keep media", func() { s.keepMedia(bg, ch, id) })
+		})
 	}
 	set := device.Parse(ch.Settings)
 
 	// "DUR": the choice is already stored; confirm it to the customer.
 	if res.optedOut && strings.TrimSpace(set.OptOutReply) != "" {
-		s.queueSystem(ctx, ch, res.conv.ID, res.ticket.ID, "automation", "Kampanya izni", set.OptOutReply)
+		steps.run(ctx, "optout", func() {
+			s.queueSystem(ctx, ch, res.conv.ID, res.ticket.ID, "automation", "Kampanya izni", set.OptOutReply)
+		})
 	}
 
 	ticket := res.ticket
 	handled := false
 	switch {
 	case res.created || res.reopened:
-		// A chatbot for this device greets new and returning customers;
-		// otherwise the ticket goes to a person.
-		if s.startBot(ctx, ch, res.conv, ticket, msg) {
-			handled = true
-		} else {
-			s.distribute(ctx, ch, ticket.ID)
-		}
+		steps.run(ctx, "route", func() {
+			// Someone already acted on the ticket since the message came
+			// (took it, handed it over, closed it): work picked up again
+			// after a restart leaves it as they left it.
+			if !sameOwner(ticket.OwnerID, res.ownerAtMessage) || (ticket.Status != "open" && ticket.Status != "bot") {
+				return
+			}
+			if s.returnsToAgent(set, res) {
+				// Back within the set time: straight to the agent who had it.
+				s.event(ctx, nil, res.conv, ticket.ID, 0, "Müşteri sohbet kapandıktan kısa süre sonra yeniden yazdı; sohbet chatbot'a girmeden "+s.repo.UserName(ctx, *ticket.OwnerID)+" ile devam ediyor.")
+				return
+			}
+			if s.startBot(ctx, ch, res.conv, ticket, msg) {
+				handled = true
+			} else {
+				s.distribute(ctx, ch, ticket.ID)
+			}
+		})
 		if res.created {
-			s.runAutomations(ctx, ch, "ticket_created", res.conv, ticket, msg)
+			steps.run(ctx, "auto-created", func() { s.runAutomations(ctx, ch, "ticket_created", res.conv, ticket, msg) })
 		} else {
-			s.runAutomations(ctx, ch, "ticket_reopened", res.conv, ticket, msg)
-			s.notifyReopen(ctx, ticket)
+			steps.run(ctx, "auto-reopened", func() {
+				s.runAutomations(ctx, ch, "ticket_reopened", res.conv, ticket, msg)
+				s.notifyReopen(ctx, ticket)
+			})
 		}
 		if res.first {
-			s.runAutomations(ctx, ch, "first_message", res.conv, ticket, msg)
+			steps.run(ctx, "auto-first", func() { s.runAutomations(ctx, ch, "first_message", res.conv, ticket, msg) })
 		}
 	case ticket.Status == "bot":
-		handled = s.continueBot(ctx, ch, res.conv, ticket, msg)
+		steps.run(ctx, "bot", func() { handled = s.continueBot(ctx, ch, res.conv, ticket, msg) })
+	}
+	// A chat still with the chatbot is the chatbot's, also when its step
+	// was done before a restart.
+	if ticket.Status == "bot" {
+		handled = true
 	}
 	if !handled || ticket.Status != "bot" {
-		s.runAutomations(ctx, ch, "message_in", res.conv, ticket, msg)
-		if set.Hours.Enabled && !set.Hours.Open(time.Now()) {
-			s.runAutomations(ctx, ch, "outside_hours", res.conv, ticket, msg)
-		}
+		steps.run(ctx, "auto-in", func() {
+			s.runAutomations(ctx, ch, "message_in", res.conv, ticket, msg)
+			if set.Hours.Enabled && !set.Hours.Open(time.Now()) {
+				s.runAutomations(ctx, ch, "outside_hours", res.conv, ticket, msg)
+			}
+		})
 	}
-	s.handleSurveyReply(ctx, ch, res.conv, msg)
-	s.publish(ctx, res.conv.ID, msg, nil)
+	steps.run(ctx, "survey-reply", func() { s.handleSurveyReply(ctx, ch, res.conv, msg) })
+	s.publish(ctx, res.conv.ID, nil, nil)
+}
+
+// returnsToAgent reports whether a reopened chat goes straight back to the
+// agent who had it: the device sets a return time, the chat was resolved
+// within it and it still has its agent.
+func (s *Service) returnsToAgent(set device.Settings, res *inboundResult) bool {
+	if !res.reopened || set.ReturnMinutes <= 0 || res.resolvedAt == nil || res.ticket.OwnerID == nil {
+		return false
+	}
+	return time.Since(*res.resolvedAt) <= time.Duration(set.ReturnMinutes)*time.Minute
+}
+
+func sameOwner(a, b *uint) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func matchesWord(text string, words []string) bool {
@@ -366,7 +414,18 @@ func (s *Service) onStatus(ctx context.Context, ch *models.WAChannel, st *hookSt
 	if msg.ID == 0 {
 		// The status came before we stored the message's id; keep it.
 		raw, _ := json.Marshal(st)
-		return s.db.WithContext(ctx).Exec("INSERT INTO wa_pending_statuses (wamid, status, payload) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", st.ID, st.Status, string(raw)).Error
+		if err := s.db.WithContext(ctx).Exec("INSERT INTO wa_pending_statuses (wamid, status, payload) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", st.ID, st.Status, string(raw)).Error; err != nil {
+			return err
+		}
+		// The send may have stored the id in the meantime, after its own
+		// look at the waiting statuses; look once more so none is left.
+		if err := s.db.WithContext(ctx).Where("wamid = ?", st.ID).Limit(1).Find(&msg).Error; err != nil {
+			return err
+		}
+		if msg.ID != 0 {
+			s.applyPending(ctx, &msg)
+		}
+		return nil
 	}
 	s.applyStatus(ctx, &msg, st)
 	return nil

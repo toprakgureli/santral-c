@@ -423,6 +423,9 @@ func validateSettings(s *device.Settings) error {
 	if s.BotTimeoutMinutes <= 0 {
 		s.BotTimeoutMinutes = 30
 	}
+	if s.ReturnMinutes < 0 || s.ReturnMinutes > 7*24*60 {
+		return errs.Invalid("Önceki temsilciye dönüş süresi 0 ile 10080 dakika (bir hafta) arasında olmalı.", nil)
+	}
 	if s.Greeting.Enabled && strings.TrimSpace(s.Greeting.Text) == "" {
 		return errs.Invalid("Karşılama açıksa metni boş olamaz.", nil)
 	}
@@ -516,7 +519,7 @@ func (s *Service) CopySettings(ctx context.Context, actorID, id, from uint, sect
 			b.Survey = a.Survey
 			b.Survey.SecretEnc = secret
 		case "bot":
-			b.BotTimeoutMinutes, b.HumanKeywords = a.BotTimeoutMinutes, a.HumanKeywords
+			b.BotTimeoutMinutes, b.HumanKeywords, b.ReturnMinutes = a.BotTimeoutMinutes, a.HumanKeywords, a.ReturnMinutes
 		case "optout":
 			b.OptOutKeywords, b.OptOutReply = a.OptOutKeywords, a.OptOutReply
 		}

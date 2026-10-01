@@ -50,15 +50,16 @@ func (r *Repository) Start(ctx context.Context, userID uint, at time.Time) (*mod
 }
 
 // End closes a shift. It is a no-op if the shift was already closed, so the
-// user's click and the automatic close cannot both write.
-func (r *Repository) End(ctx context.Context, id uint, at time.Time, by string) error {
+// user's click and the automatic close cannot both write; it then reports
+// false, and only the first closer tells everyone.
+func (r *Repository) End(ctx context.Context, id uint, at time.Time, by string) (bool, error) {
 	res := r.db.WithContext(ctx).Model(&models.Shift{}).
 		Where("id = ? AND ended_at IS NULL", id).
 		Updates(map[string]any{"ended_at": at, "ended_by": by})
 	if res.Error != nil {
-		return fmt.Errorf("shift could not be closed: %w", res.Error)
+		return false, fmt.Errorf("shift could not be closed: %w", res.Error)
 	}
-	return nil
+	return res.RowsAffected == 1, nil
 }
 
 // AllOpen lists every open shift, for the automatic close.

@@ -213,6 +213,12 @@ export default function DeviceSettingsTab({ channels, reload }: { channels: WACh
               <span className="text-sm text-muted-foreground">dakika</span>
             </div>
           </FormField>
+          <FormField label="Sohbet kapandıktan sonra müşteri bu süre içinde yeniden yazarsa chatbot'a girmeden aynı temsilciye bağlansın" hint="0 yazarsanız yeniden yazan her müşteriyi chatbot karşılar.">
+            <div className="flex items-center gap-2">
+              <input type="number" min={0} max={10080} className={cn(inputCls, "w-28")} value={s.returnMinutes} onChange={(e) => up((d) => { d.returnMinutes = Math.min(10080, Math.max(0, Number(e.target.value) || 0)); })} disabled={!pGen} />
+              <span className="text-sm text-muted-foreground">dakika</span>
+            </div>
+          </FormField>
         </Block>
 
         <Block icon={MessageSquareOff} title="Mesaj almak istemeyenler" locked={!pGen} sub="Müşteri bu kelimelerden birini yazınca ona toplu ve otomatik mesaj gönderilmez.">

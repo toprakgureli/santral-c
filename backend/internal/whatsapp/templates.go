@@ -87,7 +87,10 @@ func (s *Service) Templates(ctx context.Context, actorID, channelID uint) ([]Tem
 		return nil, err
 	}
 	manage := v.can(enums.WATemplateManage)
-	if !manage && !(v.can(enums.WATemplateSend) && v.seesChannel(ch.ID)) {
+	// Choosing a template for the greeting or a survey in the settings
+	// needs the approved list too, not the right to send one.
+	pick := v.can(enums.WATemplateSend) || v.can(enums.WASetGreeting) || v.can(enums.WASetGeneral) || v.can(enums.WACallSurvey)
+	if !manage && !(pick && v.seesChannel(ch.ID)) {
 		return nil, errs.Forbidden("Şablonları görme yetkiniz yok.")
 	}
 	q := s.db.WithContext(ctx).Where("waba_id = ?", ch.WABAID)

@@ -22,6 +22,7 @@ import Telephone from "@/games/kinds/Telephone";
 import Voice from "@/games/kinds/Voice";
 import type { GameMeta } from "@/games/types";
 import { cn } from "@/lib/utils";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const FLOOR = "bg-[radial-gradient(circle_at_1px_1px,color-mix(in_oklab,var(--foreground)_7%,transparent)_1px,transparent_0)] bg-[size:18px_18px]";
 
@@ -33,8 +34,9 @@ export default function GameModal({ gameId, selfId, metas, pauseOnCall, members,
   const g = h.game;
   const meta = metas.find((m) => m.key === g?.kind);
 
+  const isTop = useTopmost(true);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !inviting && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !inviting && isTop() && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, inviting]);

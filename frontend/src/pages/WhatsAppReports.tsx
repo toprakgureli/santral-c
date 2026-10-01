@@ -41,15 +41,32 @@ export function WhatsAppReports() {
   useEffect(() => {
     waApi.channels().then(setChannels).catch(() => setChannels([]));
   }, []);
+  // A reply for a range or device left meanwhile is dropped, so a quick
+  // change never shows the older numbers.
   useEffect(() => {
     if (!range.from || !range.to) return;
+    let live = true;
     setLoading(true);
     setError(null);
-    waApi.reports(range.from, range.to, channel).then(setReport).catch((e) => setError(e instanceof ApiError ? e.message : "Rapor alınamadı.")).finally(() => setLoading(false));
+    waApi
+      .reports(range.from, range.to, channel)
+      .then((r) => live && setReport(r))
+      .catch((e) => live && setError(e instanceof ApiError ? e.message : "Rapor alınamadı."))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
   }, [range.from, range.to, channel]);
   useEffect(() => {
     if (!range.from || !range.to) return;
-    waApi.callSurveyReport(range.from, range.to).then(setCalls).catch(() => setCalls(null));
+    let live = true;
+    waApi
+      .callSurveyReport(range.from, range.to)
+      .then((r) => live && setCalls(r))
+      .catch(() => live && setCalls(null));
+    return () => {
+      live = false;
+    };
   }, [range.from, range.to]);
 
   const totals = useMemo(() => {

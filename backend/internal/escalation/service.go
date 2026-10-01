@@ -154,8 +154,13 @@ func (s *Service) Agents(ctx context.Context, actorID uint) ([]AgentRef, error) 
 
 // Categories returns the full catalog for agents and admins.
 func (s *Service) Categories(ctx context.Context, actorID uint) ([]Category, error) {
-	if _, err := s.authorize(ctx, actorID, enums.EscalationView); err != nil {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
 		return nil, err
+	}
+	// Those who keep the catalogue see it, even without logging records.
+	if !actor.Can(enums.EscalationView) && !actor.Can(enums.EscalationManage) {
+		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 	cats, err := s.repo.Categories(ctx)
 	if err != nil {

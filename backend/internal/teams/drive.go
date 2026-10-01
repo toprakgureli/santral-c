@@ -58,6 +58,11 @@ type Drive struct {
 	ring *crypt.Keyring // encrypts the refresh token, signs the link state
 	db   *gorm.DB
 	http *http.Client
+	// bulk carries file bodies up and down. It has no overall limit, since
+	// a large file on a slow line takes as long as it takes; the request's
+	// context ends it, and a server that does not answer at all still
+	// times out.
+	bulk *http.Client
 
 	mu      sync.Mutex
 	access  string
@@ -70,7 +75,9 @@ func NewDrive(cfg configs.Drive, ring *crypt.Keyring, db *gorm.DB) *Drive {
 	if cfg.FolderName == "" {
 		cfg.FolderName = "SantralC"
 	}
-	return &Drive{cfg: cfg, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}}
+	bulk := http.DefaultTransport.(*http.Transport).Clone()
+	bulk.ResponseHeaderTimeout = 2 * time.Minute
+	return &Drive{cfg: cfg, ring: ring, db: db, http: &http.Client{Timeout: 60 * time.Second}, bulk: &http.Client{Transport: bulk}}
 }
 
 // DriveSealPurpose is the keyring label of the stored Drive refresh token.
@@ -306,6 +313,10 @@ func (d *Drive) token(ctx context.Context) (string, error) {
 }
 
 func (d *Drive) do(ctx context.Context, method, endpoint string, body io.Reader, headers map[string]string) (*http.Response, error) {
+	return d.doWith(ctx, d.http, method, endpoint, body, headers)
+}
+
+func (d *Drive) doWith(ctx context.Context, client *http.Client, method, endpoint string, body io.Reader, headers map[string]string) (*http.Response, error) {
 	tok, err := d.token(ctx)
 	if err != nil {
 		return nil, err
@@ -318,7 +329,7 @@ func (d *Drive) do(ctx context.Context, method, endpoint string, body io.Reader,
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := d.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Drive'a ulaşılamadı: %w", err) //nolint:staticcheck,revive // starts with a proper noun
 	}
@@ -442,7 +453,7 @@ func (d *Drive) Put(ctx context.Context, folder, name, mime string, data []byte)
 		return "", err
 	}
 	req.Header.Set("Content-Type", mime)
-	resp, err := d.http.Do(req)
+	resp, err := d.bulk.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -487,7 +498,7 @@ func (d *Drive) Open(ctx context.Context, id, rangeHeader string) (*http.Respons
 	if rangeHeader != "" {
 		headers["Range"] = rangeHeader
 	}
-	resp, err := d.do(ctx, http.MethodGet, driveAPI+"/files/"+url.PathEscape(id)+"?alt=media", nil, headers)
+	resp, err := d.doWith(ctx, d.bulk, http.MethodGet, driveAPI+"/files/"+url.PathEscape(id)+"?alt=media", nil, headers)
 	if err != nil {
 		return nil, err
 	}

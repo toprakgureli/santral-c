@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,6 +52,9 @@ type Rooms interface {
 	Push(ids []uint, event any)
 }
 
+// istanbul is the panel's time zone (UTC+3, no daylight saving).
+var istanbul = time.FixedZone("+03", 3*3600)
+
 // Service is the games engine.
 type Service struct {
 	repo  *Repository
@@ -61,12 +63,11 @@ type Service struct {
 
 	mu   sync.Mutex
 	live map[uint]*Match
-	rnd  *rand.Rand
 }
 
 // NewService builds the engine and warms it with unfinished matches.
 func NewService(repo *Repository, users IActorResolver, rooms Rooms) *Service {
-	s := &Service{repo: repo, users: users, rooms: rooms, live: map[uint]*Match{}, rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
+	s := &Service{repo: repo, users: users, rooms: rooms, live: map[uint]*Match{}}
 	return s
 }
 
@@ -1261,8 +1262,9 @@ func (s *Service) Leaderboard(ctx context.Context, actorID uint, period, kind st
 	}
 	since := time.Time{}
 	if period != "all" {
-		now := time.Now()
-		since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		// The month starts at midnight in Istanbul, whatever the server's zone.
+		now := time.Now().In(istanbul)
+		since = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, istanbul)
 	}
 	rows, err := s.repo.Leaderboard(ctx, since, kind)
 	if err != nil {

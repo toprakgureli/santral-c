@@ -31,7 +31,7 @@ func TestHockeyNeverWedges(t *testing.T) {
 
 func runHockeyChaos(t *testing.T, seed int64) {
 	k := &hockeyKind{}
-	s := &Service{rooms: quietRooms{}, live: map[uint]*Match{}, rnd: rand.New(rand.NewSource(7))}
+	s := &Service{rooms: quietRooms{}, live: map[uint]*Match{}}
 	m := &Match{G: &models.Game{ID: 1, Kind: "hockey", Status: statusPlaying, Winners: "[]"}, Kind: k, Config: Config{Rounds: 1000}, Paused: map[uint]bool{},
 		Players: []Player{{UserID: 1, Name: "A"}, {UserID: 2, Name: "B"}}, Data: k.NewState()}
 	if err := k.Start(context.Background(), m, s); err != nil {

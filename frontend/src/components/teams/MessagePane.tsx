@@ -26,6 +26,7 @@ import { previewLabel } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import { useTeams } from "@/teams/TeamsContext";
 import { clockTime, dayKey, dayName, isToday, numericDateTime, shortDateTime } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🔥", "✅"];
 const ALL = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "✅", "👏", "🎉", "👀", "💯"];
@@ -615,9 +616,10 @@ function MessageInfo({ message, group, onClose }: { message: TeamsMessage; group
 
 // ReactionPeople: who gave one emoji, opened by right-clicking the chip.
 function ReactionPeople({ x, y, emoji, people, selfId, onPerson, onClose }: { x: number; y: number; emoji: string; people: TeamsPerson[]; selfId: number; onPerson: (p: TeamsPerson, x: number, y: number) => void; onClose: () => void }) {
+  const isTop = useTopmost(true);
   useEffect(() => {
     const close = () => onClose();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     const t = window.setTimeout(() => {
       window.addEventListener("mousedown", close);
       window.addEventListener("keydown", onKey);

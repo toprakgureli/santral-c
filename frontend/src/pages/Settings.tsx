@@ -185,7 +185,7 @@ export function Settings() {
         </>
       )}
 
-      {!canManage && !canSeeLogs && (
+      {!canManage && !canSeeLogs && !canBreakLimit && !canGames && (
         <Card title="Sistem Ayarları" icon={SlidersHorizontal}>
           <EmptyState title="Bu sayfa için yetkin yok" />
         </Card>
@@ -464,7 +464,9 @@ function DriveCard() {
     if (window.location.search.includes("drive=")) window.history.replaceState(null, "", window.location.pathname);
   }, [load]);
 
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const disconnect = async () => {
+    setConfirmDisconnect(false);
     setBusy(true);
     setError(null);
     try {
@@ -539,10 +541,19 @@ function DriveCard() {
             </Button>
           )}
           {status?.connected && (
-            <Button variant="secondary" onClick={() => void disconnect()} disabled={busy} className="h-9">Bağlantıyı kes</Button>
+            <Button variant="secondary" onClick={() => setConfirmDisconnect(true)} disabled={busy} className="h-9">Bağlantıyı kes</Button>
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDisconnect}
+        title="Drive bağlantısı kesilsin mi?"
+        description="Bağlantı kesilince Teams ve WhatsApp yeni dosya yükleyemez. Eski dosyalar Drive'da kalır; hesabı yeniden bağlayınca devam eder."
+        confirmLabel="Bağlantıyı kes"
+        tone="warning"
+        onConfirm={() => void disconnect()}
+        onCancel={() => setConfirmDisconnect(false)}
+      />
     </Card>
   );
 }

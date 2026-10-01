@@ -63,6 +63,8 @@ type Service struct {
 
 	wakeWebhook chan struct{}
 	wakeOutbox  chan struct{}
+	// wakeInbound tells a follow-up worker that a message's work is waiting.
+	wakeInbound chan struct{}
 
 	mu        sync.Mutex
 	viewers   map[uint]*viewer
@@ -86,6 +88,7 @@ func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, audit
 		secret:      "wa:" + secret,
 		wakeWebhook: make(chan struct{}, 1),
 		wakeOutbox:  make(chan struct{}, 1),
+		wakeInbound: make(chan struct{}, inboundWorkers),
 		folders:     map[uint]string{},
 		metaFiles:   map[string]metaFile{},
 	}
@@ -96,6 +99,10 @@ func (s *Service) Start(ctx context.Context, g *safe.Group) {
 	g.Loop(ctx, "whatsapp webhook worker", s.webhookWorker)
 	g.Loop(ctx, "whatsapp outbox worker", s.outboxWorker)
 	g.Loop(ctx, "whatsapp clock", s.clock)
+	for i := 0; i < inboundWorkers; i++ {
+		g.Loop(ctx, "whatsapp follow-up worker", s.inboundWorker)
+	}
+	g.Loop(ctx, "whatsapp media", s.mediaLoop)
 }
 
 func wake(ch chan struct{}) {
@@ -169,6 +176,55 @@ func (v *viewer) seesTicket(t *models.WATicket, participants map[uint]bool) bool
 	}
 	return false
 }
+
+// visibleTickets is seesTicket as SQL: the ids of the tickets the viewer
+// sees, for narrowing a query before its LIMIT, so a person with a narrow
+// view still gets a full page of what they may see.
+func (v *viewer) visibleTickets() (string, []any) {
+	if !v.can(enums.WAView) {
+		return "SELECT id FROM wa_tickets WHERE false", nil
+	}
+	var where []string
+	var args []any
+	if !v.can(enums.WAViewAll) {
+		chans := make([]uint, 0, len(v.channels))
+		for id := range v.channels {
+			chans = append(chans, id)
+		}
+		if len(chans) == 0 {
+			return "SELECT id FROM wa_tickets WHERE false", nil
+		}
+		where = append(where, "t.channel_id IN ?")
+		args = append(args, chans)
+		uid := v.user.ID
+		reach := []string{"t.owner_id = ?", "EXISTS (SELECT 1 FROM wa_ticket_participants p WHERE p.ticket_id = t.id AND p.user_id = ?)"}
+		args = append(args, uid, uid)
+		if v.can(enums.WAViewTeam) && len(v.teams) > 0 {
+			teams := make([]uint, 0, len(v.teams))
+			for id := range v.teams {
+				teams = append(teams, id)
+			}
+			reach = append(reach, "t.team_id IN ?")
+			args = append(args, teams)
+		}
+		if v.can(enums.WAPool) {
+			reach = append(reach, "(t.status NOT IN ('resolved','bot') AND t.owner_id IS NULL)")
+		}
+		if v.can(enums.WAWaiting) {
+			reach = append(reach, "(t.waiting_listed_at IS NOT NULL AND t.status <> 'resolved')")
+		}
+		where = append(where, "("+strings.Join(reach, " OR ")+")")
+	}
+	q := "SELECT t.id FROM wa_tickets t"
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	return q, args
+}
+
+// likeEscape makes typed text match itself in a LIKE pattern: % and _
+// are not wildcards there.
+var likeEscape = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
 
 // loadViewers reads everyone who may use the module.
 func (s *Service) loadViewers(ctx context.Context) (map[uint]*viewer, error) {
@@ -263,6 +319,11 @@ func (s *Service) require(ctx context.Context, userID uint, p enums.Permission, 
 	u, err := s.users.GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	// Everything in the module starts from using WhatsApp at all; the
+	// panel guards its WhatsApp pages the same way.
+	if !u.Can(enums.WAView) {
+		return nil, errs.Forbidden("WhatsApp'ı kullanma yetkiniz yok.")
 	}
 	if !u.Can(p) {
 		return nil, errs.Forbidden(msg)

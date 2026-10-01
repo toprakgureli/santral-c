@@ -24,7 +24,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group := g.Group("/roles", r.guard)
 	view, manage := r.need(enums.RoleView), r.need(enums.RoleManage)
 	group.Get("/permissions", view, r.handler.Permissions) // before /:id so it is not shadowed
-	group.Get("/", view, r.handler.List)
+	// Whoever may give roles needs to see them to choose one.
+	group.Get("/", r.need(enums.RoleView, enums.RoleAssign), r.handler.List)
 	group.Post("/", manage, r.handler.Create)
 	group.Put("/:id", manage, r.handler.Update)
 	group.Delete("/:id", manage, r.handler.Delete)

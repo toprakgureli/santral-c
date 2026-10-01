@@ -14,6 +14,23 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | undefined>(undefined);
 
+// openTabs opens the channel the panel's tabs share, where available.
+function openTabs(): BroadcastChannel | null {
+  try {
+    return typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("santral-auth");
+  } catch {
+    return null;
+  }
+}
+
+// tellTabs tells the other tabs that this browser signed out.
+function tellTabs() {
+  const channel = openTabs();
+  if (!channel) return;
+  channel.postMessage("signed-out");
+  channel.close();
+}
+
 // How often an open panel re-reads the signed-in user, so a role change shows
 // up and an ended session is noticed even while nothing else is requested.
 const RECHECK_MS = 60_000;
@@ -39,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearUserStorage();
       setUser(null);
+      tellTabs();
     }
   }, []);
 
@@ -55,7 +73,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
     };
     window.addEventListener(SESSION_ENDED, ended);
-    return () => window.removeEventListener(SESSION_ENDED, ended);
+    // Signing out in one tab signs out the others at once, so a hidden tab
+    // does not keep the phone ringing.
+    const channel = openTabs();
+    if (channel) channel.onmessage = (e) => e.data === "signed-out" && ended();
+    return () => {
+      window.removeEventListener(SESSION_ENDED, ended);
+      channel?.close();
+    };
   }, []);
 
   // While signed in, re-read the user now and then and whenever the tab comes

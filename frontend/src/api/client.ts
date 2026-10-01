@@ -54,6 +54,15 @@ export class ApiError extends Error {
 // the refresh token expired). AuthContext listens and returns to sign-in.
 export const SESSION_ENDED = "santral:session-ended";
 
+// SipSyncJob is the background pull of every extension's SIP password.
+export interface SipSyncJob {
+  running: boolean;
+  total: number;
+  done: number;
+  synced: number;
+  failures: { extension: string; reason: string }[];
+}
+
 // ensureSession renews the session if it can. Live streams call it after
 // their connection drops: "renewed" means reconnect now, "ended" means the
 // sign-in screen is showing, "unknown" means try again a little later.
@@ -345,11 +354,8 @@ export const api = {
     request<User>("/users/me/whatsapp-template", { method: "PUT", body: JSON.stringify(body) }),
   syncUserSip: (id: number, extension: string) =>
     request<void>(`/users/${id}/sip/sync`, { method: "POST", body: JSON.stringify({ extension }) }),
-  syncAllSip: () =>
-    request<{ synced: number; failed: number; failedExtensions?: string[]; failures?: { extension: string; reason: string }[] }>(
-      "/pbx/sip/sync-all",
-      { method: "POST" },
-    ),
+  syncAllSip: () => request<SipSyncJob>("/pbx/sip/sync-all", { method: "POST" }),
+  syncAllSipStatus: () => request<SipSyncJob>("/pbx/sip/sync-all"),
 
   // Roles & permissions
   listRoles: () => request<{ items: Role[] }>("/roles").then((r) => r.items),

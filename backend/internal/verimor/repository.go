@@ -66,6 +66,11 @@ func (r *Repository) GetPresence(ctx context.Context, userID uint) (string, time
 // RecordTransition closes the agent's open presence stretch and opens a new one.
 func (r *Repository) RecordTransition(ctx context.Context, userID uint, state string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Two changes for the same agent at once take turns, so the second
+		// does not find a stretch the first just opened.
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?, ?)", presenceLock, int32(userID)).Error; err != nil {
+			return fmt.Errorf("presence could not be locked: %w", err)
+		}
 		now := time.Now()
 		if err := tx.Model(&models.PresenceEvent{}).
 			Where("user_id = ? AND ended_at IS NULL", userID).
@@ -101,8 +106,17 @@ func (r *Repository) EnsureOpenEvent(ctx context.Context, userID uint, state str
 	if count > 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).Create(&models.PresenceEvent{UserID: userID, State: state, StartedAt: time.Now()}).Error
+	// Opened only if nothing opened one in the meantime.
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:     []clause.Column{{Name: "user_id"}},
+		TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "ended_at IS NULL"}}},
+		DoNothing:   true,
+	}).Create(&models.PresenceEvent{UserID: userID, State: state, StartedAt: time.Now()}).Error
 }
+
+// presenceLock names the agent presence locks among PostgreSQL advisory
+// locks.
+const presenceLock = 7310
 
 // OpenEventStartedAt returns when the agent's current (open) presence stretch
 // began, so the panel's "since" timer is stable across page navigation.

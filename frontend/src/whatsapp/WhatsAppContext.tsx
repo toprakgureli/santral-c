@@ -140,9 +140,14 @@ export function WhatsAppProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const r = await waApi.conversations(version.current);
-      apply(r.items, r.hidden);
-      version.current = Math.max(version.current, r.version);
+      // One answer carries at most 1000 changes; after a long sleep there
+      // may be more, so keep asking until the list is caught up.
+      for (let round = 0; round < 20; round++) {
+        const r = await waApi.conversations(version.current);
+        apply(r.items, r.hidden);
+        version.current = Math.max(version.current, r.version);
+        if (r.items.length + r.hidden.length < 1000) break;
+      }
     } catch {
       // try again later
     }

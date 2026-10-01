@@ -160,6 +160,9 @@ export interface WASettings {
   hours: { enabled: boolean; days: WADayOpen[]; holidays: string[] };
   survey: { mode: "off" | "tally" | "native"; url: string; text: string; template: string; templateLang: string; alertBelow: number; repeatHours: number };
   botTimeoutMinutes: number;
+  // A customer who writes again within this many minutes of their chat being
+  // resolved goes straight back to the agent who had it; 0 turns it off.
+  returnMinutes: number;
   humanKeywords: string[];
   optOutKeywords: string[];
   optOutReply: string;

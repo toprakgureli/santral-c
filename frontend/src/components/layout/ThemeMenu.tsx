@@ -6,18 +6,20 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Palette } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
+import { useTopmost } from "@/components/ui/windowStack";
 
 export default function ThemeMenu({ align = "right" }: { align?: "left" | "right" }) {
   const { theme, themes, setTheme, info } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  const isTop = useTopmost(open);
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && isTop() && setOpen(false);
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {

@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import type { TeamsAttachment } from "@/api/types";
 import { attachmentUrl, formatSize } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
+import { useTopmost } from "@/components/ui/windowStack";
 
 export default function Lightbox({ items, index, onIndex, onClose }: { items: TeamsAttachment[]; index: number; onIndex: (i: number) => void; onClose: () => void }) {
   const [zoom, setZoom] = useState(false);
@@ -15,8 +16,10 @@ export default function Lightbox({ items, index, onIndex, onClose }: { items: Te
 
   useEffect(() => setZoom(false), [index]);
 
+  const isTop = useTopmost(true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!isTop()) return;
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
       else if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);

@@ -32,6 +32,9 @@ export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: U
   const self = editing && user?.id === me?.id;
   // Nobody changes their own roles; the server refuses it as well.
   const canAssign = can(me, "role.assign") && !self;
+  // A line is never bound to oneself here (it would hand over its password
+  // and call history); only the owner account may.
+  const lockedSip = self && !me?.roles.includes("invisible_admin");
   const canDeactivate = can(me, "user.deactivate");
 
   const [form, setForm] = useState({
@@ -253,18 +256,18 @@ export default function UserForm({ user, roles, onClose, onSaved, onHandoff }: U
 
             <FieldGroup label="SIP Hesabı">
               <div className="grid gap-2 sm:grid-cols-[7rem_1fr]">
-                <Input value={form.sipExtension} maxLength={LIMITS.sipExtension} onChange={update("sipExtension")} placeholder="Dahili" inputMode="numeric" />
-                <PasswordField autoComplete="off" value={form.sipPassword} onChange={(v) => { setForm((prev) => ({ ...prev, sipPassword: v })); setError(null); }} placeholder="SIP şifresi (elle girilecekse)" />
+                <Input value={form.sipExtension} maxLength={LIMITS.sipExtension} onChange={update("sipExtension")} placeholder="Dahili" inputMode="numeric" disabled={lockedSip} />
+                <PasswordField autoComplete="off" value={form.sipPassword} onChange={(v) => { setForm((prev) => ({ ...prev, sipPassword: v })); setError(null); }} placeholder="SIP şifresi (elle girilecekse)" disabled={lockedSip} />
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={pullSip} disabled={busy || !form.sipExtension.trim()}>
+                <Button variant="secondary" onClick={pullSip} disabled={lockedSip || busy || !form.sipExtension.trim()}>
                   Verimor'dan çek
                 </Button>
-                <Button variant="secondary" onClick={saveSip} disabled={busy || !form.sipExtension.trim() || !form.sipPassword}>
+                <Button variant="secondary" onClick={saveSip} disabled={lockedSip || busy || !form.sipExtension.trim() || !form.sipPassword}>
                   Elle kaydet
                 </Button>
               </div>
-              <FieldHint>Verimor'dan çekmek için dahilinin OİM'de bir personele bağlı olması gerekir.</FieldHint>
+              <FieldHint>{lockedSip ? "Kendi dahilini değiştiremezsin; başka bir yöneticiden iste." : "Verimor'dan çekmek için dahilinin OİM'de bir personele bağlı olması gerekir."}</FieldHint>
             </FieldGroup>
 
             <FieldGroup label="Şifre Sıfırla">

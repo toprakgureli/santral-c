@@ -18,6 +18,7 @@ import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WARating, WARatingFilter, WARatings } from "@/whatsapp/types";
 import { prettyPhone } from "@/whatsapp/util";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const SCORE_TONE = ["", "bg-destructive/12 text-destructive", "bg-destructive/10 text-destructive", "bg-warning/14 text-warning", "bg-success/12 text-success", "bg-success/15 text-success"];
 const SCORE_BAR = ["", "bg-destructive", "bg-destructive/70", "bg-warning", "bg-success/70", "bg-success"];
@@ -238,8 +239,9 @@ function Written({ r, compact }: { r: WARating; compact?: boolean }) {
 // RatingDetail is one survey answer on its own: every question with its
 // score, what the customer wrote, and who and where it was about.
 function RatingDetail({ r, onClose }: { r: WARating; onClose: () => void }) {
+  const isTop = useTopmost(true);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [onClose]);

@@ -87,6 +87,15 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 			return
 		}
 	}
+	// The run is written before the rule acts: the cooldown and the timed
+	// rules count on it, so a rule whose run cannot be stored does not act,
+	// instead of acting again and again.
+	var runID uint
+	if err := s.db.WithContext(ctx).Raw("INSERT INTO wa_automation_runs (automation_id, contact_id, ticket_id, ok, detail) VALUES (?, ?, ?, true, '') RETURNING id",
+		r.ID, conv.ContactID, ticket.ID).Scan(&runID).Error; err != nil {
+		slog.WarnContext(ctx, "whatsapp rule run could not be stored; the rule did not act", "rule", r.ID, "error", err)
+		return
+	}
 	ok, detail := true, ""
 	for _, a := range acts {
 		if err := s.runAction(ctx, ch, r, a, conv, ticket); err != nil {
@@ -94,7 +103,9 @@ func (s *Service) runRule(ctx context.Context, ch *models.WAChannel, r *models.W
 			slog.WarnContext(ctx, "whatsapp rule action failed", "rule", r.ID, "action", a.Kind, "error", err)
 		}
 	}
-	warnDB(ctx, s.db.WithContext(ctx).Exec("INSERT INTO wa_automation_runs (automation_id, contact_id, ticket_id, ok, detail) VALUES (?, ?, ?, ?, ?)", r.ID, conv.ContactID, ticket.ID, ok, detail).Error)
+	if !ok {
+		warnDB(ctx, s.db.WithContext(ctx).Exec("UPDATE wa_automation_runs SET ok = false, detail = ? WHERE id = ?", detail, runID).Error)
+	}
 }
 
 func (s *Service) conditionsHold(ctx context.Context, ch *models.WAChannel, conds []RuleCondition, ticket *models.WATicket, msg *models.WAMessage) bool {

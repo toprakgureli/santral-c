@@ -6,11 +6,12 @@ import { Card, EmptyState } from "@/components/ui";
 import { allows } from "@/lib/menu";
 
 // RequirePermission shows a page only to someone who holds one of the
-// permissions it needs. Anyone else, for example after opening a saved
-// link, gets a clear notice instead of an empty or broken page.
-export default function RequirePermission({ need, children }: { need?: string | string[]; children: ReactNode }) {
+// permissions it needs, and the base permission of its area when it has
+// one. Anyone else, for example after opening a saved link, gets a clear
+// notice instead of an empty or broken page.
+export default function RequirePermission({ need, base, children }: { need?: string | string[]; base?: string; children: ReactNode }) {
   const { can } = useAuth();
-  if (allows(can, need)) return <>{children}</>;
+  if ((!base || can(base)) && allows(can, need)) return <>{children}</>;
   return (
     <Card>
       <EmptyState

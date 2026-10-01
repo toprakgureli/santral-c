@@ -54,7 +54,7 @@ func (s *Service) List(ctx context.Context, actorID uint) ([]responses.Role, err
 	if err != nil {
 		return nil, err
 	}
-	if !actor.Can(enums.RoleView) {
+	if !actor.Can(enums.RoleView) && !actor.Can(enums.RoleAssign) {
 		return nil, errs.Forbidden("Bu işlem için yetkiniz yok.")
 	}
 

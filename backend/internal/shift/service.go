@@ -173,8 +173,12 @@ func (s *Service) sweep(ctx context.Context) {
 }
 
 func (s *Service) close(ctx context.Context, sh *models.Shift, at time.Time, by, ip string) error {
-	if err := s.repo.End(ctx, sh.ID, at, by); err != nil {
+	closed, err := s.repo.End(ctx, sh.ID, at, by)
+	if err != nil {
 		return err
+	}
+	if !closed {
+		return nil // someone else closed it first, and told everyone
 	}
 	if s.presence != nil {
 		s.presence.ShiftEnded(ctx, sh.UserID)

@@ -139,6 +139,7 @@ export function normalizeSettings(raw: WASettings): WASettings {
     hours: { enabled: r.hours?.enabled ?? false, days: Array.from({ length: 7 }, (_, i) => r.hours?.days?.[i] ?? day(i)), holidays: r.hours?.holidays ?? [] },
     survey: { mode: "off", url: "", text: "", template: "", templateLang: "", alertBelow: 0, repeatHours: 24, ...r.survey },
     botTimeoutMinutes: (r.botTimeoutMinutes as number | undefined) ?? 30,
+    returnMinutes: (r.returnMinutes as number | undefined) ?? 0,
     humanKeywords: (r.humanKeywords as string[] | undefined) ?? [],
     optOutKeywords: (r.optOutKeywords as string[] | undefined) ?? [],
     optOutReply: (r.optOutReply as string | undefined) ?? "",

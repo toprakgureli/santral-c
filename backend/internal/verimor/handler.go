@@ -97,22 +97,31 @@ func (h *Handler) SyncCredentials(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// SyncAllCredentials pulls SIP passwords from Verimor for every user that has an
-// extension assigned.
+// SyncAllCredentials starts pulling SIP passwords from Verimor for every user
+// that has an extension, and returns how far it is.
 func (h *Handler) SyncAllCredentials(c *fiber.Ctx) error {
 	id, err := actor(c)
 	if err != nil {
 		return err
 	}
-	ok, failed, err := h.service.SyncAllSIP(c.UserContext(), id, c.IP())
+	job, err := h.service.StartSyncAllSIP(c.UserContext(), id, c.IP())
 	if err != nil {
 		return err
 	}
-	exts := make([]string, len(failed))
-	for i, f := range failed {
-		exts[i] = f.Extension
+	return c.Status(fiber.StatusAccepted).JSON(job)
+}
+
+// SyncAllStatus tells how far the pull of SIP passwords is.
+func (h *Handler) SyncAllStatus(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
 	}
-	return c.JSON(fiber.Map{"synced": ok, "failed": len(failed), "failedExtensions": exts, "failures": failed})
+	job, err := h.service.SyncAllSIPStatus(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(job)
 }
 
 // Calls returns a page of call records.

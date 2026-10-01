@@ -29,7 +29,6 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
   const [setup, setSetup] = useState<WAChannel | null>(null);
   const [people, setPeople] = useState<WAChannel | null>(null);
   const [del, setDel] = useState<WAChannel | null>(null);
-  const [purge, setPurge] = useState<WAChannel | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [check, setCheck] = useState<Record<number, WAChannelCheck | "busy">>({});
@@ -82,9 +81,7 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
                       {manage && <Chip onClick={() => void test(c)} tip="Meta'ya bağlanıp bilgileri kontrol et">{ck === "busy" ? "Deneniyor..." : "Bağlantıyı test et"}</Chip>}
                       {members && <IconChipBtn tip="Bu numarada kim çalışır" onClick={() => setPeople(c)}><Users className="size-3.5" /><span className="text-[0.65rem] tabular-nums">{c.memberIds.length}</span></IconChipBtn>}
                       {manage && <IconChipBtn tip="Düzenle" onClick={() => setEdit(c)}><Pencil className="size-3.5" /></IconChipBtn>}
-                      {manage && (c.active
-                        ? <IconChipBtn tip="Kaldır" danger onClick={() => setDel(c)}><Trash2 className="size-3.5" /></IconChipBtn>
-                        : <IconChipBtn tip="Geçmişiyle birlikte tamamen sil" danger onClick={() => setPurge(c)}><Trash2 className="size-3.5" /></IconChipBtn>)}
+                      {manage && c.active && <IconChipBtn tip="Kaldır" danger onClick={() => setDel(c)}><Trash2 className="size-3.5" /></IconChipBtn>}
                     </>
                   }
                 />
@@ -120,20 +117,8 @@ export default function ChannelsTab({ channels, reload }: { channels: WAChannel[
           setBusy(true);
           setError(null);
           waApi.removeChannel(del.id)
-            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı, geçmişi duruyor. Tamamen silmek için yeniden çöp kutusuna basın.` : `${del.name} silindi.`); setDel(null); reload(); })
+            .then((r) => { setNotice(r.deactivated ? `${del.name} kapatıldı, geçmişi duruyor.` : `${del.name} silindi.`); setDel(null); reload(); })
             .catch((e) => setError(e instanceof ApiError ? e.message : "Kaldırılamadı."))
-            .finally(() => setBusy(false));
-        }} />
-      <ConfirmDialog open={!!purge} title="Numara geçmişiyle birlikte silinsin mi?" busy={busy} confirmText={purge?.name}
-        description={`${purge?.name} ve üzerindeki bütün sohbetler, mesajlar ve kayıtlar kalıcı olarak silinir. Bu geri alınamaz.`}
-        confirmLabel="Tamamen sil" onCancel={() => setPurge(null)}
-        onConfirm={() => {
-          if (!purge) return;
-          setBusy(true);
-          setError(null);
-          waApi.purgeChannel(purge.id, purge.name)
-            .then(() => { setNotice(`${purge.name} geçmişiyle birlikte silindi.`); setPurge(null); reload(); })
-            .catch((e) => setError(e instanceof ApiError ? e.message : "Silinemedi."))
             .finally(() => setBusy(false));
         }} />
     </Card>

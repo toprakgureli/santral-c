@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Inviter, Invitation, Registerer, SessionState, UserAgent, type Session } from "sip.js";
+import { Inviter, Invitation, Registerer, RegistererState, SessionState, UserAgent, type Session } from "sip.js";
 import { api, ApiError } from "../api/client";
 import { beaconCallEnd, flushPendingCallLogs, sendCallLog } from "./callLogQueue";
 import type { SipCredentials } from "../api/types";
@@ -310,6 +310,36 @@ export function useSoftphone(enabled: boolean): Phone {
     let cancelled = false;
     let ua: UserAgent | null = null;
     let registerer: Registerer | null = null;
+    // Reconnecting: a dropped connection (Wi-Fi, sleep, the phone system
+    // restarting) is retried with a growing pause, and the screen says
+    // "connecting" instead of "ready" until the line is registered again,
+    // so an agent never sits by a phone that cannot ring.
+    let retry = 0;
+    let retryTimer = 0;
+    let recovering = false;
+    const idle = () => !sessionRef.current;
+    const recover = async () => {
+      if (cancelled || recovering || !ua) return;
+      recovering = true;
+      if (idle()) setStatus("connecting");
+      try {
+        if (!ua.isConnected()) await ua.reconnect();
+        if (cancelled) return;
+        if (registerer && registerer.state !== RegistererState.Registered) await registerer.register();
+        retry = 0;
+      } catch {
+        if (cancelled) return;
+        retry = Math.min(retry + 1, 5);
+        window.clearTimeout(retryTimer);
+        retryTimer = window.setTimeout(() => void recover(), 1000 * 2 ** retry);
+      } finally {
+        recovering = false;
+      }
+    };
+    const onOnline = () => void recover();
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && ua && (!ua.isConnected() || registerer?.state !== RegistererState.Registered)) void recover();
+    };
     reregisterRef.current = async () => {
       if (!registerer) return;
       try {
@@ -354,6 +384,12 @@ export function useSoftphone(enabled: boolean): Phone {
             peerConnectionConfiguration: { iceServers: iceServers(creds) },
           },
           delegate: {
+            // An unexpected drop (an error) is recovered; a stop we asked
+            // for passes no error and is left alone.
+            onDisconnect: (error?: Error) => {
+              if (!error || cancelled) return;
+              void recover();
+            },
             onInvite: (invitation: Invitation) => {
               if (sessionRef.current) {
                 void invitation.reject();
@@ -385,6 +421,17 @@ export function useSoftphone(enabled: boolean): Phone {
           return;
         }
         registerer = new Registerer(ua);
+        registerer.stateChange.addListener((state) => {
+          if (cancelled) return;
+          if (state === RegistererState.Registered) {
+            retry = 0;
+            if (idle()) setStatus("registered");
+          } else if (state === RegistererState.Unregistered && uaRef.current) {
+            void recover();
+          }
+        });
+        window.addEventListener("online", onOnline);
+        document.addEventListener("visibilitychange", onVisible);
         await registerer.register();
         if (cancelled) {
           registerer.unregister().catch(() => undefined);
@@ -408,6 +455,9 @@ export function useSoftphone(enabled: boolean): Phone {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
       tones.stop();
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);

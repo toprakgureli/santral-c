@@ -67,6 +67,10 @@ type Service struct {
 
 	// recordings keeps recently played recordings for seeking.
 	recordings *recordingCache
+
+	// syncJob is the background pull of every extension's SIP password.
+	syncMu  sync.Mutex
+	syncJob SIPSyncJob
 }
 
 // snapshot is the last-good view the poller keeps warm.
@@ -467,51 +471,105 @@ type SIPSyncFailure struct {
 	Reason    string `json:"reason"`
 }
 
-// SyncAllSIP pulls the SIP password from Verimor for every user that has an
-// extension and stores it, returning how many succeeded and which extensions
-// failed with the reason, so a missing employee can be told apart from a
-// throttle or a changed webphone page.
-func (s *Service) SyncAllSIP(ctx context.Context, actorID uint, ip string) (int, []SIPSyncFailure, error) {
+// SIPSyncJob is the state of pulling every extension's SIP password from
+// the phone system. It runs in the background: each extension takes a few
+// seconds, longer than a request may stay open.
+type SIPSyncJob struct {
+	Running    bool             `json:"running"`
+	Total      int              `json:"total"`
+	Done       int              `json:"done"`
+	Synced     int              `json:"synced"`
+	Failures   []SIPSyncFailure `json:"failures"`
+	StartedAt  *time.Time       `json:"startedAt,omitempty"`
+	FinishedAt *time.Time       `json:"finishedAt,omitempty"`
+}
+
+// StartSyncAllSIP starts pulling the SIP password from Verimor for every user
+// that has an extension, unless a pull is already running, and returns its
+// state. The outcome is audited when it ends.
+func (s *Service) StartSyncAllSIP(ctx context.Context, actorID uint, ip string) (*SIPSyncJob, error) {
 	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
-		return 0, nil, err
+		return nil, err
+	}
+	s.syncMu.Lock()
+	if s.syncJob.Running {
+		job := s.syncJob.snapshot()
+		s.syncMu.Unlock()
+		return job, nil
 	}
 	users, err := s.repo.UsersWithExtension(ctx)
 	if err != nil {
-		return 0, nil, errs.Internal(err)
+		s.syncMu.Unlock()
+		return nil, errs.Internal(err)
 	}
-	ok := 0
-	failed := make([]SIPSyncFailure, 0)
+	now := time.Now()
+	s.syncJob = SIPSyncJob{Running: true, Total: len(users), Failures: []SIPSyncFailure{}, StartedAt: &now}
+	job := s.syncJob.snapshot()
+	s.syncMu.Unlock()
+
+	bg := context.WithoutCancel(ctx)
+	safe.Go(bg, "sip sync all", func() { s.syncAll(bg, actorID, ip, users) })
+	return job, nil
+}
+
+// SyncAllSIPStatus returns the state of the last pull.
+func (s *Service) SyncAllSIPStatus(ctx context.Context, actorID uint) (*SIPSyncJob, error) {
+	if _, err := s.authorizeAny(ctx, actorID, enums.UserUpdate, enums.AgentManage); err != nil {
+		return nil, err
+	}
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	return s.syncJob.snapshot(), nil
+}
+
+func (s *Service) syncAll(ctx context.Context, actorID uint, ip string, users []UserExtension) {
+	defer func() {
+		s.syncMu.Lock()
+		now := time.Now()
+		s.syncJob.Running, s.syncJob.FinishedAt = false, &now
+		synced, failed := s.syncJob.Synced, len(s.syncJob.Failures)
+		s.syncMu.Unlock()
+		s.audit.Record(ctx, audit.Entry{
+			ActorID: &actorID,
+			Action:  enums.AuditSIPSyncedAll,
+			IP:      ip,
+			Detail:  map[string]any{"synced": synced, "failed": failed},
+		})
+	}()
 	for i, u := range users {
 		// Each extension costs two API calls (token + page); space them out so a
 		// bulk sync does not trip the hosted rate limit and fail every extension.
-		if i > 0 {
-			if !sleepCtx(ctx, 1500*time.Millisecond) {
-				break
+		if i > 0 && !sleepCtx(ctx, 1500*time.Millisecond) {
+			return
+		}
+		reason := ""
+		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
+		switch {
+		case err != nil:
+			reason = err.Error()
+		default:
+			enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
+			if err != nil {
+				reason = "şifre şifrelenemedi"
+			} else if err := s.repo.SetSIP(ctx, u.ID, u.Extension, enc); err != nil {
+				reason = "kaydedilemedi"
 			}
 		}
-		pw, err := s.client.WebphoneSIP(ctx, s.cfg.WebphoneBase, u.Extension)
-		if err != nil {
-			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: err.Error()})
-			continue
+		s.syncMu.Lock()
+		s.syncJob.Done++
+		if reason == "" {
+			s.syncJob.Synced++
+		} else {
+			s.syncJob.Failures = append(s.syncJob.Failures, SIPSyncFailure{Extension: u.Extension, Reason: reason})
 		}
-		enc, err := crypt.Encrypt(s.cfg.SIPKey, pw)
-		if err != nil {
-			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: "şifre şifrelenemedi"})
-			continue
-		}
-		if err := s.repo.SetSIP(ctx, u.ID, u.Extension, enc); err != nil {
-			failed = append(failed, SIPSyncFailure{Extension: u.Extension, Reason: "kaydedilemedi"})
-			continue
-		}
-		ok++
+		s.syncMu.Unlock()
 	}
-	s.audit.Record(ctx, audit.Entry{
-		ActorID: &actorID,
-		Action:  enums.AuditSIPSyncedAll,
-		IP:      ip,
-		Detail:  map[string]any{"synced": ok, "failed": len(failed)},
-	})
-	return ok, failed, nil
+}
+
+func (j SIPSyncJob) snapshot() *SIPSyncJob {
+	out := j
+	out.Failures = append([]SIPSyncFailure{}, j.Failures...)
+	return &out
 }
 
 // Webphone is the embedded softphone descriptor for one agent.

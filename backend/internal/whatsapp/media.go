@@ -100,6 +100,10 @@ func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uin
 	}
 	cl, err := s.cloudFor(ch)
 	if err != nil {
+		// Marked, so the sweep moves on to newer files instead of trying
+		// this one again and again.
+		ref.Failed = "Cihazın erişim bilgisi okunamadığı için dosya alınamadı."
+		s.saveRef(ctx, msgID, ref)
 		return
 	}
 	var data []byte
@@ -111,7 +115,11 @@ func (s *Service) keepMedia(ctx context.Context, ch *models.WAChannel, msgID uin
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Duration(attempt+1) * 5 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(attempt+1) * 5 * time.Second):
+		}
 	}
 	if err != nil {
 		ref.Failed = "Dosya Meta'dan alınamadı."

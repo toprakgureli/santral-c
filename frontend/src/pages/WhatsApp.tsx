@@ -3,6 +3,7 @@
 // shows at a time.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PAGE_PERMISSIONS } from "@/lib/menu";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BarChart3, BellOff, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
@@ -136,7 +137,9 @@ export function WhatsApp() {
   };
   const togglePanel = () => setPanel((v) => !v);
 
-  const canSettings = canAny(user, ["whatsapp.channel_manage", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_read_receipts", "whatsapp.ai_manage", "whatsapp.call_survey_manage"]);
+  // The same list the settings page is guarded with, so the link and the
+  // page never disagree.
+  const canSettings = canAny(user, PAGE_PERMISSIONS.whatsappSettings);
 
   if (wa.loaded && channels.length === 0 && wa.conversations.length === 0) {
     return (

@@ -170,30 +170,40 @@ export function Users() {
 
 function SyncSipButton({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const live = useRef(true);
+  useEffect(() => () => { live.current = false; }, []);
+
+  // The pull runs on the server, a few seconds per extension; the page asks
+  // how far it is until it ends.
   async function run() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api.syncAllSip();
-      let fails = "";
-      if (r.failures?.length) {
-        fails = " · " + r.failures.map((f) => `${f.extension}: ${f.reason}`).join(" · ");
-      } else if (r.failedExtensions?.length) {
-        fails = ` (dahili ${r.failedExtensions.join(", ")})`;
+      let job = await api.syncAllSip();
+      while (job.running && live.current) {
+        setProgress(`${job.done}/${job.total}`);
+        await new Promise((r) => window.setTimeout(r, 2000));
+        job = await api.syncAllSipStatus();
       }
-      setMsg(`${r.synced} çekildi${r.failed ? ` · ${r.failed} başarısız${fails}` : ""}`);
+      if (!live.current) return;
+      const fails = job.failures.length ? " · " + job.failures.map((f) => `${f.extension}: ${f.reason}`).join(" · ") : "";
+      setMsg(`${job.synced} çekildi${job.failures.length ? ` · ${job.failures.length} başarısız${fails}` : ""}`);
       onDone();
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "Hata");
+      if (live.current) setMsg(e instanceof ApiError ? e.message : "Senkronizasyon başlatılamadı.");
     } finally {
-      setBusy(false);
+      if (live.current) {
+        setBusy(false);
+        setProgress(null);
+      }
     }
   }
   return (
     <span className="flex items-center gap-2">
       {msg && <span className="max-w-md text-xs text-muted-foreground">{msg}</span>}
-      <Button variant="secondary" onClick={run} disabled={busy}>{busy ? "Senkronize..." : "SIP Senkronize (Verimor)"}</Button>
+      <Button variant="secondary" onClick={run} disabled={busy}>{busy ? `Senkronize ediliyor${progress ? ` (${progress})` : "..."}` : "SIP Senkronize (Verimor)"}</Button>
     </span>
   );
 }

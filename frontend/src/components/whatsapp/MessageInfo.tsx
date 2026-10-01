@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { waApi } from "@/whatsapp/api";
 import type { WAMessage, WAReadInfo } from "@/whatsapp/types";
 import { clockTimeSeconds, dayName } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
@@ -23,9 +24,10 @@ export function MessageMenu({ m, x, y, onReply, onReact, onInfo, onClose }: { m:
     const r = el.getBoundingClientRect();
     setPos({ left: Math.max(8, Math.min(x, window.innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) });
   }, [x, y]);
+  const isTop = useTopmost(true);
   useEffect(() => {
     const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) onClose(); };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     const t = window.setTimeout(() => {
       window.addEventListener("mousedown", close);
       window.addEventListener("keydown", esc);
@@ -90,8 +92,9 @@ export function MessageInfo({ m: given, onClose }: { m: WAMessage; onClose: () =
     };
   }, [given]);
 
+  const isTop = useTopmost(true);
   useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [onClose]);

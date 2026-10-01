@@ -16,6 +16,7 @@ import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { inBucket, isWaiting, listTime, since, sortTime, waitShown, waitTip, type Bucket } from "@/whatsapp/util";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const CHIPS: { key: Bucket; label: string; tip: string }[] = [
   { key: "mine", label: "Benim", tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
@@ -297,9 +298,10 @@ function ConversationMenu({ c, x, y, onClose }: { c: WAConversation; x: number; 
     setPos({ left: Math.max(8, Math.min(x, window.innerWidth - r.width - 8)), top: Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) });
   }, [x, y, muteOpen]);
 
+  const isTop = useTopmost(true);
   useEffect(() => {
     const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) onClose(); };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     const t = window.setTimeout(() => {
       window.addEventListener("mousedown", close);
       window.addEventListener("keydown", esc);

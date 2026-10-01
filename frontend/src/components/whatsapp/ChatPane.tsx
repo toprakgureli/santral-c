@@ -24,6 +24,7 @@ import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } 
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { hm, isMine, mergeMessage, newClientId, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
 import { dayName, numericDateTime, sameDay } from "@/lib/time";
+import { useTopmost } from "@/components/ui/windowStack";
 
 const upsert = mergeMessage;
 
@@ -144,7 +145,8 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
       if (shown.current === from) setError(e instanceof ApiError ? e.message : "Eski mesajlar alınamadı.");
     } finally {
       paging.current = false;
-      setLoading(false);
+      // A chat opened meanwhile has its own spinner; leave it alone.
+      if (shown.current === from) setLoading(false);
     }
   };
 
@@ -522,9 +524,10 @@ function TextBtn({ icon: Icon, label, tip, onClick, busy, tone }: { icon: typeof
 
 function MoreMenu({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
+  const isTop = useTopmost(true);
   useEffect(() => {
     const close = (e: MouseEvent) => { if (!box.current?.parentElement?.contains(e.target as Node)) onClose(); };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("mousedown", close);
     window.addEventListener("keydown", esc);
     return () => {

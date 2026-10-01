@@ -1,7 +1,7 @@
 // WhatsAppCallbacks: customers who asked to be called back, from a chatbot
 // or a rule. Call them from here and mark the request done.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, MessageCircle, Phone, PhoneCall, RefreshCw } from "lucide-react";
 import { ApiError } from "@/api/client";
@@ -27,9 +27,16 @@ export function WhatsAppCallbacks() {
   const canCall = can(user, "call.originate") && phone.status === "registered";
   const now = Date.now();
 
+  // Only the latest request may fill the list.
+  const latest = useRef(0);
   const load = () => {
+    const id = ++latest.current;
     setLoading(true);
-    waApi.callbacks(all).then(setRows).catch((e) => setError(e instanceof ApiError ? e.message : "Yüklenemedi.")).finally(() => setLoading(false));
+    waApi
+      .callbacks(all)
+      .then((r) => id === latest.current && setRows(r))
+      .catch((e) => id === latest.current && setError(e instanceof ApiError ? e.message : "Yüklenemedi."))
+      .finally(() => id === latest.current && setLoading(false));
   };
   useEffect(load, [all]); // eslint-disable-line react-hooks/exhaustive-deps
   // A new request arrives on the live stream; refresh the list with it.
