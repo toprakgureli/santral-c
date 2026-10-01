@@ -53,6 +53,7 @@ var checkedInsideGroups = map[string]string{
 }
 
 var checkedInside = map[string]string{
+	"/api/v1/version":                "the running build, for every signed-in person; the panel compares it with its own",
 	"/api/v1/users/:id/avatar":       "a colleague's picture",
 	"/api/v1/escalations/categories": "the service asks for escalation.view or escalation.manage",
 	"/api/v1/escalations/list":       "the service asks for escalation.view, everyone's with escalation.list_all",
