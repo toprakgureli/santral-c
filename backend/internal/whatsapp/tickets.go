@@ -421,8 +421,20 @@ func (s *Service) Assign(ctx context.Context, actorID, conversationID uint, in A
 	return nil
 }
 
+// ResolveInput is what the panel knows when "Çöz" is pressed.
+type ResolveInput struct {
+	// SeenMessageID is the newest message the agent had on screen. Zero
+	// (an older panel) closes without that check.
+	SeenMessageID uint `json:"seenMessageId"`
+}
+
+// UnseenMessageText refuses to close a chat whose customer wrote something
+// the agent has not seen yet.
+const UnseenMessageText = "Müşteri az önce yeni bir mesaj yazdı. Sohbeti kapatmadan önce mesajı gör."
+
 // Resolve closes a ticket; the survey goes out if the device asks for one.
-func (s *Service) Resolve(ctx context.Context, actorID, conversationID uint) error {
+// A message the agent has not seen yet keeps it open.
+func (s *Service) Resolve(ctx context.Context, actorID, conversationID uint, in ResolveInput) error {
 	v, conv, ticket, err := s.reachable(ctx, actorID, conversationID)
 	if err != nil {
 		return err
@@ -433,13 +445,16 @@ func (s *Service) Resolve(ctx context.Context, actorID, conversationID uint) err
 	if ticket.Status == "resolved" {
 		return nil
 	}
-	if err := s.resolve(ctx, conv, ticket, actorID); err != nil {
-		return err
-	}
-	return nil
+	return s.resolveSeen(ctx, conv, ticket, actorID, in.SeenMessageID)
 }
 
+// resolve closes a ticket for a rule, a chatbot or a person, without
+// asking what they saw.
 func (s *Service) resolve(ctx context.Context, conv *models.WAConversation, ticket *models.WATicket, actorID uint) error {
+	return s.resolveSeen(ctx, conv, ticket, actorID, 0)
+}
+
+func (s *Service) resolveSeen(ctx context.Context, conv *models.WAConversation, ticket *models.WATicket, actorID, seenID uint) error {
 	before := s.audience(ctx, ticket)
 	var by *uint
 	if actorID > 0 {
@@ -447,9 +462,12 @@ func (s *Service) resolve(ctx context.Context, conv *models.WAConversation, tick
 	}
 	// Only the first of two people closing at once goes on, so the survey
 	// and the closing rules run once.
-	changed, err := s.repo.ResolveTicket(ctx, ticket.ID, by)
+	changed, unseen, err := s.repo.ResolveTicket(ctx, ticket.ID, by, seenID)
 	if err != nil {
 		return errs.Internal(err)
+	}
+	if unseen {
+		return errs.Conflict(UnseenMessageText, nil)
 	}
 	if changed == 0 {
 		return nil

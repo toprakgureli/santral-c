@@ -28,6 +28,15 @@ func (s *Service) MarkRead(ctx context.Context, actorID, conversationID, message
 	if messageID == 0 {
 		return nil
 	}
+	// The mark comes from the panel: it may only point at a message of this
+	// conversation. A larger number would hold the badge up for good.
+	messageID, err = s.repo.ReadableMessageID(ctx, conv.ID, messageID)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if messageID == 0 {
+		return nil
+	}
 	if err := s.repo.RecordRead(ctx, conversationID, actorID, messageID); err != nil {
 		return errs.Internal(err)
 	}

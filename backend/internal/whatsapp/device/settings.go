@@ -30,8 +30,11 @@ type Settings struct {
 	// Minutes of silence after which a customer's chatbot session ends.
 	BotTimeoutMinutes int `json:"botTimeoutMinutes"`
 	// ReturnMinutes: a customer who writes again within this many minutes
-	// of their chat being resolved goes straight back to the agent who had
-	// it, without the chatbot. 0 leaves every return to the chatbot.
+	// of their chat being resolved (counted to their message) goes straight
+	// back to the agent who had it, without the chatbot, when that agent is
+	// active, on shift and available. Otherwise, and always with 0, the
+	// chat is handed out afresh: the chatbot first if there is one, then
+	// whoever is available.
 	ReturnMinutes int `json:"returnMinutes"`
 	// Words that take the customer from the chatbot to a person.
 	HumanKeywords []string `json:"humanKeywords"`

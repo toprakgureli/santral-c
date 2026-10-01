@@ -119,12 +119,39 @@ func (s *Service) file(ctx context.Context, id uint) (*models.WAFile, error) {
 	return f, nil
 }
 
-// OpenFile streams an uploaded file for the panel's previews.
-func (s *Service) OpenFile(ctx context.Context, actorID, id uint, rangeHeader string) (*MediaStream, error) {
-	if _, err := s.require(ctx, actorID, enums.WAView, "WhatsApp'ı görme yetkin yok."); err != nil {
+// usableFile reads an uploaded file a person may open or send. Files are
+// kept for two uses: a chatbot's picture or document, and a template's
+// header picked while writing to a customer. So the person who uploaded a
+// file may use it, and those who work on chatbots may use the files a
+// chatbot uses. File numbers run in order; anyone else gets "not found",
+// so guessing them shows nothing.
+func (s *Service) usableFile(ctx context.Context, u *models.User, id uint) (*models.WAFile, error) {
+	f, err := s.file(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	f, err := s.file(ctx, id)
+	if f.CreatedBy != nil && *f.CreatedBy == u.ID {
+		return f, nil
+	}
+	if u.Can(enums.WABotManage) || u.Can(enums.WABotPublish) {
+		used, err := s.repo.FileInBot(ctx, f.ID)
+		if err != nil {
+			return nil, errs.Internal(err)
+		}
+		if used {
+			return f, nil
+		}
+	}
+	return nil, errs.NotFound("Dosya bulunamadı.")
+}
+
+// OpenFile streams an uploaded file for the panel's previews.
+func (s *Service) OpenFile(ctx context.Context, actorID, id uint, rangeHeader string) (*MediaStream, error) {
+	u, err := s.require(ctx, actorID, enums.WAView, "WhatsApp'ı görme yetkin yok.")
+	if err != nil {
+		return nil, err
+	}
+	f, err := s.usableFile(ctx, u, id)
 	if err != nil {
 		return nil, err
 	}

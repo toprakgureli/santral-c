@@ -118,6 +118,9 @@ type inboundResult struct {
 	// and who had it when the message came
 	resolvedAt     *time.Time
 	ownerAtMessage *uint
+	// the agent the customer came back to in time, who could not take the
+	// chat (off shift, on a break) so it is handed out afresh
+	busyOwner *uint
 }
 
 // optOutAsked reports whether a customer message asks to leave marketing
@@ -254,6 +257,24 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 			return err
 		}
 		res.ticket, res.created, res.reopened, res.resolvedAt = ticket, created, reopened, wasResolved
+		if reopened && ticket.OwnerID != nil {
+			// A returning customer stays with their former agent only when
+			// they came back soon enough and that agent can answer now;
+			// otherwise the chat is handed out afresh.
+			keep, err := keepsOwner(tx, ch, ticket, wasResolved, *at)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				if err := store.ReleaseOwner(tx, ticket.ID, *ticket.OwnerID); err != nil {
+					return err
+				}
+				if withinReturn(device.Parse(ch.Settings).ReturnMinutes, wasResolved, *at) {
+					res.busyOwner = ticket.OwnerID
+				}
+				ticket.OwnerID = nil
+			}
+		}
 		if err := store.SetMessageTicket(tx, msg.ID, ticket.ID); err != nil {
 			return err
 		}
@@ -285,9 +306,18 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 		s.publish(ctx, res.conv.ID, res.msg, nil)
 		return nil
 	}
+	if res.msg.Kind == "reaction" {
+		// A reaction is never a message of its own: the message it belongs
+		// to goes out again with its reactions.
+		s.publishReaction(ctx, res.conv.ID, res.msg)
+		return nil
+	}
 	// The message shows at once; what follows it runs in the follow-up
 	// workers, so receiving never waits for a chatbot or an outside system.
 	s.publish(ctx, res.conv.ID, res.msg, nil)
+	if res.busyOwner != nil {
+		s.event(ctx, nil, res.conv, res.ticket.ID, 0, "Müşteri sohbet kapandıktan kısa süre sonra yeniden yazdı. "+s.repo.UserName(ctx, *res.busyOwner)+" şu an müsait olmadığı için sohbet başka birine verilecek.")
+	}
 	wake(s.wakeInbound)
 	return nil
 }
@@ -296,10 +326,6 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 // None of it may lose the message, so failures are only logged.
 func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *inboundResult, steps *jobSteps) {
 	msg := res.msg
-	if msg.Kind == "reaction" {
-		steps.run(ctx, "reaction", func() { s.publishReaction(ctx, res.conv.ID, msg) })
-		return
-	}
 	if msg.Media != nil {
 		steps.run(ctx, "media", func() {
 			bg, id := context.WithoutCancel(ctx), msg.ID
@@ -356,7 +382,9 @@ func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *i
 	if ticket.Status == "bot" {
 		handled = true
 	}
-	if !handled || ticket.Status != "bot" {
+	// A chat an agent closed after reading this message is done: its rules
+	// for incoming messages no longer apply.
+	if (!handled || ticket.Status != "bot") && ticket.Status != "resolved" {
 		steps.run(ctx, "auto-in", func() {
 			s.runAutomations(ctx, ch, "message_in", res.conv, ticket, msg)
 			if set.Hours.Enabled && !set.Hours.Open(time.Now()) {
@@ -369,13 +397,44 @@ func (s *Service) afterInbound(ctx context.Context, ch *models.WAChannel, res *i
 }
 
 // returnsToAgent reports whether a reopened chat goes straight back to the
-// agent who had it: the device sets a return time, the chat was resolved
-// within it and it still has its agent.
+// agent who had it: the device sets a return time, the customer wrote
+// within it of the chat being resolved and the chat still has its agent;
+// keepsOwner already took it from one who could not answer.
 func (s *Service) returnsToAgent(set device.Settings, res *inboundResult) bool {
-	if !res.reopened || set.ReturnMinutes <= 0 || res.resolvedAt == nil || res.ticket.OwnerID == nil {
+	if !res.reopened || res.ticket.OwnerID == nil {
 		return false
 	}
-	return time.Since(*res.resolvedAt) <= time.Duration(set.ReturnMinutes)*time.Minute
+	return withinReturn(set.ReturnMinutes, res.resolvedAt, arrivedAt(res.msg))
+}
+
+// keepsOwner decides, while the customer's message is stored, whether a
+// chat it reopens stays with the agent who had it: only when the customer
+// wrote within the device's return time of the chat being resolved, and
+// that agent is placed on the device, active, on shift and available now.
+func keepsOwner(tx *gorm.DB, ch *models.WAChannel, t *models.WATicket, resolvedAt *time.Time, arrived time.Time) (bool, error) {
+	if t.OwnerID == nil || !withinReturn(device.Parse(ch.Settings).ReturnMinutes, resolvedAt, arrived) {
+		return false, nil
+	}
+	return store.AgentAvailable(tx, ch.ID, *t.OwnerID)
+}
+
+// withinReturn reports whether a customer who wrote at arrived came back
+// within the return time of their chat being resolved. The time is measured
+// to the message, not to when its follow-up work runs.
+func withinReturn(minutes int, resolvedAt *time.Time, arrived time.Time) bool {
+	if minutes <= 0 || resolvedAt == nil {
+		return false
+	}
+	return arrived.Sub(*resolvedAt) <= time.Duration(minutes)*time.Minute
+}
+
+// arrivedAt is when a customer's message was written: WhatsApp's time, or
+// when it was stored.
+func arrivedAt(m *models.WAMessage) time.Time {
+	if m.WATimestamp != nil {
+		return *m.WATimestamp
+	}
+	return m.CreatedAt
 }
 
 func sameOwner(a, b *uint) bool {
@@ -519,7 +578,9 @@ func (s *Service) publishReaction(ctx context.Context, conversationID uint, reac
 		warnDB(ctx, err)
 		target = t
 	}
-	if target == nil || target.ID == 0 {
+	// Only a message of the same conversation: a reaction must not show
+	// another customer's message to this conversation's people.
+	if target == nil || target.ID == 0 || target.ConversationID != conversationID {
 		s.publish(ctx, conversationID, nil, nil)
 		return
 	}

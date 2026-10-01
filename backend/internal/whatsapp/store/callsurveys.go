@@ -75,15 +75,37 @@ func (r *Repository) SetCallSurveyTexts(ctx context.Context, id uint, texts stri
 
 // ---------------------------------------------------------------- report
 
+// Devices narrows a report to the devices a person sees. All is set for
+// someone who sees every device; otherwise only IDs count, and none means
+// nothing is shown.
+type Devices struct {
+	All bool
+	IDs []uint
+}
+
+// clause is the condition on a table's device column and its argument.
+func (d Devices) clause(column string) (string, []any) {
+	if d.All {
+		return "", nil
+	}
+	ids := d.IDs
+	if len(ids) == 0 {
+		ids = []uint{0}
+	}
+	return " AND " + column + " IN ?", []any{ids}
+}
+
 // CallSurveyTotals counts surveys by outcome and averages their scores.
 type CallSurveyTotals struct {
 	Queued, Sent, Answered, Failed, Skipped int64
 	Average                                 float64
 }
 
-// CallSurveyTotals counts the surveys of calls made in a time range.
-func (r *Repository) CallSurveyTotals(ctx context.Context, from, to time.Time) (CallSurveyTotals, error) {
+// CallSurveyTotals counts the surveys of calls made in a time range on the
+// given devices.
+func (r *Repository) CallSurveyTotals(ctx context.Context, from, to time.Time, devices Devices) (CallSurveyTotals, error) {
 	var totals CallSurveyTotals
+	cond, extra := devices.clause("cs.channel_id")
 	err := r.db.WithContext(ctx).Raw(`SELECT
 		count(*) FILTER (WHERE cs.status IN ('queued','sending')) AS queued,
 		count(*) FILTER (WHERE cs.status IN ('sent','answered') AND COALESCE(m.status,'') <> 'failed') AS sent,
@@ -92,7 +114,7 @@ func (r *Repository) CallSurveyTotals(ctx context.Context, from, to time.Time) (
 		count(*) FILTER (WHERE cs.status = 'skipped') AS skipped,
 		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average
 		FROM wa_call_surveys cs LEFT JOIN wa_messages m ON m.id = cs.message_id
-		WHERE cs.created_at >= ? AND cs.created_at < ?`, from, to).Scan(&totals).Error
+		WHERE cs.created_at >= ? AND cs.created_at < ?`+cond, append([]any{from, to}, extra...)...).Scan(&totals).Error
 	return totals, err
 }
 
@@ -105,17 +127,18 @@ type CallSurveyAgent struct {
 	Low      int64
 }
 
-// CallSurveyAgents sums the surveys of calls in a time range by agent,
-// the agent with the most answers first.
-func (r *Repository) CallSurveyAgents(ctx context.Context, from, to time.Time) ([]CallSurveyAgent, error) {
+// CallSurveyAgents sums the surveys of calls in a time range on the given
+// devices by agent, the agent with the most answers first.
+func (r *Repository) CallSurveyAgents(ctx context.Context, from, to time.Time, devices Devices) ([]CallSurveyAgent, error) {
 	var agents []CallSurveyAgent
+	cond, extra := devices.clause("cs.channel_id")
 	if err := r.db.WithContext(ctx).Raw(`SELECT cs.user_id,
 		count(*) FILTER (WHERE cs.status IN ('sent','answered')) AS sent,
 		count(*) FILTER (WHERE cs.status = 'answered') AS answered,
 		COALESCE(avg(cs.score) FILTER (WHERE cs.score IS NOT NULL), 0) AS average,
 		count(*) FILTER (WHERE cs.score <= 2) AS low
-		FROM wa_call_surveys cs WHERE cs.user_id IS NOT NULL AND cs.created_at >= ? AND cs.created_at < ?
-		GROUP BY cs.user_id ORDER BY answered DESC`, from, to).Scan(&agents).Error; err != nil {
+		FROM wa_call_surveys cs WHERE cs.user_id IS NOT NULL AND cs.created_at >= ? AND cs.created_at < ?`+cond+`
+		GROUP BY cs.user_id ORDER BY answered DESC`, append([]any{from, to}, extra...)...).Scan(&agents).Error; err != nil {
 		return nil, err
 	}
 	return agents, nil
@@ -133,11 +156,13 @@ type CallSurveyAnswer struct {
 }
 
 // RecentCallSurveyAnswers reads the 30 latest answers to the surveys of
-// calls in a time range, latest first.
-func (r *Repository) RecentCallSurveyAnswers(ctx context.Context, from, to time.Time) ([]CallSurveyAnswer, error) {
+// calls in a time range on the given devices, latest first.
+func (r *Repository) RecentCallSurveyAnswers(ctx context.Context, from, to time.Time, devices Devices) ([]CallSurveyAnswer, error) {
 	var recent []CallSurveyAnswer
+	cond, extra := devices.clause("channel_id")
 	if err := r.db.WithContext(ctx).Raw(`SELECT id, user_id, wa_id, score, comment, conversation_id, answered_at FROM wa_call_surveys
-		WHERE status = 'answered' AND created_at >= ? AND created_at < ? ORDER BY answered_at DESC LIMIT 30`, from, to).Scan(&recent).Error; err != nil {
+		WHERE status = 'answered' AND created_at >= ? AND created_at < ?`+cond+` ORDER BY answered_at DESC LIMIT 30`,
+		append([]any{from, to}, extra...)...).Scan(&recent).Error; err != nil {
 		return nil, err
 	}
 	return recent, nil
