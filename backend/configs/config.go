@@ -82,8 +82,11 @@ type Security struct {
 	DistinctIPLimit     int           `mapstructure:"distinctIPLimit"`
 	AttemptWindow       time.Duration `mapstructure:"attemptWindow"`
 	MFAKey              string        `mapstructure:"mfaKey"`
-	TrustedIPs          string        `mapstructure:"trustedIPs"`
-	RequireMFA          bool          `mapstructure:"requireMFA"`
+	// PreviousMFAKey still opens TOTP secrets sealed before mfaKey was
+	// replaced; they are sealed again with MFAKey at start.
+	PreviousMFAKey string `mapstructure:"previousMfaKey"`
+	TrustedIPs     string `mapstructure:"trustedIPs"`
+	RequireMFA     bool   `mapstructure:"requireMFA"`
 	// DataKey encrypts integration secrets kept in the database (WhatsApp
 	// tokens, the Drive link). It is separate from the session signing key.
 	DataKey string `mapstructure:"dataKey"`
@@ -150,6 +153,9 @@ type Bulutsantralim struct {
 	TurnUser  string `mapstructure:"turnUser"`
 	TurnPass  string `mapstructure:"turnPass"`
 	SIPKey    string `mapstructure:"sipKey"` // encrypts stored SIP passwords at rest
+	// PreviousSIPKey still opens SIP passwords sealed before sipKey was
+	// replaced; they are sealed again with SIPKey at start.
+	PreviousSIPKey string `mapstructure:"previousSipKey"`
 
 	// HistoryDays is how far back the call-record mirror backfills on first
 	// run (default 90). Newer records arrive with the regular poll.

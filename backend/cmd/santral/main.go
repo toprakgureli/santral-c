@@ -114,6 +114,12 @@ func run() error {
 		setup.LegacyKeys{WhatsApp: "wa:" + configs.Cnf.Auth.Secret, Drive: configs.Cnf.Auth.Secret}); err != nil {
 		return err
 	}
+	if err := setup.RewrapUserSecrets(context.Background(), db, setup.UserKeys{
+		MFA: configs.Cnf.Security.MFAKey, PreviousMFA: configs.Cnf.Security.PreviousMFAKey,
+		SIP: configs.Cnf.Bulutsantralim.SIPKey, PreviousSIP: configs.Cnf.Bulutsantralim.PreviousSIPKey,
+	}); err != nil {
+		return err
+	}
 
 	// Traces go to the collector when one is set; queries become spans.
 	stopTracing, err := telemetry.SetupTracing(context.Background(), telemetry.TraceConfig{

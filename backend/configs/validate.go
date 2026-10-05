@@ -72,6 +72,11 @@ func Check(c Config) []Problem {
 	example := func(v string) bool {
 		return strings.Contains(strings.ToLower(v), "change-me")
 	}
+	sameKey := func(section, current, previous, name string) {
+		if strings.TrimSpace(previous) != "" && previous == current {
+			add(section+"."+name, "yeni anahtarla aynı; buraya eski değeri, yeni anahtara yeni değeri yaz", true)
+		}
+	}
 	secret := func(key, v string, min int) {
 		switch {
 		case strings.TrimSpace(v) == "":
@@ -102,11 +107,14 @@ func Check(c Config) []Problem {
 			add("security.previousDataKeys", "eski anahtarlardan biri kullanılamıyor: "+err.Error(), true)
 		}
 	}
-	// These keys already sealed stored data; a short one cannot be
-	// replaced without losing it, so only an empty or example value stops.
+	// These keys already sealed stored data. Only an empty or example value
+	// stops: to replace one, the old value goes into the previous key and
+	// the stored secrets are sealed again at start.
 	secret("security.mfaKey", c.Security.MFAKey, 1)
+	sameKey("security", c.Security.MFAKey, c.Security.PreviousMFAKey, "previousMfaKey")
 	if c.Bulutsantralim.Enabled {
 		secret("bulutsantralim.sipKey", c.Bulutsantralim.SIPKey, 1)
+		sameKey("bulutsantralim", c.Bulutsantralim.SIPKey, c.Bulutsantralim.PreviousSIPKey, "previousSipKey")
 		if strings.TrimSpace(c.Bulutsantralim.APIKey) == "" || example(c.Bulutsantralim.APIKey) {
 			add("bulutsantralim.apiKey", "santral açık ama API anahtarı girilmemiş", true)
 		}

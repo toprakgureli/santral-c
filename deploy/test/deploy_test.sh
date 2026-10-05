@@ -182,6 +182,8 @@ check "bad config exits 1" '[ "$code" = 1 ]'
 check "binary untouched" '[ "$(md5sum app/santral | cut -d" " -f1)" = "$before" ]'
 check "no restart" '[ "$(grep -c "restart santral" log)" = "$restarts" ]'
 check "reason shown" 'grep -q "auth.secret" out'
+check "bad config: the message reaches the end" 'grep -q "config.yml needs the changes" out'
+check "bad config: new build removed" '[ ! -f app/santral.new ]'
 check "running commit read from the last good deploy" 'grep -q "running $good1" out'
 
 # 4. local changes on the server stop the deploy

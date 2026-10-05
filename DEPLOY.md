@@ -719,6 +719,25 @@ the unit file in the working tree).
 Without the old key in `previousDataKeys` every stored credential has to be
 typed in again.
 
+### The TOTP and SIP keys
+
+`security.mfaKey` seals every user's TOTP secret and `bulutsantralim.sipKey`
+every SIP password. A server still on the example values refuses to start;
+replace them without anyone setting up again:
+
+1. Move the current value of `security.mfaKey` into
+   `security.previousMfaKey`, and the current `bulutsantralim.sipKey` into
+   `bulutsantralim.previousSipKey`.
+2. Put a new `openssl rand -hex 32` value in each of `mfaKey` and `sipKey`.
+3. Deploy or restart. At start every TOTP secret and SIP password is opened
+   with the old key and sealed with the new one; the log says how many
+   ("stored user secrets sealed with the current key").
+4. Once the service has started, empty the two previous keys.
+
+A value neither key opens is logged and left alone: that person sets up
+TOTP again (Kullanıcılar), or the SIP passwords are pulled from the PBX
+again (Kullanıcılar > SIP Senkronize (Verimor)).
+
 ### The session secret
 
 `auth.secret` is not the data key. It signs the 15-minute access tokens and

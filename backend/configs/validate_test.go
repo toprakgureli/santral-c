@@ -97,3 +97,15 @@ func TestDatabaseDefaults(t *testing.T) {
 		t.Fatalf("defaults = %v %q", c.Database.StatementTimeout, c.Database.DataPath)
 	}
 }
+
+func TestPreviousUserKeysMustDiffer(t *testing.T) {
+	c := valid()
+	c.Security.PreviousMFAKey = c.Security.MFAKey
+	if keys := strings.Join(fatalKeys(c), ","); !strings.Contains(keys, "security.previousMfaKey") {
+		t.Fatalf("a previous MFA key equal to the new one passed (%v)", keys)
+	}
+	c.Security.PreviousMFAKey = "change-me-to-a-32-byte-mfa-key"
+	if err := Validate(c); err != nil {
+		t.Fatalf("the example value as the previous key was refused: %v", err)
+	}
+}

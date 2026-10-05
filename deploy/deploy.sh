@@ -105,7 +105,7 @@ run_as_app bash -c "cd '$APP_DIR/backend' && '$GO' build -trimpath -ldflags '$LD
 
 echo "==> Checking config.yml with the new version"
 if ! run_as_app "$APP_DIR/santral.new" -check-config -config "$APP_DIR/config.yml"; then
-  rm -f "$APP_DIR/santral.new"
+  sudo rm -f "$APP_DIR/santral.new"
   fail "config.yml needs the changes listed above. Nothing was switched; the running version keeps running."
 fi
 
@@ -132,14 +132,14 @@ EST_KB=${EST_KB:-0}
 NEED_KB=$((EST_KB + EST_KB / 2 + DUMP_MARGIN_MB * 1024))
 FREE_KB=$(free_kb "$BACKUP_DIR")
 if [ "${FREE_KB:-0}" -lt "$NEED_KB" ]; then
-  rm -f "$APP_DIR/santral.new"
+  sudo rm -f "$APP_DIR/santral.new"
   fail "not enough disk space for the database copy in $BACKUP_DIR: $((${FREE_KB:-0} / 1024)) MB free, about $((NEED_KB / 1024)) MB needed (the copy plus a $DUMP_MARGIN_MB MB margin). Free some space (old copies: sudo -u postgres ls -lh $BACKUP_DIR) and run again. Nothing was switched; the running version keeps running."
 fi
 DUMP="$BACKUP_DIR/pre-deploy-$(date +%Y%m%d-%H%M%S)-$PREV_SHA.dump"
 if ! sudo -u postgres sh -c "umask 077 && pg_dump -Fc '$DB_NAME' > '$DUMP'"; then
   # A half-written copy is worthless and only fills the disk.
   sudo -u postgres rm -f "$DUMP"
-  rm -f "$APP_DIR/santral.new"
+  sudo rm -f "$APP_DIR/santral.new"
   fail "the database could not be copied (see above). Nothing was switched; the running version keeps running."
 fi
 echo "    $DUMP"
