@@ -243,7 +243,7 @@ refused exactly when the role lacks what the route needs.
 - Request limits on the sign-in steps are per browser (20 a minute), and on
   renewal per session (30 a minute). Only the addresses outsiders call
   (webhooks, survey answers) are limited per address.
-- There are 80 permissions named `module.action`, defined in `pkg/enums`
+- There are 81 permissions named `module.action`, defined in `pkg/enums`
   and seeded at start; the panel lists them under Roller. New keys are
   granted only to the roles that should get them; existing grants an admin
   changed are left alone.

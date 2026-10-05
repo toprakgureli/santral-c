@@ -7,10 +7,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ChevronRight, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, TrendingDown, UsersRound, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, Trash2, TrendingDown, UsersRound, X } from "lucide-react";
 import { ApiError } from "@/api/client";
+import { useAuth } from "@/auth/AuthContext";
 import RangePicker, { useRange } from "@/components/RangePicker";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, ConfirmDialog } from "@/components/ui";
 import { IconChip, Toolbar, type ChipTone } from "@/components/ui/rows";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,8 @@ export function WhatsAppRatings() {
   const [more, setMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<WARating | null>(null);
+  // reload refetches the totals after a score is removed
+  const [reload, setReload] = useState(0);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -87,7 +90,15 @@ export function WhatsAppRatings() {
       setItems(r.items);
       setPage(1);
     }).catch((e) => my === seq.current && setError(e instanceof ApiError ? e.message : "Puanlamalar alınamadı.")).finally(() => my === seq.current && setLoading(false));
-  }, [filter]);
+  }, [filter, reload]);
+
+  // A removed score leaves the list at once; the totals, the questions and
+  // the people are read again so every average leaves it out too.
+  const removed = (r: WARating) => {
+    setItems((cur) => cur.filter((x) => !(x.source === r.source && x.id === r.id)));
+    setOpen(null);
+    setReload((n) => n + 1);
+  };
 
   const loadMore = async () => {
     setMore(true);
@@ -189,7 +200,7 @@ export function WhatsAppRatings() {
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((r, i) => <RatingRow key={`${r.source}-${r.at}-${i}`} r={r} onOpen={() => setOpen(r)} />)}
+              {items.map((r) => <RatingRow key={`${r.source}-${r.id}`} r={r} onOpen={() => setOpen(r)} />)}
               {data && items.length < data.total && (
                 <div className="flex justify-center pt-1">
                   <Button variant="secondary" onClick={() => void loadMore()} disabled={more}>{more ? "Yükleniyor..." : `Daha fazla göster (${data.total - items.length})`}</Button>
@@ -199,7 +210,7 @@ export function WhatsAppRatings() {
           )}
         </div>
       </div>
-      {open && <RatingDetail r={open} onClose={() => setOpen(null)} />}
+      {open && <RatingDetail r={open} onClose={() => setOpen(null)} onRemoved={() => removed(open)} />}
     </div>
   );
 }
@@ -238,8 +249,26 @@ function Written({ r, compact }: { r: WARating; compact?: boolean }) {
 
 // RatingDetail is one survey answer on its own: every question with its
 // score, what the customer wrote, and who and where it was about.
-function RatingDetail({ r, onClose }: { r: WARating; onClose: () => void }) {
+function RatingDetail({ r, onClose, onRemoved }: { r: WARating; onClose: () => void; onRemoved: () => void }) {
   const isTop = useTopmost(true);
+  const { can } = useAuth();
+  const canRemove = can("whatsapp.rating_delete");
+  const [asking, setAsking] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const remove = async () => {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await waApi.deleteRating(r.source, r.id);
+      setAsking(false);
+      onRemoved();
+    } catch (e) {
+      setRemoveError(e instanceof ApiError ? e.message : "Puan silinemedi. Biraz sonra tekrar dene.");
+    } finally {
+      setRemoving(false);
+    }
+  };
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && isTop() && onClose();
     window.addEventListener("keydown", esc);
@@ -305,11 +334,29 @@ function RatingDetail({ r, onClose }: { r: WARating; onClose: () => void }) {
             </div>
           </section>
         </div>
-        {r.conversationId && (
-          <footer className="border-t border-border/60 px-5 py-3">
-            <Link to={`/whatsapp/${r.conversationId}`} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"><MessageCircle className="size-4" /> Sohbeti aç</Link>
+        {(r.conversationId || canRemove) && (
+          <footer className="flex gap-2 border-t border-border/60 px-5 py-3">
+            {r.conversationId && (
+              <Link to={`/whatsapp/${r.conversationId}`} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"><MessageCircle className="size-4" /> Sohbeti aç</Link>
+            )}
+            {canRemove && (
+              <Button variant="secondary" onClick={() => setAsking(true)} className={cn("h-10 text-destructive hover:bg-destructive/10", !r.conversationId && "flex-1")}><Trash2 className="size-4" /> Puanı sil</Button>
+            )}
           </footer>
         )}
+        <ConfirmDialog
+          open={asking}
+          title="Bu puan silinsin mi?"
+          description="Puan Puanlamalar sayfasından, ortalamalardan ve raporlardan çıkar. Kayıt tamamen silinmez; puanın asıl hali ve kimin sildiği saklanır, işlem denetim kaydına yazılır."
+          confirmLabel="Puanı sil"
+          busy={removing}
+          error={removeError}
+          onConfirm={() => void remove()}
+          onCancel={() => {
+            setAsking(false);
+            setRemoveError(null);
+          }}
+        />
       </aside>
     </div>
   );

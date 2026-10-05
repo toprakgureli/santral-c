@@ -798,6 +798,9 @@ func (r *Router) Routes(g fiber.Router) {
 	a.Get("/ratings", with(func(c *fiber.Ctx, uid uint) (any, error) {
 		return s.Ratings(c.UserContext(), uid, ratingFilter(c))
 	}))
+	a.Delete("/ratings/:source/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return nil, s.DeleteRating(c.UserContext(), uid, c.Params("source"), id, c.IP())
+	}))
 	a.Get("/ratings/export", func(c *fiber.Ctx) error {
 		uid, err := actor(c)
 		if err != nil {

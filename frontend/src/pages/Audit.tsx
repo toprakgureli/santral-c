@@ -32,6 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
   "whatsapp.channel_purged": "WhatsApp numarası geçmişiyle silindi",
   "whatsapp.bot_deactivated": "Chatbot kapatıldı",
   "whatsapp.bot_deleted": "Chatbot silindi",
+  "whatsapp.rating_deleted": "Puan silindi",
   "whatsapp.bot_purged": "Chatbot geçmişiyle silindi",
   "role.created": "Rol oluşturuldu",
   "role.updated": "Rol güncellendi",

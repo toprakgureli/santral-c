@@ -32,7 +32,9 @@ type RatingFilter struct {
 
 // RatingItem is one score.
 type RatingItem struct {
-	Source         string         `json:"source"` // chat | call
+	Source string `json:"source"` // chat | call
+	// ID with Source names the score for removal: a ticket or a survey.
+	ID             uint           `json:"id"`
 	At             time.Time      `json:"at"`
 	Score          int            `json:"score"`
 	Comment        string         `json:"comment,omitempty"`
@@ -142,7 +144,7 @@ func (s *Service) ratingItems(ctx context.Context, rows []store.Rating) []Rating
 	names := map[uint]string{}
 	out := make([]RatingItem, 0, len(rows))
 	for _, r := range rows {
-		it := RatingItem{Source: r.Source, At: r.At, Score: r.Score, Comment: r.Comment, Customer: r.Name, Phone: r.WAID,
+		it := RatingItem{Source: r.Source, ID: r.ID, At: r.At, Score: r.Score, Comment: r.Comment, Customer: r.Name, Phone: r.WAID,
 			ConversationID: r.ConversationID, TicketNumber: r.TicketNumber, TalkSeconds: r.TalkSeconds, Answers: []RatingAnswer{}}
 		_ = json.Unmarshal([]byte(r.Answers), &it.Answers)
 		it.Texts = []RatingText{}
@@ -296,4 +298,37 @@ func (s *Service) RatingsCSV(ctx context.Context, actorID uint, f RatingFilter) 
 		return nil, "", errs.Internal(err)
 	}
 	return data, fmt.Sprintf("puanlamalar_%s_%s.csv", f.From, f.To), nil
+}
+
+// DeleteRating takes one score out of the ratings, the reports and every
+// average. Nothing is erased: the original score stays with the record,
+// next to who removed it, and the removal is written to the audit trail.
+func (s *Service) DeleteRating(ctx context.Context, actorID uint, source string, id uint, ip string) error {
+	if _, err := s.require(ctx, actorID, enums.WARatings, "Puanlamaları görme yetkin yok."); err != nil {
+		return err
+	}
+	if _, err := s.require(ctx, actorID, enums.WARatingDelete, "Puan silme yetkin yok."); err != nil {
+		return err
+	}
+	var (
+		score int
+		found bool
+		err   error
+	)
+	switch source {
+	case "chat":
+		score, found, err = s.repo.RemoveTicketRating(ctx, id, actorID)
+	case "call":
+		score, found, err = s.repo.RemoveCallSurveyRating(ctx, id, actorID)
+	default:
+		return errs.Invalid("Puanın kaynağı chat ya da call olmalı.", nil)
+	}
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if !found {
+		return errs.NotFound("Puan bulunamadı ya da zaten silinmiş.")
+	}
+	s.record(ctx, actorID, enums.AuditWARatingDeleted, "wa_rating", id, ip, map[string]any{"source": source, "score": score})
+	return nil
 }

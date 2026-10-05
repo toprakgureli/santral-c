@@ -179,6 +179,7 @@ export const waApi = {
   events: () => request<WAEventRow[]>("/wa/events"),
   retryEvent: (id: number) => request<void>(`/wa/events/${id}/retry`, json("POST")),
   ratings: (f: WARatingFilter) => request<WARatings>("/wa/ratings" + q({ ...f, comment: f.comment ? 1 : undefined })),
+  deleteRating: (source: "chat" | "call", id: number) => request<void>(`/wa/ratings/${source}/${id}`, { method: "DELETE" }),
   exportRatings: (f: WARatingFilter) => download("/wa/ratings/export" + q({ ...f, page: undefined, comment: f.comment ? 1 : undefined }), `puanlamalar_${f.from}_${f.to}.csv`),
   reports: (from: string, to: string, channel = 0) => request<WAReport>("/wa/reports" + q({ from, to, channel })),
 };

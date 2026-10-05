@@ -42,4 +42,5 @@ const (
 	AuditWAChannelDeleted     string = "whatsapp.channel_deleted"
 	AuditWABotDeactivated     string = "whatsapp.bot_deactivated"
 	AuditWABotDeleted         string = "whatsapp.bot_deleted"
+	AuditWARatingDeleted      string = "whatsapp.rating_deleted"
 )

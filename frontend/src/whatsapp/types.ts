@@ -562,6 +562,8 @@ export type WAMute = "1h" | "8h" | "1d" | "1w" | "always" | "off";
 // the survey after a phone call.
 export interface WARating {
   source: "chat" | "call";
+  // with source, names the score for removal: a ticket or a call survey
+  id: number;
   at: string;
   score: number;
   comment?: string;

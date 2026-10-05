@@ -16,7 +16,7 @@ const singleQuestion = "Tek soruluk anket"
 // The slots are: what to select, what to join (the answers), and the tail.
 const ratingsSQL = `
 WITH r AS (
-	SELECT 'chat' AS source, t.rated_at AS at, t.rating AS score, t.rating_comment AS comment,
+	SELECT 'chat' AS source, t.id, t.rated_at AS at, t.rating AS score, t.rating_comment AS comment,
 		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(t.resolved_by, t.owner_id) AS agent_id,
 		c.wa_id, COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') AS name, 0 AS talk_seconds,
 		CASE WHEN jsonb_array_length(t.rating_answers) > 0 THEN t.rating_answers
@@ -25,7 +25,7 @@ WITH r AS (
 	FROM wa_tickets t JOIN wa_contacts c ON c.id = t.contact_id
 	WHERE t.rating IS NOT NULL AND t.rated_at >= @from AND t.rated_at < @to
 	UNION ALL
-	SELECT 'call', s.answered_at, s.score, s.comment,
+	SELECT 'call', s.id, s.answered_at, s.score, s.comment,
 		s.conversation_id, NULL, s.channel_id, s.user_id,
 		s.wa_id, COALESCE((SELECT COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') FROM wa_contacts c WHERE c.wa_id = s.wa_id LIMIT 1), ''), s.talk_seconds,
 		CASE WHEN jsonb_array_length(s.answers) > 0 THEN s.answers
@@ -53,7 +53,9 @@ const answerJoin = "CROSS JOIN LATERAL jsonb_array_elements(r.answers) a"
 
 // Rating is one score with what it belongs to.
 type Rating struct {
-	Source         string
+	Source string
+	// ID is the ticket of a chat score, the survey of a call score.
+	ID             uint
 	At             time.Time
 	Score          int
 	Comment        string
@@ -69,7 +71,7 @@ type Rating struct {
 }
 
 // ratingColumns are the columns of one score row.
-const ratingColumns = `r.source, r.at, r.score, r.comment, r.conversation_id, r.ticket_number, r.channel_id, r.agent_id, r.wa_id, r.name, r.talk_seconds, r.answers::text AS answers, r.texts::text AS texts`
+const ratingColumns = `r.source, r.id, r.at, r.score, r.comment, r.conversation_id, r.ticket_number, r.channel_id, r.agent_id, r.wa_id, r.name, r.talk_seconds, r.answers::text AS answers, r.texts::text AS texts`
 
 // Ratings reads the scores matching the filter, latest first, a page of
 // limit rows after skipping offset.
@@ -164,4 +166,37 @@ func (r *Repository) RatingAgentQuestions(ctx context.Context, args map[string]a
 		return nil, err
 	}
 	return aq, nil
+}
+
+// RemoveTicketRating takes a chat score out of the ratings: its values move
+// to rating_removed with who removed it, and the score is emptied. It
+// reports the removed score, or false when the ticket has none.
+func (r *Repository) RemoveTicketRating(ctx context.Context, id, by uint) (int, bool, error) {
+	var score []int
+	err := r.db.WithContext(ctx).Raw(`UPDATE wa_tickets SET
+		rating_removed = jsonb_build_object('score', rating, 'comment', rating_comment, 'answers', rating_answers,
+			'texts', rating_texts, 'ratedAt', rated_at, 'removedBy', ?::bigint, 'removedAt', now()),
+		rating = NULL, rating_comment = '', rating_answers = '[]', rating_texts = '[]', rated_at = NULL
+		WHERE id = ? AND rating IS NOT NULL
+		RETURNING (rating_removed->>'score')::int`, by, id).Scan(&score).Error
+	if err != nil || len(score) == 0 {
+		return 0, false, err
+	}
+	return score[0], true, nil
+}
+
+// RemoveCallSurveyRating does the same for the survey after a call; the
+// survey is marked removed, so it no longer counts as answered either.
+func (r *Repository) RemoveCallSurveyRating(ctx context.Context, id, by uint) (int, bool, error) {
+	var score []int
+	err := r.db.WithContext(ctx).Raw(`UPDATE wa_call_surveys SET
+		removed = jsonb_build_object('score', score, 'comment', comment, 'answers', answers, 'texts', texts,
+			'answeredAt', answered_at, 'removedBy', ?::bigint, 'removedAt', now()),
+		status = 'removed', score = NULL
+		WHERE id = ? AND status = 'answered' AND score IS NOT NULL
+		RETURNING (removed->>'score')::int`, by, id).Scan(&score).Error
+	if err != nil || len(score) == 0 {
+		return 0, false, err
+	}
+	return score[0], true, nil
 }
