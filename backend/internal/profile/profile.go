@@ -101,7 +101,7 @@ func NewRepository(db *gorm.DB) *Repository {
 // User loads a user with roles, or nil.
 func (r *Repository) User(ctx context.Context, id uint) (*models.User, error) {
 	var u models.User
-	err := r.db.WithContext(ctx).Preload("Roles").First(&u, id).Error
+	err := r.db.WithContext(ctx).Preload("Roles.Permissions").First(&u, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -254,7 +254,7 @@ func (s *Service) target(ctx context.Context, actorID, userID uint) (*models.Use
 	if err != nil {
 		return nil, false, errs.Internal(err)
 	}
-	if u == nil || (u.ID != actor.ID && u.IsInvisibleAdmin() && !actor.IsInvisibleAdmin()) {
+	if u == nil || (u.ID != actor.ID && u.HiddenInStats() && !actor.IsInvisibleAdmin()) {
 		return nil, false, errs.NotFound("Kullanıcı bulunamadı.")
 	}
 	return u, maySeeFigures(actor, u), nil

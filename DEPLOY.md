@@ -333,6 +333,13 @@ server's own address for SSH (section 11).
    role; take them away where they are not wanted. `system.backup` (section
    10) is held only by the owner at first; `system.health` (the system
    warnings, section 11) by the owner and Yönetici.
+5. The owner account (the invisible admin) stays out of every list and
+   statistic. An owner who also works in a role, say Teknik, can be shown
+   in the statistics (team performance, profiles, the escalation filter,
+   the agent list) by giving that role `performance.show_hidden_admin`
+   ("Gizli yönetici olsa da istatistiklerde görünür"). The audit trail,
+   the sign-in records, the user list and the chat keep hiding them. Only
+   an invisible admin can give this permission.
 
 Users are never deleted, only deactivated (Kullanıcılar), which signs them
 out at once and keeps their history.

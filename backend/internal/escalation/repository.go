@@ -208,7 +208,8 @@ type AgentRef struct {
 }
 
 // Agents lists the distinct agents behind the escalation records.
-// withOwner keeps the invisible admins in the list.
+// withOwner keeps every invisible admin in the list; without it only those
+// shown in the statistics stay.
 func (r *Repository) Agents(ctx context.Context, withOwner bool) ([]AgentRef, error) {
 	var out []AgentRef
 	q := r.db.WithContext(ctx).
@@ -216,7 +217,7 @@ func (r *Repository) Agents(ctx context.Context, withOwner bool) ([]AgentRef, er
 		Select("agent_id AS id, MAX(agent_name) AS name").
 		Where("agent_id IS NOT NULL")
 	if !withOwner {
-		q = q.Where("agent_id NOT IN (" + models.InvisibleAdminIDsSQL + ")")
+		q = q.Where("agent_id NOT IN (" + models.StatsHiddenIDsSQL + ")")
 	}
 	err := q.
 		Group("agent_id").

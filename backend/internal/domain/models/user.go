@@ -94,6 +94,35 @@ func (u *User) CanManage(target *User) bool {
 var InvisibleAdminIDsSQL = "SELECT user_roles.user_id FROM user_roles JOIN roles ON roles.id = user_roles.role_id WHERE roles.name = '" +
 	string(enums.RoleInvisibleAdmin) + "'"
 
+// StatsHiddenIDsSQL selects the invisible admins kept out of the statistics
+// (team performance, profiles, the agent list): all of them except those who
+// also hold another role with performance.show_hidden_admin, since they work
+// in that role and their colleagues should see their numbers. The
+// invisible-admin role itself holds every permission, so it does not count.
+var StatsHiddenIDsSQL = InvisibleAdminIDsSQL + " AND user_roles.user_id NOT IN (" +
+	"SELECT ur.user_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL " +
+	"JOIN role_permissions rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id " +
+	"WHERE r.name <> '" + string(enums.RoleInvisibleAdmin) + "' AND p.key = '" + string(enums.PerformanceShowHiddenAdmin) + "')"
+
+// HiddenInStats is StatsHiddenIDsSQL for a loaded user; it needs the roles
+// with their permissions.
+func (u *User) HiddenInStats() bool {
+	if !u.IsInvisibleAdmin() {
+		return false
+	}
+	for _, r := range u.Roles {
+		if enums.Role(r.Name) == enums.RoleInvisibleAdmin {
+			continue
+		}
+		for _, p := range r.Permissions {
+			if enums.Permission(p.Key) == enums.PerformanceShowHiddenAdmin {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // IsInvisibleAdmin reports whether the user carries the invisible-admin role.
 func (u *User) IsInvisibleAdmin() bool {
 	for _, r := range u.Roles {
