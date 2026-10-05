@@ -176,10 +176,21 @@ func rowCDR(r models.PBXCDR) CDR {
 func (r *Repository) UpsertCDRs(ctx context.Context, cdrs []CDR) (int, error) {
 	now := time.Now()
 	rows := make([]models.PBXCDR, 0, len(cdrs))
+	at := make(map[string]int, len(cdrs))
 	for i := range cdrs {
-		if row, ok := cdrRow(cdrs[i], now); ok {
-			rows = append(rows, row)
+		row, ok := cdrRow(cdrs[i], now)
+		if !ok {
+			continue
 		}
+		// One call can come back more than once (a page that shifted while
+		// it was read, one leg per agent a call rang). A single insert may
+		// not touch a row twice, so each call is kept once.
+		if j, seen := at[row.CallUUID]; seen {
+			rows[j] = preferredCDR(rows[j], row)
+			continue
+		}
+		at[row.CallUUID] = len(rows)
+		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
 		return 0, nil
@@ -192,6 +203,25 @@ func (r *Repository) UpsertCDRs(ctx context.Context, cdrs []CDR) (int, error) {
 		return 0, fmt.Errorf("call records could not be stored: %w", err)
 	}
 	return len(rows), nil
+}
+
+// preferredCDR picks which of two records of the same call to keep: the
+// answered one, then the longer one, then the one read first. A recording
+// on either is kept.
+func preferredCDR(a, b models.PBXCDR) models.PBXCDR {
+	keep := a
+	switch answeredA, answeredB := cdrAnswered(a), cdrAnswered(b); {
+	case answeredB && !answeredA:
+		keep = b
+	case answeredA == answeredB && parseDuration(b.Duration) > parseDuration(a.Duration):
+		keep = b
+	}
+	keep.RecordingPresent = a.RecordingPresent || b.RecordingPresent
+	return keep
+}
+
+func cdrAnswered(r models.PBXCDR) bool {
+	return strings.TrimSpace(r.AnswerStamp) != "" || parseDuration(r.TalkDuration) > 0
 }
 
 // CDRQuery narrows a mirror query. Zero values mean "no restriction".
