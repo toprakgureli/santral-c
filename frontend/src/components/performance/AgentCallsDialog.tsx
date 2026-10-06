@@ -13,6 +13,7 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { rangeLabel } from "@/lib/dateRange";
 import { cn } from "@/lib/utils";
 import { formatClock } from "@/pages/callFormat";
+import { useRealCallSeconds } from "@/lib/realCall";
 import { displayNumber } from "@/softphone/dial";
 import { clockTime, shortDateTime } from "@/lib/time";
 
@@ -29,6 +30,7 @@ const REASON: Record<string, string> = {
 };
 
 export default function AgentCallsDialog({ row, from, to, onClose }: { row: TeamRow; from: string; to: string; onClose: () => void }) {
+  const realSeconds = useRealCallSeconds();
   const [data, setData] = useState<AgentCalls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -95,14 +97,14 @@ export default function AgentCallsDialog({ row, from, to, onClose }: { row: Team
           <ul className="max-h-[26rem] space-y-0.5 overflow-y-auto pr-1">
             {items.map((c) => {
               const ok = c.disposition === "answered";
-              const real = ok && c.durationSeconds >= 30;
+              const real = ok && c.durationSeconds >= realSeconds;
               return (
                 <li key={c.uuid}>
                   <ListRow
                     icon={c.direction === "inbound" ? PhoneIncoming : c.direction === "outbound" ? PhoneOutgoing : PhoneIncoming}
                     tone={!ok ? "destructive" : real ? "success" : "warning"}
                     title={<span className="font-mono tabular-nums">{displayNumber(c.peer) || c.peer}{c.peerName && <span className="ml-2 font-sans font-normal text-muted-foreground">{c.peerName}</span>}</span>}
-                    sub={<span>{c.direction === "inbound" ? "Gelen" : "Giden"} · {ok ? (real ? "Gerçek çağrı" : "Geçersiz, 30 sn altı") : (REASON[c.disposition] ?? "Ulaşılamadı")}</span>}
+                    sub={<span>{c.direction === "inbound" ? "Gelen" : "Giden"} · {ok ? (real ? "Gerçek çağrı" : `Geçersiz, ${realSeconds} sn altı`) : (REASON[c.disposition] ?? "Ulaşılamadı")}</span>}
                     trailing={
                       <>
                         <span className="text-xs tabular-nums text-muted-foreground">{stamp(c.startedAt, multiDay)}</span>

@@ -8,15 +8,12 @@ import (
 	"time"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/callrule"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
-
-// shortLongSeconds mirrors the call-log boundary between a short and a long
-// conversation.
-const shortLongSeconds = 30
 
 // IActorResolver loads the acting user for authorization.
 type IActorResolver interface {
@@ -40,7 +37,12 @@ type Service struct {
 	users    IActorResolver
 	live     ILiveStatus
 	contacts IContactNames
+	// realCall says how long an answered call must last to count as real.
+	realCall callrule.Source
 }
+
+// SetRealCall wires the setting that decides which calls count as real.
+func (s *Service) SetRealCall(src callrule.Source) { s.realCall = src }
 
 // NewService builds a performance service. live and contacts are optional.
 func NewService(repo *Repository, users IActorResolver, contacts IContactNames) *Service {
@@ -147,7 +149,7 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	counts, err := s.repo.CallCounts(ctx, from, to, shortLongSeconds)
+	counts, err := s.repo.CallCounts(ctx, from, to, callrule.Seconds(ctx, s.realCall))
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

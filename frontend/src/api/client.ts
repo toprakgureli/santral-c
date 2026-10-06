@@ -424,6 +424,8 @@ export const api = {
   updateSystemSettings: (body: { mfaMode: SystemSettings["mfaMode"]; mfaTrustedIps: string[] }) => request<SystemSettings>("/settings/", { method: "PUT", body: JSON.stringify(body) }),
   breakLimit: () => request<{ minutes: number }>("/settings/break-limit"),
   updateBreakLimit: (minutes: number) => request<{ minutes: number }>("/settings/break-limit", { method: "PUT", body: JSON.stringify({ minutes }) }),
+  realCall: () => request<{ seconds: number }>("/settings/real-call"),
+  updateRealCall: (seconds: number) => request<{ seconds: number }>("/settings/real-call", { method: "PUT", body: JSON.stringify({ seconds }) }),
 
   // Audit trail (system.audit_view)
   auditLogs: (params: { page?: number; perPage?: number; action?: string; query?: string } = {}) =>

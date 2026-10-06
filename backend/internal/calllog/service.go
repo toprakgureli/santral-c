@@ -8,6 +8,7 @@ import (
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/callrule"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/phone"
@@ -18,9 +19,6 @@ import (
 // todayLimit caps how many of today's calls the panel history lists.
 const todayLimit = 200
 
-// shortLongSeconds is the boundary between a short and a long conversation.
-const shortLongSeconds = 30
-
 // Service is the call-log application service.
 type Service struct {
 	repo  *Repository
@@ -29,7 +27,12 @@ type Service struct {
 	// verifier, confirmed by the phone system.
 	OnEnded  func(ctx context.Context, log models.CallLog)
 	verifier ICallVerifier
+	// realCall says how long an answered call must last to count as real.
+	realCall callrule.Source
 }
+
+// SetRealCall wires the setting that decides which calls count as real.
+func (s *Service) SetRealCall(src callrule.Source) { s.realCall = src }
 
 // NewService builds a call-log service.
 func NewService(repo *Repository, users IActorResolver) *Service {
@@ -447,7 +450,7 @@ func (s *Service) Recent(ctx context.Context, actorID uint) (*EntryList, error) 
 	}
 	now := time.Now().In(tz.Istanbul)
 	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, tz.Istanbul)
-	logs, counts, err := s.repo.Today(ctx, actorID, from, shortLongSeconds, todayLimit)
+	logs, counts, err := s.repo.Today(ctx, actorID, from, callrule.Seconds(ctx, s.realCall), todayLimit)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

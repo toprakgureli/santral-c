@@ -56,7 +56,7 @@ type Counts struct {
 	InboundReal    int64 `json:"inboundReal"`
 	OutboundReal   int64 `json:"outboundReal"`
 	TalkSeconds    int64 `json:"talkSeconds"`
-	// Mean length of real conversations (30 s and up) in the window.
+	// Mean length of real conversations (callrule threshold and up) in the window.
 	AvgTalkSeconds int64 `json:"avgTalkSeconds"`
 	// The longest answered call in the window.
 	LongestSeconds int64 `json:"longestSeconds"`

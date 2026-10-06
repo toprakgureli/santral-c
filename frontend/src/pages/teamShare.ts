@@ -112,7 +112,7 @@ export function summaryOf(r: TeamRow): string {
   return parts.join("; ") + ".";
 }
 
-export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scopeLabel: string): Promise<HTMLCanvasElement> {
+export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scopeLabel: string, realSeconds: number): Promise<HTMLCanvasElement> {
   const ranked = [...rows]
     .filter((r) => r.calls.long + r.calls.unanswered + r.calls.short > 0 || r.shift.seconds > 0)
     .sort((a, b) => b.calls.long - a.calls.long || b.calls.talkSeconds - a.calls.talkSeconds || a.name.localeCompare(b.name, "tr"))
@@ -296,7 +296,7 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
   // Footer
   ctx.fillStyle = C.dim;
   ctx.font = font(500, 12);
-  ctx.fillText("Gerçek çağrı: 30 saniye ve üstü görüşmeler · Yoğunluk: görüşme süresi / mesai süresi, yalnızca çağrılar · Ort. cevap: gelen çağrının açılmasına kadar geçen süre", PAD, H - 28);
+  ctx.fillText(`Gerçek çağrı: ${realSeconds} saniye ve üstü görüşmeler · Yoğunluk: görüşme süresi / mesai süresi, yalnızca çağrılar · Ort. cevap: gelen çağrının açılmasına kadar geçen süre`, PAD, H - 28);
   ctx.textAlign = "right";
   ctx.fillText(numericDateTime(new Date()), W - PAD, H - 28);
   ctx.textAlign = "left";

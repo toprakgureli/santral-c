@@ -2,7 +2,7 @@
 // attempts and IP bans need system.logs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Coffee, Gamepad2, HardDrive, ScrollText, ShieldBan, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { Coffee, Gamepad2, HardDrive, PhoneCall, ScrollText, ShieldBan, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings } from "../api/types";
@@ -10,6 +10,7 @@ import { formatSize } from "../lib/attachments";
 import BackupCard from "../components/settings/BackupCard";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
+import { rememberRealCallSeconds } from "../lib/realCall";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Pagination, Skeleton } from "../components/ui";
 import { cn, formatDateTime } from "../lib/utils";
 
@@ -28,6 +29,7 @@ export function Settings() {
   const canSeeLogs = can(user, "system.logs");
   const canManage = can(user, "system.settings");
   const canBreakLimit = can(user, "agent.break_limit");
+  const canRealCall = can(user, "call.real_seconds");
   // The storage account carries every chat and WhatsApp file: a system setting.
   const canDrive = can(user, "system.settings");
   const canGames = can(user, "games.manage");
@@ -81,6 +83,7 @@ export function Settings() {
     <div className="space-y-6">
       {canManage && <MfaPolicyCard />}
       {canBreakLimit && <BreakLimitCard />}
+      {canRealCall && <RealCallCard />}
       {canDrive && <DriveCard />}
       {canBackup && <BackupCard />}
       {canGames && (
@@ -188,7 +191,7 @@ export function Settings() {
         </>
       )}
 
-      {!canManage && !canSeeLogs && !canBreakLimit && !canGames && !canBackup && (
+      {!canManage && !canSeeLogs && !canBreakLimit && !canRealCall && !canGames && !canBackup && (
         <Card title="Sistem Ayarları" icon={SlidersHorizontal}>
           <EmptyState title="Bu sayfa için yetkin yok" />
         </Card>
@@ -304,6 +307,116 @@ function BreakLimitCard() {
           </div>
         </div>
 
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        {saved !== null && (
+          <Button onClick={save} disabled={busy || !dirty}>
+            {busy ? "Kaydediliyor..." : "Kaydet"}
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+const REAL_PRESETS = [15, 30, 45, 60, 90, 120];
+
+// RealCallCard sets how long an answered call must last to count as a real
+// conversation. The call history, the team page and the profiles count with
+// it as soon as it is saved, for past days too.
+function RealCallCard() {
+  const [saved, setSaved] = useState<number | null>(null);
+  const [seconds, setSeconds] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .realCall()
+      .then((r) => {
+        if (!alive) return;
+        setSaved(r.seconds);
+        setSeconds(String(r.seconds));
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(e instanceof ApiError ? e.message : "Ayar okunamadı.");
+        setSaved(30);
+        setSeconds("30");
+      });
+    return () => { alive = false; };
+  }, []);
+
+  const value = Number(seconds);
+  const valid = Number.isInteger(value) && value >= 5 && value <= 600;
+  const dirty = saved !== null && valid && value !== saved;
+
+  const save = async () => {
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.updateRealCall(value);
+      setSaved(r.seconds);
+      setSeconds(String(r.seconds));
+      rememberRealCallSeconds(r.seconds);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Ayar kaydedilemedi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = (s: number) => (s >= 60 && s % 60 === 0 ? `${s / 60} dk` : `${s} sn`);
+
+  return (
+    <Card
+      title="Gerçek Çağrı Süresi"
+      icon={PhoneCall}
+      actions={saved === null ? <Skeleton className="h-5 w-16" /> : <Badge tone="green">{label(saved)} ve üstü</Badge>}
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-border/60 p-3.5">
+          <PhoneCall className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Bir görüşmenin gerçek çağrı sayılması için en az kaç saniye sürmesi gerektiği</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Bu süreye ulaşan cevaplanmış çağrılar gerçek çağrı sayılır; daha kısa olanlar geçersiz çağrı olarak ayrılır. Örneğin 60 yazarsan 60
+              saniye ve üstü görüşmeler sayılır. Çağrılar sayfası, Ekip Performansı ve profiller kaydettiğin anda bu süreyle hesaplanır; geçmiş günler de buna göre yeniden sayılır.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {REAL_PRESETS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSeconds(String(s))}
+              className={cn(
+                "h-9 rounded-xl border px-3 text-sm transition-colors",
+                value === s ? "border-primary bg-primary/10 text-primary" : "border-border/70 text-muted-foreground hover:border-border hover:bg-accent",
+              )}
+            >
+              {label(s)}
+            </button>
+          ))}
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={5}
+              max={600}
+              value={seconds}
+              onChange={(e) => setSeconds(e.target.value)}
+              className="h-9 w-24 font-mono tabular-nums"
+              data-tip="Saniye (5 ile 600 arası)"
+            />
+            <span className="text-sm text-muted-foreground">saniye</span>
+          </div>
+        </div>
+
+        {!valid && seconds !== "" && <p className="text-xs text-destructive">Süre 5 ile 600 saniye arasında olmalı.</p>}
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         {saved !== null && (

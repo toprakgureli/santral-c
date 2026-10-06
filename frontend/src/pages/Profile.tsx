@@ -17,6 +17,7 @@ import { Badge, Button, CharCount, EmptyState, Input, Skeleton } from "../compon
 import UserAvatar from "../components/ui/UserAvatar";
 import { AVATAR_TYPES, loadAvatarFile, type AvatarSource } from "../lib/avatar";
 import { cn } from "../lib/utils";
+import { useRealCallSeconds } from "../lib/realCall";
 
 const HEADLINE_MAX = 120;
 const BIO_MAX = 2000;
@@ -311,6 +312,7 @@ function pct(part: number, whole: number): string {
 // RecordCard: the call-centre record over a day range. Last seven days by
 // default; the picker is the same as the team page's.
 function RecordCard({ userId, totals }: { userId: number; totals: ProfileStats }) {
+  const realSeconds = useRealCallSeconds();
   const { preset, range, choose, setFrom, setTo } = useRange("last7");
   const [rec, setRec] = useState<ProfileRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -346,7 +348,7 @@ function RecordCard({ userId, totals }: { userId: number; totals: ProfileStats }
       ) : (
         <>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Gerçek çağrı" value={String(rec.real)} hint={`${rec.inboundReal} gelen · ${rec.outboundReal} giden · 30 sn ve üstü`} tone={rec.real > 0 ? "text-success" : undefined} />
+            <Stat label="Gerçek çağrı" value={String(rec.real)} hint={`${rec.inboundReal} gelen · ${rec.outboundReal} giden · ${realSeconds} sn ve üstü`} tone={rec.real > 0 ? "text-success" : undefined} />
             <Stat label="Ulaşılamayan" value={String(unreached)} hint={`${rec.unanswered} cevapsız · ${rec.short} geçersiz`} tone={unreached > 0 ? "text-warning" : undefined} />
             <Stat label="Ulaşma oranı" value={pct(rec.real, attempts)} hint={`${attempts} denemede ${rec.real} görüşme`} tone={attempts > 0 ? "text-primary" : undefined} />
             <Stat label="Görüşme süresi" value={hours(rec.talkSeconds)} hint={rec.avgTalkSeconds > 0 ? `Ortalama ${clock(rec.avgTalkSeconds)} · en uzun ${clock(rec.longestSeconds)}` : "Cevaplanan çağrıların toplamı"} />

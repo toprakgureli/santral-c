@@ -29,7 +29,7 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
 |---|---|
 | Arka uç | Tek bir Go servisi. Modüller repository / service / handler diye katmanlara ayrılır; veritabanı değişiklikleri (migration) servis açılırken kendiliğinden uygulanır |
 | Ön yüz | TypeScript / React paneli; her sayfa ilk açıldığında yüklenir |
-| Yetki | Modüllere ayrılmış 81 yetki. Her özellik bir yetkiye bağlı ve kontrolü sunucu yapar |
+| Yetki | Modüllere ayrılmış 82 yetki. Her özellik bir yetkiye bağlı ve kontrolü sunucu yapar |
 | Canlı veri | Çağrı, durum, sohbet ve WhatsApp için Server-Sent Events |
 | İşletme | Altı saatte bir Google Ortak Drive'a yedek, Prometheus ölçümleri, istek izleri, uyarıları hazır bir Grafana ekranı |
 | Yayına alma | Tek komut: ayarları kontrol eder, veritabanını kopyalar, yeni sürüme geçer, sağlık kontrolü geçmezse eskisine döner |
@@ -71,7 +71,7 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
   mini oyunlar. Okunmamış sayısı 99+'ya kadar gösterilir; gruba sonradan
   eklenen kişi en yeni mesajdan başlar.
 - Kişi rehberi, eskalasyon kataloğu ve geçmişi.
-- Kullanıcılar, roller, 81 yetkilik katalog; bir yönetici kendinde olmayan
+- Kullanıcılar, roller, 82 yetkilik katalog; bir yönetici kendinde olmayan
   yetkiyi başkasına veremez. TOTP ile giriş, ilk girişte şifre değiştirme,
   eksiksiz denetim kaydı. Herkes haftada bir yeniden giriş yapar.
 

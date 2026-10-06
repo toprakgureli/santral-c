@@ -80,6 +80,34 @@ func (h *Handler) UpdateBreakLimit(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"minutes": req.Minutes})
 }
 
+// RealCall returns how long an answered call must last to count as real.
+// Every signed-in user may read it: the call screens label their numbers
+// with it.
+func (h *Handler) RealCall(c *fiber.Ctx) error {
+	if _, err := actor(c); err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"seconds": h.service.RealCallSeconds(c.UserContext())})
+}
+
+// UpdateRealCall stores that threshold.
+func (h *Handler) UpdateRealCall(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req struct {
+		Seconds int `json:"seconds"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := h.service.SetRealCallSeconds(c.UserContext(), id, req.Seconds, c.IP()); err != nil {
+		return err
+	}
+	return c.JSON(fiber.Map{"seconds": req.Seconds})
+}
+
 // Router mounts the settings endpoints.
 type Router struct {
 	handler *Handler
@@ -98,6 +126,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Get("/", r.handler.Get)
 	group.Put("/", r.need(enums.SystemSettings), r.handler.Update)
 	group.Get("/break-limit", r.handler.BreakLimit)
+	group.Get("/real-call", r.handler.RealCall)
+	group.Put("/real-call", r.need(enums.CallRealSeconds), r.handler.UpdateRealCall)
 	group.Put("/break-limit", r.need(enums.AgentBreakLimit), r.handler.UpdateBreakLimit)
 }
 

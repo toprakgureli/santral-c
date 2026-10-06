@@ -6,12 +6,14 @@ import { Check, Copy, Download } from "lucide-react";
 import type { TeamRow } from "@/api/types";
 import { Button, Modal } from "@/components/ui";
 import { renderTeamImage } from "@/pages/teamShare";
+import { useRealCallSeconds } from "@/lib/realCall";
 
 export default function ShareDialog({ open, rows, rangeLabel, scopeLabel, onClose }: { open: boolean; rows: TeamRow[]; rangeLabel: string; scopeLabel: string; onClose: () => void }) {
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const realSeconds = useRealCallSeconds();
 
   useEffect(() => {
     if (!open) return;
@@ -19,7 +21,7 @@ export default function ShareDialog({ open, rows, rangeLabel, scopeLabel, onClos
     setCanvas(null);
     setUrl(null);
     setError(null);
-    renderTeamImage(rows, rangeLabel, scopeLabel)
+    renderTeamImage(rows, rangeLabel, scopeLabel, realSeconds)
       .then((c) => {
         if (!live) return;
         setCanvas(c);
@@ -29,7 +31,7 @@ export default function ShareDialog({ open, rows, rangeLabel, scopeLabel, onClos
     return () => {
       live = false;
     };
-  }, [open, rows, rangeLabel, scopeLabel]);
+  }, [open, rows, rangeLabel, scopeLabel, realSeconds]);
 
   const file = `ekip-performansi-${rangeLabel.replace(/[^\d]+/g, "-").replace(/^-|-$/g, "") || "bugun"}.png`;
 

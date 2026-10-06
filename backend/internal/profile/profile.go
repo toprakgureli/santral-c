@@ -20,15 +20,12 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	"github.com/toprakgureli/santral-c/backend/pkg/callrule"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 	"github.com/toprakgureli/santral-c/backend/pkg/validator"
 )
-
-// A connected call of 30 seconds or more is a real conversation (the same
-// rule as the team page).
-const realCallSeconds = 30
 
 // Stats is the all-time line on the profile.
 type Stats struct {
@@ -121,7 +118,9 @@ func (r *Repository) SetText(ctx context.Context, id uint, headline, bio string)
 }
 
 // Stats computes the all-time totals.
-func (r *Repository) Stats(ctx context.Context, id uint) (Stats, error) {
+// A connected call lasting at least real seconds is a real conversation
+// (callrule, the same rule as the team page).
+func (r *Repository) Stats(ctx context.Context, id uint, real int) (Stats, error) {
 	var s Stats
 	var calls struct {
 		Real int64
@@ -129,7 +128,7 @@ func (r *Repository) Stats(ctx context.Context, id uint) (Stats, error) {
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("count(*) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?) AS real, "+
-			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk", realCallSeconds).
+			"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk", real).
 		Where("user_id = ?", id).Scan(&calls).Error; err != nil {
 		return s, fmt.Errorf("call totals could not be computed: %w", err)
 	}
@@ -142,7 +141,7 @@ func (r *Repository) Stats(ctx context.Context, id uint) (Stats, error) {
 }
 
 // Record computes the call-centre record for [from, to).
-func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (Record, error) {
+func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time, real int) (Record, error) {
 	rec := Record{BusiestHour: -1, Days: []Day{}}
 	var calls struct {
 		Real         int64
@@ -164,7 +163,7 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 				"COALESCE(SUM(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS talk, "+
 				"COALESCE(AVG(duration_seconds) FILTER (WHERE disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?), 0)::bigint AS avg, "+
 				"COALESCE(MAX(duration_seconds) FILTER (WHERE disposition = 'answered'), 0) AS longest",
-			realCallSeconds, realCallSeconds, realCallSeconds, realCallSeconds, realCallSeconds).
+			real, real, real, real, real).
 		Where("user_id = ? AND started_at >= ? AND started_at < ?", id, from, to).
 		Scan(&calls).Error; err != nil {
 		return rec, fmt.Errorf("call figures could not be computed: %w", err)
@@ -199,7 +198,7 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("to_char(started_at AT TIME ZONE 'Europe/Istanbul', 'YYYY-MM-DD') AS day, count(*) AS real").
-		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, realCallSeconds).
+		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, real).
 		Group("day").Order("day").Scan(&days).Error; err != nil {
 		return rec, fmt.Errorf("daily figures could not be computed: %w", err)
 	}
@@ -217,7 +216,7 @@ func (r *Repository) Record(ctx context.Context, id uint, from, to time.Time) (R
 	}
 	if err := r.db.WithContext(ctx).Model(&models.CallLog{}).
 		Select("EXTRACT(HOUR FROM started_at AT TIME ZONE 'Europe/Istanbul')::int AS hour, count(*) AS n").
-		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, realCallSeconds).
+		Where("user_id = ? AND started_at >= ? AND started_at < ? AND disposition = 'answered' AND NOT duration_unknown AND duration_seconds >= ?", id, from, to, real).
 		Group("hour").Order("n DESC, hour").Limit(1).Scan(&hour).Error; err != nil {
 		return rec, fmt.Errorf("busiest hour could not be computed: %w", err)
 	}
@@ -236,7 +235,12 @@ type IActorResolver interface {
 type Service struct {
 	repo  *Repository
 	users IActorResolver
+	// realCall says how long an answered call must last to count as real.
+	realCall callrule.Source
 }
+
+// SetRealCall wires the setting that decides which calls count as real.
+func (s *Service) SetRealCall(src callrule.Source) { s.realCall = src }
 
 // NewService builds a profile service.
 func NewService(repo *Repository, users IActorResolver) *Service {
@@ -289,7 +293,7 @@ func (s *Service) Get(ctx context.Context, actorID, userID uint) (*Profile, erro
 	if !figures {
 		return p, nil
 	}
-	stats, err := s.repo.Stats(ctx, userID)
+	stats, err := s.repo.Stats(ctx, userID, callrule.Seconds(ctx, s.realCall))
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
@@ -321,7 +325,7 @@ func (s *Service) RecordRange(ctx context.Context, actorID, userID uint, fromDay
 	if !figures {
 		return nil, errs.Forbidden("Bu kişinin çağrı karnesini görme yetkin yok.")
 	}
-	rec, err := s.repo.Record(ctx, userID, from, toStart.AddDate(0, 0, 1))
+	rec, err := s.repo.Record(ctx, userID, from, toStart.AddDate(0, 0, 1), callrule.Seconds(ctx, s.realCall))
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

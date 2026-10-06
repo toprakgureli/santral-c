@@ -11,8 +11,10 @@ import { Button, Card } from "../ui";
 import { cn } from "../../lib/utils";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { callQuality, formatDuration, formatStamp } from "../../pages/callFormat";
+import { useRealCallSeconds } from "../../lib/realCall";
 
 export function CallHistory({ canCall }: { canCall: boolean }) {
+  const realSeconds = useRealCallSeconds();
   const phone = useSoftphoneContext();
   const { write: writeWhatsApp } = useWhatsAppWrite();
   const [calls, setCalls] = useState<Call[]>([]);
@@ -92,11 +94,11 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
       ) : (
         <>
           {/* Today's breakdown (resets at 00:00) */}
-          {/* Reached: real (30s+) conversations, split by direction. */}
+          {/* Reached: real conversations (the set threshold and up), split by direction. */}
           <div className="mb-2 rounded-2xl bg-success/[0.07] p-2 ring-1 ring-success/15">
             <div className="mb-1.5 px-1 text-xs font-semibold text-success">Ulaşılanlar</div>
             <div className="grid grid-cols-3 gap-2">
-              <CountBox label="Gerçek çağrı" sub="30 saniye ve üstü" value={counts.long} tone="green" />
+              <CountBox label="Gerçek çağrı" sub={`${realSeconds} saniye ve üstü`} value={counts.long} tone="green" />
               <CountBox label="Gelen" sub="gerçek çağrı" value={counts.inboundReal} tone="green" />
               <CountBox label="Giden" sub="gerçek çağrı" value={counts.outboundReal} tone="green" />
             </div>
@@ -122,7 +124,7 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
                   <CountBox label="Giden" sub="aradın, açılmadı" value={counts.outboundMissed} tone="slate" />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <CountBox label="Geçersiz çağrı" sub="bağlandı, 30 saniye dolmadı" value={counts.short} tone="amber" />
+                  <CountBox label="Geçersiz çağrı" sub={`bağlandı, ${realSeconds} saniye dolmadı`} value={counts.short} tone="amber" />
                 </div>
               </div>
             )}

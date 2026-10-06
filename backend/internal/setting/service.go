@@ -17,6 +17,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/requests"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/dtos/responses"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/pkg/callrule"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -42,6 +43,10 @@ const (
 // KeyBreakLimit is the daily break allowance in minutes; past it the break
 // card turns red and counts the excess.
 const KeyBreakLimit = "break_limit_minutes"
+
+// KeyRealCallSeconds is how long an answered call must last to count as a
+// real conversation (callrule).
+const KeyRealCallSeconds = "real_call_seconds"
 
 // Break limit bounds (minutes). The default applies when nothing is stored.
 const (
@@ -252,6 +257,50 @@ func (s *Service) SetBreakLimit(ctx context.Context, actorID uint, minutes int, 
 			TargetID:   KeyBreakLimit,
 			IP:         ip,
 			Detail:     map[string]any{"breakLimitMinutes": minutes},
+		})
+	}
+	return nil
+}
+
+// RealCallSeconds returns how long an answered call must last to count as
+// a real conversation, falling back to the default when the setting is
+// missing or unreadable.
+func (s *Service) RealCallSeconds(ctx context.Context) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s.value(ctx, KeyRealCallSeconds)))
+	if err != nil || n < callrule.MinRealSeconds || n > callrule.MaxRealSeconds {
+		return callrule.DefaultRealSeconds
+	}
+	return n
+}
+
+// SetRealCallSeconds stores that threshold; needs call.real_seconds. The
+// call history, the team page and the profiles count with it at once.
+func (s *Service) SetRealCallSeconds(ctx context.Context, actorID uint, seconds int, ip string) error {
+	if s.users == nil {
+		return errs.Forbidden("Bu işlem için yetkin yok.")
+	}
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.CallRealSeconds) {
+		return errs.Forbidden("Gerçek çağrı süresini değiştirme yetkin yok.")
+	}
+	if seconds < callrule.MinRealSeconds || seconds > callrule.MaxRealSeconds {
+		return errs.Invalid(fmt.Sprintf("Süre %d ile %d saniye arasında olmalı.", callrule.MinRealSeconds, callrule.MaxRealSeconds), nil)
+	}
+	before := s.RealCallSeconds(ctx)
+	if err := s.set(ctx, KeyRealCallSeconds, strconv.Itoa(seconds)); err != nil {
+		return errs.Internal(err)
+	}
+	if s.audit != nil {
+		s.audit.Record(ctx, audit.Entry{
+			ActorID:    &actorID,
+			Action:     enums.AuditSettingsUpdated,
+			TargetType: "settings",
+			TargetID:   KeyRealCallSeconds,
+			IP:         ip,
+			Detail:     map[string]any{"realCallSeconds": seconds, "before": before},
 		})
 	}
 	return nil

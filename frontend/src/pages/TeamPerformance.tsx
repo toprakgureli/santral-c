@@ -11,7 +11,8 @@
 // and for a figure that crosses a line (reach under half); every other
 // number stays neutral.
 //
-// "Gerçek çağrı" is an answered call of 30 seconds or longer. "Ulaşma" is
+// "Gerçek çağrı" is an answered call at least as long as the setting
+// (call.real_seconds, 30 seconds unless changed). "Ulaşma" is
 // real calls over all attempts (real, too short, unanswered).
 
 import { useEffect, useMemo, useState } from "react";
@@ -32,6 +33,7 @@ import { displayNumber } from "../softphone/dial";
 import { formatClock } from "./callFormat";
 import { clockTime, shortDateTime } from "@/lib/time";
 import { useTopmost } from "@/components/ui/windowStack";
+import { useRealCallSeconds } from "@/lib/realCall";
 
 const REFRESH_MS = 15000;
 const VIEW_KEY = "santral.perf-view";
@@ -112,6 +114,7 @@ function stateSince(r: TeamRow) {
 }
 
 export function TeamPerformance() {
+  const realSeconds = useRealCallSeconds();
   const [rows, setRows] = useState<TeamRow[]>([]);
   const [scope, setScope] = useState<"all" | "role">("role");
   const [loading, setLoading] = useState(true);
@@ -214,7 +217,7 @@ export function TeamPerformance() {
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 md:grid-cols-4">
           <Figure label="Mesaide" value={String(totals.onShift)} note={`${rows.length} kişiden`} />
           <Figure label="Görüşmede" value={String(totals.talking)} note="şu an telefonda" dot={totals.talking > 0 ? "bg-destructive animate-pulse" : undefined} />
-          <Figure label="Gerçek çağrı" value={String(totals.real)} note={`${totals.inReal} gelen · ${totals.outReal} giden`} hint="Cevaplanan, 30 saniye ve üstü çağrılar" />
+          <Figure label="Gerçek çağrı" value={String(totals.real)} note={`${totals.inReal} gelen · ${totals.outReal} giden`} hint={`Cevaplanan, ${realSeconds} saniye ve üstü çağrılar`} />
           <Figure label="Ulaşma" value={pct(teamReach)} note={`${totals.unanswered + totals.short} ulaşılamayan`} hint="Gerçek çağrı / tüm denemeler" warn={lowReach(teamReach)} />
         </div>
       </div>
@@ -246,7 +249,7 @@ export function TeamPerformance() {
         <section className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-border/60">
           <div className={cn("hidden items-center gap-4 border-b border-border/60 px-4 py-2.5 text-[0.7rem] font-medium text-muted-foreground md:grid", hasWA ? "md:grid-cols-[minmax(14rem,1.6fr)_1.2fr_1fr_1fr_1fr_1fr_1.25rem]" : "md:grid-cols-[minmax(14rem,1.6fr)_1.2fr_1fr_1fr_1fr_1.25rem]")}>
             <SortHead on={sort === "name"} onClick={() => setSort("name")}>Kişi</SortHead>
-            <SortHead on={sort === "long"} onClick={() => setSort("long")} hint="Cevaplanan, 30 saniye ve üstü">Gerçek çağrı</SortHead>
+            <SortHead on={sort === "long"} onClick={() => setSort("long")} hint={`Cevaplanan, ${realSeconds} saniye ve üstü`}>Gerçek çağrı</SortHead>
             <SortHead on={sort === "talkSeconds"} onClick={() => setSort("talkSeconds")} hint="Cevaplanan çağrıların toplam süresi" right>Görüşme süresi</SortHead>
             <SortHead on={sort === "reach"} onClick={() => setSort("reach")} hint="Gerçek çağrı / tüm denemeler" right>Ulaşma</SortHead>
             <SortHead on={sort === "occupancy"} onClick={() => setSort("occupancy")} hint="Görüşme süresi / mesai süresi" right>Yoğunluk</SortHead>
@@ -399,6 +402,7 @@ function Small({ label, value, hint, warn }: { label: string; value: string; hin
 
 // Detail is everything about one person, opened from a line or a card.
 function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string; onClose: () => void }) {
+  const realSeconds = useRealCallSeconds();
   const [calls, setCalls] = useState(false);
   const reach = reachOf(r);
   const occupancy = occupancyOf(r);
@@ -440,7 +444,7 @@ function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now
           </Block>
 
           <Block title="Çağrılar">
-            <Row icon={PhoneIncoming} tone="success" label="Ulaşılan (gerçek çağrı)" note={`${r.calls.inboundReal} gelen · ${r.calls.outboundReal} giden · 30 sn ve üstü`} value={<b className="text-lg">{r.calls.long}</b>} />
+            <Row icon={PhoneIncoming} tone="success" label="Ulaşılan (gerçek çağrı)" note={`${r.calls.inboundReal} gelen · ${r.calls.outboundReal} giden · ${realSeconds} sn ve üstü`} value={<b className="text-lg">{r.calls.long}</b>} />
             <Row icon={PhoneMissed} tone="destructive" label="Ulaşılamayan" note={`${r.calls.unanswered} cevapsız · ${r.calls.short} geçersiz`} value={<b className="text-lg">{unreached}</b>} />
             <div className="flex items-center gap-2 px-1 pt-1 text-xs" data-tip="Gerçek çağrı / tüm denemeler">
               <span className="w-16 text-muted-foreground">Ulaşma</span>

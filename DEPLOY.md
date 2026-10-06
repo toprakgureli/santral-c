@@ -333,7 +333,12 @@ server's own address for SSH (section 11).
    role; take them away where they are not wanted. `system.backup` (section
    10) is held only by the owner at first; `system.health` (the system
    warnings, section 11) by the owner and Yönetici.
-5. The owner account (the invisible admin) stays out of every list and
+5. A call counts as real when it was answered and lasted at least 30
+   seconds. Whoever holds `call.real_seconds` (only the owner at first) can
+   change that under Yönetim > Sistem Ayarları > Gerçek Çağrı Süresi
+   (5 to 600 seconds); the call history, Ekip Performansı and the profiles
+   count with the new value at once, past days included.
+6. The owner account (the invisible admin) stays out of every list and
    statistic. An owner who also works in a role, say Teknik, can be shown
    in the statistics (team performance, profiles, the escalation filter,
    the agent list) by giving that role `performance.show_hidden_admin`

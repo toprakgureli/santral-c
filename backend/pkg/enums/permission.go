@@ -49,6 +49,7 @@ const (
 	AgentManage          Permission = "agent.manage"
 	AgentPresenceViewAll Permission = "agent.presence_view_all"
 	AgentBreakLimit      Permission = "agent.break_limit"
+	CallRealSeconds      Permission = "call.real_seconds"
 
 	QueueView   Permission = "queue.view"
 	QueueManage Permission = "queue.manage"
@@ -158,6 +159,7 @@ var permissions = []PermissionInfo{
 	{AgentManage, "Temsilcileri yönetir"},
 	{AgentPresenceViewAll, "Tüm temsilcilerin canlı durumunu görür"},
 	{AgentBreakLimit, "Günlük mola sınırını belirler"},
+	{CallRealSeconds, "Kaç saniyelik görüşmenin gerçek çağrı sayılacağını belirler"},
 	{QueueView, "Kuyrukları görür"},
 	{QueueManage, "Kuyrukları yönetir"},
 	{ContactView, "Kişileri görür"},
