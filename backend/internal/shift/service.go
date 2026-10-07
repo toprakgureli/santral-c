@@ -17,13 +17,20 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/tz"
 )
 
-// Working-day cutoffs in Istanbul time. The day nominally ends at 18:30; a
-// shift still open at 19:20 is closed by the server.
+// Working-day cutoffs in Istanbul time. The day ends at a time set in the
+// panel (18:30 unless changed); the day's summary comes up five minutes
+// before, and a shift still open fifty minutes after is closed by the server.
 const (
-	reminderHour, reminderMinute = 18, 30
-	autoEndHour, autoEndMinute   = 19, 20
-	sweepEvery                   = time.Minute
+	defaultEndHour, defaultEndMinute = 18, 30
+	autoEndAfter                     = 50 * time.Minute
+	summaryBefore                    = 5 * time.Minute
+	sweepEvery                       = time.Minute
 )
+
+// IWorkday reads when the working day ends.
+type IWorkday interface {
+	ShiftEnd(ctx context.Context) (hour, minute int)
+}
 
 // Who closed a shift.
 const (
@@ -50,6 +57,7 @@ type Service struct {
 	repo     *Repository
 	audit    IAudit
 	presence IPresence
+	workday  IWorkday
 }
 
 // NewService builds a shift service.
@@ -60,6 +68,17 @@ func NewService(repo *Repository, auditor IAudit) *Service {
 // SetPresence wires the telephony hook. It is set after construction because
 // the telephony service in turn reads shifts.
 func (s *Service) SetPresence(p IPresence) { s.presence = p }
+
+// SetWorkday wires the setting that says when the working day ends.
+func (s *Service) SetWorkday(w IWorkday) { s.workday = w }
+
+// dayEnd reads when the working day ends.
+func (s *Service) dayEnd(ctx context.Context) (int, int) {
+	if s.workday == nil {
+		return defaultEndHour, defaultEndMinute
+	}
+	return s.workday.ShiftEnd(ctx)
+}
 
 // Active reports whether the user is on shift.
 func (s *Service) Active(ctx context.Context, userID uint) (bool, error) {
@@ -89,12 +108,15 @@ func (s *Service) Current(ctx context.Context, userID uint) (*responses.ShiftSta
 	if open != nil {
 		started = open.StartedAt
 	}
-	auto := autoEndFor(started)
-	// The reminder sits on the same evening as the automatic close, so a
+	h, m := s.dayEnd(ctx)
+	auto := autoEndFor(started, h, m)
+	// The day's end sits on the same evening as the automatic close, so a
 	// shift opened late at night is not flagged as overtime right away.
-	reminder := at(auto, reminderHour, reminderMinute)
+	reminder := auto.Add(-autoEndAfter)
+	summary := reminder.Add(-summaryBefore)
 	out.ReminderAt = &reminder
 	out.AutoEndAt = &auto
+	out.SummaryAt = &summary
 	return out, nil
 }
 
@@ -160,8 +182,9 @@ func (s *Service) Sweep(ctx context.Context) {
 		return
 	}
 	now := time.Now()
+	h, m := s.dayEnd(ctx)
 	for i := range open {
-		cutoff := autoEndFor(open[i].StartedAt)
+		cutoff := autoEndFor(open[i].StartedAt, h, m)
 		if now.Before(cutoff) {
 			continue
 		}
@@ -215,10 +238,11 @@ func at(started time.Time, hour, minute int) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day(), hour, minute, 0, 0, tz.Istanbul)
 }
 
-// autoEndFor is the first 19:20 (Istanbul) after the shift started: the same
-// evening normally, or the next one for a shift opened late at night.
-func autoEndFor(started time.Time) time.Time {
-	cutoff := at(started, autoEndHour, autoEndMinute)
+// autoEndFor is the first automatic close (fifty minutes after the day ends
+// at endHour:endMinute, Istanbul) after the shift started: the same evening
+// normally, or the next one for a shift opened late at night.
+func autoEndFor(started time.Time, endHour, endMinute int) time.Time {
+	cutoff := at(started, endHour, endMinute).Add(autoEndAfter)
 	if !started.Before(cutoff) {
 		cutoff = cutoff.Add(24 * time.Hour)
 	}

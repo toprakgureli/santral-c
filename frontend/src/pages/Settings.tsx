@@ -8,6 +8,7 @@ import { api, ApiError } from "../api/client";
 import type { DriveStatus, IPBan, LoginAttempt, MfaMode, Paged, SystemSettings } from "../api/types";
 import { formatSize } from "../lib/attachments";
 import BackupCard from "../components/settings/BackupCard";
+import WorkdayCard from "../components/settings/WorkdayCard";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { rememberRealCallSeconds } from "../lib/realCall";
@@ -30,6 +31,7 @@ export function Settings() {
   const canManage = can(user, "system.settings");
   const canBreakLimit = can(user, "agent.break_limit");
   const canRealCall = can(user, "call.real_seconds");
+  const canWorkday = can(user, "agent.workday");
   // The storage account carries every chat and WhatsApp file: a system setting.
   const canDrive = can(user, "system.settings");
   const canGames = can(user, "games.manage");
@@ -84,6 +86,7 @@ export function Settings() {
       {canManage && <MfaPolicyCard />}
       {canBreakLimit && <BreakLimitCard />}
       {canRealCall && <RealCallCard />}
+      {canWorkday && <WorkdayCard />}
       {canDrive && <DriveCard />}
       {canBackup && <BackupCard />}
       {canGames && (

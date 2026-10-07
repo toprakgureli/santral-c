@@ -237,6 +237,8 @@ type Service struct {
 	users IActorResolver
 	// realCall says how long an answered call must last to count as real.
 	realCall callrule.Source
+	// targets reads the daily target of real calls.
+	targets ITargets
 }
 
 // SetRealCall wires the setting that decides which calls count as real.
@@ -479,6 +481,7 @@ func (r *Router) Routes(g fiber.Router) {
 	// account is not found, and the figures need a performance permission.
 	group := g.Group("/profile", r.guard)
 	group.Get("/me", r.handler.Mine)
+	group.Get("/me/summary", r.handler.Summary)
 	group.Put("/me", r.handler.UpdateMine)
 	group.Get("/:id/record", r.handler.Record)
 	group.Get("/:id", r.handler.ByID)

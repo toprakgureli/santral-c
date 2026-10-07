@@ -103,8 +103,40 @@ export interface Shift {
 
 export interface ShiftStatus {
   shift: Shift | null;
+  // the end of the working day, when the day's summary comes up, and when
+  // the server closes the shift on its own
   reminderAt?: string;
+  summaryAt?: string;
   autoEndAt?: string;
+}
+
+// The working day: when it ends and each role's daily target of real calls.
+export interface Workday {
+  shiftEnd: string;
+  roles: { id: number; name: string; target: number }[];
+}
+
+// The person's day, against their own target and their own last week.
+export interface DaySummary {
+  today: {
+    real: number;
+    inboundReal: number;
+    outboundReal: number;
+    unanswered: number;
+    short: number;
+    talkSeconds: number;
+    avgTalkSeconds: number;
+    longestSeconds: number;
+    escalations: number;
+    shiftSeconds: number;
+    breakSeconds: number;
+  };
+  target: number;
+  weekAverage: number;
+  weekBest: number;
+  weekDays: number;
+  followups: { unreached: number; reached: number; remindersOpen: number };
+  realSeconds: number;
 }
 
 export interface PresencePause {

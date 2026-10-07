@@ -4,6 +4,7 @@ import { useShift } from "@/shift/ShiftContext";
 import { formatClock } from "@/pages/callFormat";
 import { cn } from "@/lib/utils";
 import { clockTime } from "@/lib/time";
+import { openDaySummary } from "./DaySummaryWatcher";
 
 // ShiftButton starts and ends the agent's shift from the topbar. While on
 // shift it shows the elapsed time, and after the working day is over it warns
@@ -54,9 +55,9 @@ export default function ShiftButton() {
       </span>
       <button
         type="button"
-        onClick={() => void shift.end()}
+        onClick={openDaySummary}
         disabled={shift.busy}
-        data-tip="Mesaiyi bitir"
+        data-tip="Günün özetini gör ve mesaiyi bitir"
         className={cn(
           "flex h-9 items-center gap-2 rounded-xl bg-destructive px-3 text-sm font-medium text-destructive-foreground shadow-sm transition hover:opacity-90",
           "disabled:pointer-events-none disabled:opacity-50",

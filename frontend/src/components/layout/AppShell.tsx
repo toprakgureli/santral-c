@@ -10,6 +10,7 @@ import WelcomeCard from "./WelcomeCard";
 import WrapUpCard from "./WrapUpCard";
 import UnreachedPrompt from "./UnreachedPrompt";
 import ReminderWatcher from "./ReminderWatcher";
+import DaySummaryWatcher from "./DaySummaryWatcher";
 import SystemAlerts from "./SystemAlerts";
 import { SoftphoneProvider } from "@/softphone/SoftphoneContext";
 import { ShiftProvider } from "@/shift/ShiftContext";
@@ -60,6 +61,7 @@ export default function AppShell() {
     <WrapUpCard />
     <UnreachedPrompt />
     <ReminderWatcher />
+    <DaySummaryWatcher />
     <MentionToasts />
     <WAAlerts />
     <SystemAlerts />

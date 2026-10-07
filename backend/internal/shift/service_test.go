@@ -27,7 +27,7 @@ func TestAutoEndFor(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := autoEndFor(started); !got.Equal(want) {
+			if got := autoEndFor(started, defaultEndHour, defaultEndMinute); !got.Equal(want) {
 				t.Fatalf("autoEndFor(%s) = %s, want %s", tc.started, got.Format(time.RFC3339), want.Format(time.RFC3339))
 			}
 		})
@@ -42,8 +42,18 @@ func TestReminderFollowsAutoEnd(t *testing.T) {
 	for _, tc := range cases {
 		started, _ := time.Parse(time.RFC3339, tc.started)
 		want, _ := time.Parse(time.RFC3339, tc.want)
-		if got := at(autoEndFor(started), reminderHour, reminderMinute); !got.Equal(want) {
+		if got := autoEndFor(started, defaultEndHour, defaultEndMinute).Add(-autoEndAfter); !got.Equal(want) {
 			t.Fatalf("reminder for %s = %s, want %s", tc.started, got.Format(time.RFC3339), want.Format(time.RFC3339))
 		}
+	}
+}
+
+// TestAutoEndFollowsTheSetEnd: with the day set to end at 17:30, the shift
+// closes on its own fifty minutes later, at 18:20.
+func TestAutoEndFollowsTheSetEnd(t *testing.T) {
+	started, _ := time.Parse(time.RFC3339, "2026-09-14T09:05:00+03:00")
+	want, _ := time.Parse(time.RFC3339, "2026-09-14T18:20:00+03:00")
+	if got := autoEndFor(started, 17, 30); !got.Equal(want) {
+		t.Fatalf("auto end for a 17:30 day = %s, want %s", got.Format(time.RFC3339), want.Format(time.RFC3339))
 	}
 }

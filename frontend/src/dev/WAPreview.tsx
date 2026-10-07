@@ -12,6 +12,8 @@ import { Account } from "@/pages/Account";
 import PeerHints from "@/followups/PeerHints";
 import { Followups } from "@/pages/Followups";
 import ReminderWatcher from "@/components/layout/ReminderWatcher";
+import DaySummary from "@/components/layout/DaySummary";
+import WorkdayCard from "@/components/settings/WorkdayCard";
 import SharedRatings from "@/pages/SharedRatings";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsApp } from "@/pages/WhatsApp";
@@ -307,6 +309,15 @@ function installMock() {
       await new Promise((r) => setTimeout(r, 150));
       return new Response(JSON.stringify({ scope: "all", from: "", to: "", items: perfRows }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
+    if (url.startsWith("/api/v1/profile/me/summary")) {
+      return new Response(JSON.stringify({
+        today: { real: 27, inboundReal: 16, outboundReal: 11, unanswered: 6, short: 3, talkSeconds: 9420, avgTalkSeconds: 349, longestSeconds: 1310, escalations: 24, shiftSeconds: 30600, breakSeconds: 3300 },
+        target: 25, weekAverage: 22.4, weekBest: 31, weekDays: 5, followups: { unreached: 4, reached: 2, remindersOpen: 1 }, realSeconds: 30,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.startsWith("/api/v1/settings/workday")) {
+      return new Response(JSON.stringify({ shiftEnd: "18:30", roles: [{ id: 2, name: "Satış Ekibi", target: 25 }, { id: 3, name: "Teknik Ekip", target: 0 }, { id: 4, name: "Yönetici", target: 0 }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.startsWith("/api/v1/followups/") || url.startsWith("/api/v1/notices")) {
       await new Promise((r) => setTimeout(r, 120));
       let fbody: unknown;
@@ -362,6 +373,8 @@ const PAGES = [
   { path: "/role-form", label: "Rol formu" },
   { path: "/followups", label: "Geri dönüşler" },
   { path: "/call-hints", label: "Görüşme ipuçları" },
+  { path: "/day-summary", label: "Günün özeti" },
+  { path: "/workday", label: "Mesai ayarı" },
   { path: "/shared/ratings/2.preview", label: "Paylaşılan puanlar" },
   { path: "/shared/ratings/gone", label: "Kapanmış link" },
 ];
@@ -415,6 +428,8 @@ export default function WAPreview() {
                     <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
                     <Route path="/shared/ratings/:token" element={<SharedPreview />} />
                     <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /><ReminderWatcher /></ShiftProvider>} />
+                    <Route path="/day-summary" element={<DaySummary ending onClose={() => undefined} onEnd={async () => undefined} />} />
+                    <Route path="/workday" element={<WorkdayCard />} />
                     <Route path="/call-hints" element={<SoftphoneMockProvider value={{ ...phoneValue(), status: "in-call", peer: "05447473456", callId: "hint-1" } as SoftphoneValue}><div className="mx-auto max-w-xs rounded-2xl border border-border bg-popover p-3 shadow-xl"><p className="mb-2 text-sm font-semibold">05447473456</p><PeerHints /></div></SoftphoneMockProvider>} />
                     <Route path="/role-form" element={<RoleForm role={null} groups={permissionGroups} onClose={() => undefined} onSaved={() => undefined} />} />
                   </Routes>

@@ -29,7 +29,7 @@ everything an agent and a team lead actually work in.
 |---|---|
 | Backend | One Go service: domain packages with repository / service / handler layers, goose SQL migrations applied at start |
 | Frontend | TypeScript / React panel; pages load when first opened |
-| Access control | 83 permissions grouped by module, every feature behind one, enforced by the server |
+| Access control | 84 permissions grouped by module, every feature behind one, enforced by the server |
 | Real time | Server-Sent Events for calls, presence, chat and WhatsApp |
 | Operations | Backups to a Google Shared Drive every six hours, Prometheus metrics, traces, a Grafana dashboard with alerts |
 | Deploy | One command that checks the config, copies the database, switches and rolls back on a failed health check |
@@ -56,6 +56,11 @@ everything an agent and a team lead actually work in.
   unreached numbers or by hand, a call back is set for a time; when due it
   comes up on every page (call, snooze, done) and closes by itself once
   anyone talks to the customer.
+- The day's summary: when an agent ends their shift, and on its own five
+  minutes before the working day ends, the panel shows their real calls
+  against their role's daily target and their own last week, talk time,
+  escalations and what is still owed. The end of the day and the targets
+  are set in the panel; the target shows on the dashboard too.
 
 **WhatsApp Business**
 - Shared inbox with tickets, pool, automatic distribution, transfer, internal
@@ -84,7 +89,7 @@ everything an agent and a team lead actually work in.
   real-time mini games. Unread counts show up to 99+, and someone added to
   a group later starts at the newest message.
 - Contacts, escalation catalogue and history.
-- Users, roles, an 83-permission catalogue; an admin can never grant what
+- Users, roles, an 84-permission catalogue; an admin can never grant what
   they do not hold. Login with TOTP, forced first-login password change,
   a full audit trail, and everyone signs in again once a week.
 

@@ -6,6 +6,7 @@ import type {
   CallLookup,
   CallPage,
   Contact,
+  DaySummary,
   TodayCalls,
   EscalationCategory,
   EscalationReason,
@@ -36,6 +37,7 @@ import type {
   SystemSettings,
   TeamPerformance,
   User,
+  Workday,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -425,6 +427,9 @@ export const api = {
   breakLimit: () => request<{ minutes: number }>("/settings/break-limit"),
   updateBreakLimit: (minutes: number) => request<{ minutes: number }>("/settings/break-limit", { method: "PUT", body: JSON.stringify({ minutes }) }),
   realCall: () => request<{ seconds: number }>("/settings/real-call"),
+  workday: () => request<Workday>("/settings/workday"),
+  updateWorkday: (body: { shiftEnd: string; targets: Record<number, number> }) => request<Workday>("/settings/workday", { method: "PUT", body: JSON.stringify(body) }),
+  daySummary: () => request<DaySummary>("/profile/me/summary"),
   updateRealCall: (seconds: number) => request<{ seconds: number }>("/settings/real-call", { method: "PUT", body: JSON.stringify({ seconds }) }),
 
   // Audit trail (system.audit_view)

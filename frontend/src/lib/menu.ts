@@ -37,7 +37,7 @@ export const MENU: MenuGroup[] = [
       { label: "Eskalasyon Durumları", path: "/escalations", icon: Tags, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: UsersRound, permission: "user.view" },
       { label: "Roller", path: "/roles", icon: KeyRound, permission: "role.view" },
-      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit", "games.manage", "system.backup"] },
+      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit", "agent.workday", "call.real_seconds", "games.manage", "system.backup"] },
       { label: "Denetim Kayıtları", path: "/audit", icon: FileClock, permission: "system.audit_view" },
     ],
   },

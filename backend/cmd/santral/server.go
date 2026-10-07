@@ -107,6 +107,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	callLogSvc.SetRealCall(settingSvc)
 	callLogHandler := calllog.NewHandler(callLogSvc)
 	shiftSvc := shift.NewService(shift.NewRepository(db), auditSvc)
+	// The working day ends at the time set in the panel.
+	shiftSvc.SetWorkday(settingSvc)
 	shiftHandler := shift.NewHandler(shiftSvc)
 	guard := middlewares.Auth(cfg.Auth, deny, actors)
 	// need puts a route's permission next to the route.
@@ -204,6 +206,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	followup.NewRouter(followup.NewHandler(followupSvc), guard, need).Routes(api)
 	profileSvc := profile.NewService(profile.NewRepository(db), actors)
 	profileSvc.SetRealCall(settingSvc)
+	profileSvc.SetTargets(settingSvc)
 	profile.NewRouter(profile.NewHandler(profileSvc), guard).Routes(api)
 	drive := teams.NewDrive(cfg.Drive, ring, db)
 	teamsSvc := teams.NewService(teams.NewRepository(db), actors, teams.NewHub(), drive, auditSvc)

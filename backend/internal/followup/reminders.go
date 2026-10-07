@@ -239,7 +239,7 @@ func (s *Service) tellRemindersReached(ctx context.Context, rows []models.CallRe
 		if r.UserID == *log.UserID {
 			continue
 		}
-		text := fmt.Sprintf("%s numarasını %s geri arayacaktın; %s ile %s görüştü (%s), geri arama kapandı.",
+		text := fmt.Sprintf("%s için planladığın geri arama (saat %s) kapandı: %s ile %s görüştü (%s).",
 			r.PeerNumber, clock(r.DueAt), who, talkLabel(log.DurationSeconds), clock(at))
 		s.notices.Add(ctx, r.UserID, "reminder_reached", text, "/followups?tab=reminders")
 	}

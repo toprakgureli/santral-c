@@ -13,6 +13,8 @@ import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { callQuality, formatDuration, formatStamp } from "../../pages/callFormat";
 import { useRealCallSeconds } from "../../lib/realCall";
 import ScheduleCallback from "@/followups/ScheduleCallback";
+import { useAuth } from "@/auth/AuthContext";
+import { targetFor, useWorkday } from "@/lib/workday";
 
 export function CallHistory({ canCall }: { canCall: boolean }) {
   const realSeconds = useRealCallSeconds();
@@ -28,6 +30,8 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
+  const { user } = useAuth();
+  const target = targetFor(useWorkday(), user?.roleIds);
   const canDial = phone.status === "registered" && canCall;
   const inCall = phone.status === "in-call" || phone.status === "held";
   const copyTimer = useRef<number | null>(null);
@@ -107,6 +111,17 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
               <CountBox label="Gelen" sub="gerçek çağrı" value={counts.inboundReal} tone="green" />
               <CountBox label="Giden" sub="gerçek çağrı" value={counts.outboundReal} tone="green" />
             </div>
+            {target > 0 && (
+              <div className="mt-2 px-1" data-tip={`Rolünün günlük hedefi ${target} gerçek çağrı`}>
+                <div className="mb-1 flex items-center justify-between text-[0.7rem] font-medium">
+                  <span className="text-success">{counts.long >= target ? "Günlük hedef tamam" : `Günlük hedef: ${target}`}</span>
+                  <span className="tabular-nums text-muted-foreground">{counts.long} / {target}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-success/15">
+                  <div className="h-full rounded-full bg-success transition-all" style={{ width: `${Math.min(100, Math.round((counts.long / target) * 100))}%` }} />
+                </div>
+              </div>
+            )}
           </div>
           {/* Not reached: unanswered plus too-short calls, folded away by default. */}
           <div className="mb-3 rounded-2xl bg-muted/30 p-2 ring-1 ring-border/40">

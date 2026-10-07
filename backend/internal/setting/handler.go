@@ -108,6 +108,37 @@ func (h *Handler) UpdateRealCall(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"seconds": req.Seconds})
 }
 
+// Workday returns when the working day ends and each role's daily target.
+// Every signed-in user may read it: the panel times the day's summary and
+// shows the target with it.
+func (h *Handler) Workday(c *fiber.Ctx) error {
+	if _, err := actor(c); err != nil {
+		return err
+	}
+	out, err := h.service.Workday(c.UserContext())
+	if err != nil {
+		return err
+	}
+	return c.JSON(out)
+}
+
+// UpdateWorkday stores them.
+func (h *Handler) UpdateWorkday(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req WorkdayInput
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	out, err := h.service.SetWorkday(c.UserContext(), id, req, c.IP())
+	if err != nil {
+		return err
+	}
+	return c.JSON(out)
+}
+
 // Router mounts the settings endpoints.
 type Router struct {
 	handler *Handler
@@ -128,6 +159,8 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Get("/break-limit", r.handler.BreakLimit)
 	group.Get("/real-call", r.handler.RealCall)
 	group.Put("/real-call", r.need(enums.CallRealSeconds), r.handler.UpdateRealCall)
+	group.Get("/workday", r.handler.Workday)
+	group.Put("/workday", r.need(enums.AgentWorkday), r.handler.UpdateWorkday)
 	group.Put("/break-limit", r.need(enums.AgentBreakLimit), r.handler.UpdateBreakLimit)
 }
 

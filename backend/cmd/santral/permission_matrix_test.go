@@ -64,6 +64,7 @@ var checkedInside = map[string]string{
 	"/api/v1/settings/":              "the service asks for system.settings",
 	"/api/v1/settings/break-limit":   "every signed-in person reads the break limit; the break card needs it",
 	"/api/v1/settings/real-call":     "every signed-in person reads the real-call threshold; the call screens label their figures with it",
+	"/api/v1/settings/workday":       "every signed-in person reads when the working day ends and the daily targets; the day's summary uses them",
 	"/api/v1/webphone":               "the caller's own softphone",
 	"/api/v1/sip/credentials":        "the caller's own phone login",
 	"/api/v1/pbx/status":             "the caller's own presence",
