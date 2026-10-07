@@ -179,8 +179,9 @@ func clampSeconds(seconds int, limit time.Duration) int {
 type ICallVerifier interface {
 	// CallSeen looks for a call between extension and peer that started
 	// around at. It reports whether one was found, how long the two sides
-	// talked and whether it was answered.
-	CallSeen(ctx context.Context, extension, peer string, at time.Time) (found bool, talkSeconds int, answered bool, err error)
+	// talked, whether it was answered and when the record was copied from
+	// the phone system.
+	CallSeen(ctx context.Context, extension, peer string, at time.Time) (found bool, talkSeconds int, answered bool, copiedAt time.Time, err error)
 }
 
 // SetVerifier makes what follows a call wait for the phone system's record
@@ -299,13 +300,28 @@ func (s *Service) verifyOne(ctx context.Context, l models.CallLog) {
 		drop("call has no extension to match the phone records by; nothing follows it")
 		return
 	}
-	found, talk, answered, err := s.verifier.CallSeen(ctx, ext, l.PeerNumber, l.StartedAt)
+	found, talk, answered, copiedAt, err := s.verifier.CallSeen(ctx, ext, l.PeerNumber, l.StartedAt)
 	if err != nil {
 		slog.WarnContext(ctx, "phone record could not be checked", "call", l.CallID, "error", err)
 		later()
 		return
 	}
+	// The record is copied from the phone system every half minute while the
+	// call is among the newest. A copy taken before the call ended can show a
+	// ten-minute conversation as still ringing: no answer, no talk time. Only
+	// a copy taken after the end is the phone system's final word.
+	settled := l.EndedAt == nil || copiedAt.After(*l.EndedAt)
 	switch {
+	case found && !settled && expired:
+		// The record was never copied again: the panel's own figures stand.
+		slog.WarnContext(ctx, "phone record was never copied after the call ended; the panel's figures stand", "call", l.CallID)
+		if err := s.repo.Update(ctx, l.ID, map[string]any{"hooks_done": true}); err != nil {
+			slog.WarnContext(ctx, "call could not be closed", "call", l.CallID, "error", err)
+			return
+		}
+		s.ended(ctx, l)
+	case found && !settled:
+		later()
 	case found:
 		// The phone system's own figures win over the browser's.
 		l.DurationSeconds = talk

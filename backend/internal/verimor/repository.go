@@ -246,7 +246,7 @@ func (r *Repository) FinalizeStaleCalls(ctx context.Context) (int64, error) {
 	}
 	var changed int64
 	for _, c := range rows {
-		found, talk, answered, err := r.CallSeen(ctx, c.Extension, c.PeerNumber, c.StartedAt)
+		found, talk, answered, _, err := r.CallSeen(ctx, c.Extension, c.PeerNumber, c.StartedAt)
 		if err != nil {
 			return changed, err
 		}
