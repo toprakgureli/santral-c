@@ -29,7 +29,7 @@ everything an agent and a team lead actually work in.
 |---|---|
 | Backend | One Go service: domain packages with repository / service / handler layers, goose SQL migrations applied at start |
 | Frontend | TypeScript / React panel; pages load when first opened |
-| Access control | 82 permissions grouped by module, every feature behind one, enforced by the server |
+| Access control | 83 permissions grouped by module, every feature behind one, enforced by the server |
 | Real time | Server-Sent Events for calls, presence, chat and WhatsApp |
 | Operations | Backups to a Google Shared Drive every six hours, Prometheus metrics, traces, a Grafana dashboard with alerts |
 | Deploy | One command that checks the config, copies the database, switches and rolls back on a failed health check |
@@ -62,7 +62,10 @@ everything an agent and a team lead actually work in.
   AI reply assistant (Anthropic API).
 - Satisfaction surveys (a list inside WhatsApp or a Tally form), also sent
   after phone calls, with a ratings page: averages per question, a person by
-  question table, and each answer on its own.
+  question table, and each answer on its own. The page can be shared with
+  someone outside the panel through a signed link that expires on its own
+  and can be cancelled at any time; it opens without signing in, read only,
+  with customers' names and numbers cut short.
 - Conversation export as a self-contained HTML archive with every photo and
   video.
 
@@ -71,7 +74,7 @@ everything an agent and a team lead actually work in.
   real-time mini games. Unread counts show up to 99+, and someone added to
   a group later starts at the newest message.
 - Contacts, escalation catalogue and history.
-- Users, roles, an 82-permission catalogue; an admin can never grant what
+- Users, roles, an 83-permission catalogue; an admin can never grant what
   they do not hold. Login with TOTP, forced first-login password change,
   a full audit trail, and everyone signs in again once a week.
 

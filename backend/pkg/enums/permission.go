@@ -120,6 +120,7 @@ const (
 	WAReports         Permission = "whatsapp.reports"
 	WARatings         Permission = "whatsapp.ratings"
 	WARatingDelete    Permission = "whatsapp.rating_delete"
+	WARatingLink      Permission = "whatsapp.rating_link"
 	WAExport          Permission = "whatsapp.export"
 	WAAISuggest       Permission = "whatsapp.ai_suggest"
 	WAAIManage        Permission = "whatsapp.ai_manage"
@@ -215,6 +216,7 @@ var permissions = []PermissionInfo{
 	{WAReports, "WhatsApp raporlarını görür"},
 	{WARatings, "Müşterilerin verdiği bütün puanları ve yorumları görür (Puanlamalar)"},
 	{WARatingDelete, "Puanlamalardan bir puanı siler; puan raporlardan çıkar, kaydı saklanır"},
+	{WARatingLink, "Puanlamalar için giriş yapmadan açılan süreli link oluşturur ve iptal eder"},
 	{WAExport, "WhatsApp yazışmalarını dışa aktarır"},
 	{WAAISuggest, "Yazarken yapay zekâdan cevap önerisi alır"},
 	{WAAIManage, "Yapay zekâ ayarlarını ve anahtarını düzenler"},

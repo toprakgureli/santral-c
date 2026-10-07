@@ -164,6 +164,19 @@ func (h *Handler) Tally(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusOK)
 }
 
+// SharedRatings answers a rating link. The answer is never cached or
+// indexed, and the link is not passed on to other sites.
+func (h *Handler) SharedRatings(c *fiber.Ctx) error {
+	c.Set("Cache-Control", "no-store")
+	c.Set("X-Robots-Tag", "noindex, nofollow")
+	c.Set("Referrer-Policy", "no-referrer")
+	out, err := h.s.SharedRatings(c.UserContext(), c.Params("token"), ratingFilter(c), c.Query("first") == "1")
+	if err != nil {
+		return err
+	}
+	return c.JSON(out)
+}
+
 // Stream is the live stream for people who use WhatsApp but not the chat;
 // chat users get the same events on the chat's stream.
 func (h *Handler) Stream(c *fiber.Ctx) error {
@@ -376,6 +389,8 @@ const (
 	hookMaxBody      = 1 << 20
 	hookRatePerMin   = 3000
 	surveyRatePerMin = 60
+	// Each filter change on the shared ratings page is one request.
+	sharedRatingsPerMin = 120
 )
 
 // Routes registers everything under /wa.
@@ -387,6 +402,9 @@ func (r *Router) Routes(g fiber.Router) {
 	g.Get("/wa/hook/:key", append(hookGuard, h.Verify)...)
 	g.Post("/wa/hook/:key", append(hookGuard, h.Receive)...)
 	g.Post("/wa/survey/:key", middlewares.RateLimit(surveyRatePerMin, time.Minute), middlewares.MaxBody(hookMaxBody), h.Tally)
+	// A rating link: whoever holds it reads the ratings without a session,
+	// checked by its signature instead.
+	g.Get("/wa/shared-ratings/:token", middlewares.RateLimit(sharedRatingsPerMin, time.Minute), h.SharedRatings)
 
 	a := g.Group("/wa", r.guard)
 	a.Get("/stream", h.Stream)
@@ -800,6 +818,17 @@ func (r *Router) Routes(g fiber.Router) {
 	}))
 	a.Delete("/ratings/:source/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
 		return nil, s.DeleteRating(c.UserContext(), uid, c.Params("source"), id, c.IP())
+	}))
+	a.Get("/rating-links", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.RatingLinks(c.UserContext(), uid) }))
+	a.Post("/rating-links", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in RatingLinkInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.CreateRatingLink(c.UserContext(), uid, in, c.IP())
+	}))
+	a.Delete("/rating-links/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return nil, s.RevokeRatingLink(c.UserContext(), uid, id, c.IP())
 	}))
 	a.Get("/ratings/export", func(c *fiber.Ctx) error {
 		uid, err := actor(c)

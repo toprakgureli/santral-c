@@ -242,8 +242,18 @@ refused exactly when the role lacks what the route needs.
   never lock everyone out.
 - Request limits on the sign-in steps are per browser (20 a minute), and on
   renewal per session (30 a minute). Only the addresses outsiders call
-  (webhooks, survey answers) are limited per address.
-- There are 82 permissions named `module.action`, defined in `pkg/enums`
+  (webhooks, survey answers, rating links) are limited per address.
+- A rating link opens the ratings without a session. It is `<id>.<HMAC>`,
+  the HMAC over the row's id, a random nonce and the end, made with a key
+  derived from the data key for that purpose alone, so it can be neither
+  guessed nor stretched, and keys rotated out still verify it. The row
+  holds who made it, the end, a cancellation and how often it was opened;
+  a link works only until its end, while it is not cancelled and while its
+  maker is active and may see the ratings. Through a link customers' names
+  are cut to the first name and an initial, numbers to their last four
+  digits, the search reads comments only and nothing leads into a
+  conversation. Answers carry `no-store`, `noindex` and `no-referrer`.
+- There are 83 permissions named `module.action`, defined in `pkg/enums`
   and seeded at start; the panel lists them under Roller. New keys are
   granted only to the roles that should get them; existing grants an admin
   changed are left alone.

@@ -30,6 +30,19 @@ if (import.meta.env.DEV && window.location.pathname === "/__preview") {
       </StrictMode>,
     );
   });
+} else if (window.location.pathname.startsWith("/shared/ratings/")) {
+  // A rating link opens without signing in: no session is looked for and
+  // nothing of the panel loads.
+  void import("./pages/SharedRatings").then(({ default: SharedRatings, sharedToken }) => {
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <ThemeProvider>
+          <SharedRatings token={sharedToken(window.location.pathname)} />
+          <TooltipLayer />
+        </ThemeProvider>
+      </StrictMode>,
+    );
+  });
 } else
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

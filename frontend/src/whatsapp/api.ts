@@ -1,9 +1,11 @@
 // WhatsApp endpoints.
 
-import { download, request } from "@/api/client";
+import { ApiError, download, request } from "@/api/client";
 import type {
   WARatingFilter,
+  WARatingLink,
   WARatings,
+  WASharedRatings,
   BotGraph,
   BotSchedule,
   BotStats,
@@ -180,6 +182,29 @@ export const waApi = {
   retryEvent: (id: number) => request<void>(`/wa/events/${id}/retry`, json("POST")),
   ratings: (f: WARatingFilter) => request<WARatings>("/wa/ratings" + q({ ...f, comment: f.comment ? 1 : undefined })),
   deleteRating: (source: "chat" | "call", id: number) => request<void>(`/wa/ratings/${source}/${id}`, { method: "DELETE" }),
+  ratingLinks: () => request<WARatingLink[]>("/wa/rating-links"),
+  createRatingLink: (label: string, hours: number) => request<WARatingLink>("/wa/rating-links", json("POST", { label, hours })),
+  revokeRatingLink: (id: number) => request<void>(`/wa/rating-links/${id}`, { method: "DELETE" }),
   exportRatings: (f: WARatingFilter) => download("/wa/ratings/export" + q({ ...f, page: undefined, comment: f.comment ? 1 : undefined }), `puanlamalar_${f.from}_${f.to}.csv`),
   reports: (from: string, to: string, channel = 0) => request<WAReport>("/wa/reports" + q({ from, to, channel })),
 };
+
+// sharedRatings reads the ratings through a link, without a session: no
+// cookie goes along and no renewal is tried. first marks the first load of
+// a visit, which the link's maker sees counted.
+export async function sharedRatings(token: string, f: WARatingFilter, first = false): Promise<WASharedRatings> {
+  const res = await fetch(`/api/v1/wa/shared-ratings/${encodeURIComponent(token)}` + q({ ...f, comment: f.comment ? 1 : undefined, first: first ? 1 : undefined }), {
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+  });
+  const text = await res.text();
+  let body: { code?: string; message?: string } | null = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
+  }
+  if (!res.ok) throw new ApiError(res.status, body?.code ?? "ERROR", body?.message ?? "Puanlamalar alınamadı.");
+  if (!body) throw new ApiError(502, "BAD_RESPONSE", "Sunucudan beklenmeyen bir yanıt geldi. Birazdan tekrar dene.");
+  return body as WASharedRatings;
+}

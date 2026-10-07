@@ -3,11 +3,12 @@
 // what they wrote and a way into the conversation. Totals and the spread
 // of scores sit on top, then each survey question on its own, then a table
 // of each person by question, so it shows where each one should improve.
-// Everything filters.
+// Everything filters. The same board opens without signing in through a
+// rating link (SharedRatings), with customers cut short and nothing to change.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ChevronRight, Download, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, Trash2, TrendingDown, UsersRound, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Download, Link2, ListChecks, MessageCircle, MessageSquareQuote, PhoneCall, Search, Star, ThumbsDown, Trash2, TrendingDown, UsersRound, X } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import RangePicker, { useRange } from "@/components/RangePicker";
@@ -15,8 +16,9 @@ import { Button, Card, ConfirmDialog } from "@/components/ui";
 import { IconChip, Toolbar, type ChipTone } from "@/components/ui/rows";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { cn } from "@/lib/utils";
+import RatingLinks from "@/components/whatsapp/RatingLinks";
 import { waApi } from "@/whatsapp/api";
-import type { WAChannel, WARating, WARatingFilter, WARatings } from "@/whatsapp/types";
+import type { WARating, WARatingFilter, WARatings } from "@/whatsapp/types";
 import { prettyPhone } from "@/whatsapp/util";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
 import { useTopmost } from "@/components/ui/windowStack";
@@ -44,13 +46,59 @@ function talk(sec?: number): string {
   return sec < 60 ? `${sec} sn görüşme` : `${Math.round(sec / 60)} dk görüşme`;
 }
 
+// phoneOf shows a customer's number; through a link it arrives already cut
+// to its last digits and is shown as it is.
+function phoneOf(r: WARating, shared: boolean): string {
+  return shared ? r.phone : prettyPhone(r.phone);
+}
+
 function when(iso: string): string {
   return `${isToday(iso) ? "Bugün" : shortMonthDate(iso)} ${clockTime(iso)}`;
 }
 
 export function WhatsAppRatings() {
+  const { can } = useAuth();
+  const [channels, setChannels] = useState<{ id: number; name: string }[]>([]);
+  const [sharing, setSharing] = useState(false);
+  useEffect(() => {
+    waApi.channels().then(setChannels).catch(() => setChannels([]));
+  }, []);
+  return (
+    <>
+      <RatingsBoard
+        load={waApi.ratings}
+        channels={channels}
+        canRemove={can("whatsapp.rating_delete")}
+        head={({ filter, data, fail }) => (
+          <div className="flex flex-wrap items-center gap-3">
+            <Link to="/whatsapp" aria-label="Gelen kutusuna dön" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg font-semibold tracking-tight">Puanlamalar</h1>
+              <p className="text-xs text-muted-foreground">Müşterilerin WhatsApp sohbeti sonunda ve telefon görüşmesinden sonra verdiği bütün puanlar.</p>
+            </div>
+            {can("whatsapp.rating_link") && <Button variant="secondary" onClick={() => setSharing(true)}><Link2 /> Paylaşım linkleri</Button>}
+            <Button variant="secondary" onClick={() => void waApi.exportRatings(filter).catch((e) => fail(e instanceof ApiError ? e.message : "İndirilemedi."))} disabled={!data?.count}><Download /> Excel'e indir</Button>
+          </div>
+        )}
+      />
+      {sharing && <RatingLinks onClose={() => setSharing(false)} />}
+    </>
+  );
+}
+
+type BoardHead = { filter: WARatingFilter; data: WARatings | null; fail: (message: string) => void };
+
+// RatingsBoard is the ratings page itself: filters, totals, questions,
+// people and the scores. load reads a page; shared is the board opened
+// through a link, where numbers arrive cut short and nothing can be changed.
+export function RatingsBoard({ load, channels, canRemove = false, shared = false, head }: {
+  load: (f: WARatingFilter) => Promise<WARatings>;
+  channels: { id: number; name: string }[];
+  canRemove?: boolean;
+  shared?: boolean;
+  head: (h: BoardHead) => React.ReactNode;
+}) {
   const { preset, range, choose, setFrom, setTo } = useRange("last30");
-  const [channels, setChannels] = useState<WAChannel[]>([]);
   const [channel, setChannel] = useState(0);
   const [agent, setAgent] = useState(0);
   const [source, setSource] = useState<"" | "chat" | "call">("");
@@ -70,9 +118,6 @@ export function WhatsAppRatings() {
   const seq = useRef(0);
 
   useEffect(() => {
-    waApi.channels().then(setChannels).catch(() => setChannels([]));
-  }, []);
-  useEffect(() => {
     const t = window.setTimeout(() => setSearch(q.trim()), 300);
     return () => window.clearTimeout(t);
   }, [q]);
@@ -84,13 +129,13 @@ export function WhatsAppRatings() {
     const my = ++seq.current;
     setLoading(true);
     setError(null);
-    waApi.ratings({ ...filter, page: 1 }).then((r) => {
+    load({ ...filter, page: 1 }).then((r) => {
       if (my !== seq.current) return;
       setData(r);
       setItems(r.items);
       setPage(1);
     }).catch((e) => my === seq.current && setError(e instanceof ApiError ? e.message : "Puanlamalar alınamadı.")).finally(() => my === seq.current && setLoading(false));
-  }, [filter, reload]);
+  }, [filter, reload, load]);
 
   // A removed score leaves the list at once; the totals, the questions and
   // the people are read again so every average leaves it out too.
@@ -103,7 +148,7 @@ export function WhatsAppRatings() {
   const loadMore = async () => {
     setMore(true);
     try {
-      const r = await waApi.ratings({ ...filter, page: page + 1 });
+      const r = await load({ ...filter, page: page + 1 });
       setItems((cur) => [...cur, ...r.items]);
       setPage((p) => p + 1);
     } catch (e) {
@@ -127,14 +172,7 @@ export function WhatsAppRatings() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex items-center gap-3">
-        <Link to="/whatsapp" aria-label="Gelen kutusuna dön" data-tip="Gelen kutusuna dön" className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground shadow-sm ring-1 ring-border/60 hover:text-foreground"><ArrowLeft className="size-4" /></Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold tracking-tight">Puanlamalar</h1>
-          <p className="text-xs text-muted-foreground">Müşterilerin WhatsApp sohbeti sonunda ve telefon görüşmesinden sonra verdiği bütün puanlar.</p>
-        </div>
-        <Button variant="secondary" onClick={() => void waApi.exportRatings(filter).catch((e) => setError(e instanceof ApiError ? e.message : "İndirilemedi."))} disabled={!data?.count}><Download /> Excel'e indir</Button>
-      </div>
+      {head({ filter, data, fail: setError })}
 
       <Toolbar>
         <RangePicker preset={preset} range={range} onPreset={choose} onFrom={setFrom} onTo={setTo} />
@@ -151,7 +189,7 @@ export function WhatsAppRatings() {
         )}
         <span className="relative min-w-52 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Müşteri, numara ya da yorumda ara" className="h-9 w-full rounded-xl border border-border/60 bg-card pr-3 pl-9 text-sm outline-none focus:border-ring/50" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={shared ? "Yorumlarda ara" : "Müşteri, numara ya da yorumda ara"} className="h-9 w-full rounded-xl border border-border/60 bg-card pr-3 pl-9 text-sm outline-none focus:border-ring/50" />
         </span>
       </Toolbar>
 
@@ -196,11 +234,11 @@ export function WhatsAppRatings() {
             <div className="rounded-2xl bg-card px-6 py-14 text-center ring-1 ring-border/60">
               <Star className="mx-auto mb-2 size-8 text-muted-foreground/40" />
               <p className="text-sm font-medium">{filtered ? "Bu filtreye uyan puan yok" : "Bu aralıkta puan yok"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Anketler Ayarlar &gt; Cihaz ayarları &gt; Memnuniyet anketi ve Çağrı sonrası anket bölümünden açılır.</p>
+              {!shared && <p className="mt-1 text-xs text-muted-foreground">Anketler Ayarlar &gt; Cihaz ayarları &gt; Memnuniyet anketi ve Çağrı sonrası anket bölümünden açılır.</p>}
             </div>
           ) : (
             <div className="space-y-2">
-              {items.map((r) => <RatingRow key={`${r.source}-${r.id}`} r={r} onOpen={() => setOpen(r)} />)}
+              {items.map((r) => <RatingRow key={`${r.source}-${r.id}`} r={r} shared={shared} onOpen={() => setOpen(r)} />)}
               {data && items.length < data.total && (
                 <div className="flex justify-center pt-1">
                   <Button variant="secondary" onClick={() => void loadMore()} disabled={more}>{more ? "Yükleniyor..." : `Daha fazla göster (${data.total - items.length})`}</Button>
@@ -210,7 +248,7 @@ export function WhatsAppRatings() {
           )}
         </div>
       </div>
-      {open && <RatingDetail r={open} onClose={() => setOpen(null)} onRemoved={() => removed(open)} />}
+      {open && <RatingDetail r={open} shared={shared} canRemove={canRemove && !shared} onClose={() => setOpen(null)} onRemoved={() => removed(open)} />}
     </div>
   );
 }
@@ -249,10 +287,8 @@ function Written({ r, compact }: { r: WARating; compact?: boolean }) {
 
 // RatingDetail is one survey answer on its own: every question with its
 // score, what the customer wrote, and who and where it was about.
-function RatingDetail({ r, onClose, onRemoved }: { r: WARating; onClose: () => void; onRemoved: () => void }) {
+function RatingDetail({ r, shared, canRemove, onClose, onRemoved }: { r: WARating; shared: boolean; canRemove: boolean; onClose: () => void; onRemoved: () => void }) {
   const isTop = useTopmost(true);
-  const { can } = useAuth();
-  const canRemove = can("whatsapp.rating_delete");
   const [asking, setAsking] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -285,8 +321,8 @@ function RatingDetail({ r, onClose, onRemoved }: { r: WARating; onClose: () => v
             <span className="mt-1 flex">{[1, 2, 3, 4, 5].map((n) => <Star key={n} className={cn("size-2", n <= r.score ? "fill-current" : "opacity-30")} />)}</span>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-semibold">{r.customer || prettyPhone(r.phone)}</p>
-            <p className="font-mono text-xs text-muted-foreground tabular-nums">{prettyPhone(r.phone)}</p>
+            <p className="truncate text-base font-semibold">{r.customer || phoneOf(r, shared)}</p>
+            <p className="font-mono text-xs text-muted-foreground tabular-nums">{phoneOf(r, shared)}</p>
             <p className="text-xs text-muted-foreground">{when(r.at)} · {SCORE_WORD[r.score]}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Kapat" className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"><X className="size-5" /></button>
@@ -371,7 +407,7 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function RatingRow({ r, onOpen }: { r: WARating; onOpen: () => void }) {
+function RatingRow({ r, shared, onOpen }: { r: WARating; shared: boolean; onOpen: () => void }) {
   const Src = r.source === "call" ? PhoneCall : MessageCircle;
   return (
     <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === "Enter") onOpen(); }} className="group flex cursor-pointer gap-3 rounded-2xl bg-card p-3.5 ring-1 ring-border/60 transition-colors hover:bg-accent/30 hover:ring-border">
@@ -381,8 +417,8 @@ function RatingRow({ r, onOpen }: { r: WARating; onOpen: () => void }) {
       </div>
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="truncate text-sm font-semibold">{r.customer || prettyPhone(r.phone)}</span>
-          {r.customer && <span className="font-mono text-xs text-muted-foreground tabular-nums">{prettyPhone(r.phone)}</span>}
+          <span className="truncate text-sm font-semibold">{r.customer || phoneOf(r, shared)}</span>
+          {r.customer && <span className="font-mono text-xs text-muted-foreground tabular-nums">{phoneOf(r, shared)}</span>}
           <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{when(r.at)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[0.7rem]">

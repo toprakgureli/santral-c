@@ -51,6 +51,9 @@ type server struct {
 	callLog *calllog.Service
 	phone   *verimor.Service
 	shifts  *shift.Service
+	// actors is kept so a test that changes a role in the database can drop
+	// the cached users instead of waiting for them to expire.
+	actors *user.Actors
 }
 
 // start runs the background work until ctx ends.
@@ -217,7 +220,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	backup.NewRouter(backup.NewHandler(backupSvc), guard, need).Routes(api)
 	monitor.Routes(api, guard, need)
 
-	s := &server{app: app, callLog: callLogSvc, shifts: shiftSvc}
+	s := &server{app: app, callLog: callLogSvc, shifts: shiftSvc, actors: actors}
 	s.workers = append(s.workers,
 		// Shifts left open past the evening cutoff are closed by the sweeper.
 		shiftSvc.StartSweeper,

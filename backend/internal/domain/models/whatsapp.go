@@ -368,3 +368,21 @@ type WACallSurvey struct {
 
 // TableName pins the table name.
 func (WACallSurvey) TableName() string { return "wa_call_surveys" }
+
+// WARatingLink is a time-limited link that opens the ratings without
+// signing in. The link itself is a signature over ID, Nonce and ExpiresAt.
+type WARatingLink struct {
+	ID           uint       `gorm:"column:id;primarykey"`
+	Nonce        string     `gorm:"column:nonce"`
+	Label        string     `gorm:"column:label"`
+	CreatedBy    uint       `gorm:"column:created_by"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	ExpiresAt    time.Time  `gorm:"column:expires_at"`
+	RevokedAt    *time.Time `gorm:"column:revoked_at"`
+	RevokedBy    *uint      `gorm:"column:revoked_by"`
+	OpenCount    int        `gorm:"column:open_count"`
+	LastOpenedAt *time.Time `gorm:"column:last_opened_at"`
+}
+
+// TableName pins the table name.
+func (WARatingLink) TableName() string { return "wa_rating_links" }

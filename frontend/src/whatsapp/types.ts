@@ -599,6 +599,30 @@ export interface WARatings {
   pageSize: number;
 }
 
+// A link that opens the ratings without signing in. token is set while it
+// works.
+export interface WARatingLink {
+  id: number;
+  label: string;
+  token?: string;
+  active: boolean;
+  createdBy: WAPerson;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt?: string;
+  revokedBy?: WAPerson;
+  openCount: number;
+  lastOpenedAt?: string;
+}
+
+// The ratings opened through a link: customers' names and numbers cut
+// short, with the devices to filter by.
+export interface WASharedRatings extends WARatings {
+  channels: { id: number; name: string }[];
+  label: string;
+  expiresAt: string;
+}
+
 export interface WARatingFilter {
   from: string;
   to: string;

@@ -129,7 +129,7 @@ func (f RatingFilter) args() (map[string]any, error) {
 		"from": from, "to": toStart.AddDate(0, 0, 1),
 		"channel": f.ChannelID, "agent": f.AgentID, "source": source,
 		"lo": lo, "hi": hi, "comment": f.Comment,
-		"q": q, "like": "%" + q + "%", "digits": digits,
+		"q": q, "like": "%" + q + "%", "digits": digits, "commentsOnly": false,
 	}, nil
 }
 
@@ -178,6 +178,12 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 	if err != nil {
 		return nil, err
 	}
+	return s.ratingsView(ctx, args, f.Page)
+}
+
+// ratingsView reads the page for a filter already checked: totals, each
+// question, each person, and one page of scores.
+func (s *Service) ratingsView(ctx context.Context, args map[string]any, page int) (*RatingsView, error) {
 	out := &RatingsView{Agents: []RatingAgent{}, Items: []RatingItem{}, PageSize: ratingPage}
 	tot, err := s.repo.RatingTotals(ctx, args)
 	if err != nil {
@@ -223,7 +229,6 @@ func (s *Service) Ratings(ctx context.Context, actorID uint, f RatingFilter) (*R
 		}
 	}
 
-	page := f.Page
 	if page < 1 {
 		page = 1
 	}

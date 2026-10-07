@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { Button, FieldGroup, FieldHint, Modal } from "@/components/ui";
+import CopyButton from "@/components/ui/CopyButton";
 import { cn } from "@/lib/utils";
 
 export type Handoff = {
@@ -22,47 +23,6 @@ export function handoffMessage(h: Handoff): string {
     "",
     "Sorun yaşarsan yöneticinle iletişime geç.",
   ].join("\n");
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // Older browsers or a non-secure context: fall back to a hidden textarea.
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  }
-}
-
-// CopyButton copies text and briefly confirms it.
-function CopyButton({ text, label, variant = "secondary" }: { text: string; label: string; variant?: "primary" | "secondary" }) {
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    if (!done) return;
-    const t = window.setTimeout(() => setDone(false), 2000);
-    return () => window.clearTimeout(t);
-  }, [done]);
-  return (
-    <Button
-      variant={variant}
-      className={cn(done && "bg-success text-white hover:bg-success")}
-      onClick={async () => {
-        if (await copyText(text)) setDone(true);
-      }}
-    >
-      {done ? <Check /> : <Copy />}
-      {done ? "Kopyalandı" : label}
-    </Button>
-  );
 }
 
 // CredentialsHandoff shows the temporary password once, masked, with one-click

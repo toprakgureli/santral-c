@@ -92,6 +92,8 @@ var serviceGates = []struct {
 	{fiber.MethodGet, "/api/v1/wa/callbacks", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WACallbacks)}},
 	{fiber.MethodGet, "/api/v1/wa/ratings", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings)}},
 	{fiber.MethodDelete, "/api/v1/wa/ratings/chat/999999999", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings), anyOf(enums.WARatingDelete)}},
+	{fiber.MethodGet, "/api/v1/wa/rating-links", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings), anyOf(enums.WARatingLink)}},
+	{fiber.MethodDelete, "/api/v1/wa/rating-links/999999999", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WARatings), anyOf(enums.WARatingLink)}},
 	{fiber.MethodGet, "/api/v1/wa/reports?from=2026-01-01&to=2026-01-31", [][]enums.Permission{anyOf(enums.WAView), anyOf(enums.WAReports)}},
 }
 

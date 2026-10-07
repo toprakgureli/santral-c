@@ -56,18 +56,19 @@ func testRedis() (cfg configs.Redis, ok bool, err error) {
 // public lists every route that answers without a signed-in user, with the
 // reason it may. A new route is guarded unless it is added here on purpose.
 var public = map[string]string{
-	"GET /healthz":                        "uptime check",
-	"GET /metrics":                        "served to the server itself only",
-	"POST /api/v1/auth/login":             "signing in",
-	"POST /api/v1/auth/refresh":           "renewing a session from its cookie",
-	"POST /api/v1/auth/logout":            "ending a session from its cookie",
-	"POST /api/v1/auth/mfa/verify":        "second step of signing in",
-	"POST /api/v1/auth/mfa/enroll":        "second step of signing in",
-	"POST /api/v1/auth/mfa/enroll/verify": "second step of signing in",
-	"POST /api/v1/auth/password/change":   "forced password change while signing in",
-	"GET /api/v1/wa/hook/:key":            "Meta checks the webhook",
-	"POST /api/v1/wa/hook/:key":           "Meta delivers messages",
-	"POST /api/v1/wa/survey/:key":         "customer answers a survey",
+	"GET /healthz":                         "uptime check",
+	"GET /metrics":                         "served to the server itself only",
+	"POST /api/v1/auth/login":              "signing in",
+	"POST /api/v1/auth/refresh":            "renewing a session from its cookie",
+	"POST /api/v1/auth/logout":             "ending a session from its cookie",
+	"POST /api/v1/auth/mfa/verify":         "second step of signing in",
+	"POST /api/v1/auth/mfa/enroll":         "second step of signing in",
+	"POST /api/v1/auth/mfa/enroll/verify":  "second step of signing in",
+	"POST /api/v1/auth/password/change":    "forced password change while signing in",
+	"GET /api/v1/wa/hook/:key":             "Meta checks the webhook",
+	"POST /api/v1/wa/hook/:key":            "Meta delivers messages",
+	"POST /api/v1/wa/survey/:key":          "customer answers a survey",
+	"GET /api/v1/wa/shared-ratings/:token": "a signed, time-limited rating link; checked by its signature",
 }
 
 func TestMain(m *testing.M) {

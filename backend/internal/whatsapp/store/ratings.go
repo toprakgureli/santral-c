@@ -40,7 +40,7 @@ SELECT %s FROM r %s WHERE
 	AND (@source = '' OR r.source = @source)
 	AND (@lo = 0 OR r.score BETWEEN @lo AND @hi)
 	AND (NOT @comment OR r.comment <> '')
-	AND (@q = '' OR r.name ILIKE @like OR r.wa_id LIKE @digits OR r.comment ILIKE @like)
+	AND (@q = '' OR r.comment ILIKE @like OR (NOT @commentsOnly AND (r.name ILIKE @like OR r.wa_id LIKE @digits)))
 %s`
 
 // answerJoin turns each score row into one row per answered question.
@@ -49,7 +49,8 @@ const answerJoin = "CROSS JOIN LATERAL jsonb_array_elements(r.answers) a"
 // The functions below take the filter as named values: from and to (the
 // time range), channel and agent (zero for any), source ("chat", "call" or
 // empty for both), lo and hi (the score range, lo zero for any), comment
-// (only scores with a comment), q, like and digits (the search).
+// (only scores with a comment), q, like and digits (the search), and
+// commentsOnly (the search reads the comments only, not names or numbers).
 
 // Rating is one score with what it belongs to.
 type Rating struct {

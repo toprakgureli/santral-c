@@ -3,12 +3,13 @@
 // without a backend or a real number. Served at /__wa by the dev server.
 
 import { useState } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import type { PermissionGroup, User } from "@/api/types";
 import { AuthMockProvider } from "@/auth/AuthContext";
 import Topbar from "@/components/layout/Topbar";
 import RoleForm from "@/components/role/RoleForm";
 import { Account } from "@/pages/Account";
+import SharedRatings from "@/pages/SharedRatings";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsApp } from "@/pages/WhatsApp";
 import { WhatsAppBot } from "@/pages/WhatsAppBot";
@@ -23,7 +24,7 @@ import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/Softphon
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 
-const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "performance.view_all"];
+const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.rating_delete", "whatsapp.rating_link", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "performance.view_all"];
 const user: User = { id: 1, name: "Toprak Şahin Güreli", email: "toprak@example.com", active: true, roles: ["Yönetici"], roleIds: [1], permissions: WA_PERMS, mfaEnabled: false, mustChangePassword: false, sipExtension: "1001", createdAt: "2026-01-01T00:00:00Z" };
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
@@ -126,8 +127,37 @@ const callbacks = [
 const prefs: { sound: boolean; desktop: boolean; mutedUntil?: string; conversations: { id: number; mutedUntil?: string; pinnedAt?: string }[] } = { sound: true, desktop: true, conversations: [{ id: 2, mutedUntil: new Date(Date.now() + 8 * 3600000).toISOString() }, { id: 3, pinnedAt: ago(100) }] };
 const muteWord = (w?: string) => (!w ? undefined : w === "off" ? "" : new Date(Date.now() + (w === "always" ? 1e12 : 3600000)).toISOString());
 
+type MockLink = { id: number; label: string; token?: string; active: boolean; createdBy: { id: number; name: string; hasAvatar: boolean }; createdAt: string; expiresAt: string; revokedAt?: string; revokedBy?: { id: number; name: string; hasAvatar: boolean }; openCount: number; lastOpenedAt?: string };
+const ratingLinks: MockLink[] = [
+  { id: 2, label: "Bölge müdürü", token: "2.preview", active: true, createdBy: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, createdAt: ago(600), expiresAt: new Date(Date.now() + 6 * 86400000).toISOString(), openCount: 3, lastOpenedAt: ago(40) },
+  { id: 1, label: "Eylül değerlendirmesi", active: false, createdBy: { id: 2, name: "Ayşe Kaya", hasAvatar: false }, createdAt: ago(9000), expiresAt: ago(3000), revokedAt: ago(5000), revokedBy: { id: 1, name: "Toprak Şahin Güreli", hasAvatar: false }, openCount: 7 },
+];
+
 function answer(method: string, path: string, body: unknown): unknown {
   const p = path.replace(/^\/api\/v1\/wa/, "").split("?")[0];
+  if (p === "/rating-links" && method === "POST") {
+    const b = body as { label: string; hours: number };
+    const id = Math.max(...ratingLinks.map((l) => l.id)) + 1;
+    const l: MockLink = { id, label: b.label, token: `${id}.preview`, active: true, createdBy: { id: 1, name: user.name, hasAvatar: false }, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + b.hours * 3600000).toISOString(), openCount: 0 };
+    ratingLinks.unshift(l);
+    return l;
+  }
+  if (p === "/rating-links") return ratingLinks;
+  if (/^\/rating-links\/\d+$/.test(p) && method === "DELETE") {
+    const l = ratingLinks.find((x) => x.id === Number(p.split("/")[2]));
+    if (l) Object.assign(l, { active: false, token: undefined, revokedAt: new Date().toISOString(), revokedBy: { id: 1, name: user.name, hasAvatar: false } });
+    return undefined;
+  }
+  if (p.startsWith("/shared-ratings/")) {
+    const r = answer("GET", "/api/v1/wa/ratings", undefined) as { items: { customer: string; phone: string; conversationId?: number; ticketNumber?: number }[] };
+    return {
+      ...r,
+      items: r.items.map((it) => ({ ...it, customer: it.customer ? it.customer.split(" ")[0] + " " + (it.customer.split(" ")[1]?.[0] ?? "") + "." : "", phone: "•••• " + it.phone.slice(-4), conversationId: undefined, ticketNumber: undefined })),
+      channels: channels.map((c) => ({ id: c.id, name: c.name })),
+      label: "Bölge müdürü",
+      expiresAt: new Date(Date.now() + 6 * 86400000).toISOString(),
+    };
+  }
   if (p === "/conversations") return { items: conversations, hidden: [], version: 20, me: 1 };
   if (/^\/conversations\/\d+\/messages$/.test(p)) return method === "GET" ? (p.includes("/1/") ? messages : messages.slice(0, 1).map((m) => ({ ...m, conversationId: Number(p.split("/")[2]) }))) : { ...(body as object), id: Date.now(), status: "queued", sender: agent(1, user.name), direction: "out", createdAt: new Date().toISOString() };
   if (/^\/conversations\/\d+$/.test(p)) return conversations.find((c) => c.id === Number(p.split("/")[2]));
@@ -219,6 +249,9 @@ function installMock() {
       return new Response(JSON.stringify({ scope: "all", from: "", to: "", items: perfRows }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (!url.startsWith("/api/v1/wa/")) return real(input, init);
+    if (url.startsWith("/api/v1/wa/shared-ratings/gone")) {
+      return new Response(JSON.stringify({ code: "NOT_FOUND", message: "Bu link geçersiz ya da süresi dolmuş. Linki gönderen kişiden yenisini isteyebilirsin." }), { status: 404, headers: { "Content-Type": "application/json" } });
+    }
     await new Promise((r) => setTimeout(r, 150));
     let body: unknown;
     try {
@@ -257,6 +290,8 @@ const PAGES = [
   { path: "/whatsapp/preferences", label: "WhatsApp ayarlarım" },
   { path: "/account", label: "Hesap ve güvenlik" },
   { path: "/role-form", label: "Rol formu" },
+  { path: "/shared/ratings/2.preview", label: "Paylaşılan puanlar" },
+  { path: "/shared/ratings/gone", label: "Kapanmış link" },
 ];
 
 const permissionGroups: PermissionGroup[] = [
@@ -306,6 +341,7 @@ export default function WAPreview() {
                     <Route path="/performance" element={<TeamPerformance />} />
                     <Route path="/whatsapp/preferences" element={<WhatsAppPreferences />} />
                     <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
+                    <Route path="/shared/ratings/:token" element={<SharedPreview />} />
                     <Route path="/role-form" element={<RoleForm role={null} groups={permissionGroups} onClose={() => undefined} onSaved={() => undefined} />} />
                   </Routes>
                 </main>
@@ -335,3 +371,10 @@ const perfRows = [
   perfRow(3, "Mehmet Demir", "break", 18, 3, 1, 3000, 12000),
   perfRow(4, "Elif Su Uzunsoyadlıkişi", "off", 0, 0, 0, 0, 0),
 ];
+
+// SharedPreview draws the page a rating link opens, from the token in the
+// preview's address.
+function SharedPreview() {
+  const { token = "" } = useParams();
+  return <SharedRatings key={token} token={token} />;
+}

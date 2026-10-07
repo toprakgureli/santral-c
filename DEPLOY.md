@@ -9,7 +9,7 @@ Docker and listens on 127.0.0.1 only.
 ```
 browser ──HTTPS──▶ Cloudflare ──HTTPS (Full strict)──▶ nginx :443 ──┬─ /       panel (/var/www/santral-c)
                                  (Origin Certificate) (also :80)    └─ /api/  ▶ 127.0.0.1:8090 (santral)
-Meta, Tally ──HTTPS──▶ Cloudflare ──▶ nginx :443 ─ /api/v1/wa/hook, /api/v1/wa/survey (rate limited, 1 MB)
+Meta, Tally ──HTTPS──▶ Cloudflare ──▶ nginx :443 ─ /api/v1/wa/hook, /api/v1/wa/survey, /api/v1/wa/shared-ratings (rate limited, 1 MB)
 Meta (address already registered) ──▶ nginx :5001 ─ registered webhook paths only (optional, section 9)
 softphone ──SIP over WSS──▶ api.bulutsantralim.com   (straight from the browser, not through nginx)
 santral ──every 6 hours──▶ Google Shared Drive (database copies)
