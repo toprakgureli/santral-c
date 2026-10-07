@@ -164,14 +164,14 @@ export function WhatsApp() {
   const header = (
     <div className="flex h-16 shrink-0 items-center gap-1 px-4">
       <h1 className="flex-1 text-xl font-bold tracking-tight">Sohbetler</h1>
-      {wa.mutedAll && <Link to="/preferences" aria-label="WhatsApp bildirimleri sessizde. Ayarlarım'dan açabilirsin." data-tip="WhatsApp bildirimleri sessizde. Ayarlarım'dan açabilirsin." className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"><BellOff className="size-[1.15rem]" /></Link>}
+      {wa.mutedAll && <Link to="/whatsapp/preferences" aria-label="WhatsApp bildirimleri sessizde. WhatsApp ayarlarım'dan açabilirsin." data-tip="WhatsApp bildirimleri sessizde. WhatsApp ayarlarım'dan açabilirsin." className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"><BellOff className="size-[1.15rem]" /></Link>}
       {can(user, "whatsapp.template_send") && <HeadBtn tip="Yeni sohbet başlat" onClick={() => wa.startChat()}><MessageCirclePlus className="size-5" /></HeadBtn>}
       <HeadMenu>
         {can(user, "whatsapp.callbacks") && <MenuLink to="/whatsapp/callbacks" icon={PhoneCall} label="Geri arama talepleri" />}
         {can(user, "whatsapp.reports") && <MenuLink to="/whatsapp/reports" icon={BarChart3} label="Raporlar" />}
         {can(user, "whatsapp.ratings") && <MenuLink to="/whatsapp/ratings" icon={Star} label="Puanlamalar" />}
         {canSettings && <MenuLink to="/whatsapp/settings" icon={Settings2} label="WhatsApp ayarları" />}
-        <MenuLink to="/preferences" icon={SlidersHorizontal} label="Ayarlarım" />
+        <MenuLink to="/whatsapp/preferences" icon={SlidersHorizontal} label="WhatsApp ayarlarım" />
       </HeadMenu>
     </div>
   );

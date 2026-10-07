@@ -4,8 +4,11 @@
 
 import { useState } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { User } from "@/api/types";
+import type { PermissionGroup, User } from "@/api/types";
 import { AuthMockProvider } from "@/auth/AuthContext";
+import Topbar from "@/components/layout/Topbar";
+import RoleForm from "@/components/role/RoleForm";
+import { Account } from "@/pages/Account";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsApp } from "@/pages/WhatsApp";
 import { WhatsAppBot } from "@/pages/WhatsAppBot";
@@ -14,7 +17,8 @@ import { WhatsAppReports } from "@/pages/WhatsAppReports";
 import { WhatsAppRatings } from "@/pages/WhatsAppRatings";
 import { WhatsAppSettings } from "@/pages/WhatsAppSettings";
 import { TeamPerformance } from "@/pages/TeamPerformance";
-import { Preferences } from "@/pages/Preferences";
+import { WhatsAppPreferences } from "@/pages/WhatsAppPreferences";
+import { ShiftProvider } from "@/shift/ShiftContext";
 import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/SoftphoneContext";
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
@@ -250,7 +254,25 @@ const PAGES = [
   { path: "/whatsapp/settings?tab=ai", label: "Yapay zekâ" },
   { path: "/whatsapp/settings?tab=call-survey", label: "Çağrı anketi" },
   { path: "/performance", label: "Ekip performansı" },
-  { path: "/preferences", label: "Ayarlarım" },
+  { path: "/whatsapp/preferences", label: "WhatsApp ayarlarım" },
+  { path: "/account", label: "Hesap ve güvenlik" },
+  { path: "/role-form", label: "Rol formu" },
+];
+
+const permissionGroups: PermissionGroup[] = [
+  { module: "call", label: "Çağrılar", items: [
+    { id: 1, key: "call.view_all", description: "Bütün çağrıları görür" },
+    { id: 2, key: "call.view_own", description: "Kendi çağrılarını görür" },
+    { id: 3, key: "call.real_seconds", description: "Kaç saniyelik görüşmenin gerçek çağrı sayılacağını belirler" },
+  ] },
+  { module: "whatsapp", label: "WhatsApp", items: [
+    { id: 4, key: "whatsapp.view", description: "WhatsApp sohbetlerini görür" },
+    { id: 5, key: "whatsapp.rating_delete", description: "Değerlendirme puanını listeden kaldırır" },
+  ] },
+  { module: "user", label: "Kullanıcılar", items: [
+    { id: 6, key: "user.view", description: "Kullanıcıları görür" },
+    { id: 7, key: "user.manage", description: "Kullanıcı ekler ve düzenler" },
+  ] },
 ];
 
 export default function WAPreview() {
@@ -282,7 +304,9 @@ export default function WAPreview() {
                     <Route path="/whatsapp" element={<WhatsApp />} />
                     <Route path="/whatsapp/:id" element={<WhatsApp />} />
                     <Route path="/performance" element={<TeamPerformance />} />
-                    <Route path="/preferences" element={<Preferences />} />
+                    <Route path="/whatsapp/preferences" element={<WhatsAppPreferences />} />
+                    <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
+                    <Route path="/role-form" element={<RoleForm role={null} groups={permissionGroups} onClose={() => undefined} onSaved={() => undefined} />} />
                   </Routes>
                 </main>
               </div>

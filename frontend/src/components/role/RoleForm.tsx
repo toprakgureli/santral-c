@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Copy, Info, Loader2, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Copy, Info, Loader2, Search, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
 import type { PermissionGroup, PermissionItem, Role } from "@/api/types";
 import AuthError from "@/components/auth/AuthError";
@@ -29,6 +29,17 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
   const [selected, setSelected] = useState<Set<number>>(() => new Set(role?.permissionIds ?? copyFrom?.permissionIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  // The search matches a permission's description, its technical key or its
+  // group's name; a matching group shows all of its permissions.
+  const shown = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase("tr");
+    if (!needle) return groups;
+    const hit = (s: string) => s.toLocaleLowerCase("tr").includes(needle);
+    return groups
+      .map((g) => (hit(g.label) ? g : { ...g, items: g.items.filter((i) => hit(i.description) || hit(i.key)) }))
+      .filter((g) => g.items.length > 0);
+  }, [groups, query]);
   // Closing by accident (Escape, a click outside) asks first once something changed.
   const dirty = useDirty([form, [...selected].sort()]);
 
@@ -166,8 +177,31 @@ export default function RoleForm({ role, copyFrom, groups, onClose, onSaved }: R
         </div>
 
         <FieldGroup label="Yetkiler">
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                // Escape clears the search first instead of closing the form.
+                if (e.key === "Escape" && query) {
+                  e.stopPropagation();
+                  setQuery("");
+                }
+              }}
+              placeholder="Yetki ara: açıklama, teknik ad ya da bölüm"
+              aria-label="Yetki ara"
+              className="pr-9 pl-9"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery("")} aria-label="Aramayı temizle" data-tip="Aramayı temizle" className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+          {shown.length === 0 && <p className="rounded-xl bg-muted/40 px-3 py-4 text-center text-sm text-muted-foreground">"{query.trim()}" ile eşleşen yetki yok.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
-            {groups.map((g) => {
+            {shown.map((g) => {
               const allOn = g.items.every((i) => selected.has(i.id));
               return (
                 <section key={g.module} className="space-y-1 rounded-xl border border-border/60 bg-muted/25 p-3">

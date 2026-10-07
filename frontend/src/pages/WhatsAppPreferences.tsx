@@ -1,13 +1,13 @@
-// Preferences ("Ayarlarım"): each person's own settings. They change
-// nothing for anybody else: the account's password and sign-ins, and for
-// WhatsApp sounds, desktop notices, a mute for everything for a while, and
-// the conversations muted or pinned one by one.
+// WhatsAppPreferences ("WhatsApp ayarlarım"): each person's own WhatsApp
+// settings, opened from the WhatsApp menu. They change nothing for anybody
+// else: sounds, desktop notices, a mute for everything for a while, and the
+// conversations muted or pinned one by one. The password and sign-ins live
+// on the account page, under the profile menu.
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Bell, BellOff, MessageCircle, Pin, SlidersHorizontal } from "lucide-react";
 import { ApiError } from "@/api/client";
-import AccountSecurityCard from "@/components/profile/AccountSecurityCard";
 import { Card } from "@/components/ui";
 import ContactAvatar from "@/components/whatsapp/ContactAvatar";
 import { MUTES } from "@/components/whatsapp/ConversationList";
@@ -24,7 +24,7 @@ function until(iso?: string) {
   return `${isToday(d) ? "bugün" : fmt(d, { day: "numeric", month: "long" })} ${clockTime(d)} olana kadar`;
 }
 
-export function Preferences() {
+export function WhatsAppPreferences() {
   const wa = useWhatsApp();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -51,18 +51,16 @@ export function Preferences() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/"))} aria-label="Geri" data-tip="Geri" className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground">
+        <button type="button" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/whatsapp"))} aria-label="Geri" data-tip="Geri" className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground">
           <ArrowLeft className="size-4" />
         </button>
         <span className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><SlidersHorizontal className="size-5" /></span>
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Ayarlarım</h1>
+          <h1 className="text-lg font-semibold tracking-tight">WhatsApp ayarlarım</h1>
           <p className="text-xs text-muted-foreground">Buradaki ayarlar sadece senin için geçerli, başka kimseyi etkilemez.</p>
         </div>
       </div>
       {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-
-      <AccountSecurityCard />
 
       {wa.enabled && (
         <>

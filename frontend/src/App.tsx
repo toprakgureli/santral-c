@@ -23,7 +23,8 @@ const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m
 const TeamPerformance = lazy(() => import("./pages/TeamPerformance").then((m) => ({ default: m.TeamPerformance })));
 const Users = lazy(() => import("./pages/Users").then((m) => ({ default: m.Users })));
 const WhatsApp = lazy(() => import("./pages/WhatsApp").then((m) => ({ default: m.WhatsApp })));
-const Preferences = lazy(() => import("./pages/Preferences").then((m) => ({ default: m.Preferences })));
+const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.Account })));
+const WhatsAppPreferences = lazy(() => import("./pages/WhatsAppPreferences").then((m) => ({ default: m.WhatsAppPreferences })));
 const WhatsAppSettings = lazy(() => import("./pages/WhatsAppSettings").then((m) => ({ default: m.WhatsAppSettings })));
 const WhatsAppBot = lazy(() => import("./pages/WhatsAppBot").then((m) => ({ default: m.WhatsAppBot })));
 const WhatsAppReports = lazy(() => import("./pages/WhatsAppReports").then((m) => ({ default: m.WhatsAppReports })));
@@ -80,7 +81,9 @@ export function App() {
         <Route path="/teams/:id" element={<RequirePermission need={menuPermission("/teams")}><Teams /></RequirePermission>} />
         <Route path="/games/admin" element={<RequirePermission need={PAGE_PERMISSIONS.gamesAdmin}><GamesAdmin /></RequirePermission>} />
         <Route path="/profile" element={<Profile />} />
-        <Route path="/preferences" element={<Preferences />} />
+        <Route path="/account" element={<Account />} />
+        {/* The old address of the WhatsApp preferences, kept for bookmarks. */}
+        <Route path="/preferences" element={<Navigate to="/whatsapp/preferences" replace />} />
         <Route path="/profile/:id" element={<Profile />} />
         <Route path="/audit" element={<RequirePermission need={menuPermission("/audit")}><Audit /></RequirePermission>} />
         <Route path="/whatsapp/settings" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappSettings}><WhatsAppSettings /></RequirePermission>} />
@@ -88,6 +91,7 @@ export function App() {
         <Route path="/whatsapp/reports" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappReports}><WhatsAppReports /></RequirePermission>} />
         <Route path="/whatsapp/ratings" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappRatings}><WhatsAppRatings /></RequirePermission>} />
         <Route path="/whatsapp/callbacks" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappCallbacks}><WhatsAppCallbacks /></RequirePermission>} />
+        <Route path="/whatsapp/preferences" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsAppPreferences /></RequirePermission>} />
         <Route path="/whatsapp" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />
         <Route path="/whatsapp/:id" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />
         <Route path="*" element={<Navigate to="/" replace />} />

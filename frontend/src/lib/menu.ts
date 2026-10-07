@@ -86,7 +86,8 @@ export function visibleMenu(can: (permission: string) => boolean): MenuGroup[] {
 
 export function titleFor(pathname: string): string {
   if (pathname === "/profile") return "Profilim";
-  if (pathname === "/preferences") return "Ayarlarım";
+  if (pathname === "/account") return "Hesap ve Güvenlik";
+  if (pathname === "/whatsapp/preferences") return "WhatsApp Ayarlarım";
   if (pathname.startsWith("/teams")) return "Teams";
   if (pathname.startsWith("/whatsapp/settings")) return "WhatsApp Ayarları";
   if (pathname.startsWith("/whatsapp/bots")) return "Chatbot";
