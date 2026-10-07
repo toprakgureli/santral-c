@@ -9,6 +9,8 @@ import { AuthMockProvider } from "@/auth/AuthContext";
 import Topbar from "@/components/layout/Topbar";
 import RoleForm from "@/components/role/RoleForm";
 import { Account } from "@/pages/Account";
+import PeerHints from "@/followups/PeerHints";
+import { Followups } from "@/pages/Followups";
 import SharedRatings from "@/pages/SharedRatings";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsApp } from "@/pages/WhatsApp";
@@ -24,7 +26,7 @@ import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/Softphon
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 
-const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.rating_delete", "whatsapp.rating_link", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "performance.view_all"];
+const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.rating_delete", "whatsapp.rating_link", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "call.view_own", "call.view_all", "performance.view_all"];
 const user: User = { id: 1, name: "Toprak Şahin Güreli", email: "toprak@example.com", active: true, roles: ["Yönetici"], roleIds: [1], permissions: WA_PERMS, mfaEnabled: false, mustChangePassword: false, sipExtension: "1001", createdAt: "2026-01-01T00:00:00Z" };
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
@@ -237,6 +239,39 @@ function answer(method: string, path: string, body: unknown): unknown {
   return method === "GET" ? [] : {};
 }
 
+const P = (id: number, name: string) => ({ id, name });
+const unreachedRows = [
+  { id: 1, number: "05447473456", user: P(1, "Toprak Şahin Güreli"), mine: true, attempts: 2, firstAt: ago(140), lastAt: ago(35), reason: "no_answer", status: "open" },
+  { id: 2, number: "05369473700", user: P(2, "Ayşe Kaya"), mine: false, attempts: 1, firstAt: ago(80), lastAt: ago(80), reason: "busy", status: "open", claim: { by: P(3, "Mehmet Demir"), until: new Date(Date.now() + 20 * 60000).toISOString(), mine: false } },
+  { id: 3, number: "05079241633", user: P(1, "Toprak Şahin Güreli"), mine: true, attempts: 3, firstAt: ago(1500), lastAt: ago(300), reason: "short", status: "open" },
+];
+const closedRows = [
+  { id: 4, number: "05425275640", user: P(1, "Toprak Şahin Güreli"), mine: true, attempts: 1, firstAt: ago(600), lastAt: ago(600), reason: "no_answer", status: "reached", reached: { by: P(2, "Ayşe Kaya"), direction: "inbound", seconds: 263, at: ago(400) } },
+  { id: 5, number: "05052844629", user: P(1, "Toprak Şahin Güreli"), mine: true, attempts: 2, firstAt: ago(900), lastAt: ago(700), reason: "busy", status: "dropped", droppedBy: P(1, "Toprak Şahin Güreli"), droppedAt: ago(650) },
+];
+const notices = [
+  { id: 2, kind: "unreached_reached", text: "Ulaşamadığın 05425275640 geri aradı; Ayşe Kaya ile 4 dk 23 sn görüştü (11:42).", link: "/followups", createdAt: ago(5), read: false },
+  { id: 1, kind: "unreached_reached", text: "Ulaşamadığın 05447473456 numarasına Mehmet Demir ulaştı, 8 dk 27 sn görüştü (dün).", link: "/followups", createdAt: ago(1500), read: true },
+];
+function followAnswer(method: string, path: string): unknown {
+  const p = path.split("?")[0];
+  if (p === "/api/v1/followups/unreached") return path.includes("state=closed") ? closedRows : path.includes("scope=all") ? unreachedRows : unreachedRows.filter((r) => r.mine);
+  if (p === "/api/v1/followups/peer") return { inboundBefore: 2, lastTalk: { by: P(2, "Ayşe Kaya"), mine: false, at: ago(1500), seconds: 507, direction: "outbound" }, unreached: [unreachedRows[0], { ...unreachedRows[1], number: "05447473456", user: P(2, "Ayşe Kaya"), mine: false }] };
+  if (/^\/api\/v1\/followups\/unreached\/\d+\/(claim|drop)$/.test(p)) {
+    const id = Number(p.split("/")[5]);
+    const r = unreachedRows.find((x) => x.id === id) as Record<string, unknown> | undefined;
+    if (r && p.endsWith("/drop")) unreachedRows.splice(unreachedRows.findIndex((x) => x.id === id), 1);
+    else if (r) r.claim = method === "DELETE" ? undefined : { by: P(1, user.name), until: new Date(Date.now() + 30 * 60000).toISOString(), mine: true };
+    return undefined;
+  }
+  if (p === "/api/v1/notices") return { items: path.includes("after=") ? [] : notices, unread: notices.filter((n) => !n.read).length };
+  if (p === "/api/v1/notices/read") {
+    notices.forEach((n) => (n.read = true));
+    return undefined;
+  }
+  return method === "GET" ? [] : {};
+}
+
 let installed = false;
 function installMock() {
   if (installed) return;
@@ -247,6 +282,11 @@ function installMock() {
     if (url.startsWith("/api/v1/performance/today")) {
       await new Promise((r) => setTimeout(r, 150));
       return new Response(JSON.stringify({ scope: "all", from: "", to: "", items: perfRows }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.startsWith("/api/v1/followups/") || url.startsWith("/api/v1/notices")) {
+      await new Promise((r) => setTimeout(r, 120));
+      const out = followAnswer(init?.method ?? "GET", url);
+      return new Response(out === undefined ? null : JSON.stringify(out), { status: out === undefined ? 204 : 200, headers: { "Content-Type": "application/json" } });
     }
     if (!url.startsWith("/api/v1/wa/")) return real(input, init);
     if (url.startsWith("/api/v1/wa/shared-ratings/gone")) {
@@ -290,6 +330,8 @@ const PAGES = [
   { path: "/whatsapp/preferences", label: "WhatsApp ayarlarım" },
   { path: "/account", label: "Hesap ve güvenlik" },
   { path: "/role-form", label: "Rol formu" },
+  { path: "/followups", label: "Geri dönüşler" },
+  { path: "/call-hints", label: "Görüşme ipuçları" },
   { path: "/shared/ratings/2.preview", label: "Paylaşılan puanlar" },
   { path: "/shared/ratings/gone", label: "Kapanmış link" },
 ];
@@ -342,6 +384,8 @@ export default function WAPreview() {
                     <Route path="/whatsapp/preferences" element={<WhatsAppPreferences />} />
                     <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
                     <Route path="/shared/ratings/:token" element={<SharedPreview />} />
+                    <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /></ShiftProvider>} />
+                    <Route path="/call-hints" element={<SoftphoneMockProvider value={{ ...phoneValue(), status: "in-call", peer: "05447473456", callId: "hint-1" } as SoftphoneValue}><div className="mx-auto max-w-xs rounded-2xl border border-border bg-popover p-3 shadow-xl"><p className="mb-2 text-sm font-semibold">05447473456</p><PeerHints /></div></SoftphoneMockProvider>} />
                     <Route path="/role-form" element={<RoleForm role={null} groups={permissionGroups} onClose={() => undefined} onSaved={() => undefined} />} />
                   </Routes>
                 </main>

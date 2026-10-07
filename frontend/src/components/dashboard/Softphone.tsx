@@ -26,6 +26,7 @@ import { Button, Card, ConfirmDialog, Spinner } from "../ui";
 import { cn } from "../../lib/utils";
 import { formatDuration } from "../../pages/callFormat";
 import { clockTime } from "../../lib/time";
+import PeerHints from "@/followups/PeerHints";
 
 const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
@@ -286,6 +287,8 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
                   {phone.status === "incoming" ? "Gelen çağrı" : outgoing ? "Aranıyor..." : phone.held ? "Beklemede" : "Görüşme"}
                 </div>
               </div>
+
+              <PeerHints center className="w-full max-w-sm" />
 
               {active && (
                 <div className="font-mono text-5xl font-semibold tabular-nums tracking-tight">{formatDuration(dur)}</div>

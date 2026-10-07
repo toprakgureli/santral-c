@@ -23,6 +23,7 @@ const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m
 const TeamPerformance = lazy(() => import("./pages/TeamPerformance").then((m) => ({ default: m.TeamPerformance })));
 const Users = lazy(() => import("./pages/Users").then((m) => ({ default: m.Users })));
 const WhatsApp = lazy(() => import("./pages/WhatsApp").then((m) => ({ default: m.WhatsApp })));
+const Followups = lazy(() => import("./pages/Followups").then((m) => ({ default: m.Followups })));
 const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.Account })));
 const WhatsAppPreferences = lazy(() => import("./pages/WhatsAppPreferences").then((m) => ({ default: m.WhatsAppPreferences })));
 const WhatsAppSettings = lazy(() => import("./pages/WhatsAppSettings").then((m) => ({ default: m.WhatsAppSettings })));
@@ -77,6 +78,7 @@ export function App() {
         <Route path="/roles" element={<RequirePermission need={menuPermission("/roles")}><Roles /></RequirePermission>} />
         <Route path="/users" element={<RequirePermission need={menuPermission("/users")}><Users /></RequirePermission>} />
         <Route path="/settings" element={<RequirePermission need={menuPermission("/settings")}><Settings /></RequirePermission>} />
+        <Route path="/followups" element={<RequirePermission need={menuPermission("/followups")}><Followups /></RequirePermission>} />
         <Route path="/teams" element={<RequirePermission need={menuPermission("/teams")}><Teams /></RequirePermission>} />
         <Route path="/teams/:id" element={<RequirePermission need={menuPermission("/teams")}><Teams /></RequirePermission>} />
         <Route path="/games/admin" element={<RequirePermission need={PAGE_PERMISSIONS.gamesAdmin}><GamesAdmin /></RequirePermission>} />

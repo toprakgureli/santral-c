@@ -1,4 +1,4 @@
-import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, MessageCircleMore, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
+import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, MessageCircleMore, PhoneMissed, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 
 export type MenuItem = {
@@ -24,6 +24,7 @@ export const MENU: MenuGroup[] = [
         icon: History,
         permission: ["cdr.view_all", "cdr.view_own", "call.view_all", "call.view_own"],
       },
+      { label: "Geri Dönüşler", path: "/followups", icon: PhoneMissed, permission: ["call.originate", "call.view_own", "cdr.view_own", "call.view_all", "cdr.view_all"] },
       { label: "Teams", path: "/teams", icon: MessageCircleMore, permission: "teams.view" },
       { label: "WhatsApp", path: "/whatsapp", icon: WhatsAppIcon, permission: "whatsapp.view" },
       { label: "Ekip Performansı", path: "/performance", icon: ChartColumn, permission: ["performance.view_role", "performance.view_all"] },

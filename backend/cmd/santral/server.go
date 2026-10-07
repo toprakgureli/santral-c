@@ -18,8 +18,10 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
+	"github.com/toprakgureli/santral-c/backend/internal/followup"
 	"github.com/toprakgureli/santral-c/backend/internal/games"
 	"github.com/toprakgureli/santral-c/backend/internal/middlewares"
+	notices "github.com/toprakgureli/santral-c/backend/internal/notice"
 	"github.com/toprakgureli/santral-c/backend/internal/ops"
 	"github.com/toprakgureli/santral-c/backend/internal/performance"
 	"github.com/toprakgureli/santral-c/backend/internal/profile"
@@ -195,6 +197,11 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	calllog.NewRouter(callLogHandler, guard, need).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
 	performance.NewRouter(perfHandler, guard, need).Routes(api)
+	// Notices for one person, and the customers the team still owes a call.
+	noticeSvc := notices.NewService(db)
+	notices.NewRouter(notices.NewHandler(noticeSvc), guard).Routes(api)
+	followupSvc := followup.NewService(followup.NewRepository(db), actors, noticeSvc)
+	followup.NewRouter(followup.NewHandler(followupSvc), guard, need).Routes(api)
 	profileSvc := profile.NewService(profile.NewRepository(db), actors)
 	profileSvc.SetRealCall(settingSvc)
 	profile.NewRouter(profile.NewHandler(profileSvc), guard).Routes(api)
@@ -208,11 +215,13 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	waRouter.Routes(api)
 	// A webhook already registered in Meta may live outside /api.
 	waRouter.Root(app)
-	// A finished phone call may be logged on its ticket and followed by a
-	// survey on WhatsApp.
+	// A finished phone call may be logged on its ticket, followed by a
+	// survey on WhatsApp, and put on or taken off the list of customers
+	// the team still owes a call.
 	callLogSvc.OnEnded = func(ctx context.Context, log models.CallLog) {
 		escalationSvc.AutoLog(ctx, log)
 		waSvc.OnCallEnded(ctx, log)
+		followupSvc.OnCallEnded(ctx, log)
 	}
 
 	// Database backups to a Shared Drive, set up in the panel.

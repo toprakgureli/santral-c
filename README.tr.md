@@ -46,6 +46,13 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
   CSV indirme.
 - Santralin "rahatsız etmeyin" ayarına bağlı mola ve mesai takibi, canlı ekip
   ekranı, dinleme ve kişi bazında günlük performans.
+- Geri dönüşler: ulaşılamayan bir arama numarayı arayanın listesine koyar.
+  O müşteriyle kim olursa olsun görüşünce (biri arayınca ya da müşteri
+  arayınca) kayıt kendiliğinden kapanır ve ulaşamayan kişiye kimin ulaştığı
+  bildirilir. "Ben arıyorum" bir numarayı tek kişiye ayırır. Görüşme
+  sırasında panel numaranın bugün kaçıncı kez aradığını, son kimle
+  görüştüğünü ve kimin ulaşamadığını gösterir. Bildirimler her sayfada
+  zilin altında toplanır.
 
 **WhatsApp Business**
 - Ortak gelen kutusu: sohbet kaydı, havuz, otomatik dağıtım, aktarma, iç not,

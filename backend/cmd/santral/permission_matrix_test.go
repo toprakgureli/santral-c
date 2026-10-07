@@ -50,6 +50,7 @@ var checkedInsideGroups = map[string]string{
 	"/api/v1/shift/":    "the caller's own shift",
 	"/api/v1/profile/":  "profiles every signed-in colleague may see",
 	"/api/v1/users/me/": "the caller's own settings",
+	"/api/v1/notices/":  "the caller's own notices",
 }
 
 var checkedInside = map[string]string{

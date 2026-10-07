@@ -5,6 +5,7 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import { whatsappNumber } from "@/lib/whatsapp";
 import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
+import PeerHints from "@/followups/PeerHints";
 
 const statusLabel: Record<string, string> = {
   calling: "Aranıyor",
@@ -119,6 +120,8 @@ export default function CallBar() {
           <div className="text-xs text-muted-foreground">{statusLabel[phone.status]}</div>
         </div>
       </div>
+
+      <PeerHints className="mb-3" />
 
       {phone.error && <p className="mb-2 text-xs leading-snug text-destructive">{phone.error}</p>}
 

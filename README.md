@@ -46,6 +46,12 @@ everything an agent and a team lead actually work in.
   and CSV export.
 - Agent presence and shifts wired to the PBX's do-not-disturb, live team
   board, listen-in, and per-agent daily performance.
+- Follow-ups: a call out that does not get through puts the number on its
+  caller's list; it closes by itself when anyone talks to that customer, in
+  either direction, and the caller is told who reached them. "I am calling
+  back" holds a number for one person. During a call the panel shows how
+  often the number called today, who last spoke with it and who could not
+  reach it. Notices reach each person under a bell on every page.
 
 **WhatsApp Business**
 - Shared inbox with tickets, pool, automatic distribution, transfer, internal

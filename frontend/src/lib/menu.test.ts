@@ -41,7 +41,7 @@ describe("menu permissions", () => {
   it("drops a whole group when nothing in it is allowed", () => {
     const menu = visibleMenu(holds("teams.view", "call.view_own"));
     expect(menu.map((g) => g.title)).toEqual(["Genel"]);
-    expect(menu[0].items.map((i) => i.path)).toEqual(["/", "/calls", "/teams"]);
+    expect(menu[0].items.map((i) => i.path)).toEqual(["/", "/calls", "/followups", "/teams"]);
   });
 
   it("shows everything to someone who holds every permission", () => {
