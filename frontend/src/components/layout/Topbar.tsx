@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthContext";
 import NumberSearch from "./NumberSearch";
 import NoticeBell from "./NoticeBell";
+import LiveAlerts from "./LiveAlerts";
 import ShiftButton from "./ShiftButton";
 import ThemeMenu from "./ThemeMenu";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -79,6 +80,7 @@ export default function Topbar({ title, onMenuClick }: TopbarProps) {
         <span className="mx-1 hidden h-6 w-px bg-border md:block" />
         <ShiftButton />
         <span className="mx-1 hidden h-6 w-px bg-border sm:block" />
+        <LiveAlerts />
         <NoticeBell />
         <ThemeMenu />
 

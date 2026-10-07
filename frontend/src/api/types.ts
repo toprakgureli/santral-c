@@ -110,6 +110,17 @@ export interface ShiftStatus {
   autoEndAt?: string;
 }
 
+// A live alert for the team lead: what needs a look right now. The key
+// stays the same while its cause lasts.
+export interface LiveAlert {
+  key: string;
+  kind: string;
+  level: "warning" | "info";
+  text: string;
+  link?: string;
+  since: string;
+}
+
 // The working day: when it ends and each role's daily target of real calls.
 export interface Workday {
   shiftEnd: string;

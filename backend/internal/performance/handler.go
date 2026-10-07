@@ -73,6 +73,19 @@ func (h *Handler) AgentCalls(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// Alerts lists what needs a team lead's look right now.
+func (h *Handler) Alerts(c *fiber.Ctx) error {
+	id, ok := c.Locals(middlewares.UserIDKey).(uint)
+	if !ok {
+		return errs.Unauthorized("Oturum bulunamadı. Lütfen giriş yap.")
+	}
+	res, err := h.service.Alerts(c.UserContext(), id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 // Router mounts the performance endpoints.
 type Router struct {
 	handler *Handler
@@ -90,4 +103,5 @@ func (r *Router) Routes(g fiber.Router) {
 	view := r.need(enums.PerformanceViewAll, enums.PerformanceViewRole)
 	g.Get("/performance/today", r.guard, view, r.handler.Today)
 	g.Get("/performance/calls", r.guard, view, r.handler.AgentCalls)
+	g.Get("/performance/alerts", r.guard, r.need(enums.PerformanceLiveAlerts), r.handler.Alerts)
 }

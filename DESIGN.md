@@ -253,7 +253,7 @@ refused exactly when the role lacks what the route needs.
   are cut to the first name and an initial, numbers to their last four
   digits, the search reads comments only and nothing leads into a
   conversation. Answers carry `no-store`, `noindex` and `no-referrer`.
-- There are 84 permissions named `module.action`, defined in `pkg/enums`
+- There are 85 permissions named `module.action`, defined in `pkg/enums`
   and seeded at start; the panel lists them under Roller. New keys are
   granted only to the roles that should get them; existing grants an admin
   changed are left alone.

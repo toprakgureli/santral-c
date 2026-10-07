@@ -6,13 +6,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, X } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { followApi, type Notice } from "@/followups/api";
+import { pushToast } from "./Toasts";
 
 const POLL_MS = 20000;
-const TOAST_MS = 12000;
 
 function when(iso: string): string {
   return isToday(iso) ? clockTime(iso) : `${shortMonthDate(iso)} ${clockTime(iso)}`;
@@ -23,7 +23,6 @@ export default function NoticeBell() {
   const [items, setItems] = useState<Notice[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
-  const [toasts, setToasts] = useState<Notice[]>([]);
   const last = useRef(0);
   // Notices already known: those of the first read fill the bell quietly,
   // and only ones never seen before become toasts.
@@ -42,7 +41,7 @@ export default function NoticeBell() {
       } else {
         const fresh = r.items.filter((n) => !n.read && !known.current!.has(n.id));
         fresh.forEach((n) => known.current!.add(n.id));
-        if (fresh.length > 0) setToasts((cur) => [...fresh, ...cur].slice(0, 3));
+        fresh.forEach((n) => pushToast({ id: `notice-${n.id}`, text: n.text, link: n.link, onOpen: () => void followApi.readNotices({ ids: [n.id] }).catch(() => undefined) }));
       }
       setUnread(r.unread);
     } catch {
@@ -60,12 +59,6 @@ export default function NoticeBell() {
       document.removeEventListener("visibilitychange", onFocus);
     };
   }, [poll]);
-
-  useEffect(() => {
-    if (toasts.length === 0) return;
-    const t = window.setTimeout(() => setToasts((cur) => cur.slice(0, -1)), TOAST_MS);
-    return () => window.clearTimeout(t);
-  }, [toasts]);
 
   useEffect(() => {
     if (!open) return;
@@ -88,7 +81,6 @@ export default function NoticeBell() {
 
   const openNotice = (n: Notice) => {
     setOpen(false);
-    setToasts((cur) => cur.filter((t) => t.id !== n.id));
     if (!n.read) void markRead({ ids: [n.id] });
     if (n.link) navigate(n.link);
   };
@@ -135,20 +127,6 @@ export default function NoticeBell() {
               ))
             )}
           </div>
-        </div>
-      )}
-
-      {toasts.length > 0 && (
-        <div className="fixed top-20 right-4 z-[72] flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2">
-          {toasts.map((n) => (
-            <div key={n.id} role="status" className="animate-in fade-in slide-in-from-right-4 flex items-start gap-2.5 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-xl duration-200">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Bell className="size-4" /></span>
-              <button type="button" onClick={() => openNotice(n)} className="min-w-0 flex-1 text-left text-sm leading-snug">{n.text}</button>
-              <button type="button" onClick={() => setToasts((cur) => cur.filter((t) => t.id !== n.id))} aria-label="Kapat" className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent">
-                <X className="size-4" />
-              </button>
-            </div>
-          ))}
         </div>
       )}
     </div>

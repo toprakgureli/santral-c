@@ -13,6 +13,7 @@ import PeerHints from "@/followups/PeerHints";
 import { Followups } from "@/pages/Followups";
 import ReminderWatcher from "@/components/layout/ReminderWatcher";
 import DaySummary from "@/components/layout/DaySummary";
+import Toasts from "@/components/layout/Toasts";
 import WorkdayCard from "@/components/settings/WorkdayCard";
 import SharedRatings from "@/pages/SharedRatings";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
@@ -29,7 +30,7 @@ import { SoftphoneMockProvider, type SoftphoneValue } from "@/softphone/Softphon
 import { TeamsMockProvider } from "@/teams/TeamsContext";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 
-const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.rating_delete", "whatsapp.rating_link", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "call.view_own", "call.view_all", "performance.view_all"];
+const WA_PERMS = ["whatsapp.view", "whatsapp.view_team", "whatsapp.view_all", "whatsapp.reply", "whatsapp.note", "whatsapp.pool", "whatsapp.waiting", "whatsapp.take", "whatsapp.assign", "whatsapp.resolve", "whatsapp.template_send", "whatsapp.template_manage", "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish", "whatsapp.channel_manage", "whatsapp.setting_read_receipts", "whatsapp.setting_greeting", "whatsapp.setting_distribution", "whatsapp.setting_general", "whatsapp.team_manage", "whatsapp.contact_manage", "whatsapp.callbacks", "whatsapp.reports", "whatsapp.ratings", "whatsapp.rating_delete", "whatsapp.rating_link", "whatsapp.export", "whatsapp.ai_suggest", "whatsapp.ai_manage", "whatsapp.call_survey_manage", "call.originate", "call.view_own", "call.view_all", "performance.view_all", "performance.live_alerts"];
 const user: User = { id: 1, name: "Toprak Şahin Güreli", email: "toprak@example.com", active: true, roles: ["Yönetici"], roleIds: [1], permissions: WA_PERMS, mfaEnabled: false, mustChangePassword: false, sipExtension: "1001", createdAt: "2026-01-01T00:00:00Z" };
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString();
@@ -299,6 +300,7 @@ function followAnswer(method: string, path: string, body?: unknown): unknown {
 }
 
 let installed = false;
+let alertPolls = 0;
 function installMock() {
   if (installed) return;
   installed = true;
@@ -308,6 +310,18 @@ function installMock() {
     if (url.startsWith("/api/v1/performance/today")) {
       await new Promise((r) => setTimeout(r, 150));
       return new Response(JSON.stringify({ scope: "all", from: "", to: "", items: perfRows }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.startsWith("/api/v1/performance/alerts")) {
+      alertPolls++;
+      const list = [
+        { key: "missed", kind: "missed", level: "warning", text: "Son 15 dakikada 4 gelen çağrı cevaplanmadı.", link: "/calls", since: ago(12) },
+        { key: "break_over:2", kind: "break_over", level: "warning", text: "Ayşe Kaya molada; bugünkü mola 72 dk, sınır 60 dk.", link: "/performance", since: ago(8) },
+        { key: "long_call:x", kind: "long_call", level: "info", text: "Mehmet Demir 24 dakikadır görüşmede.", link: "/performance", since: ago(24) },
+        { key: "unreached", kind: "unreached", level: "info", text: "3 müşteriye 2 saattir kimse geri dönmedi.", link: "/followups", since: ago(190) },
+      ];
+      // The second read brings one more, to show the toast.
+      const out = alertPolls > 1 ? [...list, { key: "reminder_late:1", kind: "reminder_late", level: "info", text: "Toprak Şahin Güreli adına 1 planlı geri arama 30 dakikadan uzun süredir gecikiyor.", link: "/followups?tab=reminders", since: ago(45) }] : list;
+      return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.startsWith("/api/v1/profile/me/summary")) {
       return new Response(JSON.stringify({
@@ -427,7 +441,7 @@ export default function WAPreview() {
                     <Route path="/whatsapp/preferences" element={<WhatsAppPreferences />} />
                     <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
                     <Route path="/shared/ratings/:token" element={<SharedPreview />} />
-                    <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /><ReminderWatcher /></ShiftProvider>} />
+                    <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /><ReminderWatcher /><Toasts /></ShiftProvider>} />
                     <Route path="/day-summary" element={<DaySummary ending onClose={() => undefined} onEnd={async () => undefined} />} />
                     <Route path="/workday" element={<WorkdayCard />} />
                     <Route path="/call-hints" element={<SoftphoneMockProvider value={{ ...phoneValue(), status: "in-call", peer: "05447473456", callId: "hint-1" } as SoftphoneValue}><div className="mx-auto max-w-xs rounded-2xl border border-border bg-popover p-3 shadow-xl"><p className="mb-2 text-sm font-semibold">05447473456</p><PeerHints /></div></SoftphoneMockProvider>} />

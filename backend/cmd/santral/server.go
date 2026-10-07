@@ -100,6 +100,7 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	contactHandler := contact.NewHandler(contactSvc)
 	perfSvc := performance.NewService(performance.NewRepository(db), actors, contactRepo)
 	perfSvc.SetRealCall(settingSvc)
+	perfSvc.SetBreakLimit(settingSvc)
 	perfHandler := performance.NewHandler(perfSvc)
 	escalationSvc := escalation.NewService(escalation.NewRepository(db), actors)
 	escalationHandler := escalation.NewHandler(escalationSvc)

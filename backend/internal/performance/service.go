@@ -39,6 +39,8 @@ type Service struct {
 	contacts IContactNames
 	// realCall says how long an answered call must last to count as real.
 	realCall callrule.Source
+	// breakLimit reads the daily break limit for the live alerts.
+	breakLimit IBreakLimit
 }
 
 // SetRealCall wires the setting that decides which calls count as real.

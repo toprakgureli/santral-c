@@ -36,6 +36,7 @@ import type {
   SipCredentials,
   SystemSettings,
   TeamPerformance,
+  LiveAlert,
   User,
   Workday,
 } from "./types";
@@ -430,6 +431,7 @@ export const api = {
   workday: () => request<Workday>("/settings/workday"),
   updateWorkday: (body: { shiftEnd: string; targets: Record<number, number> }) => request<Workday>("/settings/workday", { method: "PUT", body: JSON.stringify(body) }),
   daySummary: () => request<DaySummary>("/profile/me/summary"),
+  liveAlerts: () => request<LiveAlert[]>("/performance/alerts"),
   updateRealCall: (seconds: number) => request<{ seconds: number }>("/settings/real-call", { method: "PUT", body: JSON.stringify({ seconds }) }),
 
   // Audit trail (system.audit_view)

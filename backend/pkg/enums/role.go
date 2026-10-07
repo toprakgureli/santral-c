@@ -66,7 +66,7 @@ func managerPermissions() []Permission {
 		UserView, UserCreate, UserUpdate, UserDeactivate,
 		RoleView, RoleManage, RoleAssign,
 		SystemLogs, SystemAuditView, SystemHealth,
-		PerformanceViewRole,
+		PerformanceViewRole, PerformanceLiveAlerts,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
 		GamesPlay, GamesManage,
 		WAView, WAViewAll, WAReply, WANote, WAPool, WAWaiting, WATake, WAAssign, WAResolve,

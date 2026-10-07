@@ -83,6 +83,7 @@ const (
 	// PerformanceShowHiddenAdmin, on any role an invisible admin also
 	// holds, puts them back in the statistics: they work in that role.
 	PerformanceShowHiddenAdmin Permission = "performance.show_hidden_admin"
+	PerformanceLiveAlerts      Permission = "performance.live_alerts"
 
 	TeamsView         Permission = "teams.view"
 	TeamsGroupCreate  Permission = "teams.group_create"
@@ -184,6 +185,7 @@ var permissions = []PermissionInfo{
 	{PerformanceViewRole, "Ekip performansında kendi rolündekileri görür"},
 	{PerformanceViewAll, "Ekip performansında herkesi görür"},
 	{PerformanceShowHiddenAdmin, "Gizli yönetici olsa da istatistiklerde görünür"},
+	{PerformanceLiveAlerts, "Ekip için canlı uyarıları görür: uzun görüşme, mola aşımı, cevapsız çağrı yığılması, bekleyen geri dönüşler"},
 	{TeamsView, "Teams sekmesini görür, mesajlaşır"},
 	{TeamsGroupCreate, "Teams'te grup oluşturur"},
 	{TeamsMemberInvite, "Teams gruplarına davet gönderir"},
