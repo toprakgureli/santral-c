@@ -12,12 +12,13 @@
 // keeps filling the form; a note in the header says a call is in progress.
 
 import { useEffect, useState } from "react";
-import { PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
+import { AlarmClock, PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import type { EscalationCategory, EscalationRecord } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
 import { emitEscalationSaved } from "@/components/escalation/events";
+import ScheduleCallback from "@/followups/ScheduleCallback";
 import { Badge, Button } from "@/components/ui";
 import { useWhatsAppPromptOpen } from "@/lib/overlays";
 import { can } from "@/lib/permissions";
@@ -94,6 +95,8 @@ export default function WrapUpCard() {
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [skipError, setSkipError] = useState<string | null>(null);
+  const canPlan = ["call.originate", "call.view_own", "cdr.view_own", "call.view_all", "cdr.view_all"].some((p) => can(user, p));
+  const [planning, setPlanning] = useState(false);
   // The WhatsApp prompt has priority; this card waits until it is closed.
   const waPromptOpen = useWhatsAppPromptOpen();
 
@@ -188,6 +191,11 @@ export default function WrapUpCard() {
               <Fact label="Süre" value={duration((current.endedAt - current.answeredAt) / 1000)} mono />
               {canSearch && <Fact label="Geçmiş kayıt" value={historyCount === 0 ? "Yok" : `${historyCount} kayıt`} tone={historyCount ? "amber" : undefined} />}
             </ul>
+            {canPlan && (
+              <button type="button" onClick={() => setPlanning(true)} className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-card px-3 py-2 text-sm font-medium ring-1 ring-border/60 transition-colors hover:bg-accent">
+                <AlarmClock className="size-4 text-warning" /> Geri arama planla
+              </button>
+            )}
             {canSearch && history.length > 0 && (
               <div className="mt-4 flex min-h-0 flex-1 flex-col">
                 <div className="mb-1.5 text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">Geçmiş görüşmeler</div>
@@ -235,6 +243,8 @@ export default function WrapUpCard() {
           </div>
         </div>
       </div>
+
+      {planning && <ScheduleCallback number={current.peer} onClose={() => setPlanning(false)} />}
 
       {/* Are you sure? Skipping is a record too, so it deserves a stop. */}
       {confirmSkip && (

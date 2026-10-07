@@ -7,7 +7,7 @@
 // and never closes it. It shows once per unreached call.
 
 import { useEffect, useState } from "react";
-import { PhoneMissed, Settings2, X } from "lucide-react";
+import { AlarmClock, PhoneMissed, Settings2, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import WhatsAppTemplateDialog from "@/components/WhatsAppTemplateDialog";
@@ -17,6 +17,7 @@ import { whatsappNumber, whatsappTextFor } from "@/lib/whatsapp";
 import { displayNumber } from "@/softphone/dial";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
+import ScheduleCallback from "@/followups/ScheduleCallback";
 
 const REASONS: Record<string, string> = {
   no_answer: "Cevap vermedi",
@@ -30,6 +31,7 @@ export default function UnreachedPrompt() {
   const { user } = useAuth();
   const [seenId, setSeenId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const { business, write: writeWhatsApp } = useWhatsAppWrite();
 
   const call = phone.lastUnreached;
@@ -108,6 +110,11 @@ export default function UnreachedPrompt() {
           )}
         </div>
 
+        <div className="flex justify-center px-7 pb-3">
+          <button type="button" onClick={() => setPlanning(true)} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+            <AlarmClock className="size-4 text-warning" /> Bunun yerine geri arama planla
+          </button>
+        </div>
         <div className="flex gap-2 px-7 pb-7">
           <Button variant="secondary" onClick={dismiss} className="h-12 flex-1 text-base">Şimdi değil</Button>
           <Button onClick={write} className="h-12 flex-[1.4] gap-2 bg-[#25D366] text-base text-black shadow-md hover:bg-[#25D366]/90">
@@ -116,6 +123,7 @@ export default function UnreachedPrompt() {
         </div>
       </div>
     </div>
+    {planning && <ScheduleCallback number={call.peer} onClose={() => setPlanning(false)} onSaved={dismiss} />}
     </Layer.Provider>
   );
 }

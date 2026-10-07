@@ -53,6 +53,10 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
   sırasında panel numaranın bugün kaçıncı kez aradığını, son kimle
   görüştüğünü ve kimin ulaşamadığını gösterir. Bildirimler her sayfada
   zilin altında toplanır.
+- Planlı geri aramalar: çağrı sonrası kartından, çağrı geçmişinden,
+  ulaşılamayanlar listesinden ya da elle bir saate geri arama kurulur.
+  Saati gelince her sayfada çıkar (ara, ertele, tamamlandı); o müşteriyle
+  kim görüşürse görüşsün kendiliğinden kapanır.
 
 **WhatsApp Business**
 - Ortak gelen kutusu: sohbet kaydı, havuz, otomatik dağıtım, aktarma, iç not,

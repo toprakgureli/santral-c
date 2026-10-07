@@ -25,11 +25,28 @@ export interface Unreached {
   droppedAt?: string;
 }
 
+// A call back someone planned for a time.
+export interface Reminder {
+  id: number;
+  number: string;
+  note?: string;
+  dueAt: string;
+  user: FollowPerson;
+  mine: boolean;
+  snoozes: number;
+  createdAt: string;
+  doneAt?: string;
+  // done, canceled, or reached (anyone had a real conversation with the number)
+  doneReason?: string;
+  doneBy?: FollowPerson;
+}
+
 export interface PeerContext {
   // the calls the number made today before the current one
   inboundBefore: number;
   lastTalk?: { by: FollowPerson; mine: boolean; at: string; seconds: number; direction: string };
   unreached: Unreached[];
+  reminders: Reminder[];
 }
 
 export interface Notice {
@@ -47,10 +64,24 @@ export const followApi = {
   claim: (id: number) => request<void>(`/followups/unreached/${id}/claim`, { method: "POST" }),
   unclaim: (id: number) => request<void>(`/followups/unreached/${id}/claim`, { method: "DELETE" }),
   drop: (id: number) => request<void>(`/followups/unreached/${id}/drop`, { method: "POST" }),
+  reminders: (all: boolean, done: boolean) =>
+    request<Reminder[]>(`/followups/reminders?scope=${all ? "all" : "mine"}&state=${done ? "done" : "open"}`),
+  createReminder: (body: { number: string; note: string; dueAt: string }) => request<Reminder>("/followups/reminders", { method: "POST", body: JSON.stringify(body) }),
+  snooze: (id: number, minutes: number) => request<void>(`/followups/reminders/${id}/snooze`, { method: "POST", body: JSON.stringify({ minutes }) }),
+  doneReminder: (id: number) => request<void>(`/followups/reminders/${id}/done`, { method: "POST" }),
+  cancelReminder: (id: number) => request<void>(`/followups/reminders/${id}/cancel`, { method: "POST" }),
   peer: (number: string) => request<PeerContext>(`/followups/peer?number=${encodeURIComponent(number)}`),
   notices: (after = 0) => request<{ items: Notice[]; unread: number }>(`/notices${after ? `?after=${after}` : ""}`),
   readNotices: (body: { ids?: number[]; all?: boolean }) => request<void>("/notices/read", { method: "POST", body: JSON.stringify(body) }),
 };
+
+// FOLLOWUPS_CHANGED is announced on window when a call back or a follow-up
+// changed somewhere in the panel, so every list showing them reads again.
+export const FOLLOWUPS_CHANGED = "santral:followups-changed";
+
+export function announceFollowupsChanged() {
+  window.dispatchEvent(new Event(FOLLOWUPS_CHANGED));
+}
 
 export const REASON_LABEL: Record<string, string> = {
   no_answer: "Cevap vermedi",

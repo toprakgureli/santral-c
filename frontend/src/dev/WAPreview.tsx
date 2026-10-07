@@ -11,6 +11,7 @@ import RoleForm from "@/components/role/RoleForm";
 import { Account } from "@/pages/Account";
 import PeerHints from "@/followups/PeerHints";
 import { Followups } from "@/pages/Followups";
+import ReminderWatcher from "@/components/layout/ReminderWatcher";
 import SharedRatings from "@/pages/SharedRatings";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsApp } from "@/pages/WhatsApp";
@@ -253,10 +254,33 @@ const notices = [
   { id: 2, kind: "unreached_reached", text: "Ulaşamadığın 05425275640 geri aradı; Ayşe Kaya ile 4 dk 23 sn görüştü (11:42).", link: "/followups", createdAt: ago(5), read: false },
   { id: 1, kind: "unreached_reached", text: "Ulaşamadığın 05447473456 numarasına Mehmet Demir ulaştı, 8 dk 27 sn görüştü (dün).", link: "/followups", createdAt: ago(1500), read: true },
 ];
-function followAnswer(method: string, path: string): unknown {
+const reminderRows: Record<string, unknown>[] = [
+  { id: 11, number: "05447473456", note: "Fatura itirazı için dönüş sözü verildi", dueAt: ago(3), user: P(1, "Toprak Şahin Güreli"), mine: true, snoozes: 1, createdAt: ago(120) },
+  { id: 12, number: "05325554433", dueAt: new Date(Date.now() + 90 * 60000).toISOString(), user: P(1, "Toprak Şahin Güreli"), mine: true, snoozes: 0, createdAt: ago(30) },
+  { id: 13, number: "05369473700", note: "Kurulum randevusu", dueAt: new Date(Date.now() + 26 * 3600000).toISOString(), user: P(2, "Ayşe Kaya"), mine: false, snoozes: 0, createdAt: ago(10) },
+];
+const doneReminders = [
+  { id: 14, number: "05425275640", note: "Paket değişikliği", dueAt: ago(200), user: P(1, "Toprak Şahin Güreli"), mine: true, snoozes: 0, createdAt: ago(400), doneAt: ago(150), doneReason: "reached", doneBy: P(2, "Ayşe Kaya") },
+];
+
+function followAnswer(method: string, path: string, body?: unknown): unknown {
   const p = path.split("?")[0];
+  if (p === "/api/v1/followups/reminders" && method === "POST") {
+    const b = body as { number: string; note: string; dueAt: string };
+    const r = { id: Date.now(), number: b.number, note: b.note, dueAt: b.dueAt, user: P(1, user.name), mine: true, snoozes: 0, createdAt: new Date().toISOString() };
+    reminderRows.push(r);
+    return r;
+  }
+  if (p === "/api/v1/followups/reminders") return path.includes("state=done") ? doneReminders : path.includes("scope=all") ? reminderRows : reminderRows.filter((r) => r.mine);
+  if (/^\/api\/v1\/followups\/reminders\/\d+\/(snooze|done|cancel)$/.test(p)) {
+    const id = Number(p.split("/")[5]);
+    const i = reminderRows.findIndex((x) => x.id === id);
+    if (i >= 0 && p.endsWith("/snooze")) Object.assign(reminderRows[i], { dueAt: new Date(Date.now() + 15 * 60000).toISOString(), snoozes: (reminderRows[i].snoozes as number) + 1 });
+    else if (i >= 0) reminderRows.splice(i, 1);
+    return undefined;
+  }
   if (p === "/api/v1/followups/unreached") return path.includes("state=closed") ? closedRows : path.includes("scope=all") ? unreachedRows : unreachedRows.filter((r) => r.mine);
-  if (p === "/api/v1/followups/peer") return { inboundBefore: 2, lastTalk: { by: P(2, "Ayşe Kaya"), mine: false, at: ago(1500), seconds: 507, direction: "outbound" }, unreached: [unreachedRows[0], { ...unreachedRows[1], number: "05447473456", user: P(2, "Ayşe Kaya"), mine: false }] };
+  if (p === "/api/v1/followups/peer") return { inboundBefore: 2, lastTalk: { by: P(2, "Ayşe Kaya"), mine: false, at: ago(1500), seconds: 507, direction: "outbound" }, unreached: [unreachedRows[0], { ...unreachedRows[1], number: "05447473456", user: P(2, "Ayşe Kaya"), mine: false }], reminders: [reminderRows[0]] };
   if (/^\/api\/v1\/followups\/unreached\/\d+\/(claim|drop)$/.test(p)) {
     const id = Number(p.split("/")[5]);
     const r = unreachedRows.find((x) => x.id === id) as Record<string, unknown> | undefined;
@@ -285,7 +309,13 @@ function installMock() {
     }
     if (url.startsWith("/api/v1/followups/") || url.startsWith("/api/v1/notices")) {
       await new Promise((r) => setTimeout(r, 120));
-      const out = followAnswer(init?.method ?? "GET", url);
+      let fbody: unknown;
+      try {
+        fbody = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      } catch {
+        fbody = undefined;
+      }
+      const out = followAnswer(init?.method ?? "GET", url, fbody);
       return new Response(out === undefined ? null : JSON.stringify(out), { status: out === undefined ? 204 : 200, headers: { "Content-Type": "application/json" } });
     }
     if (!url.startsWith("/api/v1/wa/")) return real(input, init);
@@ -384,7 +414,7 @@ export default function WAPreview() {
                     <Route path="/whatsapp/preferences" element={<WhatsAppPreferences />} />
                     <Route path="/account" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Hesap ve Güvenlik" onMenuClick={() => undefined} /></div><Account /></ShiftProvider>} />
                     <Route path="/shared/ratings/:token" element={<SharedPreview />} />
-                    <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /></ShiftProvider>} />
+                    <Route path="/followups" element={<ShiftProvider><div className="-mx-4 -mt-6 mb-6 md:-mx-6 lg:-mx-8"><Topbar title="Geri Dönüşler" onMenuClick={() => undefined} /></div><Followups /><ReminderWatcher /></ShiftProvider>} />
                     <Route path="/call-hints" element={<SoftphoneMockProvider value={{ ...phoneValue(), status: "in-call", peer: "05447473456", callId: "hint-1" } as SoftphoneValue}><div className="mx-auto max-w-xs rounded-2xl border border-border bg-popover p-3 shadow-xl"><p className="mb-2 text-sm font-semibold">05447473456</p><PeerHints /></div></SoftphoneMockProvider>} />
                     <Route path="/role-form" element={<RoleForm role={null} groups={permissionGroups} onClose={() => undefined} onSaved={() => undefined} />} />
                   </Routes>

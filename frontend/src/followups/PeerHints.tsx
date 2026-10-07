@@ -5,7 +5,7 @@
 // named, so whoever picks up knows where things stand.
 
 import { useEffect, useRef, useState } from "react";
-import { History, PhoneMissed, PhoneOutgoing, Repeat } from "lucide-react";
+import { AlarmClock, History, PhoneMissed, PhoneOutgoing, Repeat } from "lucide-react";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
@@ -59,6 +59,13 @@ export default function PeerHints({ className, center }: { className?: string; c
       icon: PhoneMissed,
       tone: "bg-destructive/10 text-destructive",
       text: `${u.mine ? "Sen" : u.user.name} ${u.attempts} kez ulaşamadı · son ${when(u.lastAt)}`,
+    });
+  }
+  for (const r of ctx.reminders ?? []) {
+    lines.push({
+      icon: AlarmClock,
+      tone: "bg-warning/14 text-warning",
+      text: `${r.mine ? "Sen" : r.user.name} geri arayacak · ${when(r.dueAt)}${r.note ? ` · ${r.note}` : ""}`,
     });
   }
   if (ctx.lastTalk) {

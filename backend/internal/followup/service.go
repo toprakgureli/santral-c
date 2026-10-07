@@ -116,6 +116,8 @@ type PeerContext struct {
 	InboundBefore int         `json:"inboundBefore"`
 	LastTalk      *LastTalk   `json:"lastTalk,omitempty"`
 	Unreached     []Unreached `json:"unreached"`
+	// Reminders are the call backs planned to the number.
+	Reminders []Reminder `json:"reminders"`
 }
 
 // OnCallEnded runs after a call is final: a call out that did not get
@@ -134,12 +136,19 @@ func (s *Service) OnCallEnded(ctx context.Context, log models.CallLog) {
 	talked := log.Disposition == "answered" && (log.DurationUnknown || log.DurationSeconds >= contactSeconds)
 	switch {
 	case talked:
+		who := s.nameOf(ctx, *log.UserID)
 		rows, err := s.repo.Reach(ctx, key, *log.UserID, log.Direction, log.DurationSeconds, log.CallID, at)
 		if err != nil {
 			slog.WarnContext(ctx, "unreached calls could not be closed", "call", log.CallID, "error", err)
-			return
+		} else {
+			s.tellReached(ctx, rows, log, who, at)
 		}
-		s.tellReached(ctx, rows, log, at)
+		planned, err := s.repo.reachReminders(ctx, key, *log.UserID, at)
+		if err != nil {
+			slog.WarnContext(ctx, "call backs could not be closed", "call", log.CallID, "error", err)
+		} else {
+			s.tellRemindersReached(ctx, planned, log, who, at)
+		}
 	case log.Direction == "outbound":
 		if err := s.repo.AddAttempt(ctx, key, strings.TrimSpace(log.PeerNumber), *log.UserID, at, log.CallID, reasonOf(log)); err != nil {
 			slog.WarnContext(ctx, "unreached call could not be recorded", "call", log.CallID, "error", err)
@@ -158,15 +167,16 @@ func reasonOf(log models.CallLog) string {
 	return "no_answer"
 }
 
+// nameOf names a colleague for a notice.
+func (s *Service) nameOf(ctx context.Context, id uint) string {
+	if u, err := s.actors.GetByID(ctx, id); err == nil && u != nil {
+		return u.Name
+	}
+	return "Bir çalışma arkadaşın"
+}
+
 // tellReached tells everyone who could not reach the number who did.
-func (s *Service) tellReached(ctx context.Context, rows []models.CallUnreached, log models.CallLog, at time.Time) {
-	if len(rows) == 0 {
-		return
-	}
-	who := "Bir çalışma arkadaşın"
-	if u, err := s.actors.GetByID(ctx, *log.UserID); err == nil && u != nil {
-		who = u.Name
-	}
+func (s *Service) tellReached(ctx context.Context, rows []models.CallUnreached, log models.CallLog, who string, at time.Time) {
 	for _, r := range rows {
 		if r.UserID == *log.UserID {
 			continue // they reached the number themselves
@@ -307,7 +317,7 @@ func (s *Service) Peer(ctx context.Context, actorID uint, number string) (*PeerC
 	if err != nil {
 		return nil, err
 	}
-	out := &PeerContext{Unreached: []Unreached{}}
+	out := &PeerContext{Unreached: []Unreached{}, Reminders: []Reminder{}}
 	key := phone.Key(number)
 	if len(key) <= 5 {
 		return out, nil // a colleague's extension
@@ -332,6 +342,13 @@ func (s *Service) Peer(ctx context.Context, actorID uint, number string) (*PeerC
 	}
 	for _, r := range rows {
 		out.Unreached = append(out.Unreached, s.view(r, actor.ID))
+	}
+	planned, err := s.repo.remindersOfPeer(ctx, key)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	for _, r := range planned {
+		out.Reminders = append(out.Reminders, reminderView(r, actor.ID))
 	}
 	return out, nil
 }

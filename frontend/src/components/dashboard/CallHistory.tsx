@@ -12,6 +12,7 @@ import { cn } from "../../lib/utils";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { callQuality, formatDuration, formatStamp } from "../../pages/callFormat";
 import { useRealCallSeconds } from "../../lib/realCall";
+import ScheduleCallback from "@/followups/ScheduleCallback";
 
 export function CallHistory({ canCall }: { canCall: boolean }) {
   const realSeconds = useRealCallSeconds();
@@ -26,6 +27,7 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [planFor, setPlanFor] = useState<string | null>(null);
   const canDial = phone.status === "registered" && canCall;
   const inCall = phone.status === "in-call" || phone.status === "held";
   const copyTimer = useRef<number | null>(null);
@@ -75,6 +77,7 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
       items: [
         { label: `${displayNumber(number)} ara`, onClick: () => phone.call(normalizeDial(number)).catch(() => undefined), disabled: !canDial },
         { label: "Numarayı kopyala", onClick: () => copy(number) },
+        { label: "Geri arama planla", onClick: () => setPlanFor(number) },
         ...(whatsappNumber(number) ? [{ label: "WhatsApp'tan yaz", onClick: () => writeWhatsApp(number) }] : []),
         { label: "Görüşmeye aktar", onClick: () => phone.transfer(normalizeDial(number)).catch(() => undefined), disabled: !inCall },
       ],
@@ -86,6 +89,8 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
   const filtered = term ? calls.filter((c) => displayNumber(c.direction === "outbound" ? c.toNumber : c.fromNumber).includes(displayNumber(term))) : calls;
 
   return (
+    <>
+    {planFor && <ScheduleCallback number={planFor} onClose={() => setPlanFor(null)} />}
     <Card title="Çağrı Geçmişi" icon={History}>
       {loading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
@@ -197,6 +202,7 @@ export function CallHistory({ canCall }: { canCall: boolean }) {
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </Card>
+    </>
   );
 }
 

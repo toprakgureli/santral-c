@@ -44,3 +44,21 @@ type CallUnreached struct {
 
 // TableName pins the table name.
 func (CallUnreached) TableName() string { return "call_unreached" }
+
+// CallReminder is a call back someone planned for a time.
+type CallReminder struct {
+	ID         uint       `gorm:"column:id;primarykey"`
+	UserID     uint       `gorm:"column:user_id"`
+	PeerNumber string     `gorm:"column:peer_number"`
+	PeerKey    string     `gorm:"column:peer_key"`
+	Note       string     `gorm:"column:note"`
+	DueAt      time.Time  `gorm:"column:due_at"`
+	Snoozes    int        `gorm:"column:snoozes"`
+	CreatedAt  time.Time  `gorm:"column:created_at"`
+	DoneAt     *time.Time `gorm:"column:done_at"`
+	DoneReason *string    `gorm:"column:done_reason"`
+	DoneBy     *uint      `gorm:"column:done_by"`
+}
+
+// TableName pins the table name.
+func (CallReminder) TableName() string { return "call_reminders" }

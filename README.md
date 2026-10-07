@@ -52,6 +52,10 @@ everything an agent and a team lead actually work in.
   back" holds a number for one person. During a call the panel shows how
   often the number called today, who last spoke with it and who could not
   reach it. Notices reach each person under a bell on every page.
+- Planned call backs: from the wrap-up card, the call history, the list of
+  unreached numbers or by hand, a call back is set for a time; when due it
+  comes up on every page (call, snooze, done) and closes by itself once
+  anyone talks to the customer.
 
 **WhatsApp Business**
 - Shared inbox with tickets, pool, automatic distribution, transfer, internal
