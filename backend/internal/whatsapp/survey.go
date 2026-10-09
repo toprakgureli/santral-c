@@ -81,11 +81,22 @@ func (s *Service) surveyDue(ctx context.Context, conv *models.WAConversation, t 
 }
 
 // sendSurvey sends the device's survey for a resolved ticket.
-func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, agentID uint) {
+func (s *Service) sendSurvey(ctx context.Context, ch *models.WAChannel, conv *models.WAConversation, t *models.WATicket, fallbackAgentID uint) {
 	set := device.Parse(ch.Settings).Survey
 	if !s.surveyDue(ctx, conv, t, set.RepeatHours) {
 		return
 	}
+
+	primaryAgentID, err := s.repo.PrimaryAgentForSurvey(ctx, t.ID, t.OwnerID)
+	if err != nil {
+		warnDB(ctx, err)
+		return
+	}
+	if primaryAgentID == nil {
+		return
+	}
+	agentID := *primaryAgentID
+
 	switch set.Mode {
 	case "tally":
 		link, err := url.Parse(strings.TrimSpace(set.URL))

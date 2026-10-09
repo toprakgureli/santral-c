@@ -459,3 +459,31 @@ func (r *Repository) AwaitingTickets(ctx context.Context, channelID uint) ([]mod
 	err := r.db.WithContext(ctx).Where("channel_id = ? AND awaiting_since IS NOT NULL AND status IN ('open','pending')", channelID).Find(&list).Error
 	return list, err
 }
+
+// PrimaryAgentForSurvey returns the agent who sent the most messages in a ticket.
+// It returns nil if no human agent replied. In case of a tie, the ticket owner wins.
+func (r *Repository) PrimaryAgentForSurvey(ctx context.Context, ticketID uint, ownerID *uint) (*uint, error) {
+	var id uint
+	var owner uint
+	if ownerID != nil {
+		owner = *ownerID
+	}
+	err := r.db.WithContext(ctx).Table("wa_messages").
+		Select("sender_user_id").
+		Where("ticket_id = ? AND sender_kind = 'user' AND sender_user_id IS NOT NULL", ticketID).
+		Group("sender_user_id").
+		Order(gorm.Expr("COUNT(*) DESC, CASE WHEN sender_user_id = ? THEN 1 ELSE 2 END ASC", owner)).
+		Limit(1).
+		Pluck("sender_user_id", &id).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Pluck does not return ErrRecordNotFound for empty sets sometimes, so check if id is set.
+	if id == 0 {
+		return nil, nil
+	}
+	return &id, nil
+}
