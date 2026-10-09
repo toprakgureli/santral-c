@@ -59,8 +59,13 @@ export interface Notice {
 }
 
 export const followApi = {
-  unreached: (all: boolean, closed: boolean) =>
-    request<Unreached[]>(`/followups/unreached?scope=${all ? "all" : "mine"}&state=${closed ? "closed" : "open"}`),
+  unreached: (all: boolean, closed: boolean, roleId?: number | "all") => {
+    let url = `/followups/unreached?scope=${all ? "all" : "mine"}&state=${closed ? "closed" : "open"}`;
+    if (roleId !== undefined && roleId !== "all") {
+      url += `&role=${roleId}`;
+    }
+    return request<Unreached[]>(url);
+  },
   claim: (id: number) => request<void>(`/followups/unreached/${id}/claim`, { method: "POST" }),
   unclaim: (id: number) => request<void>(`/followups/unreached/${id}/claim`, { method: "DELETE" }),
   drop: (id: number) => request<void>(`/followups/unreached/${id}/drop`, { method: "POST" }),

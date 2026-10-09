@@ -213,12 +213,12 @@ func (s *Service) scope(ctx context.Context, actorID uint, all bool) (*models.Us
 
 // Unreached lists the numbers still owed a call (open) or those closed in
 // the last week, the actor's own or, with all, everyone's.
-func (s *Service) Unreached(ctx context.Context, actorID uint, all, open bool) ([]Unreached, error) {
+func (s *Service) Unreached(ctx context.Context, actorID uint, all, open bool, roleID *uint) ([]Unreached, error) {
 	actor, only, err := s.scope(ctx, actorID, all)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.repo.List(ctx, only, open, s.now().Add(-openFor))
+	rows, err := s.repo.List(ctx, only, open, s.now().Add(-openFor), roleID)
 	if err != nil {
 		return nil, errs.Internal(err)
 	}

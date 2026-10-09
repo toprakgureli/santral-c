@@ -70,15 +70,24 @@ const rowSelect = `SELECT u.*, COALESCE(o.name, '') AS user_name, COALESCE(rb.na
 
 // List reads the open rows whose last attempt is after since, or the rows
 // closed after since, newest first; only one person's when userID is set.
-func (r *Repository) List(ctx context.Context, userID *uint, open bool, since time.Time) ([]row, error) {
+func (r *Repository) List(ctx context.Context, userID *uint, open bool, since time.Time, roleID *uint) ([]row, error) {
 	var rows []row
+	args := []interface{}{userID, userID}
 	q := rowSelect + ` WHERE (?::bigint IS NULL OR u.user_id = ?)`
+
+	if roleID != nil {
+		q += ` AND u.user_id IN (SELECT user_id FROM user_roles WHERE role_id = ?)`
+		args = append(args, *roleID)
+	}
+
 	if open {
 		q += ` AND u.status = 'open' AND u.last_at >= ? ORDER BY u.last_at DESC LIMIT 300`
 	} else {
 		q += ` AND u.status <> 'open' AND u.updated_at >= ? ORDER BY u.updated_at DESC LIMIT 300`
 	}
-	if err := r.db.WithContext(ctx).Raw(q, userID, userID, since).Scan(&rows).Error; err != nil {
+	args = append(args, since)
+
+	if err := r.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("unreached calls could not be listed: %w", err)
 	}
 	return rows, nil

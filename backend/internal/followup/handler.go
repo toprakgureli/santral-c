@@ -28,7 +28,14 @@ func (h *Handler) Unreached(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	out, err := h.service.Unreached(c.UserContext(), id, c.Query("scope") == "all", c.Query("state") != "closed")
+	var roleID *uint
+	if r := c.Query("role"); r != "" {
+		if rid, err := strconv.ParseUint(r, 10, 64); err == nil {
+			v := uint(rid)
+			roleID = &v
+		}
+	}
+	out, err := h.service.Unreached(c.UserContext(), id, c.Query("scope") == "all", c.Query("state") != "closed", roleID)
 	if err != nil {
 		return err
 	}

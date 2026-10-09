@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AlarmClock, Ban, Check, CheckCircle2, Clock3, Phone, PhoneMissed, PhoneOutgoing, Plus, RotateCcw, UserRound, XCircle } from "lucide-react";
-import { ApiError } from "@/api/client";
+import { api, ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { Button } from "@/components/ui";
+import { Button, Select } from "@/components/ui";
 import { IconChip } from "@/components/ui/rows";
 import { announceFollowupsChanged, FOLLOWUPS_CHANGED, followApi, REASON_LABEL, talkLabel, type Reminder, type Unreached } from "@/followups/api";
 import ScheduleCallback from "@/followups/ScheduleCallback";
@@ -76,6 +76,14 @@ export function Followups() {
   const seesAll = can("call.view_all") || can("cdr.view_all");
   const [all, setAll] = useState(false);
   const [closed, setClosed] = useState(false);
+  
+  const [roles, setRoles] = useState<{ id: number; name: string }[]>([]);
+  const [roleId, setRoleId] = useState<number | "all">("all");
+  useEffect(() => {
+    if (seesAll) {
+      api.listRoles().then(r => setRoles(r.map(x => ({ id: x.id, name: x.name })))).catch(() => {});
+    }
+  }, [seesAll]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
@@ -99,9 +107,15 @@ export function Followups() {
       <div className="flex flex-wrap items-center gap-2">
         {seesAll && <Segment value={all ? "all" : "mine"} onChange={(v) => setAll(v === "all")} options={[["mine", "Benim"], ["all", "Ekip"]]} />}
         <Segment value={closed ? "closed" : "open"} onChange={(v) => setClosed(v === "closed")} options={[["open", "Bekleyenler"], ["closed", "Son 7 günde kapananlar"]]} />
+        {seesAll && all && roles.length > 0 && tab === "unreached" && (
+          <Select value={roleId} onChange={(e) => setRoleId(e.target.value === "all" ? "all" : Number(e.target.value))} className="w-44 h-8 py-0 text-xs">
+            <option value="all">Tüm Ekipler</option>
+            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </Select>
+        )}
       </div>
 
-      {tab === "unreached" ? <UnreachedList all={all} closed={closed} /> : <ReminderList all={all} done={closed} />}
+      {tab === "unreached" ? <UnreachedList all={all} closed={closed} roleId={roleId} /> : <ReminderList all={all} done={closed} />}
     </div>
   );
 }
@@ -115,6 +129,8 @@ function Segment({ value, onChange, options }: { value: string; onChange: (v: st
     </span>
   );
 }
+
+
 
 function Empty({ title, sub }: { title: string; sub?: string }) {
   return (
@@ -139,8 +155,8 @@ function useDial() {
   };
 }
 
-function UnreachedList({ all, closed }: { all: boolean; closed: boolean }) {
-  const read = useCallback(() => followApi.unreached(all, closed), [all, closed]);
+function UnreachedList({ all, closed, roleId }: { all: boolean; closed: boolean; roleId: number | "all" }) {
+  const read = useCallback(() => followApi.unreached(all, closed, roleId), [all, closed, roleId]);
   const { rows, error, busy, act } = useList(read);
   const [plan, setPlan] = useState<string | null>(null);
   return (
