@@ -470,7 +470,7 @@ func (r *Repository) PrimaryAgentForSurvey(ctx context.Context, ticketID uint, o
 	}
 	err := r.db.WithContext(ctx).Table("wa_messages").
 		Select("sender_user_id").
-		Where("ticket_id = ? AND sender_kind = 'user' AND sender_user_id IS NOT NULL", ticketID).
+		Where("ticket_id = ? AND sender_kind = 'agent' AND sender_user_id IS NOT NULL", ticketID).
 		Group("sender_user_id").
 		Order(gorm.Expr("COUNT(*) DESC, CASE WHEN sender_user_id = ? THEN 1 ELSE 2 END ASC", owner)).
 		Limit(1).
