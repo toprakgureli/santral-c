@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -472,7 +473,7 @@ func (r *Repository) PrimaryAgentForSurvey(ctx context.Context, ticketID uint, o
 		Select("sender_user_id").
 		Where("ticket_id = ? AND sender_kind = 'agent' AND sender_user_id IS NOT NULL", ticketID).
 		Group("sender_user_id").
-		Order(gorm.Expr("COUNT(*) DESC, CASE WHEN sender_user_id = ? THEN 1 ELSE 2 END ASC", owner)).
+		Order(fmt.Sprintf("COUNT(*) DESC, CASE WHEN sender_user_id = %d THEN 1 ELSE 2 END ASC", owner)).
 		Limit(1).
 		Pluck("sender_user_id", &id).Error
 	if err != nil {
