@@ -17,7 +17,14 @@ const singleQuestion = "Tek soruluk anket"
 const ratingsSQL = `
 WITH r AS (
 	SELECT 'chat' AS source, t.id, t.rated_at AS at, t.rating AS score, t.rating_comment AS comment,
-		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(t.resolved_by, t.owner_id) AS agent_id,
+		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(
+			(SELECT sender_user_id FROM wa_messages m 
+			 WHERE m.ticket_id = t.id AND m.sender_kind = 'agent' AND m.sender_user_id IS NOT NULL 
+			 GROUP BY m.sender_user_id 
+			 ORDER BY COUNT(*) DESC, CASE WHEN m.sender_user_id = t.owner_id THEN 1 ELSE 2 END ASC 
+			 LIMIT 1),
+			t.resolved_by, t.owner_id
+		) AS agent_id,
 		c.wa_id, COALESCE(NULLIF(c.name, ''), NULLIF(c.profile_name, ''), '') AS name, 0 AS talk_seconds,
 		CASE WHEN jsonb_array_length(t.rating_answers) > 0 THEN t.rating_answers
 			ELSE jsonb_build_array(jsonb_build_object('question', '` + singleQuestion + `', 'score', t.rating)) END AS answers,
