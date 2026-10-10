@@ -305,8 +305,8 @@ func (r *Repository) MarkSurveySent(ctx context.Context, id uint) error {
 }
 
 // SetRating stores a ticket's score, comment and per question answers as JSON.
-func (r *Repository) SetRating(ctx context.Context, id uint, score int, comment, answers string) error {
-	return r.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", score, comment, answers, id).Error
+func (r *Repository) SetRating(ctx context.Context, id uint, agentID *uint, score int, comment, answers string) error {
+	return r.db.WithContext(ctx).Exec("UPDATE wa_tickets SET rating_agent_id = ?, rating = ?, rating_comment = ?, rating_answers = ?, rated_at = now() WHERE id = ?", agentID, score, comment, answers, id).Error
 }
 
 // SetRatingTexts stores the written answers of a ticket's survey form as JSON.

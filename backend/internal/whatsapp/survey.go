@@ -201,8 +201,9 @@ func (s *Service) handleSurveyReply(ctx context.Context, ch *models.WAChannel, c
 // recordRating stores a score on its ticket and tells the managers when
 // it is low.
 func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uint, score int, comment string, answers ...RatingAnswer) {
-	t, err := s.repo.LoadTicket(ctx, ticketID)
-	if err != nil || t.ConversationID != conversationID && conversationID != 0 {
+	t, _ := s.repo.LoadTicket(ctx, ticketID)
+	agentID, _ := s.repo.PrimaryAgentForSurvey(ctx, ticketID, t.OwnerID)
+	if t == nil || t.ConversationID != conversationID && conversationID != 0 {
 		return
 	}
 	if answers == nil {
@@ -211,7 +212,7 @@ func (s *Service) recordRating(ctx context.Context, ticketID, conversationID uin
 	// The same survey answered again (a form can be sent more than once):
 	// the new answer replaces the old one, but nobody is alerted twice.
 	again := t.RatedAt != nil && (t.SurveySentAt == nil || t.RatedAt.After(*t.SurveySentAt))
-	if err := s.repo.SetRating(ctx, ticketID, score, strings.TrimSpace(comment), jsonString(answers)); err != nil {
+	if err := s.repo.SetRating(ctx, ticketID, agentID, score, strings.TrimSpace(comment), jsonString(answers)); err != nil {
 		return
 	}
 	conv, _, err := s.repo.Conversation(ctx, t.ConversationID)

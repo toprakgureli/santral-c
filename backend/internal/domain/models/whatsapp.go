@@ -125,6 +125,7 @@ type WATicket struct {
 	ResolvedAt      *time.Time `gorm:"column:resolved_at"`
 	ResolvedBy      *uint      `gorm:"column:resolved_by"`
 	SurveySentAt    *time.Time `gorm:"column:survey_sent_at"`
+	RatingAgentID   *uint      `gorm:"column:rating_agent_id"`
 	Rating          *int       `gorm:"column:rating"`
 	RatingComment   string     `gorm:"column:rating_comment"`
 	RatedAt         *time.Time `gorm:"column:rated_at"`

@@ -17,7 +17,7 @@ const singleQuestion = "Tek soruluk anket"
 const ratingsSQL = `
 WITH r AS (
 	SELECT 'chat' AS source, t.id, t.rated_at AS at, t.rating AS score, t.rating_comment AS comment,
-		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(
+		t.conversation_id, t.number AS ticket_number, t.channel_id, COALESCE(t.rating_agent_id, 
 			(SELECT sender_user_id FROM wa_messages m 
 			 WHERE m.ticket_id = t.id AND m.sender_kind = 'agent' AND m.sender_user_id IS NOT NULL 
 			 GROUP BY m.sender_user_id 
