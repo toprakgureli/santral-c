@@ -214,14 +214,26 @@ func TouchTicket(tx *gorm.DB, conv *models.WAConversation, at *time.Time) (*mode
 		created = true
 	case t.Status == "resolved":
 		wasResolved = t.ResolvedAt
-		// Only the customer writing (or us sending a template) brings a
-		// resolved ticket back. It keeps its number and history.
-		if err := tx.Exec(`UPDATE wa_tickets SET status = 'open', reopen_count = reopen_count + 1, resolved_at = NULL,
-			awaiting_since = ?, waiting_listed_at = NULL, updated_at = now() WHERE id = ?`, *at, t.ID).Error; err != nil {
-			return nil, false, false, nil, err
+		if wasResolved != nil && at.Sub(*wasResolved) >= 24*time.Hour {
+			// 24 hours passed since resolution: create a new ticket instead of reopening.
+			t = models.WATicket{ConversationID: conv.ID, ChannelID: conv.ChannelID, ContactID: conv.ContactID, Status: "open", Priority: "normal", Tags: "[]", AwaitingSince: at}
+			if err := tx.Create(&t).Error; err != nil {
+				return nil, false, false, nil, err
+			}
+			if err := tx.Raw("SELECT * FROM wa_tickets WHERE id = ?", t.ID).Scan(&t).Error; err != nil {
+				return nil, false, false, nil, err
+			}
+			created = true
+		} else {
+			// Only the customer writing (or us sending a template) brings a
+			// resolved ticket back. It keeps its number and history.
+			if err := tx.Exec(`UPDATE wa_tickets SET status = 'open', reopen_count = reopen_count + 1, resolved_at = NULL,
+				awaiting_since = ?, waiting_listed_at = NULL, updated_at = now() WHERE id = ?`, *at, t.ID).Error; err != nil {
+				return nil, false, false, nil, err
+			}
+			t.Status, t.ReopenCount, t.ResolvedAt, t.AwaitingSince, t.WaitingListedAt = "open", t.ReopenCount+1, nil, at, nil
+			reopened = true
 		}
-		t.Status, t.ReopenCount, t.ResolvedAt, t.AwaitingSince, t.WaitingListedAt = "open", t.ReopenCount+1, nil, at, nil
-		reopened = true
 	case t.AwaitingSince == nil:
 		if err := tx.Exec("UPDATE wa_tickets SET awaiting_since = ?, updated_at = now() WHERE id = ?", *at, t.ID).Error; err != nil {
 			return nil, false, false, nil, err
