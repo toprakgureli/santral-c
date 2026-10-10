@@ -23,7 +23,6 @@ import {
   Phone,
   Pin,
   PinOff,
-  RotateCcw,
   Search,
   UserCheck,
   X,
@@ -418,7 +417,6 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
           {canTake && t && t.owner && t.owner.id !== me && !resolved && <TextBtn icon={Hand} label="Devral" tip="Sorumlu sen olursun, şimdiki sorumlu yardımcı olarak kalır" busy={busy === "take"} onClick={() => void act("take", () => waApi.take(conv.id))} />}
           {canAssign && t && !resolved && <TextBtn icon={ArrowRightLeft} label="Aktar" tip="Başka bir kişiye ya da ekibe aktar" onClick={() => setAssign(true)} />}
           {canResolve && t && !resolved && <TextBtn icon={CircleCheck} label="Çöz" tone="success" tip="Sohbeti çözüldü olarak kapat. Anket açıksa müşteriye gider." onClick={() => setConfirmResolve(true)} />}
-          {canResolve && resolved && <TextBtn icon={RotateCcw} label="Yeniden aç" tip="Sohbeti tekrar açık yap" busy={busy === "reopen"} onClick={() => void act("reopen", () => waApi.reopen(conv.id))} />}
           <IconBtn tip="Sohbette ara" on={searching} onClick={() => setSearching((v) => !v)}><Search className="size-[1.15rem]" /></IconBtn>
           {canCall && <IconBtn tip="Müşteriyi ara" onClick={() => void phone.call("0" + conv.contact.waId.replace(/^90/, "")).catch(() => undefined)}><Phone className="size-[1.15rem]" /></IconBtn>}
           <span className="relative">
@@ -517,6 +515,8 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
       )}
 
       <Composer
+        resolved={resolved}
+        onReopen={() => void act("reopen", () => waApi.reopen(conv.id))}
         canReply={canReply && !conv.contact.blocked}
         canNote={canNote}
         canTemplate={canTemplate && !conv.contact.blocked}

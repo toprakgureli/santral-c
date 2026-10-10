@@ -43,6 +43,8 @@ export default function Composer({
   disabledReason,
   draft,
   onDraft,
+  resolved,
+  onReopen,
 }: {
   canReply: boolean;
   canNote: boolean;
@@ -64,6 +66,8 @@ export default function Composer({
   // the box tells what it holds now, so it can be given back
   draft?: { text: string; mode: "message" | "note" };
   onDraft?: (text: string, mode: "message" | "note") => void;
+  resolved?: boolean;
+  onReopen?: () => void;
 }) {
   const [mode, setMode] = useState<"message" | "note">(() => (draft?.mode === "note" && canNote) || !canReply ? "note" : "message");
   // A draft comes back only in the mode it was written in: a note is never
@@ -293,6 +297,11 @@ export default function Composer({
         <div className="flex items-center gap-3 rounded-xl bg-muted/60 px-4 py-3 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1">Müşterinin son mesajının üzerinden 24 saat geçti. WhatsApp kuralı gereği artık yalnızca onaylı şablonla yazılabilir.</span>
           {canTemplate && <button type="button" onClick={onTemplate} className="shrink-0 rounded-full bg-wa-accent px-3.5 py-1.5 font-semibold text-wa-on-accent shadow-sm">Şablon seç</button>}
+        </div>
+      ) : mode === "message" && resolved ? (
+        <div className="flex items-center gap-3 rounded-xl bg-muted/60 px-4 py-3 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">Bu sohbet çözüldü olarak kapatılmış. Mesaj yazabilmek için önce sohbeti yeniden açmalısın.</span>
+          {onReopen && <button type="button" onClick={onReopen} className="shrink-0 rounded-full bg-wa-accent px-3.5 py-1.5 font-semibold text-wa-on-accent shadow-sm">Yeniden Aç</button>}
         </div>
       ) : (
         <div className="flex items-end gap-1.5">
