@@ -3,10 +3,12 @@ package whatsapp
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -455,29 +457,59 @@ func (s *Service) repairEmptyContacts(ctx context.Context) {
 	}
 }
 
+var bsuidPattern = regexp.MustCompile(`[A-Z]{2}\.[0-9]{10,25}`)
+
+// extractBSUIDFromWAMID extracts a Business-Scoped User ID directly from
+// a base64-encoded protobuf Meta message ID (wamid.HBgT...), if present.
+func extractBSUIDFromWAMID(wamid string) string {
+	raw := strings.TrimPrefix(wamid, "wamid.")
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		data, err = base64.URLEncoding.DecodeString(raw)
+		if err != nil {
+			return ""
+		}
+	}
+	return bsuidPattern.FindString(string(data))
+}
+
 func (s *Service) repairOneEmptyContact(ctx context.Context, c *models.WAContact) {
 	wamids, _ := s.repo.InboundWAMIDsOfContact(ctx, c.ID)
 	var resolvedWAID string
 
-	// 1. Try matching by message WAMID
+	// 1. Try decoding BSUID directly from inbound message WAMIDs
 	for _, wamid := range wamids {
-		payloads, _ := s.repo.WebhookPayloadsContaining(ctx, wamid)
-		for _, raw := range payloads {
-			if id := extractBSUIDFromPayload(raw, wamid, c.ProfileName); id != "" {
-				resolvedWAID = id
-				break
-			}
-		}
-		if resolvedWAID != "" {
+		if id := extractBSUIDFromWAMID(wamid); id != "" {
+			resolvedWAID = id
 			break
 		}
 	}
 
-	// 2. If not found by WAMID, look for recent events with user_id matching profile name
-	if resolvedWAID == "" && c.ProfileName != "" {
+	// 2. Try matching by message WAMID in webhook event payloads
+	if resolvedWAID == "" {
+		for _, wamid := range wamids {
+			payloads, _ := s.repo.WebhookPayloadsContaining(ctx, wamid)
+			for _, raw := range payloads {
+				if id := extractBSUIDFromPayload(raw, wamid, c.ProfileName); id != "" {
+					resolvedWAID = id
+					break
+				}
+			}
+			if resolvedWAID != "" {
+				break
+			}
+		}
+	}
+
+	// 3. Look for recent events with user_id matching profile name or name
+	nameToMatch := c.ProfileName
+	if nameToMatch == "" {
+		nameToMatch = c.Name
+	}
+	if resolvedWAID == "" && nameToMatch != "" {
 		payloads, _ := s.repo.RecentWebhookPayloadsWithUserID(ctx)
 		for _, raw := range payloads {
-			if id := extractBSUIDFromPayload(raw, "", c.ProfileName); id != "" {
+			if id := extractBSUIDFromPayload(raw, "", nameToMatch); id != "" {
 				resolvedWAID = id
 				break
 			}
@@ -548,7 +580,7 @@ func extractBSUIDFromPayload(raw, targetWAMID, targetProfileName string) string 
 						if m.From != "" {
 							return m.From
 						}
-						if len(v.Contacts) == 1 && v.Contacts[0].ID() != "" {
+						if len(v.Contacts) > 0 && v.Contacts[0].ID() != "" {
 							return v.Contacts[0].ID()
 						}
 					}
@@ -559,8 +591,10 @@ func extractBSUIDFromPayload(raw, targetWAMID, targetProfileName string) string 
 				if id == "" {
 					continue
 				}
-				if targetProfileName != "" && (contact.Profile.Name == targetProfileName || contact.Profile.Username == targetProfileName) {
-					return id
+				if targetProfileName != "" {
+					if strings.EqualFold(contact.Profile.Name, targetProfileName) || strings.EqualFold(contact.Profile.Username, targetProfileName) {
+						return id
+					}
 				}
 			}
 		}

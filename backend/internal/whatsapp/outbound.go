@@ -88,6 +88,12 @@ func (s *Service) Send(ctx context.Context, actorID, conversationID uint, in Sen
 	if contact.Blocked {
 		return nil, errs.Invalid("Bu müşteri engellenmiş.", nil)
 	}
+	if needsBSUIDRepair(contact.WAID) {
+		s.repairOneEmptyContact(ctx, contact)
+		if refreshed, err := s.repo.Contact(ctx, contact.ID); err == nil && !needsBSUIDRepair(refreshed.WAID) {
+			contact = refreshed
+		}
+	}
 	msg := &models.WAMessage{
 		ChannelID: ch.ID, ConversationID: conv.ID, TicketID: uintPtr(ticket.ID), Direction: "out",
 		SenderKind: "agent", SenderUserID: uintPtr(actorID), Status: "queued", CreatedAt: time.Now(),
@@ -456,6 +462,15 @@ func (s *Service) sendOne(ctx context.Context, msg *models.WAMessage) {
 		fail(0, "Müşteri bulunamadı.")
 		return
 	}
+	if needsBSUIDRepair(contact.WAID) {
+		s.repairOneEmptyContact(ctx, contact)
+		if refreshed, err := s.repo.Contact(ctx, contact.ID); err == nil && !needsBSUIDRepair(refreshed.WAID) {
+			contact = refreshed
+		} else {
+			fail(0, "Müşterinin WhatsApp kimliği (numara veya kullanıcı adı) bulunamadı.")
+			return
+		}
+	}
 	var payload map[string]any
 	if msg.Payload == nil || json.Unmarshal([]byte(*msg.Payload), &payload) != nil || payload["type"] == nil {
 		fail(0, "Mesaj içeriği okunamadı.")
@@ -524,4 +539,11 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	s.publish(ctx, msg.ConversationID, msg, nil)
 	wake(s.wakeOutbox)
 	return nil
+}
+
+// needsBSUIDRepair reports whether a contact's wa_id is missing or looks like
+// a naked numeric BSUID without the country prefix (e.g. 1000000000000001).
+func needsBSUIDRepair(waID string) bool {
+	trimmed := strings.TrimSpace(waID)
+	return trimmed == "" || (len(trimmed) > 15 && !strings.Contains(trimmed, "."))
 }

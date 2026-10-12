@@ -158,10 +158,10 @@ type hookContact struct {
 }
 
 func (c *hookContact) ID() string {
-	if c.WAID != "" {
-		return c.WAID
+	if c.UserID != "" {
+		return c.UserID
 	}
-	return c.UserID
+	return c.WAID
 }
 
 type hookMessages struct {
@@ -241,10 +241,10 @@ type hookMessage struct {
 }
 
 func (m *hookMessage) Sender() string {
-	if m.From != "" {
-		return m.From
+	if m.FromUserID != "" {
+		return m.FromUserID
 	}
-	return m.FromUserID
+	return m.From
 }
 
 type hookStatus struct {
@@ -323,7 +323,9 @@ func (s *Service) onMessages(ctx context.Context, raw json.RawMessage) error {
 	}
 	for i := range v.Messages {
 		msg := &v.Messages[i]
-		if msg.Sender() == "" && len(v.Contacts) == 1 {
+		if bsuid := extractBSUIDFromWAMID(msg.ID); bsuid != "" {
+			msg.FromUserID = bsuid
+		} else if msg.Sender() == "" && len(v.Contacts) == 1 {
 			msg.FromUserID = v.Contacts[0].ID()
 		}
 		sender := msg.Sender()

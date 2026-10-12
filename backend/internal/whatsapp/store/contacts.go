@@ -173,10 +173,10 @@ func (r *Repository) EnsureConversation(ctx context.Context, channelID uint, waI
 	return contact, conv, nil
 }
 
-// EmptyContacts finds contacts that have an empty or whitespace wa_id.
+// EmptyContacts finds contacts that have an empty, whitespace or naked BSUID wa_id.
 func (r *Repository) EmptyContacts(ctx context.Context) ([]models.WAContact, error) {
 	var list []models.WAContact
-	err := r.db.WithContext(ctx).Where("wa_id = '' OR wa_id IS NULL").Find(&list).Error
+	err := r.db.WithContext(ctx).Where("wa_id = '' OR wa_id IS NULL OR (length(wa_id) > 15 AND wa_id NOT LIKE '%.%')").Find(&list).Error
 	return list, err
 }
 
@@ -195,8 +195,8 @@ func (r *Repository) InboundWAMIDsOfContact(ctx context.Context, contactID uint)
 func (r *Repository) WebhookPayloadsContaining(ctx context.Context, term string) ([]string, error) {
 	var payloads []string
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT payload FROM wa_webhook_events
-		WHERE payload LIKE ? ORDER BY id DESC LIMIT 10`, "%"+term+"%").Scan(&payloads).Error
+		SELECT payload::text FROM wa_webhook_events
+		WHERE payload::text LIKE ? ORDER BY id DESC LIMIT 10`, "%"+term+"%").Scan(&payloads).Error
 	return payloads, err
 }
 
@@ -204,8 +204,8 @@ func (r *Repository) WebhookPayloadsContaining(ctx context.Context, term string)
 func (r *Repository) RecentWebhookPayloadsWithUserID(ctx context.Context) ([]string, error) {
 	var payloads []string
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT payload FROM wa_webhook_events
-		WHERE payload LIKE '%user_id%' ORDER BY id DESC LIMIT 50`).Scan(&payloads).Error
+		SELECT payload::text FROM wa_webhook_events
+		WHERE payload::text LIKE '%user_id%' ORDER BY id DESC LIMIT 50`).Scan(&payloads).Error
 	return payloads, err
 }
 
@@ -222,12 +222,12 @@ func (r *Repository) MergeEmptyContact(ctx context.Context, emptyContactID, exis
 	})
 }
 
-// RequeueFailedSendsOfContact requeues messages in conversations belonging to contactID that failed due to empty 'to'.
+// RequeueFailedSendsOfContact requeues messages in conversations belonging to contactID that failed due to empty or invalid 'to'.
 func (r *Repository) RequeueFailedSendsOfContact(ctx context.Context, contactID uint) (int64, error) {
 	res := r.db.WithContext(ctx).Exec(`
-		UPDATE wa_messages SET status = 'queued', last_error = ''
+		UPDATE wa_messages SET status = 'queued', error_text = ''
 		WHERE conversation_id IN (SELECT id FROM wa_conversations WHERE contact_id = ?)
 		AND status = 'failed' AND direction = 'out'
-		AND (last_error LIKE '%parameter to%' OR last_error LIKE '%The parameter to is required%')`, contactID)
+		AND (error_text LIKE '%parameter to%' OR error_text LIKE '%The parameter to is required%' OR error_text LIKE '%ulaşmadı%')`, contactID)
 	return res.RowsAffected, res.Error
 }

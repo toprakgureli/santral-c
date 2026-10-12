@@ -37,6 +37,18 @@ func TestHookMessageSender(t *testing.T) {
 	if m2.Sender() != "TR.1502576394655843" {
 		t.Fatalf("expected TR.1502576394655843, got %s", m2.Sender())
 	}
+
+	// 3. Both From (naked digits) and FromUserID (BSUID) present -> prefer FromUserID
+	m3 := hookMessage{From: "9999000011112222", FromUserID: "TR.9999000011112222"}
+	if m3.Sender() != "TR.9999000011112222" {
+		t.Fatalf("expected TR.9999000011112222, got %s", m3.Sender())
+	}
+
+	// 4. hookContact ID prefers UserID over WAID
+	c1 := hookContact{WAID: "9999000011112222", UserID: "TR.9999000011112222"}
+	if c1.ID() != "TR.9999000011112222" {
+		t.Fatalf("expected TR.9999000011112222, got %s", c1.ID())
+	}
 }
 
 func TestExtractBSUIDFromPayload(t *testing.T) {
@@ -119,5 +131,21 @@ func TestContactViewDisplay(t *testing.T) {
 	c5 := &models.WAContact{}
 	if v := contactView(c5); v.Display != "Numara Gizli" {
 		t.Fatalf("expected Numara Gizli, got %s", v.Display)
+	}
+}
+
+func TestExtractBSUIDFromWAMID(t *testing.T) {
+	// Synthetic base64 WAMID containing mock BSUID
+	wamid := "wamid.d2FtaWRfdGVzdF9UUi45OTk5MDAwMDExMTEyMjIyX21vY2s="
+	got := extractBSUIDFromWAMID(wamid)
+	want := "TR.9999000011112222"
+	if got != want {
+		t.Fatalf("expected %s, got %s", want, got)
+	}
+
+	// Normal phone number WAMID should return empty
+	phoneWamid := "wamid.SEJnTTkwNTMyMDAwMDAwMA=="
+	if gotPhone := extractBSUIDFromWAMID(phoneWamid); gotPhone != "" {
+		t.Fatalf("expected empty, got %s", gotPhone)
 	}
 }
