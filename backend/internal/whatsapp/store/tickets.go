@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -477,7 +478,7 @@ func (r *Repository) PrimaryAgentForSurvey(ctx context.Context, ticketID uint, o
 		Limit(1).
 		Pluck("sender_user_id", &id).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
