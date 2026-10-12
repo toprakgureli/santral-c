@@ -145,9 +145,9 @@ func TestLoadPhoneDNDThrottle(t *testing.T) {
 		t.Error("no agent was told that a change was still on its way")
 	}
 
-	waitFor(t, 20*time.Second, "every extension's do-not-disturb off", func() bool {
+	waitFor(t, 20*time.Second, "every extension's do-not-disturb off and confirmed", func() bool {
 		for _, a := range agents {
-			if pbx.dndOf(*a.SIPExtension) != "off" {
+			if pbx.dndOf(*a.SIPExtension) != "off" || !srv.phone.DNDConfirmed(*a.SIPExtension) {
 				return false
 			}
 		}
