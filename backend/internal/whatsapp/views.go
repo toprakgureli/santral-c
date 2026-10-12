@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
+	"github.com/toprakgureli/santral-c/backend/internal/whatsapp/store"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
 )
@@ -121,7 +122,13 @@ func contactView(c *models.WAContact) ContactView {
 		v.Display = c.ProfileName
 	}
 	if v.Display == "" {
-		v.Display = "+" + c.WAID
+		if store.IsBSUID(c.WAID) {
+			v.Display = "Numara Gizli"
+		} else if c.WAID != "" {
+			v.Display = "+" + c.WAID
+		} else {
+			v.Display = "Numara Gizli"
+		}
 	}
 	if c.Source != nil {
 		v.Source = json.RawMessage(*c.Source)

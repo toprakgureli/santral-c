@@ -159,6 +159,11 @@ func ratingAnswer(m *hookMessage) (uint, int, bool) {
 }
 
 func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMessage, profileName string) error {
+	sender := m.Sender()
+	if sender == "" {
+		slog.WarnContext(ctx, "whatsapp inbound message has no sender identifier", "messageId", m.ID)
+		return nil
+	}
 	kind, body, media, payload := inboundShape(m)
 	at := unixTime(m.Timestamp)
 	if at == nil {
@@ -167,7 +172,7 @@ func (s *Service) onInbound(ctx context.Context, ch *models.WAChannel, m *hookMe
 	}
 	res := &inboundResult{}
 	err := s.repo.Transaction(ctx, func(tx *gorm.DB) error {
-		contact, err := store.UpsertContact(tx, m.From, profileName)
+		contact, err := store.UpsertContact(tx, sender, profileName)
 		if err != nil {
 			return err
 		}

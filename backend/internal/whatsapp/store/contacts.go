@@ -172,3 +172,62 @@ func (r *Repository) EnsureConversation(ctx context.Context, channelID uint, waI
 	}
 	return contact, conv, nil
 }
+
+// EmptyContacts finds contacts that have an empty or whitespace wa_id.
+func (r *Repository) EmptyContacts(ctx context.Context) ([]models.WAContact, error) {
+	var list []models.WAContact
+	err := r.db.WithContext(ctx).Where("wa_id = '' OR wa_id IS NULL").Find(&list).Error
+	return list, err
+}
+
+// InboundWAMIDsOfContact returns the incoming message WAMIDs for a contact.
+func (r *Repository) InboundWAMIDsOfContact(ctx context.Context, contactID uint) ([]string, error) {
+	var wamids []string
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT m.wamid FROM wa_messages m
+		JOIN wa_conversations c ON c.id = m.conversation_id
+		WHERE c.contact_id = ? AND m.direction = 'in' AND m.wamid IS NOT NULL AND m.wamid <> ''
+		ORDER BY m.id DESC LIMIT 20`, contactID).Scan(&wamids).Error
+	return wamids, err
+}
+
+// WebhookPayloadsContaining finds webhook events whose payload contains the search term.
+func (r *Repository) WebhookPayloadsContaining(ctx context.Context, term string) ([]string, error) {
+	var payloads []string
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT payload FROM wa_webhook_events
+		WHERE payload LIKE ? ORDER BY id DESC LIMIT 10`, "%"+term+"%").Scan(&payloads).Error
+	return payloads, err
+}
+
+// RecentWebhookPayloadsWithUserID finds recent webhook payloads that contain user_id.
+func (r *Repository) RecentWebhookPayloadsWithUserID(ctx context.Context) ([]string, error) {
+	var payloads []string
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT payload FROM wa_webhook_events
+		WHERE payload LIKE '%user_id%' ORDER BY id DESC LIMIT 50`).Scan(&payloads).Error
+	return payloads, err
+}
+
+// MergeEmptyContact assigns all conversations and tickets of emptyContactID to existingContactID, then removes emptyContactID.
+func (r *Repository) MergeEmptyContact(ctx context.Context, emptyContactID, existingContactID uint) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("UPDATE wa_conversations SET contact_id = ? WHERE contact_id = ?", existingContactID, emptyContactID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("UPDATE wa_tickets SET contact_id = ? WHERE contact_id = ?", existingContactID, emptyContactID).Error; err != nil {
+			return err
+		}
+		return tx.Exec("DELETE FROM wa_contacts WHERE id = ?", emptyContactID).Error
+	})
+}
+
+// RequeueFailedSendsOfContact requeues messages in conversations belonging to contactID that failed due to empty 'to'.
+func (r *Repository) RequeueFailedSendsOfContact(ctx context.Context, contactID uint) (int64, error) {
+	res := r.db.WithContext(ctx).Exec(`
+		UPDATE wa_messages SET status = 'queued', last_error = ''
+		WHERE conversation_id IN (SELECT id FROM wa_conversations WHERE contact_id = ?)
+		AND status = 'failed' AND direction = 'out'
+		AND (last_error LIKE '%parameter to%' OR last_error LIKE '%The parameter to is required%')`, contactID)
+	return res.RowsAffected, res.Error
+}
