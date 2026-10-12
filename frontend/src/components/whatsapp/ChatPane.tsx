@@ -31,6 +31,7 @@ import { MUTES } from "@/components/whatsapp/ConversationList";
 import { ApiError } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { ConfirmDialog } from "@/components/ui";
+import Lightbox, { type LightboxItem } from "@/components/ui/Lightbox";
 import UserAvatar from "@/components/ui/UserAvatar";
 import AssignDialog from "@/components/whatsapp/AssignDialog";
 import Composer, { MAX_FILES, type ComposerSend } from "@/components/whatsapp/Composer";
@@ -77,6 +78,44 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const [exporting, setExporting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [viewer, setViewer] = useState<WAMessage | null>(null);
+
+  // All image/video media in the conversation for the lightbox gallery
+  const mediaItems: LightboxItem[] = useMemo(() => {
+    return messages
+      .filter((m) => !!m.media && (m.kind === "image" || m.kind === "video" || m.kind === "sticker") && !m.media.failed)
+      .map((m) => ({
+        id: m.id,
+        url: m.media!.url,
+        downloadUrl: `${m.media!.url}?download=1`,
+        name: m.media!.name || (m.kind === "video" ? "Video" : "Görsel"),
+        size: m.media!.size,
+        kind: m.kind === "video" ? ("video" as const) : ("image" as const),
+      }));
+  }, [messages]);
+
+  const currentMediaItems = useMemo(() => {
+    if (!viewer) return [];
+    if (mediaItems.some((it) => it.id === viewer.id)) return mediaItems;
+    if (viewer.media) {
+      return [
+        {
+          id: viewer.id,
+          url: viewer.media.url,
+          downloadUrl: `${viewer.media.url}?download=1`,
+          name: viewer.media.name || (viewer.kind === "video" ? "Video" : "Görsel"),
+          size: viewer.media.size,
+          kind: viewer.kind === "video" ? ("video" as const) : ("image" as const),
+        },
+      ];
+    }
+    return [];
+  }, [mediaItems, viewer]);
+
+  const activeMediaIndex = useMemo(() => {
+    if (!viewer) return -1;
+    const idx = currentMediaItems.findIndex((it) => it.id === viewer.id);
+    return idx >= 0 ? idx : 0;
+  }, [currentMediaItems, viewer]);
   const [quick, setQuick] = useState<WAQuickReply[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [searching, setSearching] = useState(false);
@@ -551,12 +590,17 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
       {info && <MessageInfo m={info} onClose={() => setInfo(null)} />}
       <ConfirmDialog open={confirmResolve} title="Sohbet çözüldü mü?" description={channel?.settings.survey.mode && channel.settings.survey.mode !== "off" ? "Sohbet kapanır ve müşteriye değerlendirme anketi gider. Müşteri tekrar yazarsa sohbet yeniden açılır." : "Sohbet kapanır. Müşteri tekrar yazarsa yeniden açılır."} confirmLabel="Çözüldü olarak kapat" tone="warning" busy={busy === "resolve"}
         onConfirm={() => void resolveNow()} onCancel={() => setConfirmResolve(false)} />
-      {viewer?.media && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-6" onClick={() => setViewer(null)}>
-          <img src={viewer.media.url} alt="" className="max-h-full max-w-full rounded-xl object-contain shadow-2xl" />
-          <a href={`${viewer.media.url}?download=1`} onClick={(e) => e.stopPropagation()} className="absolute right-16 top-5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20">İndir</a>
-          <button type="button" onClick={() => setViewer(null)} aria-label="Kapat" className="absolute right-5 top-5 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><X className="size-5" /></button>
-        </div>
+      {viewer && currentMediaItems.length > 0 && (
+        <Lightbox
+          items={currentMediaItems}
+          index={activeMediaIndex >= 0 ? activeMediaIndex : 0}
+          onIndex={(i) => {
+            const next = currentMediaItems[i];
+            const found = messages.find((m) => m.id === next.id);
+            if (found) setViewer(found);
+          }}
+          onClose={() => setViewer(null)}
+        />
       )}
     </section>
   );
