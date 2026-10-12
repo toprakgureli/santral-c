@@ -148,28 +148,17 @@ type hookPayload struct {
 	} `json:"entry"`
 }
 
-type hookContact struct {
-	WAID    string `json:"wa_id"`
-	UserID  string `json:"user_id"`
-	Profile struct {
-		Name     string `json:"name"`
-		Username string `json:"username"`
-	} `json:"profile"`
-}
-
-func (c *hookContact) ID() string {
-	if c.UserID != "" {
-		return c.UserID
-	}
-	return c.WAID
-}
-
 type hookMessages struct {
 	Metadata struct {
 		DisplayPhoneNumber string `json:"display_phone_number"`
 		PhoneNumberID      string `json:"phone_number_id"`
 	} `json:"metadata"`
-	Contacts []hookContact `json:"contacts"`
+	Contacts []struct {
+		WAID    string `json:"wa_id"`
+		Profile struct {
+			Name string `json:"name"`
+		} `json:"profile"`
+	} `json:"contacts"`
 	Messages []hookMessage `json:"messages"`
 	Statuses []hookStatus  `json:"statuses"`
 	Errors   []hookError   `json:"errors"`
@@ -195,12 +184,11 @@ type hookMedia struct {
 }
 
 type hookMessage struct {
-	From       string `json:"from"`
-	FromUserID string `json:"from_user_id"`
-	ID         string `json:"id"`
-	Timestamp  string `json:"timestamp"`
-	Type       string `json:"type"`
-	Context    *struct {
+	From      string `json:"from"`
+	ID        string `json:"id"`
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Context   *struct {
 		From string `json:"from"`
 		ID   string `json:"id"`
 	} `json:"context"`
@@ -240,21 +228,13 @@ type hookMessage struct {
 	Errors   []hookError     `json:"errors"`
 }
 
-func (m *hookMessage) Sender() string {
-	if m.FromUserID != "" {
-		return m.FromUserID
-	}
-	return m.From
-}
-
 type hookStatus struct {
-	ID              string          `json:"id"`
-	Status          string          `json:"status"`
-	Timestamp       string          `json:"timestamp"`
-	RecipientID     string          `json:"recipient_id"`
-	RecipientUserID string          `json:"recipient_user_id"`
-	Pricing         json.RawMessage `json:"pricing"`
-	Errors          []hookError     `json:"errors"`
+	ID          string          `json:"id"`
+	Status      string          `json:"status"`
+	Timestamp   string          `json:"timestamp"`
+	RecipientID string          `json:"recipient_id"`
+	Pricing     json.RawMessage `json:"pricing"`
+	Errors      []hookError     `json:"errors"`
 }
 
 func (s *Service) processEvent(ctx context.Context, ev *models.WAWebhookEvent) error {
@@ -310,26 +290,10 @@ func (s *Service) onMessages(ctx context.Context, raw json.RawMessage) error {
 	}
 	names := map[string]string{}
 	for _, c := range v.Contacts {
-		name := c.Profile.Name
-		if name == "" && c.Profile.Username != "" {
-			name = "@" + c.Profile.Username
-		}
-		if c.WAID != "" {
-			names[c.WAID] = name
-		}
-		if c.UserID != "" {
-			names[c.UserID] = name
-		}
+		names[c.WAID] = c.Profile.Name
 	}
 	for i := range v.Messages {
-		msg := &v.Messages[i]
-		if bsuid := extractBSUIDFromWAMID(msg.ID); bsuid != "" {
-			msg.FromUserID = bsuid
-		} else if msg.Sender() == "" && len(v.Contacts) == 1 {
-			msg.FromUserID = v.Contacts[0].ID()
-		}
-		sender := msg.Sender()
-		if err := s.onInbound(ctx, ch, msg, names[sender]); err != nil {
+		if err := s.onInbound(ctx, ch, &v.Messages[i], names[v.Messages[i].From]); err != nil {
 			return err
 		}
 	}

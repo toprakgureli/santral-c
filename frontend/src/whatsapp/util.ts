@@ -76,18 +76,10 @@ export function listTime(iso?: string): string {
   return shortDate(iso);
 }
 
-export function isBSUID(waId?: string): boolean {
-  if (!waId) return false;
-  return waId.includes(".") || /[a-zA-Z]/.test(waId);
-}
-
-export function prettyPhone(waId?: string): string {
-  if (!waId) return "Numara gizli";
-  if (isBSUID(waId)) return "Kullanıcı Adı (Numara gizli)";
+export function prettyPhone(waId: string): string {
   // A number hidden from this person (all but its last digits) shows as it came.
   if (waId.includes("•")) return waId;
   const d = waId.replace(/\D/g, "");
-  if (!d) return "Numara gizli";
   if (d.startsWith("90") && d.length === 12) return `+90 ${d.slice(2, 5)} ${d.slice(5, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
   return "+" + d;
 }

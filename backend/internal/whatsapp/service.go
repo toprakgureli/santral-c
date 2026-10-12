@@ -3,12 +3,10 @@ package whatsapp
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +19,6 @@ import (
 	"github.com/toprakgureli/santral-c/backend/pkg/crypt"
 	"github.com/toprakgureli/santral-c/backend/pkg/enums"
 	"github.com/toprakgureli/santral-c/backend/pkg/errs"
-	"github.com/toprakgureli/santral-c/backend/pkg/phone"
 	"github.com/toprakgureli/santral-c/backend/pkg/safe"
 )
 
@@ -98,10 +95,6 @@ func NewService(db *gorm.DB, users IUsers, push IPusher, storage IStorage, audit
 
 // Start runs the background workers until ctx ends.
 func (s *Service) Start(ctx context.Context, g *safe.Group) {
-	_ = safe.Call(func() error {
-		s.repairEmptyContacts(ctx)
-		return nil
-	})
 	g.Loop(ctx, "whatsapp webhook worker", s.webhookWorker)
 	g.Loop(ctx, "whatsapp outbox worker", s.outboxWorker)
 	g.Loop(ctx, "whatsapp clock", s.clock)
@@ -444,160 +437,4 @@ func truncate(s string, n int) string {
 		return string(r)
 	}
 	return string(r[:n])
-}
-
-func (s *Service) repairEmptyContacts(ctx context.Context) {
-	empty, err := s.repo.EmptyContacts(ctx)
-	if err != nil || len(empty) == 0 {
-		return
-	}
-	slog.InfoContext(ctx, "checking empty whatsapp contacts for repair", "count", len(empty))
-	for _, c := range empty {
-		s.repairOneEmptyContact(ctx, &c)
-	}
-}
-
-var bsuidPattern = regexp.MustCompile(`[A-Z]{2}\.[0-9]{10,25}`)
-
-// extractBSUIDFromWAMID extracts a Business-Scoped User ID directly from
-// a base64-encoded protobuf Meta message ID (wamid.HBgT...), if present.
-func extractBSUIDFromWAMID(wamid string) string {
-	raw := strings.TrimPrefix(wamid, "wamid.")
-	data, err := base64.StdEncoding.DecodeString(raw)
-	if err != nil {
-		data, err = base64.URLEncoding.DecodeString(raw)
-		if err != nil {
-			return ""
-		}
-	}
-	return bsuidPattern.FindString(string(data))
-}
-
-func (s *Service) repairOneEmptyContact(ctx context.Context, c *models.WAContact) {
-	wamids, _ := s.repo.InboundWAMIDsOfContact(ctx, c.ID)
-	var resolvedWAID string
-
-	// 1. Try decoding BSUID directly from inbound message WAMIDs
-	for _, wamid := range wamids {
-		if id := extractBSUIDFromWAMID(wamid); id != "" {
-			resolvedWAID = id
-			break
-		}
-	}
-
-	// 2. Try matching by message WAMID in webhook event payloads
-	if resolvedWAID == "" {
-		for _, wamid := range wamids {
-			payloads, _ := s.repo.WebhookPayloadsContaining(ctx, wamid)
-			for _, raw := range payloads {
-				if id := extractBSUIDFromPayload(raw, wamid, c.ProfileName); id != "" {
-					resolvedWAID = id
-					break
-				}
-			}
-			if resolvedWAID != "" {
-				break
-			}
-		}
-	}
-
-	// 3. Look for recent events with user_id matching profile name or name
-	nameToMatch := c.ProfileName
-	if nameToMatch == "" {
-		nameToMatch = c.Name
-	}
-	if resolvedWAID == "" && nameToMatch != "" {
-		payloads, _ := s.repo.RecentWebhookPayloadsWithUserID(ctx)
-		for _, raw := range payloads {
-			if id := extractBSUIDFromPayload(raw, "", nameToMatch); id != "" {
-				resolvedWAID = id
-				break
-			}
-		}
-	}
-
-	if resolvedWAID == "" {
-		slog.WarnContext(ctx, "could not resolve BSUID for empty contact", "contactId", c.ID, "profileName", c.ProfileName)
-		return
-	}
-
-	slog.InfoContext(ctx, "resolved BSUID for contact", "contactId", c.ID, "waId", resolvedWAID)
-
-	// Check if a contact with resolvedWAID already exists
-	existing, err := s.repo.ContactByWAID(ctx, resolvedWAID)
-	if err == nil && existing != nil && existing.ID != c.ID {
-		if err := s.repo.MergeEmptyContact(ctx, c.ID, existing.ID); err != nil {
-			slog.ErrorContext(ctx, "failed to merge empty contact", "emptyId", c.ID, "existingId", existing.ID, "error", err)
-			return
-		}
-		_, _ = s.repo.RequeueFailedSendsOfContact(ctx, existing.ID)
-		wake(s.wakeOutbox)
-		return
-	}
-
-	peerKey := ""
-	if !store.IsBSUID(resolvedWAID) {
-		peerKey = phone.Key(resolvedWAID)
-	}
-	if len(peerKey) > 20 {
-		peerKey = peerKey[:20]
-	}
-	fields := map[string]any{
-		"wa_id":    resolvedWAID,
-		"peer_key": peerKey,
-	}
-	if err := s.repo.UpdateContact(ctx, c.ID, fields); err != nil {
-		slog.ErrorContext(ctx, "failed to update contact with resolved wa_id", "contactId", c.ID, "error", err)
-		return
-	}
-	requeued, _ := s.repo.RequeueFailedSendsOfContact(ctx, c.ID)
-	if requeued > 0 {
-		slog.InfoContext(ctx, "requeued failed messages after contact repair", "count", requeued)
-		wake(s.wakeOutbox)
-	}
-}
-
-func extractBSUIDFromPayload(raw, targetWAMID, targetProfileName string) string {
-	var p hookPayload
-	if json.Unmarshal([]byte(raw), &p) != nil {
-		return ""
-	}
-	for _, entry := range p.Entry {
-		for _, change := range entry.Changes {
-			if change.Field != "messages" {
-				continue
-			}
-			var v hookMessages
-			if json.Unmarshal(change.Value, &v) != nil {
-				continue
-			}
-			if targetWAMID != "" {
-				for _, m := range v.Messages {
-					if m.ID == targetWAMID {
-						if m.FromUserID != "" {
-							return m.FromUserID
-						}
-						if m.From != "" {
-							return m.From
-						}
-						if len(v.Contacts) > 0 && v.Contacts[0].ID() != "" {
-							return v.Contacts[0].ID()
-						}
-					}
-				}
-			}
-			for _, contact := range v.Contacts {
-				id := contact.ID()
-				if id == "" {
-					continue
-				}
-				if targetProfileName != "" {
-					if strings.EqualFold(contact.Profile.Name, targetProfileName) || strings.EqualFold(contact.Profile.Username, targetProfileName) {
-						return id
-					}
-				}
-			}
-		}
-	}
-	return ""
 }

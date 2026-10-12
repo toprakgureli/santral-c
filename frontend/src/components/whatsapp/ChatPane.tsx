@@ -46,7 +46,7 @@ import { waApi } from "@/whatsapp/api";
 import type { WAChannel, WAConversation, WAMessage, WAQuickReply, WASearchHit } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { getDraft, saveDraft } from "@/whatsapp/drafts";
-import { hm, isBSUID, isMine, mergeMessage, newClientId, newestSeen, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
+import { hm, isMine, mergeMessage, newClientId, newestSeen, since, waitShown, waitTip, windowLeft } from "@/whatsapp/util";
 import { dayName, numericDateTime, sameDay } from "@/lib/time";
 import { IconBtn, TextBtn, MoreMenu, MenuItem } from "@/components/whatsapp/ChatButtons";
 
@@ -142,8 +142,7 @@ export default function ChatPane({ conv, channel, panel, onPanel, onBack }: { co
   const canTake = can(user, "whatsapp.take");
   const canAssign = can(user, "whatsapp.assign");
   const canResolve = can(user, "whatsapp.resolve");
-  const hasPhone = !isBSUID(conv.contact.waId) && conv.contact.waId.replace(/\D/g, "").length >= 7;
-  const canCall = hasPhone && can(user, "call.originate") && phone.status === "registered";
+  const canCall = can(user, "call.originate") && phone.status === "registered";
   const participant = isMine(conv, me);
   const resolved = t?.status === "resolved";
   const open = windowLeft(conv, now) > 0;

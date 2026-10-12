@@ -17,7 +17,7 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import { waApi } from "@/whatsapp/api";
 import type { WAConversation, WAHistoryItem } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
-import { PRIORITY_WORD, STATUS_WORD, isBSUID, listTime, prettyPhone, since } from "@/whatsapp/util";
+import { PRIORITY_WORD, STATUS_WORD, listTime, prettyPhone, since } from "@/whatsapp/util";
 
 export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpen, onClose }: { conv: WAConversation; canEditContact: boolean; canEditTicket: boolean; onOpen: (id: number) => void; onClose: () => void }) {
   const t = conv.ticket;
@@ -39,8 +39,7 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
   const [priority, setPriority] = useState(t?.priority);
   useEffect(() => setStatus(t?.status), [t?.status]);
   useEffect(() => setPriority(t?.priority), [t?.priority]);
-  const hasPhone = !isBSUID(c.waId) && c.waId.replace(/\D/g, "").length >= 7;
-  const canCall = hasPhone && can(user, "call.originate") && phone.status === "registered";
+  const canCall = can(user, "call.originate") && phone.status === "registered";
 
   useEffect(() => {
     setName(c.name);
@@ -109,7 +108,7 @@ export default function TicketPanel({ conv, canEditContact, canEditTicket, onOpe
           {c.profileName && c.name && c.profileName !== c.name && <p className="text-xs text-muted-foreground">WhatsApp adı: {c.profileName}</p>}
           <div className="mt-4 flex w-full justify-center gap-2">
             {canCall && <Quick icon={Phone} label="Ara" onClick={() => void phone.call("0" + c.waId.replace(/^90/, "")).catch(() => undefined)} />}
-            <Quick icon={Copy} label={copied ? "Kopyalandı" : "Kopyala"} onClick={() => { const text = hasPhone ? "0" + c.waId.replace(/^90/, "") : c.waId; void navigator.clipboard?.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 1400); }} />
+            <Quick icon={Copy} label={copied ? "Kopyalandı" : "Kopyala"} onClick={() => { void navigator.clipboard?.writeText("0" + c.waId.replace(/^90/, "")); setCopied(true); window.setTimeout(() => setCopied(false), 1400); }} />
             <span className="relative">
               <Quick icon={muted ? BellOff : Bell} label={muted ? "Sessizde" : "Sessize al"} on={muted} onClick={() => (muted ? void wa.setConvPref(conv.id, { mute: "off" }) : setMuteOpen((v) => !v))} />
               {muteOpen && (

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -157,39 +156,14 @@ func LockTicket(tx *gorm.DB, id uint) (*models.WATicket, error) {
 	return &t, nil
 }
 
-// IsBSUID reports whether the WhatsApp identifier is a Business-Scoped User ID
-// (used when a contact has a username and hidden phone number) rather than a phone number.
-func IsBSUID(s string) bool {
-	if strings.Contains(s, ".") {
-		return true
-	}
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			return true
-		}
-	}
-	return false
-}
-
 // UpsertContact stores a customer by WhatsApp id, keeping the newest profile name.
 func UpsertContact(tx *gorm.DB, waID, profileName string) (*models.WAContact, error) {
-	waID = strings.TrimSpace(waID)
-	if waID == "" {
-		return nil, errors.New("whatsapp id cannot be empty")
-	}
-	peerKey := ""
-	if !IsBSUID(waID) {
-		peerKey = phone.Key(waID)
-	}
-	if len(peerKey) > 20 {
-		peerKey = peerKey[:20]
-	}
 	var c models.WAContact
 	err := tx.Raw(`INSERT INTO wa_contacts (wa_id, peer_key, profile_name) VALUES (?, ?, ?)
 		ON CONFLICT (wa_id) DO UPDATE SET
 			profile_name = CASE WHEN EXCLUDED.profile_name <> '' THEN EXCLUDED.profile_name ELSE wa_contacts.profile_name END,
 			updated_at = now()
-		RETURNING *`, waID, peerKey, profileName).Scan(&c).Error
+		RETURNING *`, waID, phone.Key(waID), profileName).Scan(&c).Error
 	if err != nil {
 		return nil, fmt.Errorf("müşteri kaydedilemedi: %w", err)
 	}
