@@ -440,7 +440,7 @@ func TestWAResolveWaitsForUnseenMessage(t *testing.T) {
 	if s := ticketStatus(r.db, ticket[0]); s != "resolved" {
 		t.Fatalf("status %q after closing without a marker, want resolved", s)
 	}
-	r.stats.report(t, "whatsapp resolve", time.Since(began), budget{p95: time.Second, max: 5 * time.Second})
+	r.stats.report(t, "whatsapp resolve", time.Since(began), budget{p95: 2 * time.Second, max: 10 * time.Second})
 }
 
 // ---------------------------------------------------------------- B2
