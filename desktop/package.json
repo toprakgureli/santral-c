@@ -1,0 +1,70 @@
+{
+  "name": "santralc-desktop-widget",
+  "private": true,
+  "productName": "Santral-C Mini Widget",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Santral-C Windows Mini Softphone Widget",
+  "main": "src/main.cjs",
+  "author": "Toprak Güreli",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "dist:installer": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.santralc.desktop",
+    "productName": "Santral-C Mini Widget",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "toprakgureli",
+      "repo": "santral-desktop-releases"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Santral-C Mini Widget"
+    },
+    "portable": {
+      "artifactName": "Santral-C-Widget-Portable.exe"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3"
+  }
+}

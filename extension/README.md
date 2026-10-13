@@ -25,7 +25,7 @@ gösterir.
 - **Panel adresi**: eklenti sadece açılır penceresinde (popup) kayıtlı
   adresteki sekmeyi panel sayar. Bu adresten gelmeyen bir sekme kendini
   panel gibi gösterse de dinlenmez ve komutlar sadece panel sekmesine
-  gider. Adres girilmemişse `https://cm.toprakgureli.com` kullanılır.
+  gider.
 - Telefon (SIP.js kaydı, WebRTC, mikrofon) **paneldedir**, eklentide değil.
   Bu yüzden eklentinin ayrıca mikrofon izni istemesi gerekmez.
 
@@ -40,7 +40,7 @@ npm run build
 1. `chrome://extensions` adresini aç, **Developer mode**'u aç, **Load
    unpacked** ile `extension/dist` klasörünü seç.
 2. Araç çubuğunda eklentinin simgesine tıkla. **Panel adresi** kutusuna
-   panelin adresini yaz (örneğin `https://cm.toprakgureli.com`) ve
+   panelin adresini yaz (örneğin `https://santral.ornek.com`) ve
    **Kaydet**'e bas. Adres `https://` ile başlamalı; sadece `localhost` ve
    `127.0.0.1` için `http://` olur.
 3. **santral-c paneline** bir sekmede giriş yap. Mikrofon iznini panel

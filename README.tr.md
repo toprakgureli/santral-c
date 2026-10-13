@@ -38,7 +38,8 @@ santral-c temsilcinin ve ekip liderinin gün boyu çalıştığı her şeyi ekle
 
 **Telefon**
 - WSS üzerinden SIP.js softphone (sustur, beklet, aktar, DTMF). Sekmeler arası
-  tek kayıt; çağrı kontrollerini her web sitesine taşıyan Chrome eklentisi.
+  tek kayıt; çağrı kontrollerini her web sitesine taşıyan Chrome eklentisi ve
+  ekranın üzerinde duran Windows Masaüstü Mini Uygulaması.
   Bağlantı koparsa (Wi-Fi, bilgisayar uykuya geçti, santral yeniden başladı)
   telefon kendini toparlar ve santrale yeniden kaydolur.
 - Santralin çağrı kayıtları PostgreSQL'e kopyalanır; numaraya ya da dahiliye

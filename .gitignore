@@ -11,6 +11,8 @@ config.local.yml
 *.local.yaml
 /frontend/node_modules/
 /frontend/dist/
+/desktop/node_modules/
+/desktop/dist/
 
 # test artifacts
 *.jar

@@ -12,6 +12,62 @@ const COMMANDS = new Set(["call", "answer", "hangup", "mute", "hold", "transfer"
 
 let lastState = { status: "idle" };
 
+// Local Windows Desktop Mini App Bridge (ws://127.0.0.1:48123)
+const DESKTOP_BRIDGE_URL = "ws://127.0.0.1:48123";
+let desktopWs = null;
+let desktopRetryTimer = null;
+
+function sendToDesktop(payload) {
+  if (desktopWs && desktopWs.readyState === 1 /* OPEN */) {
+    try {
+      desktopWs.send(JSON.stringify(payload));
+    } catch {}
+  }
+}
+
+function connectDesktopBridge() {
+  if (typeof WebSocket === "undefined") return;
+  if (desktopWs && (desktopWs.readyState === 0 || desktopWs.readyState === 1)) {
+    return;
+  }
+  try {
+    desktopWs = new WebSocket(DESKTOP_BRIDGE_URL);
+    desktopWs.onopen = () => {
+      sendToDesktop({ type: "hello" });
+      if (lastState && lastState.status && lastState.status !== "idle") {
+        sendToDesktop({ type: "state", state: lastState });
+      }
+    };
+    desktopWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data && data.type === "cmd" && COMMANDS.has(data.cmd)) {
+          const arg = typeof data.arg === "string" ? data.arg.slice(0, 32) : undefined;
+          toPanel({ to: "content", type: "panelcmd", cmd: data.cmd, arg });
+        }
+      } catch {}
+    };
+    desktopWs.onclose = () => {
+      desktopWs = null;
+      scheduleDesktopRetry();
+    };
+    desktopWs.onerror = () => {
+      // Handled by onclose
+    };
+  } catch {
+    desktopWs = null;
+    scheduleDesktopRetry();
+  }
+}
+
+function scheduleDesktopRetry() {
+  if (typeof setTimeout === "undefined") return;
+  if (desktopRetryTimer) clearTimeout(desktopRetryTimer);
+  desktopRetryTimer = setTimeout(connectDesktopBridge, 3000);
+}
+
+connectDesktopBridge();
+
 async function panelOrigin() {
   try {
     const { panelOrigin: o } = await chrome.storage.local.get("panelOrigin");
@@ -86,9 +142,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.type === "state") {
         lastState = cleanState(msg.state);
         broadcast({ to: "content", type: "state", state: lastState });
+        sendToDesktop({ type: "state", state: lastState });
       }
       // The panel tab is open; tell every tab so the widget stays visible.
       broadcast({ to: "content", type: "panelPing" });
+      sendToDesktop({ type: "alive" });
       return;
     }
     if (msg.type === "cmd" && COMMANDS.has(msg.cmd)) {
@@ -98,3 +156,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
   })();
 });
+
+if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.onRemoved) {
+  chrome.tabs.onRemoved.addListener(async () => {
+    try {
+      const origin = await panelOrigin();
+      const tabs = await chrome.tabs.query({ url: origin + "/*" });
+      if (tabs.length === 0) {
+        lastState = { status: "disconnected" };
+        sendToDesktop({ type: "state", state: lastState });
+      }
+    } catch {}
+  });
+}

@@ -38,9 +38,10 @@ everything an agent and a team lead actually work in.
 
 **Telephony**
 - SIP.js softphone over WSS (mute, hold, transfer, DTMF), one registration
-  shared across tabs, plus a Chrome extension that puts the call controls on
-  every website. A dropped connection (Wi-Fi, sleep, the PBX restarting) is
-  recovered on its own and the phone registers again.
+  shared across tabs, plus a Chrome extension and a Windows Desktop Mini App
+  that put the call controls on every website and over the desktop. A dropped
+  connection (Wi-Fi, sleep, the PBX restarting) is recovered on its own and the
+  phone registers again.
 - Call history mirrored from the PBX into PostgreSQL, so search by number or
   extension is instant (the PBX API cannot do it), with recording playback
   and CSV export.

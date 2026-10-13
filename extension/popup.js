@@ -1,6 +1,6 @@
 // The panel's address decides which tab may drive the widgets; every other
 // page is treated as an ordinary website.
-const DEFAULT_PANEL = "https://cm.toprakgureli.com";
+const DEFAULT_PANEL = "";
 const input = document.getElementById("origin");
 const note = document.getElementById("note");
 
