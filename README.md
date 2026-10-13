@@ -7,6 +7,7 @@ English | [Türkçe](README.tr.md)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Full%20Stack-2496ED?logo=docker&logoColor=white)
 
 **A call-centre workspace in daily production use: browser softphone, call
 history, WhatsApp Business inbox with a visual chatbot builder, customer
@@ -149,18 +150,33 @@ flowchart LR
 
 ## Getting started
 
-**Requirements**: Go 1.26+, Node 20+, Docker (for PostgreSQL 16 and Redis 7).
+You can run santral-c either completely containerized with Docker (recommended for fast zero-setup evaluations and production) or natively on host for development.
+
+### Option 1: Full Stack with Docker (Recommended)
+
+**Requirements**: Docker & Docker Compose.
+
+```bash
+cp config.example.yml config.yml     # adjust keys as needed
+docker compose up -d --build
+```
+
+The stack spins up PostgreSQL 16, Redis 7, the Go backend (migrates database schema and seeds initial permissions/roles/owner automatically), and the React SPA served via Nginx on `http://localhost`.
+
+### Option 2: Local Development (Bare-Metal)
+
+**Requirements**: Go 1.26+, Node 20+, Docker (for local databases).
 
 From the repository root, in two terminals:
 
 ```bash
-docker compose up -d                 # PostgreSQL + Redis
-cp config.example.yml config.yml     # then fill in the values below
+docker compose -f docker-compose.dev.yml up -d   # runs PostgreSQL + Redis only
+cp config.example.yml config.yml                 # fill in the values below
 cd backend && go run ./cmd/santral -config ../config.yml
 ```
 
 ```bash
-cd frontend && npm install && npm run dev   # http://localhost:5173
+cd frontend && npm install && npm run dev       # http://localhost:5173
 ```
 
 The backend applies migrations and seeds permissions, the system roles and the
@@ -302,6 +318,22 @@ script test.
 
 ## Production
 
+santral-c supports two production deployment models:
+
+### Model A: Docker Compose / Dokploy (Recommended for Containers)
+
+The production Docker Compose setup packages PostgreSQL 16, Redis 7, the Go backend, and Nginx (serving the React SPA and proxying `/api/` with streaming, WebSockets and 110 MB WhatsApp body limits):
+
+```bash
+cp config.prod.example.yml config.yml   # fill in production secrets
+docker compose up -d --build
+```
+
+- Traefik, Dokploy or Cloudflare Origin proxy directly targets port 80 (or set `PORT=...` in `.env`).
+- Databases persist in Docker volumes `postgres_data` and `redis_data`.
+
+### Model B: Bare-Metal Ubuntu (Systemd + Nginx)
+
 A single Ubuntu host: nginx serves the built frontend and proxies `/api` to
 the Go binary under systemd; PostgreSQL and Redis on the same machine.
 [DEPLOY.md](DEPLOY.md) is the full walkthrough; `deploy/` has the systemd unit,
@@ -345,10 +377,13 @@ asks for the new password twice.
 ## Repository layout
 
 ```
-backend/     Go service: cmd/santral (server), cmd/resetpw, internal/* modules, migrations
-frontend/    React panel, softphone, WhatsApp inbox and chatbot builder
+backend/     Go service: cmd/santral (server), cmd/resetpw, internal/* modules, migrations, Dockerfile
+frontend/    React panel, softphone, WhatsApp inbox and chatbot builder, nginx.conf, Dockerfile
+desktop/     Electron / React Windows softphone widget (always-on-top, tray, auto-updater)
 extension/   Chrome MV3 widget that relays the panel's call to every tab
 deploy/      deploy.sh and its test, systemd unit, nginx sites, observability (Prometheus, Grafana, Jaeger)
+docker-compose.yml       Full-stack production container composition
+docker-compose.dev.yml   Local database development infrastructure
 ```
 
 ## Author

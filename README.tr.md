@@ -7,6 +7,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Full%20Stack-2496ED?logo=docker&logoColor=white)
 
 **Her gün canlıda kullanılan bir çağrı merkezi paneli: tarayıcıdan telefon,
 çağrı geçmişi, chatbot kurucusu olan WhatsApp Business gelen kutusu, müşteri
@@ -153,18 +154,33 @@ flowchart LR
 
 ## Kurulum
 
-**Gerekenler**: Go 1.26+, Node 20+, Docker (PostgreSQL 16 ve Redis 7 için).
+santral-c'yi Docker ile tüm servisler konteyner içinde olacak şekilde (hızlı kurulum ve canlı ortam için önerilen) veya yerel geliştirme için doğrudan makinede çalıştırabilirsin.
+
+### 1. Yol: Docker ile Tam Kurulum (Önerilen)
+
+**Gerekenler**: Docker & Docker Compose.
+
+```bash
+cp config.example.yml config.yml     # ayarları ihtiyacına göre düzenle
+docker compose up -d --build
+```
+
+Bu komut PostgreSQL 16, Redis 7, Go arka ucu (veritabanı migrasyonlarını otomatik uygular ve rolleri/ilk yöneticiyi oluşturur) ve React panelini Nginx ile paketleyip `http://localhost` adresinde tek kapıdan yayına alır.
+
+### 2. Yol: Yerel Geliştirme (Bare-Metal)
+
+**Gerekenler**: Go 1.26+, Node 20+, Docker (yerel veritabanları için).
 
 Depo klasöründe iki ayrı terminal aç:
 
 ```bash
-docker compose up -d                 # PostgreSQL + Redis
-cp config.example.yml config.yml     # sonra aşağıdaki değerleri doldur
+docker compose -f docker-compose.dev.yml up -d   # sadece PostgreSQL + Redis çalıştırır
+cp config.example.yml config.yml                 # sonra aşağıdaki değerleri doldur
 cd backend && go run ./cmd/santral -config ../config.yml
 ```
 
 ```bash
-cd frontend && npm install && npm run dev   # http://localhost:5173
+cd frontend && npm install && npm run dev       # http://localhost:5173
 ```
 
 Arka uç ilk açılışta veritabanı değişikliklerini uygular; yetkileri, sistem
@@ -310,6 +326,22 @@ derlemesi, eklentinin testleri ve derlemesi, deploy betiğinin testi.
 
 ## Canlı ortam
 
+santral-c iki farklı canlı dağıtım modelini destekler:
+
+### 1. Model: Docker Compose / Dokploy (Konteyner Dağıtımı İçin Önerilen)
+
+Tüm sistemi PostgreSQL 16, Redis 7, Go arka ucu ve Nginx (ön yüzü sunan, `/api/` yönlendirmesini yapan, WebSockets ve 110 MB WhatsApp yüklemelerini yöneten) tek bir compose dosyasıyla ayağa kaldırır:
+
+```bash
+cp config.prod.example.yml config.yml   # canlı ortam secret key'lerini yaz
+docker compose up -d --build
+```
+
+* Dokploy, Traefik veya Cloudflare doğrudan 80 portuna bağlanır (port `.env` içindeki `PORT` ile değiştirilebilir).
+* Veritabanları `postgres_data` ve `redis_data` volume'larında kalıcı saklanır.
+
+### 2. Model: Doğrudan Ubuntu Sunucusu (Systemd + Nginx)
+
 Tek bir Ubuntu sunucu: nginx derlenmiş ön yüzü sunar ve `/api`'yi systemd
 altındaki Go servisine yönlendirir; PostgreSQL ve Redis aynı makinede. Adım
 adım anlatım [DEPLOY.md](DEPLOY.md)'de; systemd, nginx ve izleme dosyaları
@@ -353,10 +385,13 @@ Yeni şifreyi iki kez sorar.
 ## Klasörler
 
 ```
-backend/     Go servisi: cmd/santral (sunucu), cmd/resetpw, internal/* modüller, migrations
-frontend/    React paneli, softphone, WhatsApp gelen kutusu ve chatbot kurucusu
+backend/     Go servisi: cmd/santral (sunucu), cmd/resetpw, internal/* modüller, migrations, Dockerfile
+frontend/    React paneli, softphone, WhatsApp gelen kutusu ve chatbot kurucusu, nginx.conf, Dockerfile
+desktop/     Electron / React Windows softphone widget'ı (her pencerenin üstünde, sistem tepsisi, otomatik güncelleme)
 extension/   Panelin çağrısını her sekmeye taşıyan Chrome MV3 eklentisi
 deploy/      deploy.sh ve testi, systemd birimi, nginx siteleri, izleme (Prometheus, Grafana, Jaeger)
+docker-compose.yml       Tam full-stack konteyner orkestrasyonu
+docker-compose.dev.yml   Sadece yerel veritabanı geliştirme altyapısı
 ```
 
 ## Geliştiren
