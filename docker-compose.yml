@@ -1,31 +1,83 @@
-# Local development infrastructure for santral-c.
-# Start with: docker compose up -d
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: santral
-      POSTGRES_USER: santral
-      POSTGRES_PASSWORD: santral
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-santral}
+      POSTGRES_USER: ${POSTGRES_USER:-santral}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-santral}
     volumes:
-      - santral_pg:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U santral"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-santral} -d ${POSTGRES_DB:-santral}"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - santral_net
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - santral_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8090"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${POSTGRES_DB:-santral}
+      DATABASE_USER: ${POSTGRES_USER:-santral}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-santral}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8090/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 10
+    networks:
+      - santral_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - santral_net
 
 volumes:
-  santral_pg:
+  postgres_data:
+  redis_data:
+
+networks:
+  santral_net:
+    driver: bridge
