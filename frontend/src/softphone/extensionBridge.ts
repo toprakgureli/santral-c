@@ -142,7 +142,9 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
           if (stopped) {
             try {
               ws?.close();
-            } catch {}
+            } catch {
+              // ignore
+            }
             return;
           }
           backoffMs = 3000;
