@@ -53,7 +53,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Santral-C Mini Widget"
+      "shortcutName": "Santral-C Mini Widget",
+      "artifactName": "Santral-C-Mini-Widget-Setup-${version}.${ext}"
     },
     "portable": {
       "artifactName": "Santral-C-Widget-Portable.exe"

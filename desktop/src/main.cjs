@@ -412,17 +412,15 @@ function initAutoUpdater() {
   });
 
   updater.on("error", (err) => {
-    if (updateCheckInProgress) {
-      updateCheckInProgress = false;
-      dialog.showMessageBox({
-        type: "warning",
-        title: "Santral-C Güncelleme Denetimi",
-        message: "Güncelleme denetlenirken bir sorun oluştu",
-        detail: err ? (err.message || String(err)) : "GitHub sunucusuna ulaşılamadı.",
-        buttons: ["Tamam"],
-        noLink: true,
-      });
-    }
+    updateCheckInProgress = false;
+    dialog.showMessageBox({
+      type: "warning",
+      title: "Santral-C Güncelleme Hatası",
+      message: "Güncelleme indirilemedi veya doğrulanamadı.",
+      detail: err ? (err.message || String(err)) : "Dosya indirilemedi.",
+      buttons: ["Tamam"],
+      noLink: true,
+    });
   });
 
   updater.on("update-downloaded", (info) => {
