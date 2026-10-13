@@ -27,4 +27,7 @@ contextBridge.exposeInMainWorld("santralDesktop", {
   quit: () => {
     ipcRenderer.send("app-quit");
   },
+  getVersion: () => {
+    return ipcRenderer.sendSync("get-app-version");
+  },
 });

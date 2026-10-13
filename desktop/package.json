@@ -2,7 +2,7 @@
   "name": "santralc-desktop-widget",
   "private": true,
   "productName": "Santral-C Mini Widget",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Santral-C Windows Mini Softphone Widget",
   "main": "src/main.cjs",

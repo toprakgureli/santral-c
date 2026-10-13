@@ -682,6 +682,10 @@ ipcMain.on("app-quit", () => {
   quitApplication();
 });
 
+ipcMain.on("get-app-version", (event) => {
+  event.returnValue = app.getVersion();
+});
+
 app.on("before-quit", () => {
   isQuitting = true;
 });

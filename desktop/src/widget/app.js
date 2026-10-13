@@ -250,6 +250,12 @@ document.getElementById("panelbtn")?.addEventListener("click", () => {
 });
 
 if (window.santralDesktop) {
+  try {
+    const v = window.santralDesktop.getVersion?.();
+    const verEl = document.getElementById("ver");
+    if (verEl && v) verEl.textContent = `v${v}`;
+  } catch {}
+
   window.santralDesktop.onState((newState) => {
     const prev = state.status;
     state = newState || { status: "disconnected" };

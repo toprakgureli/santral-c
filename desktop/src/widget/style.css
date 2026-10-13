@@ -89,9 +89,23 @@ body {
 }
 
 .title {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ver {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--input);
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1.1;
+  letter-spacing: 0;
 }
 
 .st {
