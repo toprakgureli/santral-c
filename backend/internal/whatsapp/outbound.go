@@ -509,7 +509,13 @@ func (s *Service) Retry(ctx context.Context, actorID, messageID uint) error {
 	if !v.can(enums.WAReply) {
 		return errs.Forbidden("Müşteriye yazma yetkin yok.")
 	}
-	if msg.Status != "failed" || msg.Direction != "out" {
+	if msg.Direction != "out" {
+		return errs.Invalid("Yalnızca gönderilemeyen mesaj tekrar gönderilebilir.", nil)
+	}
+	if msg.Status == "queued" || msg.Status == "sending" {
+		return errs.Conflict("Bu mesaj zaten yeniden gönderiliyor.", nil)
+	}
+	if msg.Status != "failed" {
 		return errs.Invalid("Yalnızca gönderilemeyen mesaj tekrar gönderilebilir.", nil)
 	}
 	changed, err := s.repo.RequeueMessage(ctx, msg.ID)
