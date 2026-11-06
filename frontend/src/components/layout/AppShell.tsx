@@ -20,6 +20,8 @@ import { TeamsProvider } from "@/teams/TeamsContext";
 import MentionToasts from "@/components/teams/MentionToasts";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
+import { CustomMenusProvider, useCustomMenus } from "@/menus/CustomMenusContext";
+import ExternalFramesHost from "./ExternalFramesHost";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
 
@@ -56,6 +58,7 @@ export default function AppShell() {
     <PresenceProvider>
     <TeamsProvider>
     <WhatsAppProvider>
+    <CustomMenusProvider>
     <UnloadGuard />
     <BreakOverlay />
     <WelcomeCard />
@@ -86,8 +89,9 @@ export default function AppShell() {
           collapsed ? "lg:pl-[4.75rem]" : "lg:pl-[16.5rem]",
         )}
       >
-        <Topbar title={titleFor(pathname)} onMenuClick={() => setMenuOpen((v) => !v)} />
-        <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">
+        <ShellTopbar pathname={pathname} onMenuClick={() => setMenuOpen((v) => !v)} />
+        <ExternalFramesHost />
+        <main className={cn("flex-1 px-4 py-6 md:px-6 lg:px-8", /^\/app\/\d+\/?$/.test(pathname) && "hidden")}>
           {/* Keyed by page so the entrance animation replays on each navigation.
               Opening another WhatsApp conversation or chat room keeps the page,
               its list and where that list was scrolled. */}
@@ -102,12 +106,20 @@ export default function AppShell() {
       </div>
       <CallBar />
     </div>
+    </CustomMenusProvider>
     </WhatsAppProvider>
     </TeamsProvider>
     </PresenceProvider>
     </SoftphoneProvider>
     </ShiftProvider>
   );
+}
+
+function ShellTopbar({ pathname, onMenuClick }: { pathname: string; onMenuClick: () => void }) {
+  const { items } = useCustomMenus();
+  const appMatch = /^\/app\/(\d+)\/?$/.exec(pathname);
+  const customTitle = appMatch ? items.find((m) => m.id === Number(appMatch[1]))?.label : undefined;
+  return <Topbar title={customTitle ?? titleFor(pathname)} onMenuClick={onMenuClick} />;
 }
 
 // PageLoading fills the page area while a page's code is fetched.

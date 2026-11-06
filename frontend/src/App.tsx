@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import AppShell from "./components/layout/AppShell";
+import { ExternalAppPlaceholder } from "./components/layout/ExternalFramesHost";
 import RequirePermission from "./components/layout/RequirePermission";
 import { menuPermission, PAGE_PERMISSIONS, WA_BASE } from "./lib/menu";
 import { Button, Spinner } from "./components/ui";
@@ -13,6 +14,7 @@ import { Login } from "./pages/Login";
 // phone line.
 const Audit = lazy(() => import("./pages/Audit").then((m) => ({ default: m.Audit })));
 const Calls = lazy(() => import("./pages/Calls").then((m) => ({ default: m.Calls })));
+const CustomMenus = lazy(() => import("./pages/CustomMenus").then((m) => ({ default: m.CustomMenus })));
 const EscalationSearch = lazy(() => import("./pages/EscalationSearch").then((m) => ({ default: m.EscalationSearch })));
 const Escalations = lazy(() => import("./pages/Escalations").then((m) => ({ default: m.Escalations })));
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
@@ -75,6 +77,8 @@ export function App() {
         <Route path="/performance" element={<RequirePermission need={menuPermission("/performance")}><TeamPerformance /></RequirePermission>} />
         <Route path="/escalation-search" element={<RequirePermission need={menuPermission("/escalation-search")}><EscalationSearch /></RequirePermission>} />
         <Route path="/escalations" element={<RequirePermission need={menuPermission("/escalations")}><Escalations /></RequirePermission>} />
+        <Route path="/menus" element={<RequirePermission need={menuPermission("/menus")}><CustomMenus /></RequirePermission>} />
+        <Route path="/app/:id" element={<ExternalAppPlaceholder />} />
         <Route path="/roles" element={<RequirePermission need={menuPermission("/roles")}><Roles /></RequirePermission>} />
         <Route path="/users" element={<RequirePermission need={menuPermission("/users")}><Users /></RequirePermission>} />
         <Route path="/settings" element={<RequirePermission need={menuPermission("/settings")}><Settings /></RequirePermission>} />

@@ -572,3 +572,40 @@ export interface SipCredentials {
   turnUser?: string;
   turnPass?: string;
 }
+
+export type CustomMenuOpenMode = "iframe" | "new_tab";
+
+export interface CustomMenuRole {
+  id: number;
+  name: string;
+  displayName: string;
+}
+
+export interface CustomMenuItem {
+  id: number;
+  label: string;
+  icon: string;
+  url: string;
+  openMode: CustomMenuOpenMode;
+  active: boolean;
+  sortOrder: number;
+  roleIds: number[];
+  roles: CustomMenuRole[];
+}
+
+export interface CustomMenuInput {
+  label: string;
+  icon: string;
+  url: string;
+  openMode?: CustomMenuOpenMode;
+  active?: boolean;
+  roleIds: number[];
+}
+
+export interface CustomMenuEmbedCheck {
+  embeddable: boolean;
+  reason?: string;
+  xFrameOptions?: string;
+  frameAncestors?: string;
+}
+

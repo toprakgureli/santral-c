@@ -3,13 +3,15 @@
 // finds it without reading. Collapsed, only the chips remain.
 
 import { NavLink } from "react-router-dom";
-import { ChevronsLeft, X } from "lucide-react";
+import { ChevronsLeft, ExternalLink, X } from "lucide-react";
 import Logo from "@/components/ui/Logo";
 import { cn } from "@/lib/utils";
 import { visibleMenu } from "@/lib/menu";
+import { customMenuIcon } from "@/lib/menuIcons";
 import { APP_NAME } from "@/lib/brand";
 import { useAuth } from "@/auth/AuthContext";
 import VersionInfo from "@/components/layout/VersionInfo";
+import { useCustomMenus } from "@/menus/CustomMenusContext";
 import { useTeams } from "@/teams/TeamsContext";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 
@@ -24,6 +26,7 @@ type SidebarProps = {
 export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggleCollapse }: SidebarProps) {
   const { can } = useAuth();
   const groups = visibleMenu(can);
+  const customMenus = useCustomMenus();
   const teams = useTeams();
   const wa = useWhatsApp();
   return (
@@ -119,6 +122,69 @@ export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggle
             </div>
           </div>
         ))}
+
+        {customMenus.items.length > 0 && (
+          <div className="space-y-1">
+            <p
+              className={cn(
+                "px-3 pb-1.5 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground/60 uppercase",
+                collapsed && "lg:hidden",
+              )}
+            >
+              Uygulamalar
+            </p>
+            <div className="space-y-1">
+              {customMenus.items.map((item) => {
+                const Icon = customMenuIcon(item.icon);
+                const path = `/app/${item.id}`;
+                return (
+                  <NavLink
+                    key={item.id}
+                    to={path}
+                    onClick={onNavigate}
+                    data-tip={collapsed ? item.label : undefined}
+                    data-tip-side="right"
+                    className={({ isActive }) =>
+                      cn(
+                        "group relative flex items-center gap-3 rounded-2xl py-1.5 pr-3 pl-1.5 text-sm font-medium",
+                        "transition-[color,background-color,box-shadow] duration-200 ease-out",
+                        collapsed && "lg:mx-auto lg:size-11 lg:justify-center lg:gap-0 lg:p-0",
+                        isActive
+                          ? "bg-primary/10 text-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_18%,transparent)]"
+                          : "text-muted-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "absolute top-1/2 -left-3 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary transition-[opacity,transform] duration-200",
+                            isActive ? "opacity-100" : "scale-y-0 opacity-0",
+                            collapsed && "lg:-left-[calc((4.75rem-2.75rem)/2)]",
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            "flex size-8 shrink-0 items-center justify-center rounded-xl transition-colors duration-200",
+                            isActive ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30" : "bg-muted/70 text-muted-foreground group-hover:bg-card group-hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="size-4" strokeWidth={isActive ? 2.25 : 2} />
+                        </span>
+                        <span className={cn("truncate", collapsed && "lg:hidden")}>{item.label}</span>
+                        {item.openMode === "new_tab" && (
+                          <ExternalLink className={cn("ml-auto size-3.5 shrink-0 text-muted-foreground/60", collapsed && "lg:hidden")} />
+                        )}
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </nav>
 
       <div className="hidden shrink-0 border-t border-sidebar-border p-3 lg:block">

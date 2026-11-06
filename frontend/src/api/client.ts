@@ -6,6 +6,10 @@ import type {
   CallLookup,
   CallPage,
   Contact,
+  CustomMenuEmbedCheck,
+  CustomMenuInput,
+  CustomMenuItem,
+  CustomMenuRole,
   DaySummary,
   TodayCalls,
   EscalationCategory,
@@ -512,6 +516,19 @@ export const api = {
   escalationAgents: () => request<{ items: { id: number; name: string }[] }>("/escalations/agents").then((r) => r.items),
   logNoEscalation: (body: { number: string; callUuid?: string }) =>
     request<EscalationRecord>("/escalations/none", { method: "POST", body: JSON.stringify(body) }),
+
+  // Custom Menus (dynamic sidebar applications)
+  menusVisible: () => request<{ items: CustomMenuItem[] }>("/menus/visible").then((r) => r.items),
+  menusList: () => request<{ items: CustomMenuItem[] }>("/menus").then((r) => r.items),
+  menusRoles: () => request<{ items: CustomMenuRole[] }>("/menus/roles").then((r) => r.items),
+  menuCreate: (body: CustomMenuInput) =>
+    request<CustomMenuItem>("/menus", { method: "POST", body: JSON.stringify(body) }),
+  menuUpdate: (id: number, body: CustomMenuInput) =>
+    request<CustomMenuItem>(`/menus/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  menuDelete: (id: number) => request<void>(`/menus/${id}`, { method: "DELETE" }),
+  menusReorder: (ids: number[]) =>
+    request<void>("/menus/order", { method: "PUT", body: JSON.stringify({ ids }) }),
+  menuCheck: (id: number) => request<CustomMenuEmbedCheck>(`/menus/${id}/check`),
 };
 
 async function parseLogin(p: Promise<Record<string, unknown>>): Promise<LoginResult> {

@@ -71,7 +71,7 @@ const routes = [...appSource.matchAll(/<Route path="([^"]+)" element=\{(.*)\} \/
 const routeFor = (path: string) => routes.find((r) => r.path === path);
 
 // Pages anyone signed in may open.
-const OPEN_PAGES = new Set(["/login", "*", "/", "/profile", "/profile/:id", "/account", "/preferences"]);
+const OPEN_PAGES = new Set(["/login", "*", "/", "/profile", "/profile/:id", "/account", "/preferences", "/app/:id"]);
 
 // What a route's guard asks for, read back from the names App.tsx uses.
 function guardOf(element: string): { need: string[]; base?: string } | null {

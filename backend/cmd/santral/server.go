@@ -16,6 +16,7 @@ import (
 	"github.com/toprakgureli/santral-c/backend/internal/backup"
 	"github.com/toprakgureli/santral-c/backend/internal/calllog"
 	"github.com/toprakgureli/santral-c/backend/internal/contact"
+	"github.com/toprakgureli/santral-c/backend/internal/custommenu"
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 	"github.com/toprakgureli/santral-c/backend/internal/escalation"
 	"github.com/toprakgureli/santral-c/backend/internal/followup"
@@ -196,6 +197,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	setting.NewRouter(settingHandler, guard, need).Routes(api)
 	audit.NewRouter(auditHandler, guard, need).Routes(api)
 	contact.NewRouter(contactHandler, guard, need).Routes(api)
+	menuSvc := custommenu.NewService(custommenu.NewRepository(db), actors, auditSvc)
+	custommenu.NewRouter(custommenu.NewHandler(menuSvc), guard, need).Routes(api)
 	escalation.NewRouter(escalationHandler, guard, need).Routes(api)
 	calllog.NewRouter(callLogHandler, guard, need).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)

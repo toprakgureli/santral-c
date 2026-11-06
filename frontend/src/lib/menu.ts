@@ -1,4 +1,4 @@
-import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, MessageCircleMore, PhoneMissed, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
+import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, LayoutGrid, MessageCircleMore, PhoneMissed, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 
 export type MenuItem = {
@@ -34,6 +34,7 @@ export const MENU: MenuGroup[] = [
   {
     title: "Yönetim",
     items: [
+      { label: "Özel Menüler", path: "/menus", icon: LayoutGrid, permission: "menu.manage" },
       { label: "Eskalasyon Durumları", path: "/escalations", icon: Tags, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: UsersRound, permission: "user.view" },
       { label: "Roller", path: "/roles", icon: KeyRound, permission: "role.view" },
@@ -98,6 +99,7 @@ export function titleFor(pathname: string): string {
   if (pathname.startsWith("/whatsapp")) return "WhatsApp";
   if (pathname.startsWith("/games")) return "Mini Oyunlar";
   if (pathname.startsWith("/profile/")) return "Profil";
+  if (pathname.startsWith("/app/")) return "Harici Uygulama";
   for (const group of MENU) {
     for (const item of group.items) {
       if (item.path === pathname) return item.label;

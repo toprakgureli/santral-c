@@ -24,6 +24,7 @@ const (
 	ModuleTeams       Module = "teams"
 	ModuleGames       Module = "games"
 	ModuleWhatsApp    Module = "whatsapp"
+	ModuleMenu        Module = "menu"
 )
 
 // Permission keys.
@@ -140,6 +141,8 @@ const (
 	// SystemHealth shows the panel's system warnings: a filling disk, a
 	// late backup, WhatsApp queues backing up.
 	SystemHealth Permission = "system.health"
+
+	MenuManage Permission = "menu.manage"
 )
 
 // PermissionInfo describes a permission for seeding.
@@ -236,6 +239,7 @@ var permissions = []PermissionInfo{
 	{SystemLogs, "Sistem loglarını görür"},
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
 	{SystemHealth, "Sistem uyarılarını görür (disk doluyor, yedek gecikti, WhatsApp kuyruğu birikti gibi)"},
+	{MenuManage, "Sol menüye harici web sitesi ve uygulama butonları ekler, düzenler, sıralar ve yetkilendirir"},
 }
 
 // Permissions returns a copy of the full permission catalog.
@@ -261,6 +265,7 @@ var moduleLabels = map[Module]string{
 	ModuleTeams:       "Teams",
 	ModuleGames:       "Mini Oyunlar",
 	ModuleWhatsApp:    "WhatsApp",
+	ModuleMenu:        "Özel Menüler",
 }
 
 // ModuleLabel returns the human-facing title for a module.
