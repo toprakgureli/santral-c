@@ -20,6 +20,7 @@ import { ArrowDown, ChevronRight, Clock, Coffee, Headset, LayoutGrid, List, Mic,
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { TeamRow, TeamStatus } from "../api/types";
+import { useAuth } from "../auth/AuthContext";
 import WhatsAppIcon from "../components/icons/WhatsAppIcon";
 import AgentCallsDialog from "../components/performance/AgentCallsDialog";
 import ShareDialog from "../components/performance/ShareDialog";
@@ -114,6 +115,9 @@ function stateSince(r: TeamRow) {
 }
 
 export function TeamPerformance() {
+  const { can } = useAuth();
+  const canShare = can("performance.share");
+  const canRecentCalls = can("performance.recent_calls");
   const realSeconds = useRealCallSeconds();
   const [rows, setRows] = useState<TeamRow[]>([]);
   const [scope, setScope] = useState<"all" | "role">("role");
@@ -230,9 +234,11 @@ export function TeamPerformance() {
             <ViewBtn on={view === "list"} onClick={() => chooseView("list")} icon={List} label="Liste" />
             <ViewBtn on={view === "cards"} onClick={() => chooseView("cards")} icon={LayoutGrid} label="Kartlar" />
           </div>
-          <button type="button" onClick={() => setShare(true)} disabled={rows.length === 0} data-tip="Performans görseli oluştur" className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50">
-            <Share2 className="size-4" /> Paylaş
-          </button>
+          {canShare && (
+            <button type="button" onClick={() => setShare(true)} disabled={rows.length === 0} data-tip="Performans görseli oluştur" className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50">
+              <Share2 className="size-4" /> Paylaş
+            </button>
+          )}
         </span>
       </div>
 
@@ -269,8 +275,8 @@ export function TeamPerformance() {
           ))}
         </div>
       )}
-      {open && <Detail r={open} now={now} live={isToday} multiDay={multiDay} from={from} to={to} onClose={() => setOpenId(null)} />}
-      <ShareDialog open={share} rows={rows} rangeLabel={rangeLabel(from, to)} scopeLabel={scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} onClose={() => setShare(false)} />
+      {open && <Detail r={open} now={now} live={isToday} multiDay={multiDay} from={from} to={to} canRecentCalls={canRecentCalls} onClose={() => setOpenId(null)} />}
+      {canShare && <ShareDialog open={share} rows={rows} rangeLabel={rangeLabel(from, to)} scopeLabel={scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} onClose={() => setShare(false)} />}
     </div>
   );
 }
@@ -401,7 +407,7 @@ function Small({ label, value, hint, warn }: { label: string; value: string; hin
 }
 
 // Detail is everything about one person, opened from a line or a card.
-function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string; onClose: () => void }) {
+function Detail({ r, now, live, multiDay, from, to, canRecentCalls, onClose }: { r: TeamRow; now: number; live: boolean; multiDay: boolean; from: string; to: string; canRecentCalls: boolean; onClose: () => void }) {
   const realSeconds = useRealCallSeconds();
   const [calls, setCalls] = useState(false);
   const reach = reachOf(r);
@@ -477,30 +483,32 @@ function Detail({ r, now, live, multiDay, from, to, onClose }: { r: TeamRow; now
             </Block>
           )}
 
-          <Block title="Son görüşmeler">
-            {r.recent.length === 0 ? (
-              <p className="px-1 text-sm text-muted-foreground">Kayıt yok.</p>
-            ) : (
-              <ul className="space-y-1">
-                {r.recent.map((c, i) => (
-                  <li key={i} className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-xs">
-                    {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
-                    <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
-                    <span className="min-w-0 flex-1 truncate"><span className="font-mono">{displayNumber(c.peer) || c.peer}</span>{c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}</span>
-                    <span className="font-mono tabular-nums">{c.disposition === "answered" ? formatClock(c.durationSeconds) : "—"}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" onClick={() => setCalls(true)} className="mt-2 flex h-9 w-full items-center justify-center gap-1 rounded-xl bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
-              Seçilen tarihlerin bütün görüşmeleri <ChevronRight className="size-3.5" />
-            </button>
-          </Block>
+          {canRecentCalls && (
+            <Block title="Son görüşmeler">
+              {r.recent.length === 0 ? (
+                <p className="px-1 text-sm text-muted-foreground">Kayıt yok.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {r.recent.map((c, i) => (
+                    <li key={i} className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-xs">
+                      {c.direction === "inbound" ? <PhoneIncoming className="size-3.5 shrink-0 text-success" /> : <PhoneOutgoing className="size-3.5 shrink-0 text-primary" />}
+                      <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{stamp(c.startedAt, true)}</span>
+                      <span className="min-w-0 flex-1 truncate"><span className="font-mono">{displayNumber(c.peer) || c.peer}</span>{c.peerName && <span className="text-muted-foreground"> · {c.peerName}</span>}</span>
+                      <span className="font-mono tabular-nums">{c.disposition === "answered" ? formatClock(c.durationSeconds) : "—"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button type="button" onClick={() => setCalls(true)} className="mt-2 flex h-9 w-full items-center justify-center gap-1 rounded-xl bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+                Seçilen tarihlerin bütün görüşmeleri <ChevronRight className="size-3.5" />
+              </button>
+            </Block>
+          )}
 
           <Link to={`/profile/${r.userId}`} className="flex h-10 items-center justify-center rounded-xl border border-border/60 text-sm font-medium hover:bg-accent">Profili aç</Link>
         </div>
       </aside>
-      {calls && <div onClick={(e) => e.stopPropagation()}><AgentCallsDialog row={r} from={from} to={to} onClose={() => setCalls(false)} /></div>}
+      {canRecentCalls && calls && <div onClick={(e) => e.stopPropagation()}><AgentCallsDialog row={r} from={from} to={to} onClose={() => setCalls(false)} /></div>}
     </div>
   );
 }

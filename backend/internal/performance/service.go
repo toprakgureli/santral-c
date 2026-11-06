@@ -179,9 +179,12 @@ func (s *Service) Range(ctx context.Context, actorID uint, fromDay, toDay string
 	if err != nil {
 		return nil, errs.Internal(err)
 	}
-	recent, err := s.repo.RecentCalls(ctx, from, to, 6)
-	if err != nil {
-		return nil, errs.Internal(err)
+	var recent map[uint][]models.CallLog
+	if actor.Can(enums.PerformanceRecentCalls) {
+		recent, err = s.repo.RecentCalls(ctx, from, to, 6)
+		if err != nil {
+			return nil, errs.Internal(err)
+		}
 	}
 	// WhatsApp may not be in use; its figures are optional.
 	wa, _ := s.repo.WhatsApp(ctx, from, to)
@@ -283,6 +286,9 @@ func (s *Service) AgentCalls(ctx context.Context, actorID, userID uint, fromDay,
 	actor, err := s.users.GetByID(ctx, actorID)
 	if err != nil {
 		return nil, err
+	}
+	if !actor.Can(enums.PerformanceRecentCalls) {
+		return nil, errs.Forbidden("Son görüşmeleri görme yetkin yok.")
 	}
 	var roleIDs []uint
 	switch {

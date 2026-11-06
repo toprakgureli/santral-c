@@ -102,6 +102,6 @@ func NewRouter(handler *Handler, guard fiber.Handler, need middlewares.Requirer)
 func (r *Router) Routes(g fiber.Router) {
 	view := r.need(enums.PerformanceViewAll, enums.PerformanceViewRole)
 	g.Get("/performance/today", r.guard, view, r.handler.Today)
-	g.Get("/performance/calls", r.guard, view, r.handler.AgentCalls)
+	g.Get("/performance/calls", r.guard, view, r.need(enums.PerformanceRecentCalls), r.handler.AgentCalls)
 	g.Get("/performance/alerts", r.guard, r.need(enums.PerformanceLiveAlerts), r.handler.Alerts)
 }

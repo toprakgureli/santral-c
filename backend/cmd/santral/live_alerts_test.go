@@ -92,3 +92,77 @@ func TestLiveAlertsForTheLead(t *testing.T) {
 		}
 	}
 }
+
+// TestPerformanceRecentCallsPermission: viewing team performance does not
+// include an agent's recent calls list unless the role also holds
+// performance.recent_calls.
+func TestPerformanceRecentCallsPermission(t *testing.T) {
+	srv, db := testServer(t)
+	agentRole := customRole(t, db, enums.CallOriginate, enums.CallViewOwn)
+	agent := person(t, db, "Çağrı yapan", true, agentRole)
+	without := person(t, db, "Özet gören", false, customRole(t, db, enums.PerformanceViewAll))
+	with := person(t, db, "Son görüşmeleri gören", false, customRole(t, db, enums.PerformanceViewAll, enums.PerformanceRecentCalls))
+	wb, ab := signInAs(t, srv, without), signInAs(t, srv, with)
+
+	stamp := time.Now().UnixNano()
+	now := time.Now().Add(-10 * time.Minute)
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM call_logs WHERE user_id = ?", agent.ID)
+	})
+	if err := db.Exec(`INSERT INTO call_logs (call_id, user_id, direction, peer_number, peer_key, disposition, started_at, answered_at, ended_at, duration_seconds, hooks_done)
+		VALUES (?, ?, 'outbound', '05550001234', '5550001234', 'answered', ?, ?, ?, 45, true)`,
+		fmt.Sprintf("rc-%d", stamp), agent.ID, now, now.Add(2*time.Second), now.Add(47*time.Second)).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	type teamResp struct {
+		Items []struct {
+			UserID uint                    `json:"userId"`
+			Recent []struct{ Peer string } `json:"recent"`
+		} `json:"items"`
+	}
+
+	var teamWithout teamResp
+	r := wb.do(fiber.MethodGet, "/api/v1/performance/today", nil)
+	if r.status != fiber.StatusOK {
+		t.Fatalf("without recent_calls: /performance/today answered %d: %s", r.status, r.body)
+	}
+	r.json(t, &teamWithout)
+	for _, it := range teamWithout.Items {
+		if it.UserID == agent.ID && len(it.Recent) != 0 {
+			t.Fatalf("without performance.recent_calls got %d recent calls, want 0", len(it.Recent))
+		}
+	}
+	if c := wb.do(fiber.MethodGet, fmt.Sprintf("/api/v1/performance/calls?userId=%d", agent.ID), nil); c.status != fiber.StatusForbidden {
+		t.Fatalf("without performance.recent_calls: /performance/calls answered %d, want 403", c.status)
+	}
+
+	var teamWith teamResp
+	r = ab.do(fiber.MethodGet, "/api/v1/performance/today", nil)
+	if r.status != fiber.StatusOK {
+		t.Fatalf("with recent_calls: /performance/today answered %d: %s", r.status, r.body)
+	}
+	r.json(t, &teamWith)
+	foundRecent := false
+	for _, it := range teamWith.Items {
+		if it.UserID == agent.ID {
+			foundRecent = len(it.Recent) == 1
+		}
+	}
+	if !foundRecent {
+		t.Fatalf("with performance.recent_calls did not receive the agent's recent call")
+	}
+	var calls struct {
+		Items []struct {
+			UUID string `json:"uuid"`
+		} `json:"items"`
+	}
+	c := ab.do(fiber.MethodGet, fmt.Sprintf("/api/v1/performance/calls?userId=%d", agent.ID), nil)
+	if c.status != fiber.StatusOK {
+		t.Fatalf("with performance.recent_calls: /performance/calls answered %d: %s", c.status, c.body)
+	}
+	c.json(t, &calls)
+	if len(calls.Items) != 1 {
+		t.Fatalf("with performance.recent_calls: got %d calls, want 1", len(calls.Items))
+	}
+}
