@@ -15,6 +15,9 @@ let lastSentTheme = null;
 function detectAndSendTheme() {
   try {
     const root = document.documentElement;
+    if (root && !root.getAttribute("data-santralc-ext")) {
+      root.setAttribute("data-santralc-ext", "desktop");
+    }
     let theme = root ? root.getAttribute("data-theme") : null;
     if (!theme) {
       try {

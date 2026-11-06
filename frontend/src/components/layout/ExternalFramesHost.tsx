@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ExternalLink, Globe, Info, PowerOff, RefreshCw, ShieldAlert } from "lucide-react";
+import {
+  AppWindow,
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Globe,
+  Home,
+  Info,
+  PowerOff,
+  RefreshCw,
+  ShieldAlert,
+} from "lucide-react";
 import { api } from "@/api/client";
 import type { CustomMenuEmbedCheck, CustomMenuItem } from "@/api/types";
 import { Badge, Button, Card, EmptyState, Spinner } from "@/components/ui";
@@ -23,10 +34,46 @@ function hostOf(rawUrl: string): string {
   }
 }
 
+function openPopupWindow(menu: CustomMenuItem) {
+  const width = Math.min(1260, Math.round(window.screen.availWidth * 0.85));
+  const height = Math.min(840, Math.round(window.screen.availHeight * 0.85));
+  const left = Math.max(20, Math.round((window.screen.availWidth - width) / 2));
+  const top = Math.max(20, Math.round((window.screen.availHeight - height) / 2));
+  window.open(
+    menu.url,
+    `santral_popup_${menu.id}`,
+    `popup=yes,width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`,
+  );
+}
+
 export default function ExternalFramesHost() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { items, loading, openedIds, markOpened, closeFrame, reloadKey, reloadFrame } = useCustomMenus();
+  const frameRefs = useRef<Record<number, HTMLIFrameElement | null>>({});
+
+  const sendFrameNav = (menu: CustomMenuItem, cmd: "back" | "forward" | "home") => {
+    const frame = frameRefs.current[menu.id];
+    if (cmd === "home") {
+      if (frame) {
+        frame.src = menu.url;
+      }
+      return;
+    }
+    try {
+      frame?.contentWindow?.postMessage({ santralc: "frame-nav", cmd }, "*");
+    } catch {
+      /* cross-origin frame handles message via extension or Electron preload */
+    }
+    try {
+      window.postMessage(
+        { santralc: "panel", type: "frame-nav", menuId: menu.id, url: menu.url, cmd },
+        window.location.origin,
+      );
+    } catch {
+      /* ignore */
+    }
+  };
 
   const activeId = useMemo(() => parseAppId(pathname), [pathname]);
   const activeMenu = useMemo(
@@ -144,9 +191,36 @@ export default function ExternalFramesHost() {
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {!showFallback && (
                   <>
+                    <div className="mr-1 flex items-center rounded-lg border border-border/60 bg-background/60 p-0.5">
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => sendFrameNav(menu, "back")}
+                        data-tip="Uygulama içinde önceki sayfaya dön"
+                      >
+                        <ArrowLeft className="size-3.5" />
+                        <span className="hidden lg:inline">Geri</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => sendFrameNav(menu, "forward")}
+                        data-tip="Uygulama içinde sonraki sayfaya ilerle"
+                      >
+                        <ArrowRight className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => sendFrameNav(menu, "home")}
+                        data-tip="Menünün başlangıç adresine dön"
+                      >
+                        <Home className="size-3.5" />
+                      </Button>
+                    </div>
                     <Button
                       variant="ghost"
                       className="h-8 px-2.5 text-xs"
@@ -170,6 +244,15 @@ export default function ExternalFramesHost() {
                     </Button>
                   </>
                 )}
+                <Button
+                  variant="secondary"
+                  className="h-8 px-2.5 text-xs"
+                  onClick={() => openPopupWindow(menu)}
+                  data-tip="Harici web sitesini bağımsız uygulama penceresi (Popup) olarak aç"
+                >
+                  <AppWindow className="size-3.5" />
+                  <span className="hidden sm:inline">Popup Aç</span>
+                </Button>
                 <Button
                   variant="secondary"
                   className="h-8 px-3 text-xs"
@@ -199,12 +282,16 @@ export default function ExternalFramesHost() {
                   </div>
 
                   <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
-                    <Button onClick={() => window.open(menu.url, "_blank", "noopener,noreferrer")}>
+                    <Button onClick={() => openPopupWindow(menu)}>
+                      <AppWindow />
+                      Popup Pencere Olarak Aç
+                    </Button>
+                    <Button variant="secondary" onClick={() => window.open(menu.url, "_blank", "noopener,noreferrer")}>
                       <ExternalLink />
                       Yeni Sekmede Aç
                     </Button>
                     <Button
-                      variant="secondary"
+                      variant="ghost"
                       onClick={() => setForceEmbed((prev) => ({ ...prev, [menu.id]: true }))}
                     >
                       Yine de Uygulama İçinde Dene
@@ -216,6 +303,9 @@ export default function ExternalFramesHost() {
               <div className="relative flex flex-1 flex-col bg-background">
                 <iframe
                   key={frameInstanceKey}
+                  ref={(el) => {
+                    frameRefs.current[menu.id] = el;
+                  }}
                   data-testid={`external-iframe-${menu.id}`}
                   src={menu.url}
                   title={menu.label}

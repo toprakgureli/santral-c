@@ -270,26 +270,26 @@ if (
           details.statusCode === 307 ||
           details.statusCode === 308;
 
-        if (isPost && !isLogoutUrl(details.url) && nonDeleted.length > 0) {
-          const lockedMap = activeLock ? activeLock.cookies : new Map();
-          for (const c of nonDeleted) {
-            lockedMap.set(c.key, c.details);
-            enqueueCookieSet(c.details);
+        if (isPost && !isLogoutUrl(details.url)) {
+          if (nonDeleted.length > 0) {
+            const lockedMap = activeLock ? activeLock.cookies : new Map();
+            for (const c of nonDeleted) {
+              lockedMap.set(c.key, c.details);
+              enqueueCookieSet(c.details);
+            }
+            postLoginLocks.set(lockKey, {
+              expiresAt: now + POST_LOGIN_LOCK_MS,
+              cookies: lockedMap,
+            });
           }
-          postLoginLocks.set(lockKey, {
-            expiresAt: now + POST_LOGIN_LOCK_MS,
-            cookies: lockedMap,
-          });
 
           if (isRedirect && locationHeader) {
             try {
               const resolvedTarget = new URL(locationHeader, details.url).href;
-              if (!isLoginUrl(resolvedTarget)) {
-                pendingRedirects.set(frameKey, {
-                  url: resolvedTarget,
-                  expiresAt: now + PENDING_REDIRECT_TTL_MS,
-                });
-              }
+              pendingRedirects.set(frameKey, {
+                url: resolvedTarget,
+                expiresAt: now + PENDING_REDIRECT_TTL_MS,
+              });
             } catch {}
           }
           return;
@@ -460,7 +460,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     panelOrigin().then((origin) => sendResponse({ origin }));
     return true;
   }
-  if (msg.type === "checkFrameRedirect") {
+  if (msg.type === "checkFrameRedirect" || msg.type === "completeFormPost") {
     const tabId = sender && sender.tab ? sender.tab.id : undefined;
     const frameId = sender ? sender.frameId : undefined;
     if (typeof tabId !== "number" || typeof frameId !== "number" || frameId <= 0) {
@@ -476,6 +476,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
       pendingRedirects.delete(frameKey);
+      if (msg.type === "completeFormPost") {
+        sendResponse({ redirectUrl: pending.url });
+        return;
+      }
       const currentHref = typeof msg.href === "string" && msg.href ? msg.href : sender.url || "";
       if (currentHref && !isLoginUrl(currentHref) && currentHref === pending.url) {
         sendResponse({ redirectUrl: null });

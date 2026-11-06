@@ -244,3 +244,37 @@ test("protects POST login cookies against 302 redirect race and recovers frame n
   );
   assert.equal(secondRedir.redirectUrl, null);
 });
+
+test("supports multi-step login to OTP screen even when POST redirects back to /login with OTP session cookie", async () => {
+  const w = load();
+
+  // Step 1: POST /login validates credentials, sends SMS OTP, sets OTP session cookie, and redirects to /login (or /otp)
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 9,
+    type: "xmlhttprequest",
+    method: "POST",
+    statusCode: 302,
+    url: "https://admin.ilksms.com/login",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "vatanadmin_session=S2_OTP_STEP; Max-Age=7200; path=/; httponly" },
+      { name: "Location", value: "https://admin.ilksms.com/login" },
+    ],
+  });
+
+  const reply = await w.send(
+    { to: "sw", type: "completeFormPost", href: "https://admin.ilksms.com/login", actionUrl: "https://admin.ilksms.com/login" },
+    w.tabs[0],
+    9,
+    "https://admin.ilksms.com/login",
+  );
+
+  // Verify the OTP session cookie was committed as SameSite=None; Secure before completeFormPost resolved
+  const otpCookie = w.cookiesSet.find((c) => c.value === "S2_OTP_STEP");
+  assert.equal(Boolean(otpCookie), true);
+  assert.equal(otpCookie.sameSite, "no_restriction");
+  assert.equal(otpCookie.secure, true);
+
+  // Verify completeFormPost returns the redirect target (/login) so the iframe loads the OTP entry screen
+  assert.equal(reply.redirectUrl, "https://admin.ilksms.com/login");
+});

@@ -20,6 +20,135 @@
       window.location.replace(targetUrl);
     };
 
+    // Allow Santral's header toolbar (Geri / İleri) to control history inside the iframe
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (!d || d.santralc !== "frame-nav") return;
+      if (d.cmd === "back") {
+        try {
+          window.history.back();
+        } catch {}
+      } else if (d.cmd === "forward") {
+        try {
+          window.history.forward();
+        } catch {}
+      }
+    });
+
+    // Keep target="_blank" / "_top" / "_parent" links inside the iframe workspace
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const anchor = e.target && typeof e.target.closest === "function" ? e.target.closest("a[href]") : null;
+        if (!anchor) return;
+        const target = (anchor.getAttribute("target") || "").toLowerCase();
+        if (target === "_blank" || target === "_top" || target === "_parent") {
+          const href = anchor.href;
+          if (href && /^https?:\/\//i.test(href) && !anchor.hasAttribute("download")) {
+            e.preventDefault();
+            window.location.assign(href);
+          }
+        }
+      },
+      true,
+    );
+
+    // Intercept standard server-side POST forms (e.g. multi-step login -> SMS OTP -> dashboard)
+    // using redirect:"manual" so Chrome never fires a premature 302 GET before SameSite=None
+    // session cookies (like vatanadmin_session / flash OTP state) are written to the cookie store.
+    window.addEventListener(
+      "submit",
+      (e) => {
+        if (e.defaultPrevented) return;
+        const form = e.target;
+        if (!form || form.tagName !== "FORM") return;
+        const method = String(form.getAttribute("method") || form.method || "GET").toUpperCase();
+        if (method !== "POST") return;
+
+        let actionUrl;
+        try {
+          actionUrl = new URL(form.getAttribute("action") || window.location.href, window.location.href).href;
+        } catch {
+          return;
+        }
+        if (new URL(actionUrl).origin !== window.location.origin) return;
+
+        const enctype = String(form.getAttribute("enctype") || form.enctype || "").toLowerCase();
+        let body;
+        try {
+          const fd = e.submitter ? new FormData(form, e.submitter) : new FormData(form);
+          if (enctype.includes("multipart/form-data")) {
+            body = fd;
+          } else {
+            const params = new URLSearchParams();
+            for (const [k, v] of fd.entries()) {
+              if (typeof v === "string") {
+                params.append(k, v);
+              } else {
+                // File input present without multipart header: fall back to FormData
+                body = fd;
+                break;
+              }
+            }
+            if (!body) body = params;
+          }
+        } catch {
+          return;
+        }
+
+        e.preventDefault();
+
+        fetch(actionUrl, {
+          method: "POST",
+          body,
+          credentials: "include",
+          redirect: "manual",
+        })
+          .then((res) => {
+            chrome.runtime.sendMessage(
+              { to: "sw", type: "completeFormPost", href: location.href, actionUrl },
+              async (reply) => {
+                const redirectUrl =
+                  !chrome.runtime.lastError && reply && typeof reply.redirectUrl === "string"
+                    ? reply.redirectUrl
+                    : null;
+
+                if (redirectUrl) {
+                  window.location.assign(redirectUrl);
+                  return;
+                }
+
+                if (res.type === "opaqueredirect") {
+                  window.location.assign(actionUrl);
+                  return;
+                }
+
+                try {
+                  const html = await res.text();
+                  if (res.url && new URL(res.url).origin === window.location.origin) {
+                    try {
+                      window.history.replaceState(null, "", res.url);
+                    } catch {}
+                  }
+                  document.open();
+                  document.write(html);
+                  document.close();
+                } catch {
+                  window.location.assign(actionUrl);
+                }
+              },
+            );
+          })
+          .catch(() => {
+            try {
+              HTMLFormElement.prototype.submit.call(form);
+            } catch {}
+          });
+      },
+      false,
+    );
+
     try {
       chrome.runtime.onMessage.addListener((msg) => {
         if (msg && msg.to === "frame" && msg.type === "navigate" && typeof msg.url === "string") {
