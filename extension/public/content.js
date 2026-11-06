@@ -12,7 +12,37 @@
 // really under the pointer.
 
 (() => {
-  if (window.top !== window) return;
+  if (window.top !== window) {
+    let redirected = false;
+    const navigateTo = (targetUrl) => {
+      if (redirected || typeof targetUrl !== "string" || !targetUrl) return;
+      redirected = true;
+      window.location.replace(targetUrl);
+    };
+
+    try {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg && msg.to === "frame" && msg.type === "navigate" && typeof msg.url === "string") {
+          navigateTo(msg.url);
+        }
+      });
+      chrome.runtime.sendMessage({ to: "sw", type: "checkFrameRedirect", href: location.href }, (res) => {
+        if (!chrome.runtime.lastError && res && typeof res.redirectUrl === "string" && res.redirectUrl) {
+          navigateTo(res.redirectUrl);
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  try {
+    document.documentElement?.setAttribute("data-santralc-ext", "0.4.0");
+  } catch {
+    /* ignore */
+  }
+
   if (document.getElementById("santralc-miniwidget-host")) return;
 
   const host = document.createElement("div");

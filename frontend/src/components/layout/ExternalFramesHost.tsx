@@ -111,7 +111,10 @@ export default function ExternalFramesHost() {
         const isCurrent = activeMenu?.id === menu.id;
         const Icon = customMenuIcon(menu.icon);
         const check = checks[menu.id];
-        const blockedByHeader = check && !check.embeddable;
+        const hasExtBridge =
+          typeof document !== "undefined" &&
+          Boolean(document.documentElement.getAttribute("data-santralc-ext"));
+        const blockedByHeader = !hasExtBridge && check && !check.embeddable;
         const preferNewTab = menu.openMode === "new_tab" || Boolean(blockedByHeader);
         const showFallback = preferNewTab && !forceEmbed[menu.id];
         const frameInstanceKey = `${menu.id}-${reloadKey[menu.id] ?? 0}`;
@@ -135,7 +138,9 @@ export default function ExternalFramesHost() {
                 <span className="truncate text-sm font-semibold">{menu.label}</span>
                 <Badge tone="slate">{hostOf(menu.url)}</Badge>
                 {!showFallback && (
-                  <Badge tone="green">Oturum Korunuyor</Badge>
+                  <Badge tone="green">
+                    {hasExtBridge ? "Eklenti Köprüsü Aktif" : "Oturum Korunuyor"}
+                  </Badge>
                 )}
               </div>
 

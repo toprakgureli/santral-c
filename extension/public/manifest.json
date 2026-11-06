@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SantralC-MiniWidget",
-  "version": "0.3.0",
-  "description": "Her sekmede görünen mini softphone: ara, cevapla, sustur, beklet, aktar.",
+  "version": "0.4.0",
+  "description": "Her sekmede görünen mini softphone ve panel içi harici uygulama (iframe) oturum köprüsü.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "SantralC Mini",
@@ -16,7 +16,11 @@
   },
   "permissions": [
     "tabs",
-    "storage"
+    "storage",
+    "cookies",
+    "webRequest",
+    "declarativeNetRequest",
+    "contentSettings"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -31,7 +35,7 @@
         "content.js"
       ],
       "run_at": "document_idle",
-      "all_frames": false
+      "all_frames": true
     }
   ],
   "icons": {
