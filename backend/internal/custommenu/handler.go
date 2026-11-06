@@ -46,7 +46,7 @@ func (h *Handler) Visible(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(res)
+	return c.JSON(fiber.Map{"items": res})
 }
 
 // Check inspects whether a custom menu's target URL allows iframe embedding.
@@ -76,7 +76,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(res)
+	return c.JSON(fiber.Map{"items": res})
 }
 
 // Roles returns all selectable roles for the menu permission form.
@@ -89,7 +89,7 @@ func (h *Handler) Roles(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(res)
+	return c.JSON(fiber.Map{"items": res})
 }
 
 // Create creates a new custom menu item.

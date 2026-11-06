@@ -518,9 +518,18 @@ export const api = {
     request<EscalationRecord>("/escalations/none", { method: "POST", body: JSON.stringify(body) }),
 
   // Custom Menus (dynamic sidebar applications)
-  menusVisible: () => request<{ items: CustomMenuItem[] }>("/menus/visible").then((r) => r.items),
-  menusList: () => request<{ items: CustomMenuItem[] }>("/menus").then((r) => r.items),
-  menusRoles: () => request<{ items: CustomMenuRole[] }>("/menus/roles").then((r) => r.items),
+  menusVisible: () =>
+    request<{ items?: CustomMenuItem[] } | CustomMenuItem[]>("/menus/visible").then((r) =>
+      Array.isArray(r) ? r : (r?.items ?? []),
+    ),
+  menusList: () =>
+    request<{ items?: CustomMenuItem[] } | CustomMenuItem[]>("/menus").then((r) =>
+      Array.isArray(r) ? r : (r?.items ?? []),
+    ),
+  menusRoles: () =>
+    request<{ items?: CustomMenuRole[] } | CustomMenuRole[]>("/menus/roles").then((r) =>
+      Array.isArray(r) ? r : (r?.items ?? []),
+    ),
   menuCreate: (body: CustomMenuInput) =>
     request<CustomMenuItem>("/menus", { method: "POST", body: JSON.stringify(body) }),
   menuUpdate: (id: number, body: CustomMenuInput) =>

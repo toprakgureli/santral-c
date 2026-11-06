@@ -34,7 +34,8 @@ export function CustomMenusProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await api.menusVisible();
+      const raw = await api.menusVisible();
+      const list = Array.isArray(raw) ? raw : [];
       setItems(list);
       // Drop any opened iframe whose menu was removed or deactivated.
       const validIds = new Set(list.map((m) => m.id));

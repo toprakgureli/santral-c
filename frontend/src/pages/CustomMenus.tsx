@@ -52,8 +52,8 @@ export function CustomMenus() {
       api.menusList().catch(() => [] as CustomMenuItem[]),
       api.menusRoles().catch(() => [] as CustomMenuRole[]),
     ]);
-    setItems(menuList);
-    setRoles(roleList);
+    setItems(Array.isArray(menuList) ? menuList : []);
+    setRoles(Array.isArray(roleList) ? roleList : []);
     setLoading(false);
   }, []);
 
@@ -164,9 +164,9 @@ export function CustomMenus() {
                       <span className="truncate font-mono text-[0.7rem]">{item.url}</span>
                       <span>·</span>
                       <span>
-                        {item.roles.length === 0
+                        {(item.roles ?? []).length === 0
                           ? "Tüm roller görebilir"
-                          : `Roller: ${item.roles.map((r) => r.displayName).join(", ")}`}
+                          : `Roller: ${(item.roles ?? []).map((r) => r.displayName).join(", ")}`}
                       </span>
                     </span>
                   }
