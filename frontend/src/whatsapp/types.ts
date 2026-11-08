@@ -135,6 +135,12 @@ export interface WAListResult {
   me: number;
 }
 
+export interface WABulkResolveResult {
+  resolved: number;
+  skipped: number;
+  ids: number[];
+}
+
 export interface WAEvent {
   type: string;
   conversationId?: number;

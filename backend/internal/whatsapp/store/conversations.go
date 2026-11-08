@@ -42,6 +42,26 @@ func (r *Repository) InboxConversations(ctx context.Context, channels []uint, si
 	return convs, nil
 }
 
+// OpenConversationsForBulk lists open, pending and chatbot conversations for
+// bulk resolution. When ownerOnly > 0, only tickets owned by that user are
+// returned; when channels is not nil, only conversations on those devices.
+func (r *Repository) OpenConversationsForBulk(ctx context.Context, channels []uint, ownerOnly uint) ([]models.WAConversation, error) {
+	q := r.db.WithContext(ctx).Model(&models.WAConversation{}).Where("ticket_id IS NOT NULL")
+	if channels != nil {
+		q = q.Where("channel_id IN ?", channels)
+	}
+	if ownerOnly > 0 {
+		q = q.Where("ticket_id IN (SELECT id FROM wa_tickets WHERE status <> 'resolved' AND owner_id = ?)", ownerOnly)
+	} else {
+		q = q.Where("ticket_id IN (SELECT id FROM wa_tickets WHERE status <> 'resolved')")
+	}
+	var convs []models.WAConversation
+	if err := q.Order("last_message_at ASC NULLS FIRST").Limit(2000).Find(&convs).Error; err != nil {
+		return nil, err
+	}
+	return convs, nil
+}
+
 // MaxConversationVersion is the newest change version of any conversation,
 // or zero when there is none.
 func (r *Repository) MaxConversationVersion(ctx context.Context) (int64, error) {

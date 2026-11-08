@@ -4,7 +4,7 @@
 // ones count in grey. A right click (or a long press) opens a small menu
 // to mark as read or unread, pin, mute or copy the number.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BellOff, Bot, Check, ChevronRight, Copy, EyeOff, Hand, Hourglass, Inbox, MailOpen, Mail, Pin, PinOff, Search, Bell, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -17,7 +17,6 @@ import type { WAChannel, WAConversation, WAMute } from "@/whatsapp/types";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 import { inBucket, isWaiting, listTime, since, sortTime, waitShown, waitTip, type Bucket } from "@/whatsapp/util";
 import { useTopmost } from "@/components/ui/windowStack";
-import { WindowedList } from "@/components/ui/WindowedList";
 
 const CHIPS: { key: Bucket; label: string; tip: string }[] = [
   { key: "mine", label: "Benim", tip: "Sorumlu olduğun ya da yardım ettiğin sohbetler" },
@@ -126,7 +125,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
   };
 
   return (
-    <aside className="flex h-full w-full shrink-0 flex-col border-r border-border/60 bg-card">
+    <aside className="flex h-full min-h-0 w-full shrink-0 flex-col border-r border-border/60 bg-card">
       {header}
       <div className="space-y-2.5 px-3 pb-2">
         <div className="relative">
@@ -134,7 +133,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: isim, numara, etiket" className="h-10 w-full rounded-xl bg-muted/70 pl-10 pr-9 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/70 focus:bg-card focus:ring-2 focus:ring-wa-accent/40" />
           {q && <button type="button" onClick={() => setQ("")} aria-label="Temizle" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
         </div>
-        <div style={{ scrollbarWidth: "none" }} className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-wrap gap-1 pb-0.5">
           {CHIPS.map((t) => {
             const n = counts[t.key];
             const on = bucket === t.key;
@@ -163,7 +162,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
         )}
       </div>
 
-      <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto pb-3 [overflow-anchor:none]">
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto pb-3">
         {!wa.loaded && Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3">
             <div className="size-12 animate-pulse rounded-full bg-muted/70" />
@@ -176,16 +175,21 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
             <p className="text-sm font-medium">{q ? "Eşleşen sohbet yok" : EMPTY[bucket]}</p>
           </div>
         )}
-        <WindowedList
-          scroller={scroller}
-          items={list}
-          keyOf={convKey}
-          estimate={77}
-          render={(c) => (
-            <Row c={c} me={wa.me} now={now} active={c.id === activeId} typing={wa.typing(c.id)} showChannel={channels.length > 1} muted={wa.muted(c.id)} pinned={wa.pinned(c.id)}
-              onOpen={() => onOpen(c.id)} onMenu={(x, y) => setMenu({ c, x, y })} />
-          )}
-        />
+        {list.map((c) => (
+          <Row
+            key={c.id}
+            c={c}
+            me={wa.me}
+            now={now}
+            active={c.id === activeId}
+            typing={wa.typing(c.id)}
+            showChannel={channels.length > 1}
+            muted={wa.muted(c.id)}
+            pinned={wa.pinned(c.id)}
+            onOpen={onOpen}
+            onMenu={setMenu}
+          />
+        ))}
         {bucket === "resolved" && list.length >= 20 && !olderDone && (
           <button type="button" onClick={() => void loadOlder()} className="mx-auto mt-2 block rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Daha eski sohbetler</button>
         )}
@@ -195,9 +199,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
   );
 }
 
-const convKey = (c: WAConversation) => c.id;
-
-function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, onMenu }: { c: WAConversation; me: number; now: number; active: boolean; typing: string | null; showChannel: boolean; muted: boolean; pinned: boolean; onOpen: () => void; onMenu: (x: number, y: number) => void }) {
+const Row = memo(function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, onMenu }: { c: WAConversation; me: number; now: number; active: boolean; typing: string | null; showChannel: boolean; muted: boolean; pinned: boolean; onOpen: (id: number) => void; onMenu: (m: { c: WAConversation; x: number; y: number }) => void }) {
   const t = c.ticket;
   const waiting = isWaiting(c);
   const last = c.last;
@@ -206,9 +208,9 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
   return (
     <button
       type="button"
-      onClick={onOpen}
-      onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}
-      onTouchStart={(e) => { const p = e.touches[0]; press.current = window.setTimeout(() => onMenu(p.clientX, p.clientY), 550); }}
+      onClick={() => onOpen(c.id)}
+      onContextMenu={(e) => { e.preventDefault(); onMenu({ c, x: e.clientX, y: e.clientY }); }}
+      onTouchStart={(e) => { const p = e.touches[0]; press.current = window.setTimeout(() => onMenu({ c, x: p.clientX, y: p.clientY }), 550); }}
       onTouchEnd={() => { if (press.current) window.clearTimeout(press.current); }}
       onTouchMove={() => { if (press.current) window.clearTimeout(press.current); }}
       className={cn("group flex w-full items-center gap-3 pl-3 pr-0 text-left transition-colors", active ? "bg-accent" : "hover:bg-accent/50")}
@@ -249,7 +251,7 @@ function Row({ c, me, now, active, typing, showChannel, muted, pinned, onOpen, o
       </span>
     </button>
   );
-}
+});
 
 // Handler is the last line of a row: who is looking after the conversation
 // (their photo and first name, "+2" when others help), or that it waits in

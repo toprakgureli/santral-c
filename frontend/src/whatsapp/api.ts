@@ -27,6 +27,7 @@ import type {
   WAHistoryItem,
   WAIntegration,
   WAListResult,
+  WABulkResolveResult,
   WAMessage,
   WAQuickReply,
   WAReadInfo,
@@ -74,6 +75,9 @@ export const waApi = {
   // seenMessageId is the newest message on the agent's screen: a customer
   // message after it keeps the chat open (409).
   resolve: (id: number, seenMessageId?: number) => request<void>(`/wa/conversations/${id}/resolve`, json("POST", seenMessageId ? { seenMessageId } : undefined)),
+  bulkCandidates: () => request<WAConversation[]>("/wa/conversations/bulk-candidates"),
+  bulkResolve: (body: { conversationIds: number[]; sendSurvey?: boolean; note?: string }) =>
+    request<WABulkResolveResult>("/wa/conversations/bulk-resolve", json("POST", body)),
   reopen: (id: number) => request<void>(`/wa/conversations/${id}/reopen`, json("POST")),
   updateTicket: (id: number, body: { status?: string; priority?: string; category?: string; tags?: string[] }) => request<void>(`/wa/conversations/${id}/ticket`, json("PATCH", body)),
   retry: (messageId: number) => request<void>(`/wa/messages/${messageId}/retry`, json("POST")),

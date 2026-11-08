@@ -58,4 +58,7 @@ func TestManagerCanGrantTeamRoles(t *testing.T) {
 			}
 		}
 	}
+	if !Grantable(func(p Permission) bool { return p == WABulkResolveAll }, WABulkResolveOwn) {
+		t.Fatal("whatsapp.bulk_resolve_all must allow granting whatsapp.bulk_resolve_own")
+	}
 }

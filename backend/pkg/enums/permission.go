@@ -108,6 +108,8 @@ const (
 	WATake            Permission = "whatsapp.take"
 	WAAssign          Permission = "whatsapp.assign"
 	WAResolve         Permission = "whatsapp.resolve"
+	WABulkResolveOwn  Permission = "whatsapp.bulk_resolve_own"
+	WABulkResolveAll  Permission = "whatsapp.bulk_resolve_all"
 	WATemplateSend    Permission = "whatsapp.template_send"
 	WATemplateManage  Permission = "whatsapp.template_manage"
 	WAQuickReply      Permission = "whatsapp.quick_reply_manage"
@@ -210,6 +212,8 @@ var permissions = []PermissionInfo{
 	{WATake, "Başkasına atanmış sohbeti kendi üstüne alır"},
 	{WAAssign, "Sohbeti başka bir kişiye ya da ekibe aktarır"},
 	{WAResolve, "Sohbeti çözüldü olarak kapatır"},
+	{WABulkResolveOwn, "Kendi üstündeki WhatsApp sohbetlerini filtreleyerek toplu çözüldü olarak kapatır"},
+	{WABulkResolveAll, "Seçilen temsilcilerin ve tüm cihazların WhatsApp sohbetlerini filtreleyerek toplu çözüldü olarak kapatır"},
 	{WATemplateSend, "Şablonla mesaj gönderir"},
 	{WATemplateManage, "Şablon oluşturur, düzenler, siler"},
 	{WAQuickReply, "Hazır yanıtları düzenler"},
@@ -292,6 +296,7 @@ var narrowerOf = map[Permission]Permission{
 	EscalationListOwn:   EscalationListAll,
 	PerformanceViewRole: PerformanceViewAll,
 	WAViewTeam:          WAViewAll,
+	WABulkResolveOwn:    WABulkResolveAll,
 }
 
 // behaviours change what the panel does for the user rather than what they

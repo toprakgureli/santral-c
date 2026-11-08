@@ -422,6 +422,16 @@ func (r *Router) Routes(g fiber.Router) {
 		}
 		return s.ResolvedPage(c.UserContext(), uid, before, c.Query("q"))
 	}))
+	a.Get("/conversations/bulk-candidates", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		return s.BulkCandidates(c.UserContext(), uid)
+	}))
+	a.Post("/conversations/bulk-resolve", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in BulkResolveInput
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.BulkResolve(c.UserContext(), uid, in, c.IP())
+	}))
 	a.Get("/conversations/:id", withID(func(c *fiber.Ctx, uid, id uint) (any, error) { return s.Conversation(c.UserContext(), uid, id) }))
 	a.Get("/conversations/:id/messages", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
 		return s.Messages(c.UserContext(), uid, id, qid(c, "before"), qid(c, "after"), qid(c, "around"))

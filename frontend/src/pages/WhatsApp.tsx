@@ -5,9 +5,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PAGE_PERMISSIONS } from "@/lib/menu";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { BarChart3, BellOff, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
+import { BarChart3, BellOff, CheckCheck, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
+import BulkResolveModal from "@/components/whatsapp/BulkResolveModal";
 import ChatPane from "@/components/whatsapp/ChatPane";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import TicketPanel from "@/components/whatsapp/TicketPanel";
@@ -57,6 +58,7 @@ export function WhatsApp() {
     }
   });
   const [fetched, setFetched] = useState<WAConversation | null>(null);
+  const [bulkResolveOpen, setBulkResolveOpen] = useState(false);
   const openId = id ? Number(id) : null;
 
   useEffect(() => {
@@ -147,6 +149,7 @@ export function WhatsApp() {
   // The same list the settings page is guarded with, so the link and the
   // page never disagree.
   const canSettings = canAny(user, PAGE_PERMISSIONS.whatsappSettings);
+  const canBulkResolve = canAny(user, ["whatsapp.bulk_resolve_own", "whatsapp.bulk_resolve_all"]);
 
   if (wa.loaded && channels.length === 0 && wa.conversations.length === 0) {
     return (
@@ -165,8 +168,14 @@ export function WhatsApp() {
     <div className="flex h-16 shrink-0 items-center gap-1 px-4">
       <h1 className="flex-1 text-xl font-bold tracking-tight">Sohbetler</h1>
       {wa.mutedAll && <Link to="/whatsapp/preferences" aria-label="WhatsApp bildirimleri sessizde. WhatsApp ayarlarım'dan açabilirsin." data-tip="WhatsApp bildirimleri sessizde. WhatsApp ayarlarım'dan açabilirsin." className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"><BellOff className="size-[1.15rem]" /></Link>}
+      {canBulkResolve && <HeadBtn tip="Toplu çözümleme" onClick={() => setBulkResolveOpen(true)}><CheckCheck className="size-5" /></HeadBtn>}
       {can(user, "whatsapp.template_send") && <HeadBtn tip="Yeni sohbet başlat" onClick={() => wa.startChat()}><MessageCirclePlus className="size-5" /></HeadBtn>}
       <HeadMenu>
+        {canBulkResolve && (
+          <button type="button" onClick={() => setBulkResolveOpen(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-accent">
+            <CheckCheck className="size-4 text-muted-foreground" /> Toplu çözümleme
+          </button>
+        )}
         {can(user, "whatsapp.callbacks") && <MenuLink to="/whatsapp/callbacks" icon={PhoneCall} label="Geri arama talepleri" />}
         {can(user, "whatsapp.reports") && <MenuLink to="/whatsapp/reports" icon={BarChart3} label="Raporlar" />}
         {can(user, "whatsapp.ratings") && <MenuLink to="/whatsapp/ratings" icon={Star} label="Puanlamalar" />}
@@ -205,6 +214,7 @@ export function WhatsApp() {
           {openId && <Link to="/whatsapp" className="text-sm font-semibold text-wa-accent md:hidden">Sohbet listesine dön</Link>}
         </section>
       )}
+      {canBulkResolve && <BulkResolveModal open={bulkResolveOpen} channels={channels} onClose={() => setBulkResolveOpen(false)} />}
     </div>
   );
 }

@@ -45,6 +45,7 @@ const (
 	AuditWARatingDeleted      string = "whatsapp.rating_deleted"
 	AuditWARatingLinkCreated  string = "whatsapp.rating_link_created"
 	AuditWARatingLinkRevoked  string = "whatsapp.rating_link_revoked"
+	AuditWABulkResolved       string = "whatsapp.bulk_resolved"
 
 	AuditMenuCreated string = "menu.created"
 	AuditMenuUpdated string = "menu.updated"

@@ -487,6 +487,136 @@ func (s *Service) resolveSeen(ctx context.Context, conv *models.WAConversation, 
 	return nil
 }
 
+// BulkResolveInput closes multiple conversations at once.
+type BulkResolveInput struct {
+	ConversationIDs []uint `json:"conversationIds"`
+	SendSurvey      bool   `json:"sendSurvey"`
+	Note            string `json:"note"`
+}
+
+// BulkResolveResult reports which conversations were closed by BulkResolve.
+type BulkResolveResult struct {
+	Resolved int    `json:"resolved"`
+	Skipped  int    `json:"skipped"`
+	IDs      []uint `json:"ids"`
+}
+
+// BulkCandidates returns the unresolved conversations the actor is allowed to
+// close in bulk: all unresolved conversations when they hold
+// WABulkResolveAll, or their own when they hold WABulkResolveOwn.
+func (s *Service) BulkCandidates(ctx context.Context, actorID uint) ([]ConversationView, error) {
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	canAll := v.can(enums.WABulkResolveAll)
+	canOwn := canAll || v.can(enums.WABulkResolveOwn)
+	if !canOwn {
+		return nil, errs.Forbidden("Toplu çözümleme yapma yetkin yok.")
+	}
+	var chans []uint
+	if !canAll && !v.can(enums.WAViewAll) {
+		for id := range v.channels {
+			chans = append(chans, id)
+		}
+		if len(chans) == 0 {
+			return []ConversationView{}, nil
+		}
+	}
+	var ownerOnly uint
+	if !canAll {
+		ownerOnly = actorID
+	}
+	convs, err := s.repo.OpenConversationsForBulk(ctx, chans, ownerOnly)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	return s.summaries(ctx, convs)
+}
+
+// BulkResolve closes the chosen conversations according to the actor's
+// bulk-resolve permission: WABulkResolveAll may close any unresolved ticket,
+// while WABulkResolveOwn may close only tickets owned by the actor.
+func (s *Service) BulkResolve(ctx context.Context, actorID uint, in BulkResolveInput, ip string) (*BulkResolveResult, error) {
+	v, err := s.viewerOf(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	canAll := v.can(enums.WABulkResolveAll)
+	canOwn := canAll || v.can(enums.WABulkResolveOwn)
+	if !canOwn {
+		return nil, errs.Forbidden("Toplu çözümleme yapma yetkin yok.")
+	}
+	seen := make(map[uint]bool, len(in.ConversationIDs))
+	ids := make([]uint, 0, len(in.ConversationIDs))
+	for _, id := range in.ConversationIDs {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, errs.Invalid("Çözümlenecek en az bir sohbet seç.", nil)
+	}
+	if len(ids) > 1000 {
+		ids = ids[:1000]
+	}
+	note := truncate(in.Note, 300)
+	actorName := s.repo.UserName(ctx, actorID)
+	eventLine := actorName + " sohbeti toplu çözümleme ile kapattı."
+	if note != "" {
+		eventLine += " Not: " + note
+	}
+	chCache := map[uint]*models.WAChannel{}
+	out := &BulkResolveResult{IDs: []uint{}}
+	for _, convID := range ids {
+		conv, ticket, err := s.repo.Conversation(ctx, convID)
+		if err != nil || conv == nil || ticket == nil || ticket.Status == "resolved" {
+			out.Skipped++
+			continue
+		}
+		if !canAll {
+			if !v.seesChannel(conv.ChannelID) || ticket.OwnerID == nil || *ticket.OwnerID != actorID {
+				out.Skipped++
+				continue
+			}
+		}
+		before := s.audience(ctx, ticket)
+		by := uintPtr(actorID)
+		changed, _, err := s.repo.ResolveTicket(ctx, ticket.ID, by, 0)
+		if err != nil || changed == 0 {
+			out.Skipped++
+			continue
+		}
+		s.endBot(ctx, conv.ID, "end")
+		s.event(ctx, nil, conv, ticket.ID, actorID, eventLine)
+		fresh := s.repo.Ticket(ctx, ticket.ID)
+		ch, ok := chCache[conv.ChannelID]
+		if !ok {
+			ch, _ = s.repo.Channel(ctx, conv.ChannelID)
+			chCache[conv.ChannelID] = ch
+		}
+		if ch != nil && fresh != nil {
+			s.runAutomations(ctx, ch, "ticket_resolved", conv, fresh, nil)
+			if in.SendSurvey {
+				s.sendSurvey(ctx, ch, conv, fresh, actorID)
+			}
+		}
+		s.publish(ctx, conv.ID, nil, before)
+		out.Resolved++
+		out.IDs = append(out.IDs, conv.ID)
+	}
+	if out.Resolved > 0 && s.audit != nil {
+		s.record(ctx, actorID, enums.AuditWABulkResolved, "wa_conversation", 0, ip, map[string]any{
+			"resolved":   out.Resolved,
+			"skipped":    out.Skipped,
+			"sendSurvey": in.SendSurvey,
+			"note":       note,
+		})
+	}
+	return out, nil
+}
+
 // Reopen opens a resolved ticket again by hand.
 func (s *Service) Reopen(ctx context.Context, actorID, conversationID uint) error {
 	v, conv, ticket, err := s.reachable(ctx, actorID, conversationID)

@@ -69,7 +69,7 @@ func managerPermissions() []Permission {
 		PerformanceViewRole, PerformanceLiveAlerts, PerformanceRecentCalls, PerformanceShare,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
 		GamesPlay, GamesManage,
-		WAView, WAViewAll, WAReply, WANote, WAPool, WAWaiting, WATake, WAAssign, WAResolve,
+		WAView, WAViewAll, WAReply, WANote, WAPool, WAWaiting, WATake, WAAssign, WAResolve, WABulkResolveOwn, WABulkResolveAll,
 		WATemplateSend, WATemplateManage, WAQuickReply, WAAutomation, WABotManage, WABotPublish,
 		WASetReadReceipts, WASetGreeting, WASetDistribution, WASetGeneral, WATeamManage,
 		WAContactManage, WACallbacks, WAReports, WARatings, WAExport, WAAISuggest, WAAIManage, WACallSurvey,
