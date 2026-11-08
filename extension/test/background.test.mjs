@@ -9,7 +9,10 @@ const PANEL = "https://cm.toprakgureli.com";
 
 function load(storedOrigin) {
   const sent = [];
+  const cookiesSet = [];
+  const dnrRules = [];
   let listener;
+  let headersListener;
   const tabs = [
     { id: 1, url: PANEL + "/dashboard" },
     { id: 2, url: "https://evil.example/page" },
@@ -19,20 +22,47 @@ function load(storedOrigin) {
     storage: { local: { get: async () => (storedOrigin ? { panelOrigin: storedOrigin } : {}) } },
     tabs: {
       query: async (q) => (q && q.url ? tabs.filter((t) => t.url.startsWith(q.url.replace("/*", ""))) : tabs),
-      sendMessage: (id, msg) => {
-        sent.push({ id, msg });
+      sendMessage: (id, msg, opts) => {
+        sent.push({ id, msg, opts });
         return Promise.resolve();
       },
     },
-    runtime: { onMessage: { addListener: (fn) => (listener = fn) } },
+    cookies: {
+      set: async (details) => {
+        cookiesSet.push(details);
+        return details;
+      },
+    },
+    declarativeNetRequest: {
+      updateDynamicRules: async (spec) => {
+        dnrRules.push(spec);
+      },
+    },
+    contentSettings: {
+      cookies: {
+        set: () => {},
+      },
+    },
+    webRequest: {
+      onHeadersReceived: {
+        addListener: (fn) => {
+          headersListener = fn;
+        },
+      },
+    },
+    runtime: {
+      onMessage: { addListener: (fn) => (listener = fn) },
+      onInstalled: { addListener: () => {} },
+      onStartup: { addListener: () => {} },
+    },
   };
   vm.runInNewContext(readFileSync(new URL("../public/background.js", import.meta.url), "utf8"), { chrome, URL, console });
-  const send = (msg, tab) =>
+  const send = (msg, tab, frameId = 0, url) =>
     new Promise((resolve) => {
-      const kept = listener(msg, { tab }, resolve);
+      const kept = listener(msg, { tab, frameId, url }, resolve);
       if (!kept) setTimeout(resolve, 20);
     });
-  return { send, sent, tabs };
+  return { send, sent, tabs, cookiesSet, dnrRules, onHeadersReceived: (d) => headersListener(d) };
 }
 
 test("a page that is not the panel cannot set the call state", async () => {
@@ -89,4 +119,162 @@ test("the panel's right to call reaches the widgets", async () => {
   assert.equal(w.sent.find((s) => s.msg.type === "state").msg.state.canCall, false);
   const res = await w.send({ to: "sw", type: "getState" }, w.tabs[2]);
   assert.equal(res.state.canCall, false);
+});
+
+test("installs declarativeNetRequest rule to strip X-Frame-Options and CSP on sub_frames", () => {
+  const w = load();
+  assert.equal(w.dnrRules.length, 1);
+  const rule = w.dnrRules[0].addRules[0];
+  assert.deepEqual([...rule.condition.resourceTypes], ["sub_frame"]);
+  const removedHeaders = rule.action.responseHeaders.map((h) => h.header);
+  assert.equal(removedHeaders.includes("x-frame-options"), true);
+  assert.equal(removedHeaders.includes("content-security-policy"), true);
+});
+
+test("upgrades Set-Cookie inside iframes (frameId > 0) to SameSite=None; Secure and ignores top frame", async () => {
+  const w = load();
+
+  // Top frame (frameId = 0) should be untouched
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 0,
+    type: "main_frame",
+    method: "GET",
+    statusCode: 200,
+    url: "https://portal.example.com/login",
+    responseHeaders: [{ name: "Set-Cookie", value: "portal_session=top123; path=/; httponly" }],
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(w.cookiesSet.length, 0);
+
+  // Sub-frame (frameId = 42) should be upgraded to SameSite=None; Secure
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 42,
+    type: "xmlhttprequest",
+    method: "POST",
+    statusCode: 200,
+    url: "https://chat.example.com/login",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "ChatSession=abc999; Domain=.chat.example.com; Path=/; HttpOnly; Max-Age=7200" },
+    ],
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(w.cookiesSet.length, 1);
+  assert.equal(w.cookiesSet[0].name, "ChatSession");
+  assert.equal(w.cookiesSet[0].value, "abc999");
+  assert.equal(w.cookiesSet[0].domain, "chat.example.com");
+  assert.equal(w.cookiesSet[0].sameSite, "no_restriction");
+  assert.equal(w.cookiesSet[0].secure, true);
+  assert.equal(w.cookiesSet[0].httpOnly, true);
+});
+
+test("protects POST login cookies against 302 redirect race and recovers frame navigation", async () => {
+  const w = load();
+
+  // 1. User submits login form inside iframe (frameId = 7): POST /login -> 302 to https://portal.example.com/
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 7,
+    type: "sub_frame",
+    method: "POST",
+    statusCode: 302,
+    url: "https://portal.example.com/login",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "XSRF-TOKEN=auth_xsrf; Max-Age=7200; path=/" },
+      { name: "Set-Cookie", value: "portal_session=S2_AUTH; Max-Age=7200; path=/; httponly" },
+      { name: "Location", value: "https://portal.example.com/" },
+    ],
+  });
+
+  // 2. Chrome's native redirect follower sends GET https://portal.example.com/ before async cookie set
+  //    is seen by the request, so server responds with 302 -> /login and a guest cookie S3_GUEST
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 7,
+    type: "sub_frame",
+    method: "GET",
+    statusCode: 302,
+    url: "https://portal.example.com/",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "portal_session=S3_GUEST; Max-Age=7200; path=/; httponly" },
+      { name: "Location", value: "https://portal.example.com/login" },
+    ],
+  });
+
+  // 3. The bounced GET /login page finishes loading and tries to set S4_GUEST
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 7,
+    type: "sub_frame",
+    method: "GET",
+    statusCode: 200,
+    url: "https://portal.example.com/login",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "portal_session=S4_GUEST; Max-Age=7200; path=/; httponly" },
+    ],
+  });
+
+  await new Promise((r) => setTimeout(r, 30));
+
+  // Verify S3_GUEST and S4_GUEST never overwrote S2_AUTH!
+  const sessionWrites = w.cookiesSet.filter((c) => c.name === "portal_session");
+  assert.equal(sessionWrites.length > 0, true);
+  for (const write of sessionWrites) {
+    assert.equal(write.value, "S2_AUTH");
+    assert.equal(write.sameSite, "no_restriction");
+    assert.equal(write.secure, true);
+  }
+
+  // Verify content.js inside the iframe asking checkFrameRedirect receives the post-login URL
+  const redir = await w.send(
+    { to: "sw", type: "checkFrameRedirect", href: "https://portal.example.com/login" },
+    w.tabs[0],
+    7,
+    "https://portal.example.com/login",
+  );
+  assert.equal(redir.redirectUrl, "https://portal.example.com/");
+
+  // Subsequent checkFrameRedirect after consuming returns null (no infinite loop)
+  const secondRedir = await w.send(
+    { to: "sw", type: "checkFrameRedirect", href: "https://portal.example.com/" },
+    w.tabs[0],
+    7,
+    "https://portal.example.com/",
+  );
+  assert.equal(secondRedir.redirectUrl, null);
+});
+
+test("supports multi-step login to OTP screen even when POST redirects back to /login with OTP session cookie", async () => {
+  const w = load();
+
+  // Step 1: POST /login validates credentials, sends SMS OTP, sets OTP session cookie, and redirects to /login (or /otp)
+  w.onHeadersReceived({
+    tabId: 1,
+    frameId: 9,
+    type: "xmlhttprequest",
+    method: "POST",
+    statusCode: 302,
+    url: "https://portal.example.com/login",
+    responseHeaders: [
+      { name: "Set-Cookie", value: "portal_session=S2_OTP_STEP; Max-Age=7200; path=/; httponly" },
+      { name: "Location", value: "https://portal.example.com/login" },
+    ],
+  });
+
+  const reply = await w.send(
+    { to: "sw", type: "completeFormPost", href: "https://portal.example.com/login", actionUrl: "https://portal.example.com/login" },
+    w.tabs[0],
+    9,
+    "https://portal.example.com/login",
+  );
+
+  // Verify the OTP session cookie was committed as SameSite=None; Secure before completeFormPost resolved
+  const otpCookie = w.cookiesSet.find((c) => c.value === "S2_OTP_STEP");
+  assert.equal(Boolean(otpCookie), true);
+  assert.equal(otpCookie.sameSite, "no_restriction");
+  assert.equal(otpCookie.secure, true);
+
+  // Verify completeFormPost returns the redirect target (/login) so the iframe loads the OTP entry screen
+  assert.equal(reply.redirectUrl, "https://portal.example.com/login");
 });

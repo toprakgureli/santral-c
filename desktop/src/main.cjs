@@ -70,6 +70,77 @@ function getPanelUrl() {
   return process.env.SANTRAL_PANEL_URL || loadConfig().panelUrl || DEFAULT_PANEL_URL;
 }
 
+function getPanelOrigin() {
+  try {
+    return new URL(getPanelUrl()).origin;
+  } catch {
+    return "";
+  }
+}
+
+function upgradeCookieForIframe(rawCookie) {
+  if (typeof rawCookie !== "string" || !rawCookie.trim()) return rawCookie;
+  const cleaned = rawCookie
+    .replace(/;\s*samesite\s*=\s*[^;]*/gi, "")
+    .replace(/;\s*secure\b/gi, "")
+    .trim();
+  return `${cleaned}; SameSite=None; Secure`;
+}
+
+function setupIframeSessionBridge() {
+  try {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (!details || !details.responseHeaders) {
+        callback({ cancel: false });
+        return;
+      }
+
+      const panelOrigin = getPanelOrigin();
+      let reqOrigin = "";
+      try {
+        reqOrigin = new URL(details.url).origin;
+      } catch {}
+
+      const isMainPanelFrame =
+        panelWindow &&
+        !panelWindow.isDestroyed() &&
+        details.frame &&
+        details.frame === panelWindow.webContents.mainFrame;
+
+      const isExternalOrSubFrame =
+        details.resourceType === "subFrame" ||
+        (details.frame && !isMainPanelFrame) ||
+        (reqOrigin && panelOrigin && reqOrigin !== panelOrigin);
+
+      if (!isExternalOrSubFrame) {
+        callback({ cancel: false });
+        return;
+      }
+
+      const headers = { ...details.responseHeaders };
+      for (const key of Object.keys(headers)) {
+        const lower = key.toLowerCase();
+        if (
+          details.resourceType === "subFrame" &&
+          (lower === "x-frame-options" ||
+            lower === "content-security-policy" ||
+            lower === "x-content-security-policy")
+        ) {
+          delete headers[key];
+          continue;
+        }
+        if (lower === "set-cookie" && Array.isArray(headers[key])) {
+          headers[key] = headers[key].map(upgradeCookieForIframe);
+        }
+      }
+
+      callback({ cancel: false, responseHeaders: headers });
+    });
+  } catch (err) {
+    console.error("Failed to setup iframe session bridge:", err);
+  }
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -99,6 +170,8 @@ if (!gotTheLock) {
         callback(true);
       }
     });
+
+    setupIframeSessionBridge();
 
     await loadBridge();
     createWidgetWindow();
@@ -193,6 +266,60 @@ function createPanelWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  panelWindow.webContents.setWindowOpenHandler(({ url: targetUrl, frameName }) => {
+    if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+      return { action: "deny" };
+    }
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        width: frameName && frameName.startsWith("santral_popup_") ? 1220 : 1140,
+        height: frameName && frameName.startsWith("santral_popup_") ? 820 : 780,
+        icon: getAppIcon(),
+        autoHideMenuBar: true,
+        backgroundColor: initTheme.bg,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    };
+  });
+
+  // Inject iframe link & history helper into embedded external subframes
+  panelWindow.webContents.on("did-frame-finish-load", (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+    if (isMainFrame) return;
+    try {
+      const { webFrameMain } = require("electron");
+      const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+      if (!frame) return;
+      frame
+        .executeJavaScript(
+          `(() => {
+            if (window.__santralFrameHelperInstalled) return;
+            window.__santralFrameHelperInstalled = true;
+            window.addEventListener("message", (e) => {
+              const d = e.data;
+              if (!d || d.santralc !== "frame-nav") return;
+              if (d.cmd === "back") { try { window.history.back(); } catch {} }
+              else if (d.cmd === "forward") { try { window.history.forward(); } catch {} }
+            });
+            document.addEventListener("click", (e) => {
+              if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              const a = e.target && typeof e.target.closest === "function" ? e.target.closest("a[href]") : null;
+              if (!a) return;
+              const t = (a.getAttribute("target") || "").toLowerCase();
+              if ((t === "_blank" || t === "_top" || t === "_parent") && a.href && /^https?:\\/\\//i.test(a.href) && !a.hasAttribute("download")) {
+                e.preventDefault();
+                window.location.assign(a.href);
+              }
+            }, true);
+          })();`,
+        )
+        .catch(() => {});
+    } catch {}
   });
 
   const url = getPanelUrl();
