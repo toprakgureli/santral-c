@@ -4,7 +4,7 @@
 // ones count in grey. A right click (or a long press) opens a small menu
 // to mark as read or unread, pin, mute or copy the number.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BellOff, Bot, Check, ChevronRight, Copy, EyeOff, Hand, Hourglass, Inbox, MailOpen, Mail, Pin, PinOff, Search, Bell, X } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import UserAvatar from "@/components/ui/UserAvatar";
@@ -58,6 +58,10 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
     const t = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(t);
   }, []);
+
+  useLayoutEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [bucket, channel, q]);
 
   // Older resolved conversations come from the server on demand.
   useEffect(() => {
@@ -130,7 +134,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ara: isim, numara, etiket" className="h-10 w-full rounded-xl bg-muted/70 pl-10 pr-9 text-sm outline-none transition-[background-color,box-shadow] placeholder:text-muted-foreground/70 focus:bg-card focus:ring-2 focus:ring-wa-accent/40" />
           {q && <button type="button" onClick={() => setQ("")} aria-label="Temizle" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground hover:text-foreground"><X className="size-4" /></button>}
         </div>
-        <div className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]">
+        <div style={{ scrollbarWidth: "none" }} className="-mx-3 flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {CHIPS.map((t) => {
             const n = counts[t.key];
             const on = bucket === t.key;
@@ -159,7 +163,7 @@ export default function ConversationList({ channels, activeId, onOpen, bucket, o
         )}
       </div>
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-y-auto pb-3 [overflow-anchor:none]">
         {!wa.loaded && Array.from({ length: 7 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-3">
             <div className="size-12 animate-pulse rounded-full bg-muted/70" />
