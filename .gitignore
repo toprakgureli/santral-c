@@ -22,3 +22,6 @@ config.local.yml
 
 # packed extension builds
 *.rar
+
+# ide configs
+.claude/

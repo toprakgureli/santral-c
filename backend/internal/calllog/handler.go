@@ -64,6 +64,44 @@ func (h *Handler) Lookup(c *fiber.Ctx) error {
 	return c.JSON(res)
 }
 
+// SaveTranscript stores the spoken lines of a softphone call.
+func (h *Handler) SaveTranscript(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	var req requests.CallTranscriptSave
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("İstek gövdesi okunamadı.", err)
+	}
+	if err := validator.Struct(req); err != nil {
+		return err
+	}
+	if err := h.service.SaveTranscript(c.UserContext(), id, req); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// Transcript returns the saved spoken lines for a call.
+func (h *Handler) Transcript(c *fiber.Ctx) error {
+	id, err := actor(c)
+	if err != nil {
+		return err
+	}
+	res, err := h.service.Transcript(
+		c.UserContext(),
+		id,
+		c.Query("callId"),
+		c.Query("peer"),
+		c.Query("startedAt"),
+	)
+	if err != nil {
+		return err
+	}
+	return c.JSON(res)
+}
+
 func actor(c *fiber.Ctx) (uint, error) {
 	id, ok := c.Locals(middlewares.UserIDKey).(uint)
 	if !ok {

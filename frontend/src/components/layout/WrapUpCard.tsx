@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { AlarmClock, PhoneIncoming, PhoneOutgoing, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "@/api/client";
-import type { EscalationCategory, EscalationRecord } from "@/api/types";
+import type { EscalationCategory, EscalationRecord, TranscriptLine } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { EscalationForm } from "@/components/escalation/EscalationForm";
 import { emitEscalationSaved } from "@/components/escalation/events";
@@ -24,6 +24,7 @@ import { useWhatsAppPromptOpen } from "@/lib/overlays";
 import { can } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { displayNumber } from "@/softphone/dial";
+import { fetchCallTranscript, liveTranscript } from "@/softphone/liveTranscript";
 import { useSoftphoneContext, type EndedCall } from "@/softphone/SoftphoneContext";
 import { clockTime } from "@/lib/time";
 import { userKey } from "@/lib/userStorage";
@@ -91,6 +92,7 @@ export default function WrapUpCard() {
   const [pending, setPending] = useState<EndedCall[]>(readPending);
   const [categories, setCategories] = useState<EscalationCategory[] | null>(null);
   const [history, setHistory] = useState<EscalationRecord[]>([]);
+  const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const historyCount = history.length;
   const [confirmSkip, setConfirmSkip] = useState(false);
   const [skipping, setSkipping] = useState(false);
@@ -99,6 +101,22 @@ export default function WrapUpCard() {
   const [planning, setPlanning] = useState(false);
   // The WhatsApp prompt has priority; this card waits until it is closed.
   const waPromptOpen = useWhatsAppPromptOpen();
+  const inCall = phone.status === "in-call" || phone.status === "held";
+
+  // Keep liveTranscript synced at the layout root so hangup flushes and saves
+  // the transcript even when CallBar or Softphone unmounts its inner view.
+  useEffect(() => {
+    liveTranscript.syncCall({
+      inCall,
+      callId: phone.callId,
+      peer: phone.peer,
+      answeredAt: phone.answeredAt,
+      muted: phone.muted,
+      wave: phone.wave,
+      streams: phone.streams,
+      setRemotePcmTap: phone.setRemotePcmTap,
+    });
+  }, [inCall, phone.callId, phone.peer, phone.answeredAt, phone.muted, phone.wave, phone.streams, phone.setRemotePcmTap]);
 
   // Queue every answered call as it ends.
   useEffect(() => {
@@ -119,6 +137,8 @@ export default function WrapUpCard() {
   }, [allowed]);
 
   const current = pending[0];
+  const currentId = current?.id;
+  const currentPeer = current?.peer;
   const busy = ["calling", "ringing", "incoming", "in-call", "held"].includes(phone.status);
   const show = allowed && !!current && categories !== null && categories.length > 0;
 
@@ -126,7 +146,16 @@ export default function WrapUpCard() {
     setConfirmSkip(false);
     setSkipError(null);
     setHistory([]);
-  }, [current?.id]);
+    setTranscriptLines([]);
+    if (!currentId) return;
+    let active = true;
+    void fetchCallTranscript({ callId: currentId, peer: currentPeer }).then((res) => {
+      if (active) setTranscriptLines(res.lines ?? []);
+    });
+    return () => {
+      active = false;
+    };
+  }, [currentId, currentPeer]);
 
   if (!show || !current) return null;
 
@@ -226,6 +255,7 @@ export default function WrapUpCard() {
               number={number}
               canSearch={canSearch}
               callUuid={current.id}
+              transcriptLines={transcriptLines}
               onHistory={setHistory}
               onSaved={done}
               showHistory={false}

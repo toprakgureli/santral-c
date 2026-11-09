@@ -26,4 +26,6 @@ func (r *Router) Routes(g fiber.Router) {
 	group.Post("/", r.need(enums.CallOriginate, enums.CDRViewOwn, enums.CallViewOwn), r.handler.Record)
 	group.Get("/", view, r.handler.Recent)
 	group.Get("/lookup", view, r.handler.Lookup)
+	group.Post("/transcript", r.need(enums.CallOriginate, enums.CDRViewOwn, enums.CallViewOwn), r.handler.SaveTranscript)
+	group.Get("/transcript", view, r.handler.Transcript)
 }

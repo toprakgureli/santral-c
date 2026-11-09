@@ -28,11 +28,52 @@ export function saveGain(v: number) {
   }
 }
 
+export type RemotePcmTap = (pcm16k: Float32Array, rms: number) => void;
+
+function downsampleTo16k(input: Float32Array, sampleRate: number): { pcm16k: Float32Array; rms: number } {
+  if (sampleRate <= 0 || input.length === 0) {
+    return { pcm16k: new Float32Array(0), rms: 0 };
+  }
+  if (sampleRate === 16000) {
+    let sumSq = 0;
+    const copy = new Float32Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      const v = input[i];
+      copy[i] = v;
+      sumSq += v * v;
+    }
+    return { pcm16k: copy, rms: Math.sqrt(sumSq / input.length) };
+  }
+  const ratio = sampleRate / 16000;
+  const outLen = Math.max(1, Math.floor(input.length / ratio));
+  const out = new Float32Array(outLen);
+  let sumSq = 0;
+  for (let i = 0; i < outLen; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(input.length, Math.floor((i + 1) * ratio));
+    let acc = 0;
+    let count = 0;
+    for (let j = start; j < end; j++) {
+      acc += input[j];
+      count++;
+    }
+    const v = count > 0 ? acc / count : input[start] ?? 0;
+    out[i] = v;
+    sumSq += v * v;
+  }
+  return { pcm16k: out, rms: Math.sqrt(sumSq / outLen) };
+}
+
 export class CallAudio {
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
   private remote: AnalyserNode | null = null;
   private local: AnalyserNode | null = null;
+  private remoteStreamRef: MediaStream | null = null;
+  private localStreamRef: MediaStream | null = null;
+  private remotePcmTap: RemotePcmTap | null = null;
+  private processor: ScriptProcessorNode | null = null;
+  private muteSink: GainNode | null = null;
   private sources: MediaStreamAudioSourceNode[] = [];
   private buf = new Float32Array(256);
   private bins = new Uint8Array(128);
@@ -43,6 +84,8 @@ export class CallAudio {
     pc.getReceivers().forEach((r) => r.track && remoteStream.addTrack(r.track));
     const localStream = new MediaStream();
     pc.getSenders().forEach((s) => s.track && s.track.kind === "audio" && localStream.addTrack(s.track));
+    this.remoteStreamRef = remoteStream;
+    this.localStreamRef = localStream;
 
     if (el) {
       el.srcObject = remoteStream;
@@ -66,6 +109,31 @@ export class CallAudio {
       src.connect(gain).connect(ctx.destination);
       src.connect(remote);
       this.sources.push(src);
+
+      // Tap remote WebRTC audio into 16kHz mono PCM chunks for real-time
+      // customer speech-to-text, routed to a 0-gain sink so playback is untouched.
+      if (typeof ctx.createScriptProcessor === "function") {
+        try {
+          const proc = ctx.createScriptProcessor(4096, 1, 1);
+          const muteSink = ctx.createGain();
+          muteSink.gain.value = 0;
+          proc.onaudioprocess = (ev: AudioProcessingEvent) => {
+            if (!this.remotePcmTap) return;
+            const ch0 = ev.inputBuffer.getChannelData(0);
+            const { pcm16k, rms } = downsampleTo16k(ch0, ev.inputBuffer.sampleRate || ctx.sampleRate || 48000);
+            if (pcm16k.length > 0) {
+              this.remotePcmTap(pcm16k, rms);
+            }
+          };
+          src.connect(proc);
+          proc.connect(muteSink);
+          muteSink.connect(ctx.destination);
+          this.processor = proc;
+          this.muteSink = muteSink;
+        } catch {
+          // ignore if script processor is unavailable in test env
+        }
+      }
       if (localStream.getAudioTracks().length > 0) {
         const local = ctx.createAnalyser();
         local.fftSize = 256;
@@ -113,7 +181,34 @@ export class CallAudio {
     return this.bins;
   }
 
+  // streams returns the active local and remote audio streams for live
+  // speech-to-text, without disturbing the WebRTC playback graph.
+  streams(): { local: MediaStream | null; remote: MediaStream | null } {
+    return { local: this.localStreamRef, remote: this.remoteStreamRef };
+  }
+
+  setRemotePcmTap(tap: RemotePcmTap | null) {
+    this.remotePcmTap = tap;
+  }
+
   detach() {
+    if (this.processor) {
+      try {
+        this.processor.onaudioprocess = null;
+        this.processor.disconnect();
+      } catch {
+        // ignore
+      }
+      this.processor = null;
+    }
+    if (this.muteSink) {
+      try {
+        this.muteSink.disconnect();
+      } catch {
+        // ignore
+      }
+      this.muteSink = null;
+    }
     for (const s of this.sources) {
       try {
         s.disconnect();
@@ -125,6 +220,8 @@ export class CallAudio {
     this.gain = null;
     this.remote = null;
     this.local = null;
+    this.remoteStreamRef = null;
+    this.localStreamRef = null;
     if (this.ctx) {
       void this.ctx.close().catch(() => undefined);
       this.ctx = null;

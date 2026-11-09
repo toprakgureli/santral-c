@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TeamPerformance as TeamPerformancePayload } from "../api/types";
 import { TeamPerformance } from "./TeamPerformance";
+import { summaryOf } from "./teamShare";
 
 const auth = vi.hoisted(() => ({ permissions: [] as string[] }));
 vi.mock("../auth/AuthContext", () => ({
@@ -64,6 +65,7 @@ vi.mock("../api/client", () => ({
     performanceToday: vi.fn(() => Promise.resolve(samplePayload)),
     agentCalls: vi.fn(() => Promise.resolve({ userId: 10, from: "2026-11-06", to: "2026-11-06", items: [] })),
     realCall: vi.fn(() => Promise.resolve({ seconds: 30 })),
+    breakLimit: vi.fn(() => Promise.resolve({ minutes: 60 })),
   },
 }));
 
@@ -127,5 +129,50 @@ describe("TeamPerformance permissions", () => {
     });
     expect(withRecent.textContent).toContain("Son görüşmeler");
     expect(withRecent.textContent).toContain("Seçilen tarihlerin bütün görüşmeleri");
+  });
+
+  it("shows break compliance and allowance details when Paylaş is opened", async () => {
+    const el = await renderWithPerms("performance.view_all", "performance.share");
+    const shareBtn = [...el.querySelectorAll("button")].find((b) => b.textContent?.includes("Paylaş"));
+    expect(shareBtn).toBeDefined();
+
+    await act(async () => {
+      shareBtn!.click();
+    });
+
+    // Check that break analysis is rendered prominently in the modal
+    expect(document.body.textContent).toContain("Mola Durumu");
+    expect(document.body.textContent).toContain("Toplam Ekip Molası");
+    expect(document.body.textContent).toContain("Kişi Başı Sınır");
+    expect(document.body.textContent).toContain("Mola Sınırına Tam Uyum");
+  });
+});
+
+describe("summaryOf break compliance reporting", () => {
+  it("indicates when break allowance was exceeded", () => {
+    const row = {
+      ...samplePayload.items[0],
+      breakSeconds: 5400, // 90 min (limit is 60 min)
+    };
+    const s = summaryOf(row, 60, 1);
+    expect(s).toContain("TOPLAM 1 sa 30 dk MOLA KULLANMIŞ (1 sa SINIRINI 30 dk AŞMIŞ!)");
+  });
+
+  it("indicates when break was within allowance", () => {
+    const row = {
+      ...samplePayload.items[0],
+      breakSeconds: 2700, // 45 min (limit is 60 min)
+    };
+    const s = summaryOf(row, 60, 1);
+    expect(s).toContain("toplam 45 dk mola kullanmış (1 sa mola sınırı aşılmadı)");
+  });
+
+  it("notes when no breaks were used", () => {
+    const row = {
+      ...samplePayload.items[0],
+      breakSeconds: 0,
+    };
+    const s = summaryOf(row, 60, 1);
+    expect(s).toContain("hiç mola kullanmamış");
   });
 });

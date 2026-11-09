@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/toprakgureli/santral-c/backend/internal/domain/models"
 )
@@ -210,4 +211,59 @@ func (r *Repository) matching(ctx context.Context, ids []uint, cond string) (map
 		out[id] = true
 	}
 	return out, nil
+}
+
+// SaveTranscript upserts the spoken transcript of a softphone call by call_id.
+func (r *Repository) SaveTranscript(ctx context.Context, row *models.CallTranscript) error {
+	err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "call_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"direction", "peer_number", "peer_key", "started_at", "ended_at", "entries", "full_text", "updated_at",
+			}),
+		}).
+		Create(row).Error
+	if err != nil {
+		return fmt.Errorf("call transcript could not be saved: %w", err)
+	}
+	return nil
+}
+
+// FindTranscript loads a call transcript by its softphone call_id, or falls
+// back to matching the peer number and start time when looked up from a PBX
+// CDR row whose uuid differs from the panel's call_id.
+func (r *Repository) FindTranscript(ctx context.Context, callID, peerKey string, around *time.Time, userID *uint) (*models.CallTranscript, error) {
+	if callID != "" {
+		q := r.db.WithContext(ctx).Where("call_id = ?", callID)
+		if userID != nil {
+			q = q.Where("user_id = ?", *userID)
+		}
+		var row models.CallTranscript
+		err := q.First(&row).Error
+		if err == nil {
+			return &row, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("call transcript could not be fetched: %w", err)
+		}
+	}
+	if peerKey == "" {
+		return nil, nil
+	}
+	q := r.db.WithContext(ctx).Where("peer_key = ?", peerKey)
+	if userID != nil {
+		q = q.Where("user_id = ?", *userID)
+	}
+	if around != nil && !around.IsZero() {
+		q = q.Where("started_at BETWEEN ? AND ?", around.Add(-3*time.Minute), around.Add(3*time.Minute))
+	}
+	var row models.CallTranscript
+	err := q.Order("started_at DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("call transcript could not be matched: %w", err)
+	}
+	return &row, nil
 }

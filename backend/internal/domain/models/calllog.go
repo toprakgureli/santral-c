@@ -56,3 +56,22 @@ type PresenceEvent struct {
 
 // TableName pins the table name.
 func (PresenceEvent) TableName() string { return "presence_events" }
+
+// CallTranscript holds the spoken lines captured during a softphone call.
+type CallTranscript struct {
+	ID         uint      `gorm:"column:id;primarykey"`
+	CallID     string    `gorm:"column:call_id;size:80;not null;uniqueIndex"`
+	UserID     *uint     `gorm:"column:user_id;index"`
+	Direction  string    `gorm:"column:direction;size:10;not null;default:inbound"`
+	PeerNumber string    `gorm:"column:peer_number;size:40;not null"`
+	PeerKey    string    `gorm:"column:peer_key;size:20;not null;index"`
+	StartedAt  time.Time `gorm:"column:started_at"`
+	EndedAt    time.Time `gorm:"column:ended_at"`
+	Entries    string    `gorm:"column:entries;type:jsonb;not null;default:'[]'"`
+	FullText   string    `gorm:"column:full_text;type:text;not null"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+// TableName pins the table name.
+func (CallTranscript) TableName() string { return "call_transcripts" }

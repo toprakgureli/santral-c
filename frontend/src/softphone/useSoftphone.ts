@@ -22,7 +22,7 @@ import { currentStorageUser } from "../lib/userStorage";
 import type { SipCredentials } from "../api/types";
 import { normalizeDial } from "./dial";
 import { tones } from "./tones";
-import { CallAudio, GAIN_MAX, GAIN_MIN, loadGain, saveGain, type WaveSide } from "./audioGraph";
+import { CallAudio, GAIN_MAX, GAIN_MIN, loadGain, saveGain, type RemotePcmTap, type WaveSide } from "./audioGraph";
 
 // mediaError turns a failure while opening a call into a message the agent
 // can act on; library and browser texts in English never reach the screen.
@@ -113,6 +113,8 @@ export interface Phone {
   // Latest samples of one voice for the wave, null when not wired.
   wave: (side: WaveSide) => Float32Array | null;
   spectrum: (side: WaveSide) => Uint8Array | null;
+  streams?: () => { local: MediaStream | null; remote: MediaStream | null };
+  setRemotePcmTap?: (tap: RemotePcmTap | null) => void;
   call: (target: string) => Promise<void>;
   answer: () => Promise<void>;
   hangup: () => Promise<void>;
@@ -217,6 +219,8 @@ export function useSoftphone(enabled: boolean): Phone {
 
   const wave = useCallback((side: WaveSide) => audioGraph.current.wave(side), []);
   const spectrum = useCallback((side: WaveSide) => audioGraph.current.spectrum(side), []);
+  const streams = useCallback(() => audioGraph.current.streams(), []);
+  const setRemotePcmTap = useCallback((tap: RemotePcmTap | null) => audioGraph.current.setRemotePcmTap(tap), []);
 
   const logCall = useCallback((phase: "start" | "answer" | "end", extra: { disposition?: string; durationSeconds?: number } = {}) => {
     if (!callIdRef.current) return;
@@ -272,8 +276,8 @@ export function useSoftphone(enabled: boolean): Phone {
           tones.stop();
           setMuted(false);
           setHeld(false);
-          setStatus("in-call");
           attachRemoteMedia(session);
+          setStatus("in-call");
           logCall("answer");
         } else if (state === sip().SessionState.Terminated) {
           tones.stop();
@@ -759,6 +763,8 @@ export function useSoftphone(enabled: boolean): Phone {
     setRemoteGain,
     wave,
     spectrum,
+    streams,
+    setRemotePcmTap,
     call,
     answer,
     hangup,

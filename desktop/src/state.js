@@ -31,6 +31,24 @@ export function cleanState(s) {
   }
   const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  let transcript = null;
+  if (s.transcript && typeof s.transcript === "object") {
+    const rawLines = Array.isArray(s.transcript.lines) ? s.transcript.lines.slice(-14) : [];
+    const lines = rawLines
+      .filter((l) => l && typeof l === "object" && typeof l.text === "string" && l.text.trim())
+      .map((l, idx) => ({
+        id: str(l.id, 40) || `l-${idx}`,
+        speaker: l.speaker === "customer" ? "customer" : "agent",
+        text: str(l.text, 280),
+        atSec: num(l.atSec),
+      }));
+    transcript = {
+      enabled: s.transcript.enabled !== false,
+      lines,
+      interimAgent: str(s.transcript.interimAgent, 240),
+      interimCustomer: str(s.transcript.interimCustomer, 240),
+    };
+  }
   return {
     status: s.status,
     peer: str(s.peer, 40),
@@ -41,6 +59,7 @@ export function cleanState(s) {
     callStartedAt: num(s.callStartedAt),
     answeredAt: num(s.answeredAt),
     canCall: s.canCall !== false,
+    ...(transcript ? { transcript } : {}),
   };
 }
 

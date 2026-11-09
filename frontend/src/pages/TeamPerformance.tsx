@@ -276,7 +276,17 @@ export function TeamPerformance() {
         </div>
       )}
       {open && <Detail r={open} now={now} live={isToday} multiDay={multiDay} from={from} to={to} canRecentCalls={canRecentCalls} onClose={() => setOpenId(null)} />}
-      {canShare && <ShareDialog open={share} rows={rows} rangeLabel={rangeLabel(from, to)} scopeLabel={scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"} onClose={() => setShare(false)} />}
+      {canShare && (
+        <ShareDialog
+          open={share}
+          rows={rows}
+          from={from}
+          to={to}
+          rangeLabel={rangeLabel(from, to)}
+          scopeLabel={scope === "all" ? "Tüm ekip" : "Kendi rolündekiler"}
+          onClose={() => setShare(false)}
+        />
+      )}
     </div>
   );
 }

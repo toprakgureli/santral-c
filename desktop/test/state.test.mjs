@@ -12,6 +12,13 @@ test("cleanState sanitizes malicious fields and preserves valid state", () => {
     callStartedAt: 1728000000,
     answeredAt: 1728000010,
     canCall: true,
+    transcript: {
+      enabled: true,
+      lines: [
+        { id: "1", speaker: "customer", text: "Merhaba nakil bilgisi", atSec: 4 },
+      ],
+      interimAgent: "Kontrol ediyorum...",
+    },
     hacked: "<script>alert(1)</script>",
   };
 
@@ -20,6 +27,9 @@ test("cleanState sanitizes malicious fields and preserves valid state", () => {
   assert.equal(output.peer.length, 40); // truncated
   assert.equal(output.muted, true);
   assert.equal(output.extension, "101");
+  assert.equal(output.transcript.lines.length, 1);
+  assert.equal(output.transcript.lines[0].speaker, "customer");
+  assert.equal(output.transcript.interimAgent, "Kontrol ediyorum...");
   assert.equal("hacked" in output, false);
 });
 

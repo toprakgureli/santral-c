@@ -14,7 +14,127 @@ const svg = (p) => `<svg viewBox="0 0 24 24" fill="currentColor" width="18" heig
 let state = { status: "disconnected" };
 let showKeys = false;
 let showXfer = false;
+let trCollapsed = false;
+let trPinned = true;
 let timer = null;
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderTranscriptInner() {
+  const isTalk = state.status === "in-call" || state.status === "held";
+  const tr = state.transcript;
+  if (!isTalk || !tr || tr.enabled === false) return "";
+
+  const lines = Array.isArray(tr.lines) ? tr.lines : [];
+  const interimCustomer = (tr.interimCustomer || "").trim();
+  const interimAgent = (tr.interimAgent || "").trim();
+  const hasInterim = Boolean(interimCustomer || interimAgent);
+  const total = lines.length;
+
+  let streamHtml = "";
+  if (total === 0 && !hasInterim) {
+    streamHtml = `<div class="tr-empty">Konuşma başladığında sözler burada kayarak akar...</div>`;
+  } else {
+    streamHtml = lines
+      .map((line, idx) => {
+        const isCust = line.speaker === "customer";
+        const dist = total - 1 - idx + (hasInterim ? 1 : 0);
+        const cls = dist === 0 ? "active" : dist === 1 ? "near" : "old";
+        return `
+          <div class="tr-line ${cls} ${isCust ? "cust" : "agent"}">
+            <div class="tr-meta">
+              <span class="tr-who">${isCust ? "Müşteri" : "Temsilci"}</span>
+              <span class="tr-sec">${clock(line.atSec)}</span>
+            </div>
+            <div class="tr-txt">${esc(line.text)}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    if (interimCustomer) {
+      streamHtml += `
+        <div class="tr-line active interim cust">
+          <div class="tr-meta"><span class="tr-who">Müşteri konuşuyor...</span></div>
+          <div class="tr-txt">${esc(interimCustomer)}</div>
+        </div>
+      `;
+    }
+    if (interimAgent) {
+      streamHtml += `
+        <div class="tr-line active interim agent">
+          <div class="tr-meta"><span class="tr-who">Temsilci konuşuyor...</span></div>
+          <div class="tr-txt">${esc(interimAgent)}</div>
+        </div>
+      `;
+    }
+  }
+
+  return `
+    <div class="tr-box">
+      <div class="tr-head" id="tr-toggle">
+        <span class="tr-dot"></span>
+        <span class="tr-title">Canlı Transkript</span>
+        ${total > 0 ? `<span class="tr-cnt">${total}</span>` : ""}
+        <span class="tr-chev">${trCollapsed ? "▾" : "▴"}</span>
+      </div>
+      ${
+        !trCollapsed
+          ? `
+        <div class="tr-wrap">
+          <div class="tr-list" id="tr-list">${streamHtml}</div>
+          ${!trPinned ? `<button class="tr-jump" id="tr-jump">↓ Canlı akışa dön</button>` : ""}
+        </div>
+      `
+          : ""
+      }
+    </div>
+  `;
+}
+
+function updateTranscriptOnly() {
+  const root = document.getElementById("tr-root");
+  if (!root) return;
+  const prevList = document.getElementById("tr-list");
+  const prevScroll = prevList ? prevList.scrollTop : 0;
+  root.innerHTML = renderTranscriptInner();
+  bindTranscriptEvents();
+  const nextList = document.getElementById("tr-list");
+  if (nextList) {
+    if (trPinned) {
+      nextList.scrollTo({ top: nextList.scrollHeight, behavior: "smooth" });
+    } else {
+      nextList.scrollTop = prevScroll;
+    }
+  }
+  adjustHeight();
+}
+
+function bindTranscriptEvents() {
+  document.getElementById("tr-toggle")?.addEventListener("click", () => {
+    trCollapsed = !trCollapsed;
+    updateTranscriptOnly();
+  });
+  const listEl = document.getElementById("tr-list");
+  listEl?.addEventListener("scroll", () => {
+    const atBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 24;
+    if (atBottom !== trPinned) {
+      trPinned = atBottom;
+      const jumpBtn = document.getElementById("tr-jump");
+      if (trPinned && jumpBtn) jumpBtn.remove();
+    }
+  });
+  document.getElementById("tr-jump")?.addEventListener("click", () => {
+    trPinned = true;
+    updateTranscriptOnly();
+  });
+}
 
 const LABELS = {
   disconnected: "Panel kapalı",
@@ -103,6 +223,7 @@ function render() {
           <button class="go" id="xdo">Aktar</button>
         </div>
       ` : ""}
+      ${isTalk ? `<div id="tr-root">${renderTranscriptInner()}</div>` : ""}
     `;
   } else if (st === "disconnected") {
     html = `
@@ -144,6 +265,11 @@ function render() {
 
   bodyEl.innerHTML = html;
   bindEvents();
+  bindTranscriptEvents();
+  const nextList = document.getElementById("tr-list");
+  if (nextList && trPinned) {
+    nextList.scrollTop = nextList.scrollHeight;
+  }
   adjustHeight();
 }
 
@@ -257,13 +383,26 @@ if (window.santralDesktop) {
   } catch {}
 
   window.santralDesktop.onState((newState) => {
-    const prev = state.status;
+    const prev = state;
     state = newState || { status: "disconnected" };
-    if (prev !== state.status) {
+    if (prev.status !== state.status) {
       showKeys = false;
       showXfer = false;
+      trPinned = true;
     }
-    render();
+    const sameCallShell =
+      prev.status === state.status &&
+      prev.peer === state.peer &&
+      prev.muted === state.muted &&
+      prev.held === state.held &&
+      prev.extension === state.extension &&
+      prev.canCall === state.canCall &&
+      document.getElementById("tr-root");
+    if (sameCallShell) {
+      updateTranscriptOnly();
+    } else {
+      render();
+    }
   });
 }
 

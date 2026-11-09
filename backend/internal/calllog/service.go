@@ -2,6 +2,7 @@ package calllog
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"time"
@@ -539,4 +540,178 @@ func canViewOwn(u *models.User) bool {
 
 func canViewAll(u *models.User) bool {
 	return u.Can(enums.CDRViewAll) || u.Can(enums.CallViewAll)
+}
+
+// TranscriptView is the panel view of a saved call transcript.
+type TranscriptView struct {
+	CallID    string                    `json:"callId"`
+	Peer      string                    `json:"peer"`
+	Direction string                    `json:"direction"`
+	StartedAt string                    `json:"startedAt,omitempty"`
+	EndedAt   string                    `json:"endedAt,omitempty"`
+	AgentID   uint                      `json:"agentId,omitempty"`
+	AgentName string                    `json:"agentName,omitempty"`
+	Lines     []requests.TranscriptLine `json:"lines"`
+}
+
+// SaveTranscript stores the spoken lines captured during a softphone call.
+func (s *Service) SaveTranscript(ctx context.Context, actorID uint, req requests.CallTranscriptSave) error {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return err
+	}
+	if !actor.Can(enums.CallOriginate) && !canViewOwn(actor) {
+		return errs.Forbidden("Bu işlem için yetkin yok.")
+	}
+
+	existingLog, err := s.repo.Get(ctx, req.CallID)
+	if err != nil {
+		return errs.Internal(err)
+	}
+	if existingLog != nil && existingLog.UserID != nil && *existingLog.UserID != actorID {
+		return errs.NotFound("Çağrı kaydı bulunamadı.")
+	}
+
+	cleanLines := make([]requests.TranscriptLine, 0, len(req.Lines))
+	var full strings.Builder
+	for _, l := range req.Lines {
+		txt := strings.TrimSpace(l.Text)
+		if txt == "" {
+			continue
+		}
+		speaker := l.Speaker
+		if speaker != "agent" && speaker != "customer" {
+			speaker = "customer"
+		}
+		atSec := l.AtSec
+		if atSec < 0 {
+			atSec = 0
+		}
+		cleanLines = append(cleanLines, requests.TranscriptLine{
+			ID:      strings.TrimSpace(l.ID),
+			Speaker: speaker,
+			Text:    txt,
+			AtSec:   atSec,
+		})
+		if full.Len() > 0 {
+			full.WriteByte('\n')
+		}
+		if speaker == "agent" {
+			full.WriteString("Temsilci: ")
+		} else {
+			full.WriteString("Müşteri: ")
+		}
+		full.WriteString(txt)
+	}
+	if len(cleanLines) == 0 {
+		return nil
+	}
+
+	rawEntries, err := json.Marshal(cleanLines)
+	if err != nil {
+		return errs.Internal(err)
+	}
+
+	now := time.Now()
+	startedAt := parseTimeOr(req.StartedAt, now)
+	endedAt := parseTimeOr(req.EndedAt, now)
+	peer := strings.TrimSpace(req.Peer)
+	dir := directionOr(req.Direction, "inbound")
+	if existingLog != nil {
+		if peer == "" {
+			peer = existingLog.PeerNumber
+		}
+		if req.Direction == "" && existingLog.Direction != "" {
+			dir = existingLog.Direction
+		}
+		if req.StartedAt == "" && !existingLog.StartedAt.IsZero() {
+			startedAt = existingLog.StartedAt
+		}
+		if req.EndedAt == "" && existingLog.EndedAt != nil {
+			endedAt = *existingLog.EndedAt
+		}
+	}
+
+	uid := actorID
+	row := &models.CallTranscript{
+		CallID:     strings.TrimSpace(req.CallID),
+		UserID:     &uid,
+		Direction:  dir,
+		PeerNumber: peer,
+		PeerKey:    phone.Key(peer),
+		StartedAt:  startedAt,
+		EndedAt:    endedAt,
+		Entries:    string(rawEntries),
+		FullText:   full.String(),
+	}
+	if err := s.repo.SaveTranscript(ctx, row); err != nil {
+		return errs.Internal(err)
+	}
+	return nil
+}
+
+// Transcript returns the saved spoken lines for a call, looked up by callId
+// or by peer number and start time.
+func (s *Service) Transcript(ctx context.Context, actorID uint, callID, peer, startedAt string) (*TranscriptView, error) {
+	actor, err := s.users.GetByID(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	var only *uint
+	switch {
+	case canViewAll(actor):
+	case canViewOwn(actor):
+		only = &actorID
+	default:
+		return nil, errs.Forbidden("Çağrı kayıtlarını görme yetkin yok.")
+	}
+
+	callID = strings.TrimSpace(callID)
+	peerKey := phone.Key(peer)
+	if callID == "" && len(peerKey) < 3 {
+		return &TranscriptView{Lines: []requests.TranscriptLine{}}, nil
+	}
+
+	var around *time.Time
+	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(startedAt)); err == nil {
+		around = &t
+	}
+
+	row, err := s.repo.FindTranscript(ctx, callID, peerKey, around, only)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	if row == nil {
+		return &TranscriptView{CallID: callID, Peer: strings.TrimSpace(peer), Lines: []requests.TranscriptLine{}}, nil
+	}
+
+	var lines []requests.TranscriptLine
+	if err := json.Unmarshal([]byte(row.Entries), &lines); err != nil {
+		lines = []requests.TranscriptLine{}
+	}
+	var agentID uint
+	var agentName string
+	if row.UserID != nil {
+		agentID = *row.UserID
+		if names, err := s.repo.Names(ctx, []uint{agentID}); err == nil {
+			agentName = names[agentID]
+		}
+	}
+	return &TranscriptView{
+		CallID:    row.CallID,
+		Peer:      row.PeerNumber,
+		Direction: row.Direction,
+		StartedAt: row.StartedAt.In(tz.Istanbul).Format(time.RFC3339),
+		EndedAt:   row.EndedAt.In(tz.Istanbul).Format(time.RFC3339),
+		AgentID:   agentID,
+		AgentName: agentName,
+		Lines:     lines,
+	}, nil
+}
+
+func parseTimeOr(raw string, fallback time.Time) time.Time {
+	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(raw)); err == nil {
+		return t
+	}
+	return fallback
 }

@@ -162,13 +162,10 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
-    // Setup automatic WebRTC microphone / media permissions
+    // Setup automatic WebRTC microphone / media / speech recognition permissions
+    session.defaultSession.setPermissionCheckHandler(() => true);
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      if (permission === "media" || permission === "notifications") {
-        callback(true);
-      } else {
-        callback(true);
-      }
+      callback(true);
     });
 
     setupIframeSessionBridge();

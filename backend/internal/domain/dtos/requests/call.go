@@ -34,3 +34,21 @@ type CallLogEvent struct {
 	Disposition     string `json:"disposition" validate:"omitempty,oneof=answered no_answer missed busy failed canceled"`
 	DurationSeconds int    `json:"durationSeconds" validate:"min=0"`
 }
+
+// TranscriptLine is one spoken utterance in a call transcript.
+type TranscriptLine struct {
+	ID      string `json:"id" validate:"max=64"`
+	Speaker string `json:"speaker" validate:"required,oneof=agent customer"`
+	Text    string `json:"text" validate:"required,max=2000"`
+	AtSec   int    `json:"atSec" validate:"min=0"`
+}
+
+// CallTranscriptSave stores the transcript captured during a softphone call.
+type CallTranscriptSave struct {
+	CallID    string           `json:"callId" validate:"required,max=80"`
+	Direction string           `json:"direction" validate:"omitempty,oneof=inbound outbound internal"`
+	Peer      string           `json:"peer" validate:"max=40"`
+	StartedAt string           `json:"startedAt" validate:"max=64"`
+	EndedAt   string           `json:"endedAt" validate:"max=64"`
+	Lines     []TranscriptLine `json:"lines" validate:"required,min=1,max=500,dive"`
+}

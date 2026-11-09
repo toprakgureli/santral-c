@@ -3,11 +3,13 @@ import { TriangleAlert } from "lucide-react";
 import type { EscalationCategory } from "../../api/types";
 import { EscalationForm } from "../escalation/EscalationForm";
 import { markWrapUpDone } from "../layout/WrapUpCard";
+import { useLiveTranscript } from "../../softphone/liveTranscript";
 import { displayNumber } from "../../softphone/dial";
 import { Badge } from "../ui";
 import { cn } from "../../lib/utils";
 
 export function Escalation({ categories, activePeer, connected, callId, canSearch }: { categories: EscalationCategory[]; activePeer?: string; connected: boolean; callId: string | null; canSearch: boolean }) {
+  const liveTranscriptState = useLiveTranscript();
   const [customer, setCustomer] = useState("");
   const [historyCount, setHistoryCount] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -87,6 +89,7 @@ export function Escalation({ categories, activePeer, connected, callId, canSearc
           number={customer}
           canSearch={canSearch}
           callUuid={connected && callId && !pendingPeer ? callId : undefined}
+          transcriptLines={connected && !pendingPeer ? liveTranscriptState.lines : undefined}
           onSaved={() => {
             if (connected && callId && !pendingPeer) markWrapUpDone(callId);
             if (pendingPeer) switchToPending();

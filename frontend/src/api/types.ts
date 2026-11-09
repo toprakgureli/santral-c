@@ -505,6 +505,27 @@ export interface Call {
   recording: boolean;
 }
 
+export type TranscriptSpeaker = "agent" | "customer";
+
+export interface TranscriptLine {
+  id: string;
+  speaker: TranscriptSpeaker;
+  text: string;
+  atSec: number;
+  interim?: boolean;
+}
+
+export interface CallTranscript {
+  callId: string;
+  peer: string;
+  direction: string;
+  startedAt?: string;
+  endedAt?: string;
+  agentId?: number;
+  agentName?: string;
+  lines: TranscriptLine[];
+}
+
 export interface CallPage {
   items: Call[];
   page: number;

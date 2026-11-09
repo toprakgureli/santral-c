@@ -5,6 +5,8 @@ import type {
   AgentCalls,
   CallLookup,
   CallPage,
+  CallTranscript,
+  TranscriptLine,
   Contact,
   CustomMenuEmbedCheck,
   CustomMenuInput,
@@ -466,11 +468,15 @@ export const api = {
   authorizeTransfer: (callId: string, target: string) =>
     request<void>("/calls/transfer", { method: "POST", body: JSON.stringify({ callId, target }) }),
 
-  // Call log (our own store, used for the panel history — today, per agent)
+  // Call log (our own store, used for the panel history - today, per agent)
   recentCalls: () => request<TodayCalls>("/calls/log/"),
   callLookup: (number: string) => request<CallLookup>("/calls/log/lookup" + query({ number })),
   logCall: (body: { callId: string; phase: "start" | "answer" | "end"; direction?: string; peer?: string; disposition?: string; durationSeconds?: number }) =>
     request<void>("/calls/log/", { method: "POST", body: JSON.stringify(body) }),
+  saveCallTranscript: (body: { callId: string; direction?: string; peer?: string; startedAt?: string; endedAt?: string; lines: TranscriptLine[] }) =>
+    request<void>("/calls/log/transcript", { method: "POST", body: JSON.stringify(body) }),
+  callTranscript: (params: { callId?: string; peer?: string; startedAt?: string }) =>
+    request<CallTranscript>("/calls/log/transcript" + query(params)),
 
   // Softphone (SIP over WSS to Bulutsantralim)
   sipCredentials: () => request<SipCredentials>("/sip/credentials"),

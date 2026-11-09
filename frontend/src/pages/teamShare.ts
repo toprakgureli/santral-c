@@ -31,7 +31,10 @@ const C = {
 function short(seconds: number) {
   const m = Math.round(seconds / 60);
   if (m < 60) return `${m} dk`;
-  return `${Math.floor(m / 60)} sa ${String(m % 60).padStart(2, "0")} dk`;
+  const hrs = Math.floor(m / 60);
+  const rem = m % 60;
+  if (rem === 0) return `${hrs} sa`;
+  return `${hrs} sa ${rem} dk`;
 }
 
 function clock(seconds: number) {
@@ -91,12 +94,26 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 // summaryOf is one person's figures as a sentence.
-export function summaryOf(r: TeamRow): string {
+export function summaryOf(r: TeamRow, breakLimitMinutes = 60, dayCount = 1): string {
   const c = r.calls;
   const first = r.name.split(" ")[0];
   const parts: string[] = [];
   parts.push(`${first} ${c.long} gerçek çağrı almış (${c.inboundReal} gelen, ${c.outboundReal} giden), toplam ${short(c.talkSeconds)} görüşmüş`);
   if (r.shift.seconds > 0) parts.push(`yoğunluğu ${pct(c.talkSeconds, r.shift.seconds)} (${short(r.shift.seconds)} mesainin görüşmede geçen payı)`);
+
+  // Break compliance and total break duration
+  const limitSec = breakLimitMinutes * 60 * dayCount;
+  const bSec = r.breakSeconds || 0;
+  if (bSec > 0) {
+    if (bSec > limitSec) {
+      parts.push(`TOPLAM ${short(bSec)} MOLA KULLANMIŞ (${short(limitSec)} SINIRINI ${short(bSec - limitSec)} AŞMIŞ!)`);
+    } else {
+      parts.push(`toplam ${short(bSec)} mola kullanmış (${short(limitSec)} mola sınırı aşılmadı)`);
+    }
+  } else if (r.shift.seconds > 0) {
+    parts.push("hiç mola kullanmamış");
+  }
+
   if (c.peers > 0) {
     const bands: string[] = [];
     if (c.over5 > 0) bands.push(`${c.over5} görüşme 5 dk üstü`);
@@ -112,25 +129,42 @@ export function summaryOf(r: TeamRow): string {
   return parts.join("; ") + ".";
 }
 
-export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scopeLabel: string, realSeconds: number): Promise<HTMLCanvasElement> {
+export async function renderTeamImage(
+  rows: TeamRow[],
+  rangeLabel: string,
+  scopeLabel: string,
+  realSeconds: number,
+  breakLimitMinutes = 60,
+  dayCount = 1,
+): Promise<HTMLCanvasElement> {
   const ranked = [...rows]
     .filter((r) => r.calls.long + r.calls.unanswered + r.calls.short > 0 || r.shift.seconds > 0)
     .sort((a, b) => b.calls.long - a.calls.long || b.calls.talkSeconds - a.calls.talkSeconds || a.name.localeCompare(b.name, "tr"))
     .slice(0, 14);
   const totals = ranked.reduce(
-    (t, r) => ({ real: t.real + r.calls.long, talk: t.talk + r.calls.talkSeconds, shift: t.shift + r.shift.seconds, unreached: t.unreached + r.calls.unanswered + r.calls.short, escalations: t.escalations + r.escalations }),
-    { real: 0, talk: 0, shift: 0, unreached: 0, escalations: 0 },
+    (t, r) => ({
+      real: t.real + r.calls.long,
+      talk: t.talk + r.calls.talkSeconds,
+      shift: t.shift + r.shift.seconds,
+      breakSec: t.breakSec + (r.breakSeconds || 0),
+      unreached: t.unreached + r.calls.unanswered + r.calls.short,
+      escalations: t.escalations + r.escalations,
+    }),
+    { real: 0, talk: 0, shift: 0, breakSec: 0, unreached: 0, escalations: 0 },
   );
   const maxReal = Math.max(1, ...ranked.map((r) => r.calls.long));
+  const limitSec = breakLimitMinutes * 60 * dayCount;
+  const exceededCount = ranked.filter((r) => (r.breakSeconds || 0) > limitSec).length;
 
   // Measure the summary block first so the canvas is exactly as tall as needed.
   const probe = document.createElement("canvas").getContext("2d")!;
   probe.font = "500 17px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
-  const summaries = ranked.map((r) => wrap(probe, summaryOf(r), W - PAD * 2 - 24));
+  const summaries = ranked.map((r) => wrap(probe, summaryOf(r, breakLimitMinutes, dayCount), W - PAD * 2 - 24));
   const summaryLines = summaries.reduce((n, l) => n + l.length, 0);
 
-  const headH = 190;
-  const listY = headH + 64;
+  const bannerY = PAD + 84 + 66 + 14;
+  const bannerH = 42;
+  const listY = bannerY + bannerH + 32;
   const listH = ranked.length * ROW + 16;
   const sumY = listY + listH + 48;
   const sumH = 44 + summaryLines * 26 + ranked.length * 14 + 16;
@@ -168,14 +202,19 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
   const chips = [
     { label: "Gerçek çağrı", value: String(totals.real), color: C.green },
     { label: "Görüşme süresi", value: short(totals.talk), color: C.blue },
+    { label: "Toplam Mola", value: short(totals.breakSec), color: C.amber },
+    {
+      label: `Mola Sınırı (${short(limitSec)})`,
+      value: exceededCount > 0 ? `${exceededCount} kişi aştı` : "Aşım yok",
+      color: exceededCount > 0 ? C.red : C.green,
+    },
     { label: "Ulaşma", value: pct(totals.real, totals.real + totals.unreached), color: C.accent },
     { label: "Yoğunluk", value: pct(totals.talk, totals.shift), color: C.amber },
     { label: "Ulaşılamayan", value: String(totals.unreached), color: C.red },
-    { label: "Eskalasyon", value: String(totals.escalations), color: C.muted },
   ];
-  const chipW = (W - PAD * 2 - 12 * (chips.length - 1)) / chips.length;
+  const chipW = (W - PAD * 2 - 10 * (chips.length - 1)) / chips.length;
   chips.forEach((c, i) => {
-    const x = PAD + i * (chipW + 12);
+    const x = PAD + i * (chipW + 10);
     const y = PAD + 84;
     ctx.fillStyle = C.card;
     roundRect(ctx, x, y, chipW, 66, 14);
@@ -184,30 +223,62 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
     roundRect(ctx, x, y + 14, 4, 38, 2);
     ctx.fill();
     ctx.fillStyle = C.text;
-    ctx.font = font(700, 24);
-    ctx.fillText(c.value, x + 18, y + 32);
+    ctx.font = font(700, 20);
+    ctx.fillText(c.value, x + 12, y + 32);
     ctx.fillStyle = C.muted;
-    ctx.font = font(500, 13);
-    ctx.fillText(c.label, x + 18, y + 54);
+    ctx.font = font(500, 12);
+    ctx.fillText(c.label, x + 12, y + 54);
   });
+
+  // Break compliance banner
+  if (exceededCount > 0) {
+    ctx.fillStyle = "rgba(248, 113, 113, 0.16)";
+    roundRect(ctx, PAD - 12, bannerY, W - PAD * 2 + 24, bannerH, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(248, 113, 113, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = C.red;
+    ctx.font = font(700, 14.5);
+    const exceededNames = ranked
+      .filter((r) => (r.breakSeconds || 0) > limitSec)
+      .map((r) => `${r.name.split(" ")[0]} (+${short((r.breakSeconds || 0) - limitSec)})`)
+      .join(", ");
+    ctx.fillText(`MOLA AŞIMI UYARISI: ${exceededCount} temsilci mola sınırını (${short(limitSec)}) aştı: ${exceededNames}`, PAD + 10, bannerY + 26);
+  } else {
+    ctx.fillStyle = "rgba(52, 211, 153, 0.12)";
+    roundRect(ctx, PAD - 12, bannerY, W - PAD * 2 + 24, bannerH, 10);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(52, 211, 153, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = C.green;
+    ctx.font = font(600, 14);
+    ctx.fillText(`MOLA UYUMU: Tüm ekip mola sınırına (${short(limitSec)}) eksiksiz uydu. Mola aşımı yapılmadı.`, PAD + 10, bannerY + 26);
+  }
 
   // Ranking
   ctx.fillStyle = C.muted;
   ctx.font = font(600, 13);
   ctx.fillText("SIRALAMA · GERÇEK ÇAĞRIYA GÖRE", PAD, listY - 18);
-  const colName = PAD + 96;
-  const colBar = PAD + 360;
-  const barW = 250;
-  const colTalk = colBar + barW + 70;
-  const colOcc = colTalk + 110;
-  const colLong = colOcc + 100;
-  const colAns = colLong + 130;
+  const colName = PAD + 76;
+  const colBar = PAD + 310;
+  const barW = 160;
+  const colTalk = colBar + barW + 55;
+  const colBreak = colTalk + 115;
+  const colOcc = colBreak + 145;
+  const colAns = colOcc + 95;
+  const colLong = colAns + 85;
+
   ctx.fillStyle = C.dim;
   ctx.font = font(600, 12);
   ctx.fillText("GÖRÜŞME", colTalk, listY - 18);
+  ctx.fillText("MOLA (AŞIM)", colBreak, listY - 18);
   ctx.fillText("YOĞUNLUK", colOcc, listY - 18);
-  ctx.fillText("10+ / 20+ DK", colLong, listY - 18);
   ctx.fillText("ORT. CEVAP", colAns, listY - 18);
+  ctx.fillText("10+ / 20+", colLong, listY - 18);
 
   const avatars = await Promise.all(ranked.map((r) => loadImage(avatarUrl(r.userId) ?? "")));
 
@@ -223,21 +294,21 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
     ctx.font = font(700, 18);
     ctx.fillText(String(i + 1), PAD, y + 39);
     // photo or initials
-    const ax = PAD + 40;
+    const ax = PAD + 38;
     const ay = y + ROW / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(ax, ay, 20, 0, Math.PI * 2);
+    ctx.arc(ax, ay, 19, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
     const img = avatars[i];
     if (img) {
-      ctx.drawImage(img, ax - 20, ay - 20, 40, 40);
+      ctx.drawImage(img, ax - 19, ay - 19, 38, 38);
     } else {
       ctx.fillStyle = "rgba(139,124,246,0.25)";
-      ctx.fillRect(ax - 20, ay - 20, 40, 40);
+      ctx.fillRect(ax - 19, ay - 19, 38, 38);
       ctx.fillStyle = C.text;
-      ctx.font = font(700, 15);
+      ctx.font = font(700, 14);
       ctx.textAlign = "center";
       ctx.fillText(initials(r.name), ax, ay + 5);
       ctx.textAlign = "left";
@@ -245,11 +316,11 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
     ctx.restore();
     // name and roles
     ctx.fillStyle = C.text;
-    ctx.font = font(600, 17);
-    ctx.fillText(r.name, colName, y + 30);
+    ctx.font = font(600, 16);
+    ctx.fillText(r.name, colName, y + 29);
     ctx.fillStyle = C.dim;
-    ctx.font = font(500, 12);
-    ctx.fillText(`${r.calls.inboundReal} gelen · ${r.calls.outboundReal} giden · ${r.shift.seconds > 0 ? short(r.shift.seconds) + " mesai" : "mesai yok"}`, colName, y + 48);
+    ctx.font = font(500, 11.5);
+    ctx.fillText(`${r.calls.inboundReal} gelen · ${r.calls.outboundReal} giden · ${r.shift.seconds > 0 ? short(r.shift.seconds) + " mesai" : "mesai yok"}`, colName, y + 47);
     // bar
     ctx.fillStyle = "rgba(255,255,255,0.08)";
     roundRect(ctx, colBar, y + 26, barW, 12, 6);
@@ -259,17 +330,49 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
     roundRect(ctx, colBar, y + 26, w, 12, 6);
     ctx.fill();
     ctx.fillStyle = C.text;
-    ctx.font = font(700, 18);
-    ctx.fillText(String(r.calls.long), colBar + barW + 14, y + 39);
+    ctx.font = font(700, 17);
+    ctx.fillText(String(r.calls.long), colBar + barW + 12, y + 38);
     // figures
-    ctx.font = font(600, 16);
+    ctx.font = font(600, 15);
     ctx.fillStyle = C.text;
-    ctx.fillText(r.calls.talkSeconds > 0 ? short(r.calls.talkSeconds) : "—", colTalk, y + 38);
+    ctx.fillText(r.calls.talkSeconds > 0 ? short(r.calls.talkSeconds) : "-", colTalk, y + 37);
+
+    // Mola & Aşım durumu (Net ve Dikkat Çekici)
+    const bSec = r.breakSeconds || 0;
+    if (bSec > limitSec) {
+      const diff = bSec - limitSec;
+      ctx.fillStyle = "rgba(248, 113, 113, 0.22)";
+      roundRect(ctx, colBreak - 6, y + 17, 136, 28, 6);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(248, 113, 113, 0.6)";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = C.red;
+      ctx.font = font(700, 13.5);
+      ctx.fillText(short(bSec), colBreak, y + 36);
+      ctx.font = font(700, 11);
+      ctx.fillText(`+${short(diff)} aştı`, colBreak + 58, y + 36);
+    } else if (bSec > 0) {
+      ctx.fillStyle = C.green;
+      ctx.font = font(600, 14.5);
+      ctx.fillText(short(bSec), colBreak, y + 37);
+      ctx.fillStyle = C.dim;
+      ctx.font = font(500, 11);
+      ctx.fillText("uygun", colBreak + 58, y + 37);
+    } else {
+      ctx.fillStyle = C.dim;
+      ctx.font = font(500, 14);
+      ctx.fillText("0 dk", colBreak, y + 37);
+    }
+
+    ctx.font = font(600, 15);
     ctx.fillStyle = r.shift.seconds > 0 && r.calls.talkSeconds / r.shift.seconds >= 0.5 ? C.amber : C.text;
-    ctx.fillText(pct(r.calls.talkSeconds, r.shift.seconds), colOcc, y + 38);
+    ctx.fillText(pct(r.calls.talkSeconds, r.shift.seconds), colOcc, y + 37);
     ctx.fillStyle = C.text;
-    ctx.fillText(`${r.calls.over10} / ${r.calls.over20}`, colLong, y + 38);
-    ctx.fillText(r.calls.avgAnswerSeconds > 0 ? `${r.calls.avgAnswerSeconds} sn` : "—", colAns, y + 38);
+    ctx.fillText(r.calls.avgAnswerSeconds > 0 ? `${r.calls.avgAnswerSeconds} sn` : "-", colAns, y + 37);
+    ctx.fillStyle = C.dim;
+    ctx.fillText(`${r.calls.over10} / ${r.calls.over20}`, colLong, y + 37);
   });
 
   // Summary
@@ -296,7 +399,7 @@ export async function renderTeamImage(rows: TeamRow[], rangeLabel: string, scope
   // Footer
   ctx.fillStyle = C.dim;
   ctx.font = font(500, 12);
-  ctx.fillText(`Gerçek çağrı: ${realSeconds} saniye ve üstü görüşmeler · Yoğunluk: görüşme süresi / mesai süresi, yalnızca çağrılar · Ort. cevap: gelen çağrının açılmasına kadar geçen süre`, PAD, H - 28);
+  ctx.fillText(`Gerçek çağrı: ${realSeconds} sn ve üstü · Mola sınırı: ${short(limitSec)} (kişi başı) · Yoğunluk: görüşme / mesai süresi`, PAD, H - 28);
   ctx.textAlign = "right";
   ctx.fillText(numericDateTime(new Date()), W - PAD, H - 28);
   ctx.textAlign = "left";

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Phone } from "./useSoftphone";
 import { normalizeDial } from "./dial";
+import { useLiveTranscript } from "./liveTranscript";
 
 const DESKTOP_BRIDGE_URL = "ws://127.0.0.1:48123";
 
@@ -50,14 +51,17 @@ function executeBridgeCommand(cmd: string, arg: string, phone: Phone, canCall: b
 // widgets and runs the commands they send back, so the mini widget mirrors
 // and controls this panel seamlessly.
 export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) {
+  const tr = useLiveTranscript();
   const phoneRef = useRef(phone);
   const activeRef = useRef(active);
   const canCallRef = useRef(canCall);
+  const trRef = useRef(tr);
   const desktopWsRef = useRef<WebSocket | null>(null);
 
   phoneRef.current = phone;
   activeRef.current = active;
   canCallRef.current = canCall;
+  trRef.current = tr;
 
   // Announce that this tab is the panel (so the extension hides its own widget
   // here and routes commands to this page), and heartbeat while the panel stays
@@ -80,6 +84,7 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
   // Publish call state whenever it changes (only from the owning tab).
   useEffect(() => {
     if (!active) return;
+    const isTalk = phone.status === "in-call" || phone.status === "held";
     const state = {
       status: phone.status,
       peer: phone.peer,
@@ -90,6 +95,19 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
       callStartedAt: phone.callStartedAt,
       answeredAt: phone.answeredAt,
       canCall,
+      transcript: isTalk
+        ? {
+            enabled: tr.enabled,
+            lines: tr.lines.slice(-14).map((l) => ({
+              id: l.id,
+              speaker: l.speaker,
+              text: l.text,
+              atSec: l.atSec,
+            })),
+            interimAgent: tr.interimAgent,
+            interimCustomer: tr.interimCustomer,
+          }
+        : undefined,
     };
     postPanel("state", { state });
     if (desktopWsRef.current && desktopWsRef.current.readyState === WebSocket.OPEN) {
@@ -110,6 +128,10 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
     phone.endReason,
     phone.callStartedAt,
     phone.answeredAt,
+    tr.enabled,
+    tr.lines,
+    tr.interimAgent,
+    tr.interimCustomer,
   ]);
 
   // Connect to the local Windows Desktop Mini App via loopback WebSocket
@@ -151,6 +173,8 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
           try {
             ws?.send(JSON.stringify({ type: "hello" }));
             const p = phoneRef.current;
+            const curTr = trRef.current;
+            const isTalk = p.status === "in-call" || p.status === "held";
             ws?.send(
               JSON.stringify({
                 type: "state",
@@ -164,6 +188,19 @@ export function usePanelBridge(phone: Phone, active: boolean, canCall: boolean) 
                   callStartedAt: p.callStartedAt,
                   answeredAt: p.answeredAt,
                   canCall: canCallRef.current,
+                  transcript: isTalk
+                    ? {
+                        enabled: curTr.enabled,
+                        lines: curTr.lines.slice(-14).map((l) => ({
+                          id: l.id,
+                          speaker: l.speaker,
+                          text: l.text,
+                          atSec: l.atSec,
+                        })),
+                        interimAgent: curTr.interimAgent,
+                        interimCustomer: curTr.interimCustomer,
+                      }
+                    : undefined,
                 },
               })
             );
