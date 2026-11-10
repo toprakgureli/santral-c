@@ -4,26 +4,18 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "@/api/client";
-import type { EscalationCategory, EscalationRecord, TranscriptLine } from "@/api/types";
-import { Captions, CheckCircle2, Copy, Plus } from "lucide-react";
+import type { EscalationCategory, EscalationRecord } from "@/api/types";
+import { CheckCircle2, Plus } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { EscalationPicker } from "@/components/escalation/EscalationPicker";
 import { emitEscalationSaved, onEscalationSaved, sameNumber } from "@/components/escalation/events";
 import { cn } from "@/lib/utils";
-
-function formatAtSec(sec: number): string {
-  const s = Math.max(0, Math.floor(sec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
 
 export function EscalationForm({
   categories,
   number,
   canSearch,
   callUuid,
-  transcriptLines,
   onSaved,
   onHistory,
   aside,
@@ -35,7 +27,6 @@ export function EscalationForm({
   number: string;
   canSearch: boolean;
   callUuid?: string;
-  transcriptLines?: TranscriptLine[];
   onSaved?: (record: EscalationRecord) => void;
   // Reports the loaded history so a parent can show a count in its header.
   onHistory?: (items: EscalationRecord[]) => void;
@@ -217,55 +208,6 @@ export function EscalationForm({
               }}
             />
           </div>
-
-          {transcriptLines && transcriptLines.length > 0 && (
-            <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                  <Captions className="size-3.5 text-primary" />
-                  Görüşme Transkripti ({transcriptLines.length} satır)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const joined = transcriptLines
-                      .map((l) => `${l.speaker === "agent" ? "Temsilci" : "Müşteri"}: ${l.text}`)
-                      .join("\n");
-                    setNote((prev) => (prev.trim() ? `${prev.trim()}\n${joined}` : joined));
-                  }}
-                  className="flex items-center gap-1 rounded-lg bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/25"
-                >
-                  <Copy className="size-3" /> Tümünü nota ekle
-                </button>
-              </div>
-              <div className="max-h-36 space-y-1 overflow-y-auto pr-1">
-                {transcriptLines.map((l) => {
-                  const isAgent = l.speaker === "agent";
-                  return (
-                    <button
-                      key={l.id}
-                      type="button"
-                      onClick={() => {
-                        const prefix = isAgent ? "Temsilci" : "Müşteri";
-                        const snippet = `${prefix}: ${l.text}`;
-                        setNote((prev) => (prev.trim() ? `${prev.trim()}\n${snippet}` : snippet));
-                      }}
-                      data-tip="Tıkla ve eskalasyon notuna ekle"
-                      className="flex w-full items-start gap-2 rounded-lg bg-card/80 px-2.5 py-1.5 text-left text-xs ring-1 ring-border/50 transition hover:bg-accent"
-                    >
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-                        {formatAtSec(l.atSec)}
-                      </span>
-                      <span className={cn("shrink-0 font-semibold", isAgent ? "text-primary" : "text-amber-500")}>
-                        {isAgent ? "Sen:" : "Müşteri:"}
-                      </span>
-                      <span className="min-w-0 flex-1 break-words text-foreground/90">{l.text}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {(reasonId !== null || note.trim() !== "") && (
             <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">

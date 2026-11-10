@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftRight, Captions, Check, Copy, Download, History, PhoneIncoming, PhoneOutgoing, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import { ArrowLeftRight, Download, History, PhoneIncoming, PhoneOutgoing, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { ListRow, Toolbar } from "../components/ui/rows";
 import { api, ApiError } from "../api/client";
-import type { Call, TranscriptLine } from "../api/types";
+import type { Call } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { can } from "../lib/permissions";
 import { displayNumber } from "../softphone/dial";
-import { fetchCallTranscript } from "../softphone/liveTranscript";
 import { cn } from "../lib/utils";
 import { Button, Card, DateField, EmptyState, Input, Select, Skeleton, Spinner } from "../components/ui";
 import { CallDisposition, Direction, formatDuration, formatStamp } from "./callFormat";
@@ -55,10 +54,6 @@ export function Calls() {
   const [playing, setPlaying] = useState<{
     uuid: string;
     label: string;
-    peer: string;
-    startedAt: string;
-    hasAudio: boolean;
-    openTranscript?: boolean;
   } | null>(null);
   const perPage = 20;
 
@@ -245,7 +240,6 @@ export function Calls() {
             {loading && calls.length === 0 && Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-2xl" />)}
             {calls.map((c) => {
               const label = `${displayNumber(c.fromNumber) || c.fromNumber} -> ${displayNumber(c.toNumber) || c.toNumber}`;
-              const peer = c.direction === "inbound" ? c.fromNumber : c.toNumber;
               const isPlaying = playing?.uuid === c.uuid;
               const icon = c.direction === "inbound" ? PhoneIncoming : c.direction === "outbound" ? PhoneOutgoing : ArrowLeftRight;
               const tone = c.disposition === "answered" ? (c.direction === "inbound" ? "success" : "primary") : c.disposition === "in_progress" ? "primary" : "destructive";
@@ -261,31 +255,6 @@ export function Calls() {
                     <>
                       <span className="w-16 text-right font-mono text-sm tabular-nums">{c.disposition === "answered" || c.disposition === "in_progress" ? formatDuration(c.durationSeconds) : "—"}</span>
                       <span className="flex items-center gap-1">
-                        {c.disposition === "answered" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setPlaying({
-                                uuid: c.uuid,
-                                label,
-                                peer,
-                                startedAt: c.startedAt,
-                                hasAudio: Boolean(c.recording && canRec),
-                                openTranscript: true,
-                              })
-                            }
-                            aria-label="Transkript"
-                            data-tip="Görüşme transkripti"
-                            className={cn(
-                              "flex size-8 items-center justify-center rounded-xl transition-colors",
-                              isPlaying && playing?.openTranscript
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground",
-                            )}
-                          >
-                            <Captions className="size-3.5" />
-                          </button>
-                        )}
                         {c.recording && canRec ? (
                           <>
                             <button
@@ -294,17 +263,13 @@ export function Calls() {
                                 setPlaying({
                                   uuid: c.uuid,
                                   label,
-                                  peer,
-                                  startedAt: c.startedAt,
-                                  hasAudio: true,
-                                  openTranscript: playing?.uuid === c.uuid ? playing.openTranscript : false,
                                 })
                               }
                               aria-label="Dinle"
                               data-tip="Dinle"
                               className={cn(
                                 "flex size-8 items-center justify-center rounded-xl transition-colors",
-                                isPlaying && playing?.hasAudio
+                                isPlaying
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-muted/70 text-muted-foreground hover:bg-accent hover:text-foreground",
                               )}
@@ -349,10 +314,6 @@ export function Calls() {
         <RecordingBar
           uuid={playing.uuid}
           label={playing.label}
-          peer={playing.peer}
-          startedAt={playing.startedAt}
-          hasAudio={playing.hasAudio}
-          defaultTranscriptOpen={playing.openTranscript}
           onClose={() => setPlaying(null)}
         />
       )}
@@ -362,60 +323,20 @@ export function Calls() {
 
 const SPEEDS = [1, 1.25, 1.5, 2] as const;
 
-function formatSec(sec: number): string {
-  const s = Math.max(0, Math.floor(sec));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
-}
-
 // RecordingBar is a wide, fixed player at the bottom of the screen for the
-// selected recording and its transcript, with speed controls, seeking and download.
+// selected recording, with speed controls, seeking and download.
 function RecordingBar({
   uuid,
   label,
-  peer,
-  startedAt,
-  hasAudio,
-  defaultTranscriptOpen,
   onClose,
 }: {
   uuid: string;
   label: string;
-  peer: string;
-  startedAt: string;
-  hasAudio: boolean;
-  defaultTranscriptOpen?: boolean;
   onClose: () => void;
 }) {
   const src = `/api/v1/calls/${encodeURIComponent(uuid)}/recording`;
   const audioRef = useRef<HTMLAudioElement>(null);
   const [speed, setSpeed] = useState<number>(1);
-  const [currentSec, setCurrentSec] = useState(0);
-  const [showTranscript, setShowTranscript] = useState(Boolean(defaultTranscriptOpen || !hasAudio));
-  const [lines, setLines] = useState<TranscriptLine[]>([]);
-  const [loadingTr, setLoadingTr] = useState(true);
-  const [search, setSearch] = useState("");
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    setShowTranscript(Boolean(defaultTranscriptOpen || !hasAudio));
-  }, [uuid, defaultTranscriptOpen, hasAudio]);
-
-  useEffect(() => {
-    let active = true;
-    setLoadingTr(true);
-    void fetchCallTranscript({ callId: uuid, peer, startedAt })
-      .then((res) => {
-        if (active) setLines(res.lines ?? []);
-      })
-      .finally(() => {
-        if (active) setLoadingTr(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [uuid, peer, startedAt]);
 
   function changeSpeed(next: number) {
     setSpeed(next);
@@ -430,207 +351,74 @@ function RecordingBar({
     el.currentTime = Math.max(0, el.currentTime + delta);
   }
 
-  function seekTo(sec: number) {
-    const el = audioRef.current;
-    if (!el) return;
-    el.currentTime = Math.max(0, sec);
-    void el.play().catch(() => undefined);
-  }
-
-  function copyTranscript() {
-    if (!lines.length) return;
-    const text = lines
-      .map((l) => `[${formatSec(l.atSec)}] ${l.speaker === "agent" ? "Temsilci" : "Müşteri"}: ${l.text}`)
-      .join("\n");
-    void navigator.clipboard?.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
-  }
-
-  const q = search.trim().toLocaleLowerCase("tr");
-  const filtered = q ? lines.filter((l) => l.text.toLocaleLowerCase("tr").includes(q)) : lines;
-
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-card/95 shadow-[0_-8px_24px_rgba(0,0,0,0.15)] backdrop-blur">
-      {showTranscript && (
-        <div className="border-b border-border/60 bg-background/80 px-4 py-3">
-          <div className="mx-auto max-w-5xl">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Captions className="size-4 text-primary" />
-                <span className="text-xs font-semibold">Görüşme Transkripti</span>
-                {lines.length > 0 && (
-                  <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[11px] font-medium text-primary tabular-nums">
-                    {lines.length} satır
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {lines.length > 2 && (
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Transkript içinde ara..."
-                    className="h-7 w-48 text-xs"
-                  />
-                )}
-                {lines.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={copyTranscript}
-                    className="flex items-center gap-1 rounded-lg border border-border/70 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                  >
-                    {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-                    {copied ? "Kopyalandı" : "Kopyala"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {loadingTr ? (
-              <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Spinner /> Transkript yükleniyor...
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-border/60 text-xs text-muted-foreground">
-                {lines.length === 0
-                  ? "Bu görüşme için kaydedilmiş transkript bulunmuyor."
-                  : "Aramanızla eşleşen konuşma satırı bulunamadı."}
-              </div>
-            ) : (
-              <div className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
-                {filtered.map((l, idx) => {
-                  const isAgent = l.speaker === "agent";
-                  const nextSec = filtered[idx + 1]?.atSec ?? Number.POSITIVE_INFINITY;
-                  const active = hasAudio && currentSec >= l.atSec && currentSec < nextSec;
-                  return (
-                    <button
-                      key={l.id || idx}
-                      type="button"
-                      onClick={() => hasAudio && seekTo(l.atSec)}
-                      className={cn(
-                        "flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-xs transition",
-                        active
-                          ? "bg-primary/15 ring-1 ring-primary/40"
-                          : "bg-card/80 ring-1 ring-border/40 hover:bg-accent/60",
-                      )}
-                    >
-                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-                        {formatSec(l.atSec)}
-                      </span>
-                      <span
-                        className={cn(
-                          "w-16 shrink-0 font-semibold",
-                          isAgent ? "text-primary" : "text-amber-500",
-                        )}
-                      >
-                        {isAgent ? "Temsilci" : "Müşteri"}
-                      </span>
-                      <span className="min-w-0 flex-1 break-words leading-relaxed text-foreground">
-                        {l.text}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="px-4 py-3">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
           <div className="hidden min-w-0 shrink-0 sm:block">
-            <div className="text-xs text-muted-foreground">{hasAudio ? "Çağrı kaydı" : "Çağrı detayı"}</div>
+            <div className="text-xs text-muted-foreground">Çağrı kaydı</div>
             <div className="truncate text-sm font-medium tabular-nums">{label}</div>
           </div>
 
-          {hasAudio ? (
-            <>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => skip(-5)}
-                  data-tip="5 saniye geri"
-                  className="flex items-center gap-0.5 rounded-lg border border-border/70 px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                >
-                  <RotateCcw className="size-3.5" /> 5s
-                </button>
-                <button
-                  type="button"
-                  onClick={() => skip(10)}
-                  data-tip="10 saniye ileri"
-                  className="flex items-center gap-0.5 rounded-lg border border-border/70 px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                >
-                  10s <RotateCw className="size-3.5" />
-                </button>
-              </div>
-
-              {/* Call recordings have no caption track; live transcript panel sits above. */}
-              <audio
-                ref={audioRef}
-                key={uuid}
-                controls
-                autoPlay
-                src={src}
-                onPlay={(e) => {
-                  e.currentTarget.playbackRate = speed;
-                }}
-                onTimeUpdate={(e) => setCurrentSec(e.currentTarget.currentTime)}
-                className="h-10 min-w-[12rem] flex-1"
-              />
-
-              <div className="flex items-center gap-0.5 rounded-xl border border-border/70 bg-muted/40 p-0.5">
-                {SPEEDS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => changeSpeed(s)}
-                    className={cn(
-                      "rounded-lg px-2 py-1 font-mono text-xs font-medium tabular-nums transition",
-                      speed === s
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {s}x
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 text-xs text-muted-foreground">
-              Ses kaydı olmadan görüşme transkripti görüntüleniyor.
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowTranscript((v) => !v)}
-            data-tip="Transkript panelini aç/kapat"
-            className={cn(
-              "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition",
-              showTranscript
-                ? "border-primary/40 bg-primary/15 text-primary"
-                : "border-border/70 bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-          >
-            <Captions className="size-4" />
-            Transkript {lines.length > 0 ? `(${lines.length})` : ""}
-          </button>
-
-          {hasAudio && (
-            <a
-              href={`${src}?download=1`}
-              target="_blank"
-              rel="noopener"
-              aria-label="İndir"
-              data-tip="İndir"
-              className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => skip(-5)}
+              data-tip="5 saniye geri"
+              className="flex items-center gap-0.5 rounded-lg border border-border/70 px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
             >
-              <Download className="size-5" />
-            </a>
-          )}
+              <RotateCcw className="size-3.5" /> 5s
+            </button>
+            <button
+              type="button"
+              onClick={() => skip(10)}
+              data-tip="10 saniye ileri"
+              className="flex items-center gap-0.5 rounded-lg border border-border/70 px-2 py-1 text-xs font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            >
+              10s <RotateCw className="size-3.5" />
+            </button>
+          </div>
+
+          <audio
+            ref={audioRef}
+            key={uuid}
+            controls
+            autoPlay
+            src={src}
+            onPlay={(e) => {
+              e.currentTarget.playbackRate = speed;
+            }}
+            className="h-10 min-w-[12rem] flex-1"
+          />
+
+          <div className="flex items-center gap-0.5 rounded-xl border border-border/70 bg-muted/40 p-0.5">
+            {SPEEDS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => changeSpeed(s)}
+                className={cn(
+                  "rounded-lg px-2 py-1 font-mono text-xs font-medium tabular-nums transition",
+                  speed === s
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+
+          <a
+            href={`${src}?download=1`}
+            target="_blank"
+            rel="noopener"
+            aria-label="İndir"
+            data-tip="İndir"
+            className="shrink-0 rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          >
+            <Download className="size-5" />
+          </a>
           <button
             onClick={onClose}
             aria-label="Kapat"

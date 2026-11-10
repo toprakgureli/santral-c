@@ -14,7 +14,6 @@ import {
   Settings2,
 } from "lucide-react";
 import VoiceMixer from "../layout/VoiceMixer";
-import LiveTranscriptBox from "../layout/LiveTranscriptBox";
 import { useSoftphoneContext } from "../../softphone/SoftphoneContext";
 import { useShift } from "../../shift/ShiftContext";
 import WhatsAppTemplateDialog from "../WhatsAppTemplateDialog";
@@ -296,7 +295,6 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
               )}
 
               {active && <VoiceMixer size="large" className="w-full max-w-sm" />}
-              {active && <LiveTranscriptBox size="large" className="w-full max-w-md" />}
 
               {/* Mid-call: open WhatsApp with the customer on the line, "we are talking right now" text. */}
               {active && waLiveNumber && (

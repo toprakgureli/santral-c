@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GripVertical, Mic, MicOff, Pause, Phone, PhoneOff, Play } from "lucide-react";
 import VoiceMixer from "@/components/layout/VoiceMixer";
-import LiveTranscriptBox from "@/components/layout/LiveTranscriptBox";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import { whatsappNumber } from "@/lib/whatsapp";
@@ -127,7 +126,6 @@ export default function CallBar() {
       {phone.error && <p className="mb-2 text-xs leading-snug text-destructive">{phone.error}</p>}
 
       {inCall && <VoiceMixer className="mb-3" />}
-      {inCall && <LiveTranscriptBox className="mb-3" />}
 
       {phone.status === "incoming" ? (
         <div className="grid grid-cols-2 gap-2">
