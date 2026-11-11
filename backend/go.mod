@@ -2,7 +2,7 @@ module github.com/toprakgureli/santral-c/backend
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/go-playground/validator/v10 v10.30.4
