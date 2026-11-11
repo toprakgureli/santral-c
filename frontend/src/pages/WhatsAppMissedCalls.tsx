@@ -34,21 +34,21 @@ export function WhatsAppMissedCalls() {
     setError(null);
     waApi
       .missedCallItems(all)
-      .then((r) => id === latest.current && setRows(r))
+      .then((r) => id === latest.current && setRows(Array.isArray(r) ? r : []))
       .catch((e) => id === latest.current && setError(e instanceof ApiError ? e.message : "Yüklenemedi."))
       .finally(() => id === latest.current && setLoading(false));
   };
 
   useEffect(load, [all]);
 
-  const pending = useMemo(() => rows.filter((r) => r.status === "pending"), [rows]);
+  const pending = useMemo(() => (Array.isArray(rows) ? rows.filter((r) => r.status === "pending") : []), [rows]);
 
   const send = async (id: number) => {
     setBusyId(id);
     setError(null);
     try {
       const updated = await waApi.sendMissedCall(id);
-      setRows((cur) => cur.map((r) => (r.id === id ? updated : r)));
+      setRows((cur) => (Array.isArray(cur) ? cur.map((r) => (r.id === id ? updated : r)) : []));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Şablon gönderilemedi.");
       load();
@@ -62,7 +62,7 @@ export function WhatsAppMissedCalls() {
     setError(null);
     try {
       const updated = await waApi.dismissMissedCall(id);
-      setRows((cur) => cur.map((r) => (r.id === id ? updated : r)));
+      setRows((cur) => (Array.isArray(cur) ? cur.map((r) => (r.id === id ? updated : r)) : []));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "İşlem yapılamadı.");
       load();
@@ -221,7 +221,7 @@ export function WhatsAppMissedCalls() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {!loading && rows.length === 0 ? (
+      {!loading && (!rows || rows.length === 0) ? (
         <div className="rounded-2xl bg-card ring-1 ring-border/60">
           <EmptyState
             icon={<PhoneMissed />}
@@ -235,7 +235,7 @@ export function WhatsAppMissedCalls() {
         </div>
       ) : (
         <div className="space-y-2">
-          {rows.map((r) => (
+          {rows?.map((r) => (
             <Row key={r.id} r={r} />
           ))}
         </div>

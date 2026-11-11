@@ -276,7 +276,14 @@ func (s *Service) MissedCallItems(ctx context.Context, actorID uint, status stri
 	if !all && status == "" {
 		status = "pending"
 	}
-	return s.repo.ListMissedCallRecoveries(ctx, status, 50)
+	items, err := s.repo.ListMissedCallRecoveries(ctx, status, 50)
+	if err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []models.WAMissedCallRecoveryItem{}
+	}
+	return items, nil
 }
 
 // SendMissedCallRecovery triggers sending the recovery template for a pending recovery.

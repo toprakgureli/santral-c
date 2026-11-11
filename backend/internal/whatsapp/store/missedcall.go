@@ -57,7 +57,7 @@ func (r *Repository) ListMissedCallRecoveries(ctx context.Context, status string
 	if status != "" {
 		q = q.Where("r.status = ?", status)
 	}
-	var rows []models.WAMissedCallRecoveryItem
+	rows := make([]models.WAMissedCallRecoveryItem, 0)
 	err := q.Order("r.created_at DESC").Limit(limit).Scan(&rows).Error
 	return rows, err
 }
