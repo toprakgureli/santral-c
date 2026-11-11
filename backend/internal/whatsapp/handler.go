@@ -540,6 +540,25 @@ func (r *Router) Routes(g fiber.Router) {
 	a.Get("/call-survey/report", with(func(c *fiber.Ctx, uid uint) (any, error) {
 		return s.CallSurveyReport(c.UserContext(), uid, c.Query("from"), c.Query("to"))
 	}))
+
+	// missed call recovery
+	a.Get("/missed-call", with(func(c *fiber.Ctx, uid uint) (any, error) { return s.MissedCallRecovery(c.UserContext(), uid) }))
+	a.Put("/missed-call", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		var in MissedCallRecoverySettings
+		if err := body(c, &in); err != nil {
+			return nil, err
+		}
+		return s.SaveMissedCallRecovery(c.UserContext(), uid, in)
+	}))
+	a.Get("/missed-call/items", with(func(c *fiber.Ctx, uid uint) (any, error) {
+		return s.MissedCallItems(c.UserContext(), uid, c.Query("status"), c.Query("all") == "true")
+	}))
+	a.Post("/missed-call/items/:id/send", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return s.SendMissedCallRecovery(c.UserContext(), uid, id)
+	}))
+	a.Post("/missed-call/items/:id/dismiss", withID(func(c *fiber.Ctx, uid, id uint) (any, error) {
+		return s.DismissMissedCallRecovery(c.UserContext(), uid, id)
+	}))
 	a.Get("/search", with(func(c *fiber.Ctx, uid uint) (any, error) {
 		return s.Search(c.UserContext(), uid, c.Query("q"), qid(c, "conversation"))
 	}))

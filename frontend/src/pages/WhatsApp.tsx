@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PAGE_PERMISSIONS } from "@/lib/menu";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { BarChart3, BellOff, CheckCheck, EllipsisVertical, MessageCirclePlus, PhoneCall, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
+import { BarChart3, BellOff, CheckCheck, EllipsisVertical, MessageCirclePlus, PhoneCall, PhoneMissed, Settings2, SlidersHorizontal, Smartphone, Star } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import BulkResolveModal from "@/components/whatsapp/BulkResolveModal";
@@ -177,6 +177,7 @@ export function WhatsApp() {
           </button>
         )}
         {can(user, "whatsapp.callbacks") && <MenuLink to="/whatsapp/callbacks" icon={PhoneCall} label="Geri arama talepleri" />}
+        {canAny(user, ["whatsapp.missed_call_recovery", "whatsapp.template_send"]) && <MenuLink to="/whatsapp/missed-calls" icon={PhoneMissed} label="Kaçan çağrılar" />}
         {can(user, "whatsapp.reports") && <MenuLink to="/whatsapp/reports" icon={BarChart3} label="Raporlar" />}
         {can(user, "whatsapp.ratings") && <MenuLink to="/whatsapp/ratings" icon={Star} label="Puanlamalar" />}
         {canSettings && <MenuLink to="/whatsapp/settings" icon={Settings2} label="WhatsApp ayarları" />}

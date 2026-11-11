@@ -16,6 +16,8 @@ import type {
   WAPrefs,
   WACallSurveyReport,
   WACallSurveySettings,
+  WAMissedCallRecoverySettings,
+  WAMissedCallRecoveryItem,
   WAFile,
   WABot,
   WACallback,
@@ -178,6 +180,13 @@ export const waApi = {
   callSurvey: () => request<WACallSurveySettings>("/wa/call-survey"),
   saveCallSurvey: (body: WACallSurveySettings) => request<WACallSurveySettings>("/wa/call-survey", json("PUT", body)),
   callSurveyReport: (from: string, to: string) => request<WACallSurveyReport>("/wa/call-survey/report" + q({ from, to })),
+
+  // missed call recovery
+  missedCallRecovery: () => request<WAMissedCallRecoverySettings>("/wa/missed-call"),
+  saveMissedCallRecovery: (body: WAMissedCallRecoverySettings) => request<WAMissedCallRecoverySettings>("/wa/missed-call", json("PUT", body)),
+  missedCallItems: (all = false, status = "") => request<WAMissedCallRecoveryItem[]>("/wa/missed-call/items" + q({ all: all ? 1 : undefined, status: status || undefined })),
+  sendMissedCall: (id: number) => request<WAMissedCallRecoveryItem>(`/wa/missed-call/items/${id}/send`, json("POST")),
+  dismissMissedCall: (id: number) => request<WAMissedCallRecoveryItem>(`/wa/missed-call/items/${id}/dismiss`, json("POST")),
 
   // callbacks, events, reports
   callbacks: (all = false) => request<WACallback[]>("/wa/callbacks" + (all ? "?all=1" : "")),

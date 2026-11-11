@@ -5,7 +5,7 @@
 // named, so whoever picks up knows where things stand.
 
 import { useEffect, useRef, useState } from "react";
-import { AlarmClock, History, PhoneMissed, PhoneOutgoing, Repeat } from "lucide-react";
+import { AlarmClock, History, MessageSquare, PhoneMissed, PhoneOutgoing, Repeat } from "lucide-react";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
@@ -19,7 +19,7 @@ function when(iso: string): string {
 
 // usePeerContext reads what the team knows about the current call's number,
 // once per call.
-function usePeerContext(): { ctx: PeerContext | null; incoming: boolean } {
+export function usePeerContext(): { ctx: PeerContext | null; incoming: boolean } {
   const phone = useSoftphoneContext();
   const live = LIVE.has(phone.status);
   const key = live ? `${phone.callId ?? ""}|${phone.peer ?? ""}` : "";
@@ -48,6 +48,7 @@ export default function PeerHints({ className, center }: { className?: string; c
   const { ctx, incoming } = usePeerContext();
   if (!ctx) return null;
   const lines: { icon: typeof History; tone: string; text: string }[] = [];
+  const activeTicket = ctx.whatsapp?.activeTicket;
   if (incoming && ctx.inboundBefore > 0) {
     lines.push({ icon: Repeat, tone: "bg-warning/14 text-warning", text: `Bugün ${ctx.inboundBefore + 1}. kez arıyor` });
   }
@@ -72,9 +73,24 @@ export default function PeerHints({ className, center }: { className?: string; c
     const t = ctx.lastTalk;
     lines.push({ icon: History, tone: "bg-muted text-muted-foreground", text: `Son görüşme: ${t.mine ? "sen" : t.by.name} · ${when(t.at)} · ${talkLabel(t.seconds)}` });
   }
-  if (lines.length === 0) return null;
+  if (lines.length === 0 && !activeTicket) return null;
   return (
-    <div className={cn("flex flex-col gap-1", center && "items-center", className)}>
+    <div className={cn("flex flex-col gap-1.5", center && "items-center", className)}>
+      {activeTicket && (
+        <a
+          href="/whatsapp"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-tip="WhatsApp gelen kutusunda incele"
+          className="flex max-w-full items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[0.75rem] font-semibold text-emerald-800 transition hover:bg-emerald-500/20 dark:text-emerald-300"
+        >
+          <MessageSquare className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span className="truncate">
+            WhatsApp Aktif Talep: #{activeTicket.number} ({activeTicket.status === "pending" ? "Bekleyen" : "Açık"})
+            {activeTicket.category ? ` · ${activeTicket.category}` : ""}
+          </span>
+        </a>
+      )}
       {lines.map((l, i) => (
         <span key={i} className={cn("flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-[0.72rem] font-medium", l.tone)}>
           <l.icon className="size-3.5 shrink-0" />

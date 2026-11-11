@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bot, FileText, PhoneCall, Plug, ShieldAlert, SlidersHorizontal, Smartphone, Sparkles, UsersRound, Wand2, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bot, FileText, PhoneCall, PhoneMissed, Plug, ShieldAlert, SlidersHorizontal, Smartphone, Sparkles, UsersRound, Wand2, Zap, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
 import AITab from "@/components/whatsapp/settings/AITab";
 import BotsTab from "@/components/whatsapp/settings/BotsTab";
@@ -12,6 +12,7 @@ import ChannelsTab from "@/components/whatsapp/settings/ChannelsTab";
 import DeviceSettingsTab from "@/components/whatsapp/settings/DeviceSettingsTab";
 import EventsTab from "@/components/whatsapp/settings/EventsTab";
 import IntegrationsTab from "@/components/whatsapp/settings/IntegrationsTab";
+import MissedCallTab from "@/components/whatsapp/settings/MissedCallTab";
 import QuickRepliesTab from "@/components/whatsapp/settings/QuickRepliesTab";
 import RulesTab from "@/components/whatsapp/settings/RulesTab";
 import TeamsTab from "@/components/whatsapp/settings/TeamsTab";
@@ -50,6 +51,7 @@ export function WhatsAppSettings() {
     { key: "integrations", label: "Dış sistemler", icon: Plug, allowed: can(user, "whatsapp.bot_manage") },
     { key: "ai", label: "Yapay zekâ", icon: Sparkles, allowed: can(user, "whatsapp.ai_manage") },
     { key: "call-survey", label: "Çağrı sonrası anket", icon: PhoneCall, allowed: can(user, "whatsapp.call_survey_manage") },
+    { key: "missed-call", label: "Kaçan çağrı kurtarma", icon: PhoneMissed, allowed: can(user, "whatsapp.missed_call_recovery") },
     { key: "events", label: "İşlenemeyenler", icon: ShieldAlert, allowed: can(user, "whatsapp.channel_manage") },
   ].filter((t) => t.allowed), [user]);
 
@@ -91,6 +93,7 @@ export function WhatsAppSettings() {
           {active === "integrations" && <IntegrationsTab />}
           {active === "ai" && <AITab />}
           {active === "call-survey" && <CallSurveyTab channels={channels} />}
+          {active === "missed-call" && <MissedCallTab channels={channels} />}
           {active === "events" && <EventsTab channels={channels} />}
         </>
       )}

@@ -80,6 +80,9 @@ type Service struct {
 	// head tracks a gap in the call-record mirror being filled page by page.
 	headMu sync.Mutex
 	head   headCatchup
+
+	// onMissedCall hears inbound missed calls as they are mirrored from the PBX.
+	onMissedCall func(ctx context.Context, callerNum, callUUID string, startedAt time.Time)
 }
 
 // snapshot is the last-good view the poller keeps warm.
@@ -126,6 +129,11 @@ type IContactNames interface {
 
 // SetContacts wires the contact lookup used to name a talking agent's peer.
 func (s *Service) SetContacts(r IContactNames) { s.contacts = r }
+
+// SetOnMissedCall sets the hook for inbound calls that ended unreached on the PBX.
+func (s *Service) SetOnMissedCall(fn func(ctx context.Context, callerNum, callUUID string, startedAt time.Time)) {
+	s.onMissedCall = fn
+}
 
 // onShift reports whether the user may place calls and change presence. With
 // no shift reader wired, everything is allowed.
@@ -357,6 +365,18 @@ func (s *Service) headPage(ctx context.Context, page int) ([]CDR, bool) {
 	if _, err := s.repo.UpsertCDRs(ctx, cdrs); err != nil {
 		slog.WarnContext(ctx, "call records could not be mirrored", "error", err)
 		return nil, false
+	}
+	if page == 1 && s.onMissedCall != nil {
+		now := time.Now()
+		for i := range cdrs {
+			c := cdrs[i]
+			if c.Direction == "inbound" && bool(c.Missed) {
+				row, ok := cdrRow(c, now)
+				if ok && time.Since(row.StartAt) < 15*time.Minute {
+					s.onMissedCall(ctx, row.CallerNum, row.CallUUID, row.StartAt)
+				}
+			}
+		}
 	}
 	return cdrs, true
 }

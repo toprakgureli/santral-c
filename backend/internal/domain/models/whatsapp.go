@@ -387,3 +387,26 @@ type WARatingLink struct {
 
 // TableName pins the table name.
 func (WARatingLink) TableName() string { return "wa_rating_links" }
+
+// WAMissedCallRecovery tracks the WhatsApp recovery messages sent after missed calls.
+type WAMissedCallRecovery struct {
+	ID         uint      `gorm:"column:id;primaryKey"`
+	CallUUID   string    `gorm:"column:call_uuid;size:80"`
+	PeerNumber string    `gorm:"column:peer_number;size:40"`
+	PeerKey    string    `gorm:"column:peer_key;size:20"`
+	ChannelID  *uint     `gorm:"column:channel_id"`
+	Template   string    `gorm:"column:template;size:120"`
+	Status     string    `gorm:"column:status;size:20"`
+	Note       string    `gorm:"column:note"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+}
+
+// TableName pins the table name.
+func (WAMissedCallRecovery) TableName() string { return "wa_missed_call_recoveries" }
+
+// WAMissedCallRecoveryItem is an enriched recovery record with customer and channel names.
+type WAMissedCallRecoveryItem struct {
+	WAMissedCallRecovery
+	Customer    string `gorm:"column:customer_name" json:"customer"`
+	ChannelName string `gorm:"column:channel_name" json:"channelName"`
+}

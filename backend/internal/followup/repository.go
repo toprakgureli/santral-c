@@ -3,6 +3,7 @@ package followup
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -174,4 +175,69 @@ func (r *Repository) LastTalk(ctx context.Context, peerKey string, since time.Ti
 		return nil, nil
 	}
 	return &rows[0], nil
+}
+
+type waContactRow struct {
+	ContactID     uint
+	Name          string
+	ProfileName   string
+	TicketID      *uint
+	TicketNumber  *int64
+	TicketStatus  *string
+	Category      *string
+	Priority      *string
+	AwaitingSince *time.Time
+	CreatedAt     *time.Time
+}
+
+// WAContact reads the contact identity and any active ticket from WhatsApp CRM by peerKey.
+func (r *Repository) WAContact(ctx context.Context, peerKey string) (*WAContactContext, error) {
+	if peerKey == "" {
+		return nil, nil
+	}
+	var rows []waContactRow
+	query := `SELECT c.id AS contact_id, c.name, c.profile_name,
+		t.id AS ticket_id, t.number AS ticket_number, t.status AS ticket_status,
+		t.category, t.priority, t.awaiting_since, t.created_at
+		FROM wa_contacts c
+		LEFT JOIN wa_tickets t ON t.contact_id = c.id AND t.status IN ('open', 'pending')
+		WHERE c.peer_key = ?
+		ORDER BY t.id DESC NULLS LAST LIMIT 1`
+	if err := r.db.WithContext(ctx).Raw(query, peerKey).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	row := rows[0]
+	name := strings.TrimSpace(row.Name)
+	if name == "" {
+		name = strings.TrimSpace(row.ProfileName)
+	}
+	res := &WAContactContext{
+		Found:       true,
+		Name:        name,
+		ProfileName: row.ProfileName,
+	}
+	if row.TicketID != nil && *row.TicketID > 0 && row.TicketStatus != nil {
+		res.ActiveTicket = &WAActiveTicket{
+			ID:            *row.TicketID,
+			Number:        *row.TicketNumber,
+			Status:        *row.TicketStatus,
+			Category:      strVal(row.Category),
+			Priority:      strVal(row.Priority),
+			AwaitingSince: row.AwaitingSince,
+		}
+		if row.CreatedAt != nil {
+			res.ActiveTicket.CreatedAt = *row.CreatedAt
+		}
+	}
+	return res, nil
+}
+
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

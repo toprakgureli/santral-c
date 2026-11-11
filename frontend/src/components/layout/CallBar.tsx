@@ -5,7 +5,8 @@ import { useSoftphoneContext } from "@/softphone/SoftphoneContext";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 import { whatsappNumber } from "@/lib/whatsapp";
 import { useWhatsAppWrite } from "@/whatsapp/useWhatsAppWrite";
-import PeerHints from "@/followups/PeerHints";
+import PeerHints, { usePeerContext } from "@/followups/PeerHints";
+import { displayNumber } from "@/softphone/dial";
 
 const statusLabel: Record<string, string> = {
   calling: "Aranıyor",
@@ -32,6 +33,8 @@ function clampPos(p: Pos, height = 220): Pos {
 // It can be dragged by its header and remembers where it was left.
 export default function CallBar() {
   const phone = useSoftphoneContext();
+  const { ctx: peerCtx } = usePeerContext();
+  const waName = peerCtx?.whatsapp?.name?.trim();
   const waNumber = whatsappNumber(phone.peer ?? "");
   const { business: waBusiness, write: writeWhatsApp } = useWhatsAppWrite();
   function openWhatsApp() {
@@ -116,8 +119,19 @@ export default function CallBar() {
           <GripVertical className="size-4" />
         </span>
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{phone.peer ?? "—"}</div>
-          <div className="text-xs text-muted-foreground">{statusLabel[phone.status]}</div>
+          {waName ? (
+            <>
+              <div className="truncate text-sm font-bold text-foreground">{waName}</div>
+              <div className="truncate font-mono text-xs text-muted-foreground">
+                {displayNumber(phone.peer ?? "") || phone.peer} · {statusLabel[phone.status]}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="truncate text-sm font-semibold">{displayNumber(phone.peer ?? "") || phone.peer || "—"}</div>
+              <div className="text-xs text-muted-foreground">{statusLabel[phone.status]}</div>
+            </>
+          )}
         </div>
       </div>
 

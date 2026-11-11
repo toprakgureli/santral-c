@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -265,6 +266,9 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 		perfSvc.SetLive(verimorSvc)
 		// What follows a call waits until the phone system's record shows it.
 		callLogSvc.SetVerifier(verimorSvc)
+		verimorSvc.SetOnMissedCall(func(ctx context.Context, callerNum, callUUID string, startedAt time.Time) {
+			waSvc.OnMissedCall(ctx, callerNum, callUUID, startedAt)
+		})
 		s.workers = append(s.workers, verimorSvc.Start, callLogSvc.StartVerifier)
 		verimor.NewRouter(verimor.NewHandler(verimorSvc), guard, need).Routes(api)
 	}

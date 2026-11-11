@@ -41,12 +41,30 @@ export interface Reminder {
   doneBy?: FollowPerson;
 }
 
+export interface WAActiveTicket {
+  id: number;
+  number: number;
+  status: "open" | "pending";
+  category?: string;
+  priority?: string;
+  awaitingSince?: string;
+  createdAt: string;
+}
+
+export interface WAContactContext {
+  found: boolean;
+  name?: string;
+  profileName?: string;
+  activeTicket?: WAActiveTicket;
+}
+
 export interface PeerContext {
   // the calls the number made today before the current one
   inboundBefore: number;
   lastTalk?: { by: FollowPerson; mine: boolean; at: string; seconds: number; direction: string };
   unreached: Unreached[];
   reminders: Reminder[];
+  whatsapp?: WAContactContext;
 }
 
 export interface Notice {

@@ -33,6 +33,7 @@ const WhatsAppBot = lazy(() => import("./pages/WhatsAppBot").then((m) => ({ defa
 const WhatsAppReports = lazy(() => import("./pages/WhatsAppReports").then((m) => ({ default: m.WhatsAppReports })));
 const WhatsAppRatings = lazy(() => import("./pages/WhatsAppRatings").then((m) => ({ default: m.WhatsAppRatings })));
 const WhatsAppCallbacks = lazy(() => import("./pages/WhatsAppCallbacks").then((m) => ({ default: m.WhatsAppCallbacks })));
+const WhatsAppMissedCalls = lazy(() => import("./pages/WhatsAppMissedCalls").then((m) => ({ default: m.WhatsAppMissedCalls })));
 
 export function App() {
   const { user, loading, waiting, retryNow } = useAuth();
@@ -97,6 +98,7 @@ export function App() {
         <Route path="/whatsapp/reports" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappReports}><WhatsAppReports /></RequirePermission>} />
         <Route path="/whatsapp/ratings" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappRatings}><WhatsAppRatings /></RequirePermission>} />
         <Route path="/whatsapp/callbacks" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappCallbacks}><WhatsAppCallbacks /></RequirePermission>} />
+        <Route path="/whatsapp/missed-calls" element={<RequirePermission base={WA_BASE} need={PAGE_PERMISSIONS.whatsappMissedCalls}><WhatsAppMissedCalls /></RequirePermission>} />
         <Route path="/whatsapp/preferences" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsAppPreferences /></RequirePermission>} />
         <Route path="/whatsapp" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />
         <Route path="/whatsapp/:id" element={<RequirePermission need={menuPermission("/whatsapp")}><WhatsApp /></RequirePermission>} />

@@ -109,6 +109,25 @@ type LastTalk struct {
 	Direction string    `json:"direction"`
 }
 
+// WAContactContext has the caller's WhatsApp CRM identity and active ticket status.
+type WAContactContext struct {
+	Found        bool            `json:"found"`
+	Name         string          `json:"name,omitempty"`
+	ProfileName  string          `json:"profileName,omitempty"`
+	ActiveTicket *WAActiveTicket `json:"activeTicket,omitempty"`
+}
+
+// WAActiveTicket represents an open or pending customer service ticket on WhatsApp.
+type WAActiveTicket struct {
+	ID            uint       `json:"id"`
+	Number        int64      `json:"number"`
+	Status        string     `json:"status"` // open | pending
+	Category      string     `json:"category,omitempty"`
+	Priority      string     `json:"priority,omitempty"`
+	AwaitingSince *time.Time `json:"awaitingSince,omitempty"`
+	CreatedAt     time.Time  `json:"createdAt"`
+}
+
 // PeerContext is what the team knows about a number during a call.
 type PeerContext struct {
 	// InboundBefore counts the calls the number made today before the
@@ -117,7 +136,8 @@ type PeerContext struct {
 	LastTalk      *LastTalk   `json:"lastTalk,omitempty"`
 	Unreached     []Unreached `json:"unreached"`
 	// Reminders are the call backs planned to the number.
-	Reminders []Reminder `json:"reminders"`
+	Reminders []Reminder        `json:"reminders"`
+	WhatsApp  *WAContactContext `json:"whatsapp,omitempty"`
 }
 
 // OnCallEnded runs after a call is final: a call out that did not get
@@ -349,6 +369,9 @@ func (s *Service) Peer(ctx context.Context, actorID uint, number string) (*PeerC
 	}
 	for _, r := range planned {
 		out.Reminders = append(out.Reminders, reminderView(r, actor.ID))
+	}
+	if wa, err := s.repo.WAContact(ctx, key); err == nil && wa != nil {
+		out.WhatsApp = wa
 	}
 	return out, nil
 }

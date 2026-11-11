@@ -543,6 +543,30 @@ export interface WACallSurveySettings {
   thankYou: string;
 }
 
+export interface WAMissedCallRecoverySettings {
+  enabled: boolean;
+  mode?: "auto" | "manual";
+  channelId: number;
+  template: string;
+  templateLang: string;
+  params: string[];
+  quietHours: number;
+}
+
+export interface WAMissedCallRecoveryItem {
+  id: number;
+  callUuid: string;
+  peerNumber: string;
+  peerKey: string;
+  customer: string;
+  channelId?: number;
+  channelName: string;
+  template: string;
+  status: "pending" | "sent" | "dismissed" | "skipped" | "failed";
+  note: string;
+  createdAt: string;
+}
+
 export interface WACallSurveyReport {
   queued: number;
   sent: number;

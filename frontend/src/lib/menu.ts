@@ -55,12 +55,13 @@ export const PAGE_PERMISSIONS = {
     "whatsapp.channel_manage", "whatsapp.team_manage", "whatsapp.setting_general", "whatsapp.setting_greeting",
     "whatsapp.setting_distribution", "whatsapp.setting_read_receipts", "whatsapp.template_manage", "whatsapp.template_send",
     "whatsapp.quick_reply_manage", "whatsapp.automation_manage", "whatsapp.bot_manage", "whatsapp.bot_publish",
-    "whatsapp.ai_manage", "whatsapp.call_survey_manage",
+    "whatsapp.ai_manage", "whatsapp.call_survey_manage", "whatsapp.missed_call_recovery",
   ],
   whatsappBot: ["whatsapp.bot_manage", "whatsapp.bot_publish"],
   whatsappReports: "whatsapp.reports",
   whatsappRatings: "whatsapp.ratings",
   whatsappCallbacks: "whatsapp.callbacks",
+  whatsappMissedCalls: ["whatsapp.missed_call_recovery", "whatsapp.template_send"],
   gamesAdmin: "games.manage",
 } satisfies Record<string, string | string[]>;
 

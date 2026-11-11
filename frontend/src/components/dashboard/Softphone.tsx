@@ -26,7 +26,7 @@ import { Button, Card, ConfirmDialog, Spinner } from "../ui";
 import { cn } from "../../lib/utils";
 import { formatDuration } from "../../pages/callFormat";
 import { clockTime } from "../../lib/time";
-import PeerHints from "@/followups/PeerHints";
+import PeerHints, { usePeerContext } from "@/followups/PeerHints";
 
 const keypadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
@@ -65,6 +65,8 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
   const [target, setTarget] = useState("");
   const [showKeypad, setShowKeypad] = useState(false);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const { ctx: peerCtx } = usePeerContext();
+  const waName = peerCtx?.whatsapp?.name?.trim();
 
   const idle = phone.status === "registered" || phone.status === "error" || phone.status === "connecting";
   // The line is still being set up (or has just been switched on): the card
@@ -274,15 +276,32 @@ export function Softphone({ hasExtension, canCall }: { hasExtension: boolean; ca
           {!idle && !starting && (
             <div className="flex flex-col items-center gap-5 py-2">
               <div className="text-center">
-                <button
-                  type="button"
-                  onClick={copyPeer}
-                  data-tip="Numarayı kopyala"
-                  className="inline-flex items-center gap-2 rounded-lg px-2 py-0.5 text-2xl font-semibold tracking-wide transition-colors hover:bg-accent"
-                >
-                  {displayNumber(phone.peer || "") || phone.peer || "—"}
-                  {peerCopied ? <span className="text-xs font-medium text-success">Kopyalandı</span> : <Copy className="size-4 text-muted-foreground" />}
-                </button>
+                {waName ? (
+                  <>
+                    <div className="text-2xl font-bold tracking-tight text-foreground">
+                      {waName}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyPeer}
+                      data-tip="Numarayı kopyala"
+                      className="mt-0.5 inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 font-mono text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {displayNumber(phone.peer || "") || phone.peer}
+                      {peerCopied ? <span className="text-xs text-success">Kopyalandı</span> : <Copy className="size-3.5 text-muted-foreground/70" />}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={copyPeer}
+                    data-tip="Numarayı kopyala"
+                    className="inline-flex items-center gap-2 rounded-lg px-2 py-0.5 text-2xl font-semibold tracking-wide transition-colors hover:bg-accent"
+                  >
+                    {displayNumber(phone.peer || "") || phone.peer || "—"}
+                    {peerCopied ? <span className="text-xs font-medium text-success">Kopyalandı</span> : <Copy className="size-4 text-muted-foreground" />}
+                  </button>
+                )}
                 <div className="mt-1 text-sm text-muted-foreground">
                   {phone.status === "incoming" ? "Gelen çağrı" : outgoing ? "Aranıyor..." : phone.held ? "Beklemede" : "Görüşme"}
                 </div>
