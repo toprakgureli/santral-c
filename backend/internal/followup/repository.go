@@ -178,16 +178,17 @@ func (r *Repository) LastTalk(ctx context.Context, peerKey string, since time.Ti
 }
 
 type waContactRow struct {
-	ContactID     uint
-	Name          string
-	ProfileName   string
-	TicketID      *uint
-	TicketNumber  *int64
-	TicketStatus  *string
-	Category      *string
-	Priority      *string
-	AwaitingSince *time.Time
-	CreatedAt     *time.Time
+	ContactID      uint
+	Name           string
+	ProfileName    string
+	TicketID       *uint
+	TicketNumber   *int64
+	ConversationID *uint
+	TicketStatus   *string
+	Category       *string
+	Priority       *string
+	AwaitingSince  *time.Time
+	CreatedAt      *time.Time
 }
 
 // WAContact reads the contact identity and any active ticket from WhatsApp CRM by peerKey.
@@ -197,7 +198,7 @@ func (r *Repository) WAContact(ctx context.Context, peerKey string) (*WAContactC
 	}
 	var rows []waContactRow
 	query := `SELECT c.id AS contact_id, c.name, c.profile_name,
-		t.id AS ticket_id, t.number AS ticket_number, t.status AS ticket_status,
+		t.id AS ticket_id, t.number AS ticket_number, t.conversation_id, t.status AS ticket_status,
 		t.category, t.priority, t.awaiting_since, t.created_at
 		FROM wa_contacts c
 		LEFT JOIN wa_tickets t ON t.contact_id = c.id AND t.status IN ('open', 'pending')
@@ -220,13 +221,18 @@ func (r *Repository) WAContact(ctx context.Context, peerKey string) (*WAContactC
 		ProfileName: row.ProfileName,
 	}
 	if row.TicketID != nil && *row.TicketID > 0 && row.TicketStatus != nil {
+		convID := uint(0)
+		if row.ConversationID != nil {
+			convID = *row.ConversationID
+		}
 		res.ActiveTicket = &WAActiveTicket{
-			ID:            *row.TicketID,
-			Number:        *row.TicketNumber,
-			Status:        *row.TicketStatus,
-			Category:      strVal(row.Category),
-			Priority:      strVal(row.Priority),
-			AwaitingSince: row.AwaitingSince,
+			ID:             *row.TicketID,
+			Number:         *row.TicketNumber,
+			ConversationID: convID,
+			Status:         *row.TicketStatus,
+			Category:       strVal(row.Category),
+			Priority:       strVal(row.Priority),
+			AwaitingSince:  row.AwaitingSince,
 		}
 		if row.CreatedAt != nil {
 			res.ActiveTicket.CreatedAt = *row.CreatedAt

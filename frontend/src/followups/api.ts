@@ -44,6 +44,7 @@ export interface Reminder {
 export interface WAActiveTicket {
   id: number;
   number: number;
+  conversationId?: number;
   status: "open" | "pending";
   category?: string;
   priority?: string;

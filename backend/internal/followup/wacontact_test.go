@@ -15,13 +15,14 @@ func TestPeerContextWhatsAppSerialization(t *testing.T) {
 			Name:        "Ahmet Yılmaz",
 			ProfileName: "ahmet_y",
 			ActiveTicket: &WAActiveTicket{
-				ID:            42,
-				Number:        1001,
-				Status:        "open",
-				Category:      "Sipariş",
-				Priority:      "high",
-				AwaitingSince: &now,
-				CreatedAt:     now,
+				ID:             42,
+				Number:         1001,
+				ConversationID: 88,
+				Status:         "open",
+				Category:       "Sipariş",
+				Priority:       "high",
+				AwaitingSince:  &now,
+				CreatedAt:      now,
 			},
 		},
 	}
@@ -39,7 +40,7 @@ func TestPeerContextWhatsAppSerialization(t *testing.T) {
 	if parsed.WhatsApp == nil || !parsed.WhatsApp.Found || parsed.WhatsApp.Name != "Ahmet Yılmaz" {
 		t.Fatalf("whatsapp contact mismatch: %+v", parsed.WhatsApp)
 	}
-	if parsed.WhatsApp.ActiveTicket == nil || parsed.WhatsApp.ActiveTicket.Number != 1001 || parsed.WhatsApp.ActiveTicket.Status != "open" {
+	if parsed.WhatsApp.ActiveTicket == nil || parsed.WhatsApp.ActiveTicket.Number != 1001 || parsed.WhatsApp.ActiveTicket.Status != "open" || parsed.WhatsApp.ActiveTicket.ConversationID != 88 {
 		t.Fatalf("active ticket mismatch: %+v", parsed.WhatsApp.ActiveTicket)
 	}
 }

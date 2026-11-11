@@ -119,13 +119,14 @@ type WAContactContext struct {
 
 // WAActiveTicket represents an open or pending customer service ticket on WhatsApp.
 type WAActiveTicket struct {
-	ID            uint       `json:"id"`
-	Number        int64      `json:"number"`
-	Status        string     `json:"status"` // open | pending
-	Category      string     `json:"category,omitempty"`
-	Priority      string     `json:"priority,omitempty"`
-	AwaitingSince *time.Time `json:"awaitingSince,omitempty"`
-	CreatedAt     time.Time  `json:"createdAt"`
+	ID             uint       `json:"id"`
+	Number         int64      `json:"number"`
+	ConversationID uint       `json:"conversationId"`
+	Status         string     `json:"status"` // open | pending
+	Category       string     `json:"category,omitempty"`
+	Priority       string     `json:"priority,omitempty"`
+	AwaitingSince  *time.Time `json:"awaitingSince,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
 }
 
 // PeerContext is what the team knows about a number during a call.

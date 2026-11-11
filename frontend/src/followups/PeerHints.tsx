@@ -5,6 +5,7 @@
 // named, so whoever picks up knows where things stand.
 
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { AlarmClock, History, MessageSquare, PhoneMissed, PhoneOutgoing, Repeat } from "lucide-react";
 import { clockTime, isToday, shortMonthDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -77,11 +78,9 @@ export default function PeerHints({ className, center }: { className?: string; c
   return (
     <div className={cn("flex flex-col gap-1.5", center && "items-center", className)}>
       {activeTicket && (
-        <a
-          href="/whatsapp"
-          target="_blank"
-          rel="noopener noreferrer"
-          data-tip="WhatsApp gelen kutusunda incele"
+        <Link
+          to={activeTicket.conversationId ? `/whatsapp/${activeTicket.conversationId}` : "/whatsapp"}
+          data-tip="WhatsApp sohbetini ve talebi aç"
           className="flex max-w-full items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[0.75rem] font-semibold text-emerald-800 transition hover:bg-emerald-500/20 dark:text-emerald-300"
         >
           <MessageSquare className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -89,7 +88,7 @@ export default function PeerHints({ className, center }: { className?: string; c
             WhatsApp Aktif Talep: #{activeTicket.number} ({activeTicket.status === "pending" ? "Bekleyen" : "Açık"})
             {activeTicket.category ? ` · ${activeTicket.category}` : ""}
           </span>
-        </a>
+        </Link>
       )}
       {lines.map((l, i) => (
         <span key={i} className={cn("flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-[0.72rem] font-medium", l.tone)}>
