@@ -25,6 +25,7 @@ const (
 	ModuleGames       Module = "games"
 	ModuleWhatsApp    Module = "whatsapp"
 	ModuleMenu        Module = "menu"
+	ModuleAPITester   Module = "api_tester"
 )
 
 // Permission keys.
@@ -146,6 +147,10 @@ const (
 	SystemHealth Permission = "system.health"
 
 	MenuManage Permission = "menu.manage"
+
+	APITesterView    Permission = "api_tester.view"
+	APITesterExecute Permission = "api_tester.execute"
+	APITesterManage  Permission = "api_tester.manage"
 )
 
 // PermissionInfo describes a permission for seeding.
@@ -246,6 +251,9 @@ var permissions = []PermissionInfo{
 	{SystemAuditView, "Denetim (audit) kayıtlarını görür"},
 	{SystemHealth, "Sistem uyarılarını görür (disk doluyor, yedek gecikti, WhatsApp kuyruğu birikti gibi)"},
 	{MenuManage, "Sol menüye harici web sitesi ve uygulama butonları ekler, düzenler, sıralar ve yetkilendirir"},
+	{APITesterView, "API test koleksiyonlarını ve menü butonunu görür"},
+	{APITesterExecute, "Koleksiyonlardaki API isteklerini parametre doldurup çalıştırır"},
+	{APITesterManage, "API test menüsünü açıp kapatır, koleksiyon ve istek şablonu oluşturup yönetir"},
 }
 
 // Permissions returns a copy of the full permission catalog.
@@ -272,6 +280,7 @@ var moduleLabels = map[Module]string{
 	ModuleGames:       "Mini Oyunlar",
 	ModuleWhatsApp:    "WhatsApp",
 	ModuleMenu:        "Özel Menüler",
+	ModuleAPITester:   "API Testleri",
 }
 
 // ModuleLabel returns the human-facing title for a module.

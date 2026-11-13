@@ -20,6 +20,9 @@
 const DEFAULT_PANEL = "https://cm.toprakgureli.com";
 const STATUSES = new Set(["idle", "connecting", "registered", "calling", "ringing", "incoming", "in-call", "held", "error", "disabled", "unconfigured"]);
 const COMMANDS = new Set(["call", "answer", "hangup", "mute", "hold", "transfer", "dtmf"]);
+const API_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+const MAX_API_BODY_CHARS = 1024 * 1024;
+const API_TIMEOUT_MS = 25000;
 const FRAME_HEADER_RULE_ID = 9001;
 const POST_LOGIN_LOCK_MS = 4000;
 const PENDING_REDIRECT_TTL_MS = 8000;
@@ -449,6 +452,82 @@ async function toPanel(msg) {
   }
 }
 
+async function executeApiRequest(req) {
+  if (!req || typeof req !== "object") {
+    return { ok: false, error: "Geçersiz istek payload'u." };
+  }
+  let parsed;
+  try {
+    parsed = new URL(String(req.url || ""));
+  } catch {
+    return { ok: false, error: "Geçersiz hedef URL." };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false, error: "Sadece http:// ve https:// adreslerine istek atılabilir." };
+  }
+  const method = String(req.method || "GET").toUpperCase();
+  if (!API_METHODS.has(method)) {
+    return { ok: false, error: "Desteklenmeyen HTTP metodu." };
+  }
+
+  const headers = {};
+  if (Array.isArray(req.headers)) {
+    for (const h of req.headers) {
+      if (!h || typeof h.key !== "string") continue;
+      const k = h.key.trim();
+      if (!k) continue;
+      headers[k] = typeof h.value === "string" ? h.value : String(h.value ?? "");
+    }
+  }
+
+  const init = { method, headers };
+  if (method !== "GET" && method !== "HEAD" && typeof req.body === "string" && req.body.length > 0) {
+    init.body = req.body;
+  }
+
+  let timer = null;
+  if (typeof AbortController !== "undefined") {
+    const ctrl = new AbortController();
+    init.signal = ctrl.signal;
+    timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+  }
+
+  const start = Date.now();
+  try {
+    const res = await fetch(parsed.toString(), init);
+    const durationMs = Date.now() - start;
+    let body = await res.text();
+    let truncated = false;
+    if (body.length > MAX_API_BODY_CHARS) {
+      body = body.slice(0, MAX_API_BODY_CHARS);
+      truncated = true;
+    }
+    const respHeaders = [];
+    if (res.headers && typeof res.headers.forEach === "function") {
+      res.headers.forEach((value, key) => respHeaders.push({ key, value }));
+    }
+    return {
+      ok: true,
+      statusCode: res.status,
+      statusText: res.statusText || "",
+      headers: respHeaders,
+      body,
+      truncated,
+      durationMs,
+      targetUrl: res.url || parsed.toString(),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      durationMs: Date.now() - start,
+      targetUrl: parsed.toString(),
+      error: err && err.name === "AbortError" ? "İstek 25 saniye içinde yanıt vermedi (zaman aşımı)." : String((err && err.message) || err || "Ağ hatası"),
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.to !== "sw") return;
 
@@ -458,6 +537,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === "getPanelOrigin") {
     panelOrigin().then((origin) => sendResponse({ origin }));
+    return true;
+  }
+  if (msg.type === "apiRequest") {
+    void (async () => {
+      if (!(await fromPanel(sender))) {
+        sendResponse({ ok: false, code: "unauthorized_origin", error: "Panel adresi eklenti ayarlarıyla eşleşmiyor." });
+        return;
+      }
+      sendResponse(await executeApiRequest(msg.req));
+    })();
     return true;
   }
   if (msg.type === "checkFrameRedirect" || msg.type === "completeFormPost") {

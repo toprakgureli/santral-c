@@ -27,6 +27,7 @@ const Users = lazy(() => import("./pages/Users").then((m) => ({ default: m.Users
 const WhatsApp = lazy(() => import("./pages/WhatsApp").then((m) => ({ default: m.WhatsApp })));
 const Followups = lazy(() => import("./pages/Followups").then((m) => ({ default: m.Followups })));
 const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.Account })));
+const ApiTester = lazy(() => import("./pages/ApiTester").then((m) => ({ default: m.ApiTester })));
 const WhatsAppPreferences = lazy(() => import("./pages/WhatsAppPreferences").then((m) => ({ default: m.WhatsAppPreferences })));
 const WhatsAppSettings = lazy(() => import("./pages/WhatsAppSettings").then((m) => ({ default: m.WhatsAppSettings })));
 const WhatsAppBot = lazy(() => import("./pages/WhatsAppBot").then((m) => ({ default: m.WhatsAppBot })));
@@ -77,6 +78,7 @@ export function App() {
         <Route path="/calls" element={<RequirePermission need={menuPermission("/calls")}><Calls /></RequirePermission>} />
         <Route path="/performance" element={<RequirePermission need={menuPermission("/performance")}><TeamPerformance /></RequirePermission>} />
         <Route path="/escalation-search" element={<RequirePermission need={menuPermission("/escalation-search")}><EscalationSearch /></RequirePermission>} />
+        <Route path="/api-tester" element={<RequirePermission need={menuPermission("/api-tester")}><ApiTester /></RequirePermission>} />
         <Route path="/escalations" element={<RequirePermission need={menuPermission("/escalations")}><Escalations /></RequirePermission>} />
         <Route path="/menus" element={<RequirePermission need={menuPermission("/menus")}><CustomMenus /></RequirePermission>} />
         <Route path="/app/:id" element={<ExternalAppPlaceholder />} />

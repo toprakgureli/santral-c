@@ -66,6 +66,7 @@ func managerPermissions() []Permission {
 		UserView, UserCreate, UserUpdate, UserDeactivate,
 		RoleView, RoleManage, RoleAssign,
 		SystemLogs, SystemAuditView, SystemHealth, MenuManage,
+		APITesterView, APITesterExecute, APITesterManage,
 		PerformanceViewRole, PerformanceLiveAlerts, PerformanceRecentCalls, PerformanceShare,
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite, TeamsMemberAdd, TeamsAdmin,
 		GamesPlay, GamesManage,
@@ -85,6 +86,7 @@ func technicalTeamPermissions() []Permission {
 		TeamsView, TeamsGroupCreate, TeamsMemberInvite,
 		GamesPlay,
 		WAView, WAReply, WANote, WAPool, WAWaiting, WAResolve, WATemplateSend, WAAISuggest,
+		APITesterView, APITesterExecute,
 	}
 }
 

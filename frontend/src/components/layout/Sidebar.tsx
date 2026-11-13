@@ -12,6 +12,7 @@ import { APP_NAME } from "@/lib/brand";
 import { useAuth } from "@/auth/AuthContext";
 import VersionInfo from "@/components/layout/VersionInfo";
 import { useCustomMenus } from "@/menus/CustomMenusContext";
+import { useApiTesterFeature } from "@/apiTester/ApiTesterContext";
 import { useTeams } from "@/teams/TeamsContext";
 import { useWhatsApp } from "@/whatsapp/WhatsAppContext";
 
@@ -25,7 +26,13 @@ type SidebarProps = {
 
 export default function Sidebar({ open, collapsed, onNavigate, onClose, onToggleCollapse }: SidebarProps) {
   const { can } = useAuth();
-  const groups = visibleMenu(can);
+  const apiTester = useApiTesterFeature();
+  const groups = visibleMenu(can)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.path !== "/api-tester" || apiTester.enabled),
+    }))
+    .filter((group) => group.items.length > 0);
   const customMenus = useCustomMenus();
   const teams = useTeams();
   const wa = useWhatsApp();

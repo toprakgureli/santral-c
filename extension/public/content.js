@@ -251,6 +251,20 @@
     window.addEventListener("message", (e) => {
       const d = e.data;
       if (e.source !== window || e.origin !== location.origin || !d || d.santralc !== "panel") return;
+      if (d.type === "apiPing") {
+        postToPage({ type: "apiPong", id: d.id });
+        return;
+      }
+      if (d.type === "apiRequest") {
+        chrome.runtime.sendMessage({ to: "sw", type: "apiRequest", req: d.req }, (reply) => {
+          if (chrome.runtime.lastError) {
+            postToPage({ type: "apiResponse", id: d.id, ok: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          postToPage({ type: "apiResponse", id: d.id, ...(reply || { ok: false, error: "Eklentiden yanıt alınamadı." }) });
+        });
+        return;
+      }
       chrome.runtime.sendMessage({ to: "sw", type: "panelAlive" }).catch(() => {});
       if (d.type === "state") chrome.runtime.sendMessage({ to: "sw", type: "state", state: d.state }).catch(() => {});
     });

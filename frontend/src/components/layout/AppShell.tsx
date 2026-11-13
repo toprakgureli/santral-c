@@ -21,6 +21,7 @@ import MentionToasts from "@/components/teams/MentionToasts";
 import WAAlerts from "@/components/whatsapp/WAAlerts";
 import { WhatsAppProvider } from "@/whatsapp/WhatsAppContext";
 import { CustomMenusProvider, useCustomMenus } from "@/menus/CustomMenusContext";
+import { ApiTesterProvider } from "@/apiTester/ApiTesterContext";
 import ExternalFramesHost from "./ExternalFramesHost";
 import { cn } from "@/lib/utils";
 import { titleFor } from "@/lib/menu";
@@ -59,6 +60,7 @@ export default function AppShell() {
     <TeamsProvider>
     <WhatsAppProvider>
     <CustomMenusProvider>
+    <ApiTesterProvider>
     <UnloadGuard />
     <BreakOverlay />
     <WelcomeCard />
@@ -106,6 +108,7 @@ export default function AppShell() {
       </div>
       <CallBar />
     </div>
+    </ApiTesterProvider>
     </CustomMenusProvider>
     </WhatsAppProvider>
     </TeamsProvider>

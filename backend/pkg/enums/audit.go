@@ -50,4 +50,13 @@ const (
 	AuditMenuCreated string = "menu.created"
 	AuditMenuUpdated string = "menu.updated"
 	AuditMenuDeleted string = "menu.deleted"
+
+	AuditAPITesterToggled     string = "api_tester.toggled"
+	AuditAPICollectionCreated string = "api_tester.collection_created"
+	AuditAPICollectionUpdated string = "api_tester.collection_updated"
+	AuditAPICollectionDeleted string = "api_tester.collection_deleted"
+	AuditAPIRequestCreated    string = "api_tester.request_created"
+	AuditAPIRequestUpdated    string = "api_tester.request_updated"
+	AuditAPIRequestDeleted    string = "api_tester.request_deleted"
+	AuditAPIRequestExecuted   string = "api_tester.executed"
 )

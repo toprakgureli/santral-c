@@ -1,4 +1,4 @@
-import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, LayoutGrid, MessageCircleMore, PhoneMissed, SlidersHorizontal, Tags, UsersRound, type LucideIcon } from "lucide-react";
+import { ChartColumn, ClipboardList, FileClock, Headset, History, KeyRound, LayoutGrid, MessageCircleMore, PhoneMissed, SlidersHorizontal, Tags, Terminal, UsersRound, type LucideIcon } from "lucide-react";
 import WhatsAppIcon from "@/components/icons/WhatsAppIcon";
 
 export type MenuItem = {
@@ -29,6 +29,7 @@ export const MENU: MenuGroup[] = [
       { label: "WhatsApp", path: "/whatsapp", icon: WhatsAppIcon, permission: "whatsapp.view" },
       { label: "Ekip Performansı", path: "/performance", icon: ChartColumn, permission: ["performance.view_role", "performance.view_all"] },
       { label: "Eskalasyonlar", path: "/escalation-search", icon: ClipboardList, permission: ["escalation.list_own", "escalation.list_all", "escalation.search"] },
+      { label: "API Testleri", path: "/api-tester", icon: Terminal, permission: ["api_tester.view", "api_tester.execute", "api_tester.manage"] },
     ],
   },
   {
@@ -38,7 +39,7 @@ export const MENU: MenuGroup[] = [
       { label: "Eskalasyon Durumları", path: "/escalations", icon: Tags, permission: "escalation.manage" },
       { label: "Kullanıcılar", path: "/users", icon: UsersRound, permission: "user.view" },
       { label: "Roller", path: "/roles", icon: KeyRound, permission: "role.view" },
-      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit", "agent.workday", "call.real_seconds", "games.manage", "system.backup"] },
+      { label: "Sistem Ayarları", path: "/settings", icon: SlidersHorizontal, permission: ["system.settings", "system.logs", "agent.break_limit", "agent.workday", "call.real_seconds", "games.manage", "api_tester.manage", "system.backup"] },
       { label: "Denetim Kayıtları", path: "/audit", icon: FileClock, permission: "system.audit_view" },
     ],
   },

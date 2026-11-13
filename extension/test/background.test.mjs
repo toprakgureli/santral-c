@@ -7,12 +7,23 @@ import vm from "node:vm";
 
 const PANEL = "https://cm.toprakgureli.com";
 
-function load(storedOrigin) {
+function load(storedOrigin, mockFetch) {
   const sent = [];
   const cookiesSet = [];
   const dnrRules = [];
+  const fetchCalls = [];
   let listener;
   let headersListener;
+  const fetchImpl = mockFetch || (async (url, init) => {
+    fetchCalls.push({ url, init });
+    return {
+      status: 200,
+      statusText: "OK",
+      url,
+      headers: new Map([["content-type", "application/json"]]),
+      text: async () => '{"ok":true}',
+    };
+  });
   const tabs = [
     { id: 1, url: PANEL + "/dashboard" },
     { id: 2, url: "https://evil.example/page" },
@@ -56,13 +67,13 @@ function load(storedOrigin) {
       onStartup: { addListener: () => {} },
     },
   };
-  vm.runInNewContext(readFileSync(new URL("../public/background.js", import.meta.url), "utf8"), { chrome, URL, console });
+  vm.runInNewContext(readFileSync(new URL("../public/background.js", import.meta.url), "utf8"), { chrome, URL, console, fetch: fetchImpl, AbortController, setTimeout, clearTimeout });
   const send = (msg, tab, frameId = 0, url) =>
     new Promise((resolve) => {
       const kept = listener(msg, { tab, frameId, url }, resolve);
       if (!kept) setTimeout(resolve, 20);
     });
-  return { send, sent, tabs, cookiesSet, dnrRules, onHeadersReceived: (d) => headersListener(d) };
+  return { send, sent, tabs, cookiesSet, dnrRules, fetchCalls, onHeadersReceived: (d) => headersListener(d) };
 }
 
 test("a page that is not the panel cannot set the call state", async () => {
@@ -278,3 +289,42 @@ test("supports multi-step login to OTP screen even when POST redirects back to /
   // Verify completeFormPost returns the redirect target (/login) so the iframe loads the OTP entry screen
   assert.equal(reply.redirectUrl, "https://portal.example.com/login");
 });
+
+test("only the panel tab may execute apiRequest relay calls", async () => {
+  const w = load();
+
+  const denied = await w.send(
+    { to: "sw", type: "apiRequest", req: { method: "GET", url: "https://customer.example/ping" } },
+    w.tabs[1],
+  );
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "unauthorized_origin");
+  assert.equal(w.fetchCalls.length, 0);
+
+  const badProto = await w.send(
+    { to: "sw", type: "apiRequest", req: { method: "GET", url: "file:///etc/passwd" } },
+    w.tabs[0],
+  );
+  assert.equal(badProto.ok, false);
+
+  const ok = await w.send(
+    {
+      to: "sw",
+      type: "apiRequest",
+      req: {
+        method: "POST",
+        url: "https://customer.example/orders",
+        headers: [{ key: "Authorization", value: "Bearer tok" }],
+        body: '{"id":42}',
+      },
+    },
+    w.tabs[0],
+  );
+  assert.equal(ok.ok, true);
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.body, '{"ok":true}');
+  assert.equal(w.fetchCalls.length, 1);
+  assert.equal(w.fetchCalls[0].init.method, "POST");
+  assert.equal(w.fetchCalls[0].init.headers.Authorization, "Bearer tok");
+});
+

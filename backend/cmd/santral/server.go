@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/toprakgureli/santral-c/backend/configs"
+	"github.com/toprakgureli/santral-c/backend/internal/apitester"
 	"github.com/toprakgureli/santral-c/backend/internal/audit"
 	"github.com/toprakgureli/santral-c/backend/internal/auth"
 	"github.com/toprakgureli/santral-c/backend/internal/backup"
@@ -200,6 +201,8 @@ func newServer(cfg configs.Config, db *gorm.DB, ring *crypt.Keyring) (*server, e
 	contact.NewRouter(contactHandler, guard, need).Routes(api)
 	menuSvc := custommenu.NewService(custommenu.NewRepository(db), actors, auditSvc)
 	custommenu.NewRouter(custommenu.NewHandler(menuSvc), guard, need).Routes(api)
+	apiTesterSvc := apitester.NewService(apitester.NewRepository(db), actors, auditSvc, ring)
+	apitester.NewRouter(apitester.NewHandler(apiTesterSvc), guard, need).Routes(api)
 	escalation.NewRouter(escalationHandler, guard, need).Routes(api)
 	calllog.NewRouter(callLogHandler, guard, need).Routes(api)
 	shift.NewRouter(shiftHandler, guard).Routes(api)
