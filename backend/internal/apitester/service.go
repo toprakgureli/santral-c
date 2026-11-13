@@ -375,7 +375,7 @@ func (s *Service) ExecuteProxy(ctx context.Context, actorID uint, reqID uint, in
 			Error:       msg,
 		}, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	limited := io.LimitReader(resp.Body, maxProxyResponseBody+1)
 	rawBody, readErr := io.ReadAll(limited)
