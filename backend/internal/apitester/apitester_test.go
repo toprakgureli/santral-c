@@ -96,6 +96,20 @@ func (m *memRepo) CreateCollection(_ context.Context, col *models.APICollection)
 	return nil
 }
 
+func (m *memRepo) ImportCollection(ctx context.Context, col *models.APICollection, reqs []*models.APIRequest) error {
+	if err := m.CreateCollection(ctx, col); err != nil {
+		return err
+	}
+	for i, r := range reqs {
+		r.CollectionID = col.ID
+		r.SortOrder = i + 1
+		if err := m.CreateRequest(ctx, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *memRepo) UpdateCollection(_ context.Context, col *models.APICollection) error {
 	cp := *col
 	m.collections[col.ID] = &cp
@@ -355,5 +369,68 @@ func TestSecretMaskingAndProxyExecution(t *testing.T) {
 	// User without permissions is denied.
 	if _, err := svc.List(ctx, 4); err == nil {
 		t.Fatal("expected forbidden for user without permissions")
+	}
+}
+
+func TestImportCollectionAtomicAndEncrypted(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemRepo()
+	actors := fakeActors{users: map[uint]*models.User{
+		1: userWithPerms(1, enums.APITesterView, enums.APITesterExecute, enums.APITesterManage),
+		2: userWithPerms(2, enums.APITesterView, enums.APITesterExecute),
+	}}
+	svc := apitester.NewService(repo, actors, &fakeAudit{}, testRing(t))
+
+	// Executor without manage permission cannot import.
+	if _, err := svc.ImportCollection(ctx, 2, apitester.ImportCollectionInput{
+		Collection: apitester.CollectionInput{Name: "Postman Paketi"},
+	}, "1.2.3.4"); err == nil {
+		t.Fatal("expected forbidden when executor imports collection")
+	}
+
+	// Invalid request in batch rejects before creating the collection.
+	if _, err := svc.ImportCollection(ctx, 1, apitester.ImportCollectionInput{
+		Collection: apitester.CollectionInput{Name: "Bozuk Paket"},
+		Requests: []apitester.RequestInput{
+			{Name: "Ok", Method: "GET", URLTemplate: "https://api.example.com/ok"},
+			{Name: "Bad", Method: "BADMETHOD", URLTemplate: "https://api.example.com/bad"},
+		},
+	}, "1.2.3.4"); err == nil {
+		t.Fatal("expected validation failure for invalid request in import batch")
+	}
+	if len(repo.collections) != 0 {
+		t.Fatalf("expected 0 collections after failed import validation, got %d", len(repo.collections))
+	}
+
+	col, err := svc.ImportCollection(ctx, 1, apitester.ImportCollectionInput{
+		Collection: apitester.CollectionInput{
+			Name:       "Postman Entegrasyon",
+			ProjectTag: "CRM",
+			BaseURL:    "https://api.crm.example",
+		},
+		Requests: []apitester.RequestInput{
+			{
+				Name:        "Müşteri Sorgula",
+				Method:      "GET",
+				URLTemplate: "{{base_url}}/customers/{{phone}}",
+				Headers:     []apitester.KeyValue{{Key: "Authorization", Value: "Bearer secret-pm-tok", Secret: true}},
+				Variables:   []apitester.VariableDef{{Key: "phone", Label: "Telefon", Required: true, Source: "call_phone"}},
+			},
+			{
+				Name:         "Sipariş Oluştur",
+				Method:       "POST",
+				URLTemplate:  "{{base_url}}/orders",
+				BodyTemplate: `{"phone":"{{phone}}"}`,
+			},
+		},
+	}, "1.2.3.4")
+	if err != nil {
+		t.Fatalf("ImportCollection: %v", err)
+	}
+	if len(col.Requests) != 2 {
+		t.Fatalf("expected 2 imported requests, got %d", len(col.Requests))
+	}
+	if strings.Contains(repo.requests[col.Requests[0].ID].HeadersEnc, "secret-pm-tok") {
+		t.Fatal("expected imported headers to be encrypted at rest")
 	}
 }

@@ -104,6 +104,25 @@ func (r *Repository) CreateCollection(ctx context.Context, col *models.APICollec
 	return r.db.WithContext(ctx).Omit("Requests").Create(col).Error
 }
 
+// ImportCollection atomically inserts a collection and its request templates.
+func (r *Repository) ImportCollection(ctx context.Context, col *models.APICollection, reqs []*models.APIRequest) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Omit("Requests").Create(col).Error; err != nil {
+			return err
+		}
+		for i, req := range reqs {
+			req.CollectionID = col.ID
+			req.SortOrder = i + 1
+		}
+		if len(reqs) > 0 {
+			if err := tx.Create(&reqs).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // UpdateCollection updates an existing collection record.
 func (r *Repository) UpdateCollection(ctx context.Context, col *models.APICollection) error {
 	return r.db.WithContext(ctx).Omit("Requests", "CreatedAt", "CreatedBy").Save(col).Error

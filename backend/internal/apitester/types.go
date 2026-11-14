@@ -91,6 +91,13 @@ type CollectionInput struct {
 	Active      *bool  `json:"active"`
 }
 
+// ImportCollectionInput creates a collection with all its requests atomically
+// (used when importing Postman collections).
+type ImportCollectionInput struct {
+	Collection CollectionInput `json:"collection"`
+	Requests   []RequestInput  `json:"requests"`
+}
+
 // RequestInput creates or updates a request template.
 type RequestInput struct {
 	Name                string        `json:"name"`

@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Terminal,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { apiTesterApi } from "@/apiTester/api";
@@ -41,6 +42,7 @@ import type {
 } from "@/apiTester/types";
 import { useAuth } from "@/auth/AuthContext";
 import { CollectionModal } from "@/components/apiTester/CollectionModal";
+import { PostmanImportModal } from "@/components/apiTester/PostmanImportModal";
 import { RequestEditorModal } from "@/components/apiTester/RequestEditorModal";
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Skeleton } from "@/components/ui";
 import { usePeerContext } from "@/followups/PeerHints";
@@ -106,6 +108,7 @@ export function ApiTester() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const [colModalOpen, setColModalOpen] = useState(false);
+  const [postmanOpen, setPostmanOpen] = useState(false);
   const [editingCol, setEditingCol] = useState<ApiCollectionItem | null>(null);
   const [deletingCol, setDeletingCol] = useState<ApiCollectionItem | null>(null);
 
@@ -443,15 +446,24 @@ export function ApiTester() {
             icon={Terminal}
             actions={
               canManage ? (
-                <Button
-                  className="h-8 px-2.5 text-xs"
-                  onClick={() => {
-                    setEditingCol(null);
-                    setColModalOpen(true);
-                  }}
-                >
-                  <FolderPlus className="size-3.5" /> Yeni Koleksiyon
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="secondary"
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => setPostmanOpen(true)}
+                  >
+                    <Upload className="size-3.5" /> Postman
+                  </Button>
+                  <Button
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => {
+                      setEditingCol(null);
+                      setColModalOpen(true);
+                    }}
+                  >
+                    <FolderPlus className="size-3.5" /> Yeni Koleksiyon
+                  </Button>
+                </div>
               ) : undefined
             }
           >
@@ -956,6 +968,16 @@ export function ApiTester() {
         editing={editingCol}
         onClose={() => setColModalOpen(false)}
         onSaved={() => void loadCollections()}
+      />
+
+      <PostmanImportModal
+        open={postmanOpen}
+        onClose={() => setPostmanOpen(false)}
+        onImported={(col) => {
+          setSelectedColId(col.id);
+          if (col.requests[0]) setSelectedReqId(col.requests[0].id);
+          void loadCollections();
+        }}
       />
 
       <RequestEditorModal

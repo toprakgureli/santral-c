@@ -71,6 +71,7 @@ var checkedInside = map[string]string{
 	"/api/v1/pbx/stats":              "the caller's own numbers for today",
 	"/api/v1/menus/visible":          "every signed-in person reads the custom menu items visible to their roles",
 	"/api/v1/menus/:id/check":        "every signed-in person checks whether a custom menu item visible to their roles allows iframe embedding",
+	"/api/v1/api-tester/status":      "every signed-in person checks whether the optional API tester module is enabled",
 }
 
 // alsoNeeds are routes whose service asks for more than the check next to

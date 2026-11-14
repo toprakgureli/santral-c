@@ -22,6 +22,11 @@ export const apiTesterApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  importCollection: (collection: CollectionInput, requests: RequestInput[]) =>
+    request<ApiCollectionItem>("/api-tester/collections/import", {
+      method: "POST",
+      body: JSON.stringify({ collection, requests }),
+    }),
   updateCollection: (id: number, body: CollectionInput) =>
     request<ApiCollectionItem>(`/api-tester/collections/${id}`, {
       method: "PUT",

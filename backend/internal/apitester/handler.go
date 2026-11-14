@@ -98,6 +98,23 @@ func (h *Handler) CreateCollection(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(res)
 }
 
+// ImportCollection imports a collection together with its requests atomically.
+func (h *Handler) ImportCollection(c *fiber.Ctx) error {
+	uid, err := actorID(c)
+	if err != nil {
+		return err
+	}
+	var req ImportCollectionInput
+	if err := c.BodyParser(&req); err != nil {
+		return errs.Invalid("Geçersiz içe aktarma verisi.", err)
+	}
+	res, err := h.service.ImportCollection(c.UserContext(), uid, req, c.IP())
+	if err != nil {
+		return err
+	}
+	return c.Status(fiber.StatusCreated).JSON(res)
+}
+
 // UpdateCollection updates a collection.
 func (h *Handler) UpdateCollection(c *fiber.Ctx) error {
 	uid, err := actorID(c)
@@ -284,6 +301,7 @@ func (r *Router) Routes(g fiber.Router) {
 
 	group.Get("/collections", view, r.handler.List)
 	group.Post("/collections", manage, r.handler.CreateCollection)
+	group.Post("/collections/import", manage, r.handler.ImportCollection)
 	group.Put("/collections/:id", manage, r.handler.UpdateCollection)
 	group.Delete("/collections/:id", manage, r.handler.DeleteCollection)
 

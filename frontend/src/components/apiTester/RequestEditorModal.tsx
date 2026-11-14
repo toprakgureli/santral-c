@@ -117,6 +117,7 @@ export function RequestEditorModal({
     if (parsed.queryParams) setQueryParams(parsed.queryParams);
     if (parsed.contentType) setContentType(parsed.contentType);
     if (parsed.bodyTemplate !== undefined) setBodyTemplate(parsed.bodyTemplate);
+    if (parsed.variables) setVariables(parsed.variables);
   };
 
   const submit = async () => {

@@ -42,6 +42,7 @@ type IRepo interface {
 	GetCollection(ctx context.Context, id uint) (*models.APICollection, error)
 	NextCollectionOrder(ctx context.Context) (int, error)
 	CreateCollection(ctx context.Context, col *models.APICollection) error
+	ImportCollection(ctx context.Context, col *models.APICollection, reqs []*models.APIRequest) error
 	UpdateCollection(ctx context.Context, col *models.APICollection) error
 	DeleteCollection(ctx context.Context, id uint) error
 	GetRequest(ctx context.Context, id uint) (*models.APIRequest, error)
@@ -166,6 +167,61 @@ func (s *Service) CreateCollection(ctx context.Context, actorID uint, in Collect
 	}
 	s.recordAudit(ctx, actor.ID, enums.AuditAPICollectionCreated, "api_collection", col.ID, ip, map[string]any{"name": col.Name, "projectTag": col.ProjectTag})
 	dto := toCollectionDTO(col, []RequestDTO{})
+	return &dto, nil
+}
+
+// ImportCollection validates and creates a collection along with its request
+// templates in a single transaction.
+func (s *Service) ImportCollection(ctx context.Context, actorID uint, in ImportCollectionInput, ip string) (*CollectionDTO, error) {
+	actor, err := s.requireAny(ctx, actorID, "API koleksiyonu içe aktarma yetkin yok.", enums.APITesterManage)
+	if err != nil {
+		return nil, err
+	}
+	if len(in.Requests) > 200 {
+		return nil, errs.Invalid("Tek seferde en fazla 200 istek içe aktarılabilir.", nil)
+	}
+	name, desc, tag, baseURL, active, err := validateCollectionInput(in.Collection, true)
+	if err != nil {
+		return nil, err
+	}
+	order, err := s.repo.NextCollectionOrder(ctx)
+	if err != nil {
+		return nil, errs.Internal(err)
+	}
+	col := &models.APICollection{
+		Name:        name,
+		Description: desc,
+		ProjectTag:  tag,
+		BaseURL:     baseURL,
+		SortOrder:   order,
+		Active:      active,
+		CreatedBy:   &actor.ID,
+	}
+
+	reqModels := make([]*models.APIRequest, 0, len(in.Requests))
+	for _, rIn := range in.Requests {
+		rm, err := s.buildRequestModel(nil, 0, rIn, actor.ID)
+		if err != nil {
+			return nil, err
+		}
+		reqModels = append(reqModels, rm)
+	}
+
+	if err := s.repo.ImportCollection(ctx, col, reqModels); err != nil {
+		return nil, errs.Internal(err)
+	}
+
+	reqDTOs := make([]RequestDTO, 0, len(reqModels))
+	for _, rm := range reqModels {
+		reqDTOs = append(reqDTOs, s.toRequestDTO(rm, true, true))
+	}
+	s.recordAudit(ctx, actor.ID, enums.AuditAPICollectionCreated, "api_collection", col.ID, ip, map[string]any{
+		"name":         col.Name,
+		"projectTag":   col.ProjectTag,
+		"requestCount": len(reqModels),
+		"imported":     true,
+	})
+	dto := toCollectionDTO(col, reqDTOs)
 	return &dto, nil
 }
 
@@ -305,7 +361,7 @@ func (s *Service) ExecuteProxy(ctx context.Context, actorID uint, reqID uint, in
 		return nil, errs.Internal(err)
 	}
 	if !enabled && !actor.Can(enums.APITesterManage) {
-		return nil, errs.Forbidden("API test modülü şu anda pasif.")
+		return nil, errs.Conflict("API test modülü şu anda pasif.", nil)
 	}
 
 	reqModel, col, err := s.loadExecutableRequest(ctx, reqID, actor.Can(enums.APITesterManage))
@@ -313,7 +369,7 @@ func (s *Service) ExecuteProxy(ctx context.Context, actorID uint, reqID uint, in
 		return nil, err
 	}
 	if reqModel.ExecutionMode != ModeServer && !reqModel.AllowServerFallback {
-		return nil, errs.Forbidden("Bu istek sadece kullanıcı IP'sinden çalıştırılabilir; sunucu proxysine izin verilmemiş.")
+		return nil, errs.Conflict("Bu istek sadece kullanıcı IP'sinden çalıştırılabilir; sunucu proxysine izin verilmemiş.", nil)
 	}
 
 	headers := s.openHeaders(reqModel.HeadersEnc)
